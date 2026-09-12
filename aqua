@@ -314,6 +314,11 @@ local A = {
     config_input_buffer = "",
     config_key_prev = {},
     config_selected = nil,
+
+    -- Smooth left-sidebar tab transition.
+    sidebar_indicator_y = nil,
+    sidebar_indicator_last_t = nil,
+    sidebar_tab_anim = {},
 }
 
 -- =========================================================
@@ -1962,20 +1967,94 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
     local active = S.tab == index
     local hot = hover(mx, my, x, y, w, h)
 
-    if active then
-        rounded_fill(x, y, w, h, 7, C.selected)
-    elseif hot then
-        rounded_fill(x, y, w, h, 7, C.card_hover)
+    A.sidebar_tab_anim[index] =
+        A.sidebar_tab_anim[index]
+        or (
+            active
+            and 1
+            or 0
+        )
+
+    local target =
+        active
+        and 1
+        or 0
+
+    A.sidebar_tab_anim[index] =
+        lerp(
+            A.sidebar_tab_anim[index],
+            target,
+            0.18
+        )
+
+    local a =
+        clamp(
+            A.sidebar_tab_anim[index],
+            0,
+            1
+        )
+
+    -- Active background is rendered separately as one moving pill.
+    -- Only hover tint remains local to the row.
+    if hot and not active then
+        rounded_fill(
+            x,
+            y,
+            w,
+            h,
+            7,
+            alpha(
+                C.card_hover,
+                0.55
+                    * (1 - a)
+            )
+        )
     end
 
-    local col = active and C.text or (hot and C.text or C.text_dim)
-    local ic = active and C.accent or C.text_dim
+    local col =
+        mix_color(
+            C.text_dim,
+            C.text,
+            a
+        )
+
+    if hot and a < 0.5 then
+        col =
+            mix_color(
+                col,
+                C.text,
+                0.42
+            )
+    end
+
+    local ic =
+        mix_color(
+            C.text_dim,
+            C.accent,
+            a
+        )
 
     local icon = ICONS[index]
-    if icon then icon(x + 12, y + 10, ic) end
-    text(x + 37, y + 10, TABS[index].label, col)
 
-    if clicked and hot and S.tab ~= index then
+    if icon then
+        icon(
+            x + 12,
+            y + 10,
+            ic
+        )
+    end
+
+    text(
+        x + 37,
+        y + 10,
+        TABS[index].label,
+        col
+    )
+
+    if clicked
+        and hot
+        and S.tab ~= index
+    then
         S.tab = index
         S.anim = 0
 
@@ -8004,6 +8083,70 @@ hooks.on_render(function()
     text(wx + 26, wy + 27, "Fallen-lua", C.text)
 
     -- Sidebar
+    local sidebar_target_y =
+        S.tab == 2
+        and (wy + 179)
+        or (wy + 105)
+
+    if A.sidebar_indicator_y == nil then
+        A.sidebar_indicator_y =
+            sidebar_target_y
+    end
+
+    local sidebar_now = tick()
+
+    if A.sidebar_indicator_last_t == nil then
+        A.sidebar_indicator_last_t =
+            sidebar_now
+    end
+
+    local sidebar_dt =
+        clamp(
+            sidebar_now
+            - A.sidebar_indicator_last_t,
+            0,
+            0.05
+        )
+
+    A.sidebar_indicator_last_t =
+        sidebar_now
+
+    A.sidebar_indicator_y =
+        exp_chase(
+            A.sidebar_indicator_y,
+            sidebar_target_y,
+            13,
+            sidebar_dt
+        )
+
+    if math.abs(
+        A.sidebar_indicator_y
+        - sidebar_target_y
+    ) < 0.08 then
+        A.sidebar_indicator_y =
+            sidebar_target_y
+    end
+
+    -- Sliding selected-tab pill.
+    rounded_fill(
+        wx + 10,
+        A.sidebar_indicator_y,
+        152,
+        35,
+        7,
+        C.selected
+    )
+
+    -- Small accent rail moves together with the pill.
+    rounded_fill(
+        wx + 13,
+        A.sidebar_indicator_y + 9,
+        3,
+        17,
+        1.5,
+        alpha(C.accent, 0.88)
+    )
+
     text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
     sidebar_tab(mx, my, clicked, wx + 10, wy + 105, 1)
 
@@ -8231,7 +8374,7 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA = 1
 end)
 
-print(SYS .. "loaded | v28 | fixed render nil + restored alpha sliders | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v29 | smooth animated sidebar tab switching | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -10571,4 +10714,4 @@ hooks.on_render(function()
 end)
 
 
-print("[Fallen loader] ready | v28 picker render fix")
+print("[Fallen loader] ready | v29 smooth sidebar tabs")
