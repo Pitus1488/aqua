@@ -1116,6 +1116,8 @@ end
 -- Named configs stored as flat files in the existing scripts folder.
 -- =========================================================
 
+FALLEN_CONFIGS = (function()
+
 local CONFIG_PREFIX =
     "C:\\blueberry\\scripts\\fallen_lua_cfg_"
 
@@ -1713,6 +1715,15 @@ end
 
 cfg_read_index()
 
+    return {
+        CONFIG = CONFIG,
+        save = cfg_save,
+        load = cfg_load,
+        delete = cfg_delete,
+        input_focus = config_input_focus,
+        input_poll = config_input_poll,
+        sanitize = cfg_sanitize_name,
+    }
 local function config_input_edge(vk)
     local down =
         key_down(vk)
@@ -1835,6 +1846,9 @@ local function config_input_poll()
         return
     end
 end
+
+
+end)()
 
 local function mouse_pos()
     local a, b = nil, nil
@@ -7097,7 +7111,7 @@ end)
 -- Configs animated dropdown
 -- =========================================================
 
-local function config_anim_step()
+function FALLEN_CONFIGS.anim_step()
     local now = tick()
 
     if A.config_last_t == nil then
@@ -7149,7 +7163,7 @@ local function config_anim_step()
         )
 end
 
-local function config_button(
+function FALLEN_CONFIGS.button(
     mx,
     my,
     clicked,
@@ -7207,7 +7221,7 @@ local function config_button(
         and hot
 end
 
-local function draw_configs_popup(
+function FALLEN_CONFIGS.draw_popup(
     mx,
     my,
     clicked,
@@ -7217,7 +7231,7 @@ local function draw_configs_popup(
     anchor_w
 )
     local raw =
-        config_anim_step()
+        FALLEN_CONFIGS.anim_step()
 
     if raw <= 0.001
         and not A.config_open
@@ -7242,12 +7256,12 @@ local function draw_configs_popup(
 
     local visible_count =
         math.min(
-            #CONFIG.list,
+            #FALLEN_CONFIGS.CONFIG.list,
             6
         )
 
     local empty_extra =
-        #CONFIG.list == 0
+        #FALLEN_CONFIGS.CONFIG.list == 0
         and 29
         or 0
 
@@ -7415,7 +7429,7 @@ local function draw_configs_popup(
         if ui_clicked
             and input_hot
         then
-            config_input_focus(true)
+            FALLEN_CONFIGS.input_focus(true)
         end
     end
 
@@ -7433,7 +7447,7 @@ local function draw_configs_popup(
         list_y =
             list_y + 18
 
-        if #CONFIG.list == 0 then
+        if #FALLEN_CONFIGS.CONFIG.list == 0 then
             text(
                 px + 13,
                 list_y + 5,
@@ -7443,7 +7457,7 @@ local function draw_configs_popup(
         else
             for i = 1, visible_count do
                 local name =
-                    CONFIG.list[i]
+                    FALLEN_CONFIGS.CONFIG.list[i]
 
                 local iy =
                     list_y
@@ -7502,7 +7516,7 @@ local function draw_configs_popup(
                 then
                     A.config_selected = name
                     A.config_input_buffer = name
-                    config_input_focus(false)
+                    FALLEN_CONFIGS.input_focus(false)
                 end
             end
         end
@@ -7523,7 +7537,7 @@ local function draw_configs_popup(
 
         local bx = px + 12
 
-        if config_button(
+        if FALLEN_CONFIGS.button(
             mx,
             my,
             ui_clicked,
@@ -7534,8 +7548,8 @@ local function draw_configs_popup(
             "Save",
             false
         ) then
-            config_input_focus(false)
-            cfg_save(
+            FALLEN_CONFIGS.input_focus(false)
+            FALLEN_CONFIGS.save(
                 A.config_input_buffer
             )
         end
@@ -7543,7 +7557,7 @@ local function draw_configs_popup(
         bx =
             bx + bw + gap
 
-        if config_button(
+        if FALLEN_CONFIGS.button(
             mx,
             my,
             ui_clicked,
@@ -7554,9 +7568,9 @@ local function draw_configs_popup(
             "Load",
             false
         ) then
-            config_input_focus(false)
+            FALLEN_CONFIGS.input_focus(false)
 
-            cfg_load(
+            FALLEN_CONFIGS.load(
                 A.config_selected
                 or A.config_input_buffer
             )
@@ -7565,7 +7579,7 @@ local function draw_configs_popup(
         bx =
             bx + bw + gap
 
-        if config_button(
+        if FALLEN_CONFIGS.button(
             mx,
             my,
             ui_clicked,
@@ -7576,9 +7590,9 @@ local function draw_configs_popup(
             "Delete",
             true
         ) then
-            config_input_focus(false)
+            FALLEN_CONFIGS.input_focus(false)
 
-            cfg_delete(
+            FALLEN_CONFIGS.delete(
                 A.config_selected
                 or A.config_input_buffer
             )
@@ -7611,7 +7625,7 @@ local function draw_configs_popup(
         and not anchor_hot
     then
         A.config_open = false
-        config_input_focus(false)
+        FALLEN_CONFIGS.input_focus(false)
     end
 
     MENU_RENDER_ALPHA =
@@ -7655,7 +7669,7 @@ hooks.on_render(function()
 
             A.config_open = false
             A.config_anim = 0
-            config_input_focus(false)
+            FALLEN_CONFIGS.input_focus(false)
 
             aim_bind_cancel()
         end
@@ -7691,7 +7705,7 @@ hooks.on_render(function()
     -- Poll focused UI input.
     numeric_poll()
     aim_bind_poll()
-    config_input_poll()
+    FALLEN_CONFIGS.input_poll()
 
     local lmb = key_down(VK_LBUTTON)
     local clicked =
@@ -7959,10 +7973,10 @@ hooks.on_render(function()
             or C.text_dim
     )
 
-    if CONFIG.loaded_name then
+    if FALLEN_CONFIGS.CONFIG.loaded_name then
         local loaded =
             tostring(
-                CONFIG.loaded_name
+                FALLEN_CONFIGS.CONFIG.loaded_name
             )
 
         if #loaded > 12 then
@@ -8010,7 +8024,7 @@ hooks.on_render(function()
             A.world_color_picker_open = false
             A.world_color_picker_drag = nil
         else
-            config_input_focus(false)
+            FALLEN_CONFIGS.input_focus(false)
         end
     end
 
@@ -8061,7 +8075,7 @@ hooks.on_render(function()
     end
 
     -- Config dropdown is rendered last so it always sits above page controls.
-    draw_configs_popup(
+    FALLEN_CONFIGS.draw_popup(
         mx,
         my,
         clicked,
@@ -8075,7 +8089,7 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA = 1
 end)
 
-print(SYS .. "loaded | v23 | animated named configs Save/Load/Delete | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v24 | fixed Lua 200-local limit + configs | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -10415,4 +10429,4 @@ hooks.on_render(function()
 end)
 
 
-print("[Fallen loader] ready | v23 working Configs dropdown")
+print("[Fallen loader] ready | v24 configs local-limit fix")
