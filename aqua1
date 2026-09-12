@@ -280,6 +280,20 @@ local A = {
     fov_picker_open = false,
     fov_picker_drag = nil,
 
+    -- Editable HEX / alpha fields shared by Aim + Visuals color pickers.
+    color_input = {
+        focus = false,
+        kind = nil,
+        prefix = nil,
+        buffer = "",
+        replace_on_type = false,
+        prev = {},
+        original_h = nil,
+        original_s = nil,
+        original_v = nil,
+        original_alpha = nil,
+    },
+
     -- Aimbot settings / bind capture.
     aim_settings_open = false,
     aim_settings_anim = 0,
@@ -2064,6 +2078,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.world_settings_open = false
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
 
         if aim_bind_cancel then
             aim_bind_cancel()
@@ -2431,6 +2446,338 @@ local function rgb_hex(r, g, b)
     return string.format("#%02X%02X%02X", rr, gg, bb)
 end
 
+
+function FALLEN_RGB_TO_HSV(r, g, b)
+    r = clamp(tonumber(r) or 0, 0, 1)
+    g = clamp(tonumber(g) or 0, 0, 1)
+    b = clamp(tonumber(b) or 0, 0, 1)
+
+    local maxv = math.max(r, g, b)
+    local minv = math.min(r, g, b)
+    local d = maxv - minv
+
+    local h = 0
+    local s =
+        maxv <= 0
+        and 0
+        or (d / maxv)
+
+    if d > 0 then
+        if maxv == r then
+            h = ((g - b) / d) % 6
+        elseif maxv == g then
+            h = ((b - r) / d) + 2
+        else
+            h = ((r - g) / d) + 4
+        end
+
+        h = h / 6
+    end
+
+    return h % 1, s, maxv
+end
+
+function FALLEN_COLOR_INPUT_IS(kind, prefix)
+    local ci = A.color_input
+
+    return
+        ci.focus == true
+        and ci.kind == kind
+        and ci.prefix == prefix
+end
+
+function FALLEN_COLOR_INPUT_EDGE(vk)
+    local ci = A.color_input
+    local down = key_down(vk)
+    local old = ci.prev[vk] == true
+    ci.prev[vk] = down
+    return down and not old
+end
+
+function FALLEN_COLOR_INPUT_APPLY()
+    local ci = A.color_input
+
+    if not ci.focus
+        or not ci.prefix
+        or not ci.kind
+    then
+        return
+    end
+
+    if ci.kind == "hex" then
+        local raw =
+            string.upper(
+                tostring(ci.buffer or "")
+            )
+
+        raw =
+            string.gsub(
+                raw,
+                "[^0-9A-F]",
+                ""
+            )
+
+        if #raw ~= 6 then
+            return
+        end
+
+        local rr =
+            tonumber(
+                string.sub(raw, 1, 2),
+                16
+            )
+
+        local gg =
+            tonumber(
+                string.sub(raw, 3, 4),
+                16
+            )
+
+        local bb =
+            tonumber(
+                string.sub(raw, 5, 6),
+                16
+            )
+
+        if rr == nil
+            or gg == nil
+            or bb == nil
+        then
+            return
+        end
+
+        local h, s, v =
+            FALLEN_RGB_TO_HSV(
+                rr / 255,
+                gg / 255,
+                bb / 255
+            )
+
+        S[ci.prefix .. "_h"] = h
+        S[ci.prefix .. "_s"] = s
+        S[ci.prefix .. "_v"] = v
+
+    elseif ci.kind == "alpha" then
+        local value =
+            tonumber(
+                ci.buffer
+            )
+
+        if value ~= nil then
+            S[ci.prefix .. "_alpha"] =
+                math.floor(
+                    clamp(
+                        value,
+                        0,
+                        100
+                    )
+                    + 0.5
+                )
+        end
+    end
+end
+
+function FALLEN_COLOR_INPUT_STOP(accept)
+    local ci = A.color_input
+
+    if ci.focus
+        and accept == false
+        and ci.prefix
+    then
+        S[ci.prefix .. "_h"] =
+            ci.original_h
+
+        S[ci.prefix .. "_s"] =
+            ci.original_s
+
+        S[ci.prefix .. "_v"] =
+            ci.original_v
+
+        S[ci.prefix .. "_alpha"] =
+            ci.original_alpha
+    elseif ci.focus
+        and accept ~= false
+    then
+        FALLEN_COLOR_INPUT_APPLY()
+    end
+
+    ci.focus = false
+    ci.kind = nil
+    ci.prefix = nil
+    ci.buffer = ""
+    ci.replace_on_type = false
+    ci.prev = {}
+end
+
+function FALLEN_COLOR_INPUT_START(kind, prefix)
+    local ci = A.color_input
+
+    FALLEN_COLOR_INPUT_STOP(true)
+
+    ci.focus = true
+    ci.kind = kind
+    ci.prefix = prefix
+    ci.replace_on_type = true
+    ci.prev = {}
+
+    ci.original_h =
+        tonumber(
+            S[prefix .. "_h"]
+        )
+        or 0
+
+    ci.original_s =
+        tonumber(
+            S[prefix .. "_s"]
+        )
+        or 0
+
+    ci.original_v =
+        tonumber(
+            S[prefix .. "_v"]
+        )
+        or 1
+
+    ci.original_alpha =
+        tonumber(
+            S[prefix .. "_alpha"]
+        )
+        or 100
+
+    if kind == "hex" then
+        local r, g, b =
+            hsv_to_rgb(
+                ci.original_h,
+                ci.original_s,
+                ci.original_v
+            )
+
+        ci.buffer =
+            string.sub(
+                rgb_hex(r, g, b),
+                2
+            )
+    else
+        ci.buffer =
+            tostring(
+                math.floor(
+                    ci.original_alpha
+                    + 0.5
+                )
+            )
+    end
+
+    numeric_stop(true)
+
+    if A.config_input_focus
+        and FALLEN_CONFIGS
+        and FALLEN_CONFIGS.input_focus
+    then
+        FALLEN_CONFIGS.input_focus(false)
+    end
+end
+
+function FALLEN_COLOR_INPUT_POLL()
+    local ci = A.color_input
+
+    if not ci.focus then
+        return
+    end
+
+    -- Enter accepts, Escape restores original value.
+    if FALLEN_COLOR_INPUT_EDGE(0x0D) then
+        FALLEN_COLOR_INPUT_STOP(true)
+        return
+    end
+
+    if FALLEN_COLOR_INPUT_EDGE(0x1B) then
+        FALLEN_COLOR_INPUT_STOP(false)
+        return
+    end
+
+    -- Backspace.
+    if FALLEN_COLOR_INPUT_EDGE(0x08) then
+        ci.replace_on_type = false
+
+        ci.buffer =
+            string.sub(
+                ci.buffer or "",
+                1,
+                math.max(
+                    0,
+                    #(ci.buffer or "") - 1
+                )
+            )
+
+        FALLEN_COLOR_INPUT_APPLY()
+        return
+    end
+
+    if ci.kind == "hex" then
+        -- 0-9.
+        for digit = 0, 9 do
+            if FALLEN_COLOR_INPUT_EDGE(0x30 + digit)
+                or FALLEN_COLOR_INPUT_EDGE(0x60 + digit)
+            then
+                if ci.replace_on_type then
+                    ci.buffer = ""
+                    ci.replace_on_type = false
+                end
+
+                if #ci.buffer < 6 then
+                    ci.buffer =
+                        ci.buffer
+                        .. tostring(digit)
+                end
+
+                FALLEN_COLOR_INPUT_APPLY()
+                return
+            end
+        end
+
+        -- A-F.
+        for vk = 0x41, 0x46 do
+            if FALLEN_COLOR_INPUT_EDGE(vk) then
+                if ci.replace_on_type then
+                    ci.buffer = ""
+                    ci.replace_on_type = false
+                end
+
+                if #ci.buffer < 6 then
+                    ci.buffer =
+                        ci.buffer
+                        .. string.char(vk)
+                end
+
+                FALLEN_COLOR_INPUT_APPLY()
+                return
+            end
+        end
+
+    elseif ci.kind == "alpha" then
+        -- 0-9 only, max three digits.
+        for digit = 0, 9 do
+            if FALLEN_COLOR_INPUT_EDGE(0x30 + digit)
+                or FALLEN_COLOR_INPUT_EDGE(0x60 + digit)
+            then
+                if ci.replace_on_type then
+                    ci.buffer = ""
+                    ci.replace_on_type = false
+                end
+
+                if #ci.buffer < 3 then
+                    ci.buffer =
+                        ci.buffer
+                        .. tostring(digit)
+                end
+
+                FALLEN_COLOR_INPUT_APPLY()
+                return
+            end
+        end
+    end
+end
+
 local function color_preview(x, y, w, h)
     local c = fov_color()
     local radius = math.floor(math.min(w, h) * 0.28)
@@ -2688,17 +3035,174 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     local c = fov_color()
     local hex = rgb_hex(c[1], c[2], c[3])
 
-    rounded_fill(sv_x, field_y, 154, 31, 7, { 0.095, 0.098, 0.112, 1 })
-    text(sv_x + 10, field_y + 9, "HEX", C.text_dim)
-    text(sv_x + 47, field_y + 9, hex, C.text)
+    local aim_prefix = "aim_fov"
 
-    rounded_fill(sv_x + 164, field_y, sv_w - 164, 31, 7, { 0.095, 0.098, 0.112, 1 })
-    centered_text(
-        sv_x + 164 + (sv_w - 164) * 0.5,
+    local hex_x = sv_x
+    local hex_w = 154
+    local alpha_field_x = sv_x + 164
+    local alpha_field_w = sv_w - 164
+
+    local hex_hot =
+        hover(
+            mx,
+            my,
+            hex_x,
+            field_y,
+            hex_w,
+            31
+        )
+
+    local alpha_field_hot =
+        hover(
+            mx,
+            my,
+            alpha_field_x,
+            field_y,
+            alpha_field_w,
+            31
+        )
+
+    local hex_focus =
+        FALLEN_COLOR_INPUT_IS(
+            "hex",
+            aim_prefix
+        )
+
+    local alpha_focus =
+        FALLEN_COLOR_INPUT_IS(
+            "alpha",
+            aim_prefix
+        )
+
+    rounded_fill(
+        hex_x,
+        field_y,
+        hex_w,
+        31,
+        7,
+        hex_focus
+            and { 0.112, 0.118, 0.145, 1 }
+            or (
+                hex_hot
+                and { 0.104, 0.108, 0.128, 1 }
+                or { 0.095, 0.098, 0.112, 1 }
+            )
+    )
+
+    if hex_focus then
+        rounded_outline(
+            hex_x,
+            field_y,
+            hex_w,
+            31,
+            7,
+            alpha(C.accent, 0.72),
+            1,
+            { 0.112, 0.118, 0.145, 1 }
+        )
+    end
+
+    text(
+        hex_x + 10,
         field_y + 9,
-        tostring(math.floor(tonumber(S.aim_fov_alpha) or 100)) .. "%",
+        "HEX",
+        C.text_dim
+    )
+
+    local hex_text =
+        hex_focus
+        and (
+            "#"
+            .. tostring(
+                A.color_input.buffer
+                or ""
+            )
+            .. (
+                math.floor(tick() * 2) % 2 == 0
+                and "|"
+                or ""
+            )
+        )
+        or hex
+
+    text(
+        hex_x + 47,
+        field_y + 9,
+        hex_text,
         C.text
     )
+
+    rounded_fill(
+        alpha_field_x,
+        field_y,
+        alpha_field_w,
+        31,
+        7,
+        alpha_focus
+            and { 0.112, 0.118, 0.145, 1 }
+            or (
+                alpha_field_hot
+                and { 0.104, 0.108, 0.128, 1 }
+                or { 0.095, 0.098, 0.112, 1 }
+            )
+    )
+
+    if alpha_focus then
+        rounded_outline(
+            alpha_field_x,
+            field_y,
+            alpha_field_w,
+            31,
+            7,
+            alpha(C.accent, 0.72),
+            1,
+            { 0.112, 0.118, 0.145, 1 }
+        )
+    end
+
+    local alpha_text =
+        alpha_focus
+        and (
+            tostring(
+                A.color_input.buffer
+                or ""
+            )
+            .. "%"
+            .. (
+                math.floor(tick() * 2) % 2 == 0
+                and "|"
+                or ""
+            )
+        )
+        or (
+            tostring(
+                math.floor(
+                    tonumber(S.aim_fov_alpha)
+                    or 100
+                )
+            )
+            .. "%"
+        )
+
+    centered_text(
+        alpha_field_x
+            + alpha_field_w * 0.5,
+        field_y + 9,
+        alpha_text,
+        C.text
+    )
+
+    if clicked and hex_hot then
+        FALLEN_COLOR_INPUT_START(
+            "hex",
+            aim_prefix
+        )
+    elseif clicked and alpha_field_hot then
+        FALLEN_COLOR_INPUT_START(
+            "alpha",
+            aim_prefix
+        )
+    end
 
     if not lmb then
         A.fov_picker_drag = nil
@@ -2711,6 +3215,7 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     if clicked and not popup_hot and not swatch_hot then
         A.fov_picker_open = false
         A.fov_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
     end
 end
 
@@ -3474,6 +3979,7 @@ local function draw_aimbot_page(
     if base_clicked
         and hover(mx, my, swatch_x, swatch_y, swatch_s, swatch_s)
     then
+        FALLEN_COLOR_INPUT_STOP(true)
         A.fov_picker_open = not A.fov_picker_open
         A.fov_picker_drag = nil
         numeric_stop(true)
@@ -3818,6 +4324,8 @@ local function resource_toggle_row(
             world_color_prefix(
                 item.id
             )
+
+        FALLEN_COLOR_INPUT_STOP(true)
 
         if A.world_color_picker_open
             and A.world_color_picker_key == prefix
@@ -4308,49 +4816,174 @@ local function draw_world_color_picker(
             current[3]
         )
 
+    local hex_x = sv_x
+    local hex_w = 154
+    local alpha_field_x = sv_x + 164
+    local alpha_field_w = sv_w - 164
+
+    local hex_hot =
+        hover(
+            mx,
+            my,
+            hex_x,
+            field_y,
+            hex_w,
+            31
+        )
+
+    local alpha_field_hot =
+        hover(
+            mx,
+            my,
+            alpha_field_x,
+            field_y,
+            alpha_field_w,
+            31
+        )
+
+    local hex_focus =
+        FALLEN_COLOR_INPUT_IS(
+            "hex",
+            prefix
+        )
+
+    local alpha_focus =
+        FALLEN_COLOR_INPUT_IS(
+            "alpha",
+            prefix
+        )
+
     rounded_fill(
-        sv_x,
+        hex_x,
         field_y,
-        154,
+        hex_w,
         31,
         7,
-        { 0.095, 0.098, 0.112, 1 }
+        hex_focus
+            and { 0.112, 0.118, 0.145, 1 }
+            or (
+                hex_hot
+                and { 0.104, 0.108, 0.128, 1 }
+                or { 0.095, 0.098, 0.112, 1 }
+            )
     )
 
+    if hex_focus then
+        rounded_outline(
+            hex_x,
+            field_y,
+            hex_w,
+            31,
+            7,
+            alpha(C.accent, 0.72),
+            1,
+            { 0.112, 0.118, 0.145, 1 }
+        )
+    end
+
     text(
-        sv_x + 10,
+        hex_x + 10,
         field_y + 9,
         "HEX",
         C.text_dim
     )
 
+    local hex_text =
+        hex_focus
+        and (
+            "#"
+            .. tostring(
+                A.color_input.buffer
+                or ""
+            )
+            .. (
+                math.floor(tick() * 2) % 2 == 0
+                and "|"
+                or ""
+            )
+        )
+        or hex
+
     text(
-        sv_x + 47,
+        hex_x + 47,
         field_y + 9,
-        hex,
+        hex_text,
         C.text
     )
 
     rounded_fill(
-        sv_x + 164,
+        alpha_field_x,
         field_y,
-        sv_w - 164,
+        alpha_field_w,
         31,
         7,
-        { 0.095, 0.098, 0.112, 1 }
+        alpha_focus
+            and { 0.112, 0.118, 0.145, 1 }
+            or (
+                alpha_field_hot
+                and { 0.104, 0.108, 0.128, 1 }
+                or { 0.095, 0.098, 0.112, 1 }
+            )
     )
 
-    centered_text(
-        sv_x + 164 + (sv_w - 164) * 0.5,
-        field_y + 9,
-        tostring(
-            math.floor(
-                tonumber(S[prefix .. "_alpha"]) or 100
+    if alpha_focus then
+        rounded_outline(
+            alpha_field_x,
+            field_y,
+            alpha_field_w,
+            31,
+            7,
+            alpha(C.accent, 0.72),
+            1,
+            { 0.112, 0.118, 0.145, 1 }
+        )
+    end
+
+    local alpha_text =
+        alpha_focus
+        and (
+            tostring(
+                A.color_input.buffer
+                or ""
+            )
+            .. "%"
+            .. (
+                math.floor(tick() * 2) % 2 == 0
+                and "|"
+                or ""
             )
         )
-        .. "%",
+        or (
+            tostring(
+                math.floor(
+                    tonumber(
+                        S[prefix .. "_alpha"]
+                    )
+                    or 100
+                )
+            )
+            .. "%"
+        )
+
+    centered_text(
+        alpha_field_x
+            + alpha_field_w * 0.5,
+        field_y + 9,
+        alpha_text,
         C.text
     )
+
+    if clicked and hex_hot then
+        FALLEN_COLOR_INPUT_START(
+            "hex",
+            prefix
+        )
+    elseif clicked and alpha_field_hot then
+        FALLEN_COLOR_INPUT_START(
+            "alpha",
+            prefix
+        )
+    end
 
     if not lmb then
         A.world_color_picker_drag = nil
@@ -4382,6 +5015,7 @@ local function draw_world_color_picker(
     then
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
     end
 end
 
@@ -4629,6 +5263,8 @@ local function draw_world_settings_popup(
             )
 
         if ui_clicked and border_hot then
+            FALLEN_COLOR_INPUT_STOP(true)
+
             if A.world_color_picker_open
                 and A.world_color_picker_key == border_prefix
             then
@@ -7871,6 +8507,7 @@ hooks.on_render(function()
         and not prev_rshift
         and not A.aim_bind_listening
         and not A.config_input_focus
+        and not A.color_input.focus
     then
         S.visible = not S.visible
 
@@ -7887,6 +8524,7 @@ hooks.on_render(function()
             A.world_settings_anim = 0
             A.world_color_picker_open = false
             A.world_color_picker_drag = nil
+            FALLEN_COLOR_INPUT_STOP(true)
 
             A.config_open = false
             A.config_anim = 0
@@ -7927,6 +8565,7 @@ hooks.on_render(function()
     numeric_poll()
     aim_bind_poll()
     FALLEN_CONFIGS.input_poll()
+    FALLEN_COLOR_INPUT_POLL()
 
     local lmb = key_down(VK_LBUTTON)
     local clicked =
@@ -8374,7 +9013,7 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA = 1
 end)
 
-print(SYS .. "loaded | v29 | smooth animated sidebar tab switching | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v30 | editable HEX + alpha percent in color pickers | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -10714,4 +11353,4 @@ hooks.on_render(function()
 end)
 
 
-print("[Fallen loader] ready | v29 smooth sidebar tabs")
+print("[Fallen loader] ready | v30 editable color fields")
