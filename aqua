@@ -1715,15 +1715,6 @@ end
 
 cfg_read_index()
 
-    return {
-        CONFIG = CONFIG,
-        save = cfg_save,
-        load = cfg_load,
-        delete = cfg_delete,
-        input_focus = config_input_focus,
-        input_poll = config_input_poll,
-        sanitize = cfg_sanitize_name,
-    }
 local function config_input_edge(vk)
     local down =
         key_down(vk)
@@ -1847,6 +1838,15 @@ local function config_input_poll()
     end
 end
 
+return {
+    CONFIG = CONFIG,
+    save = cfg_save,
+    load = cfg_load,
+    delete = cfg_delete,
+    input_focus = config_input_focus,
+    input_poll = config_input_poll,
+    sanitize = cfg_sanitize_name,
+}
 
 end)()
 
@@ -8089,7 +8089,7 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA = 1
 end)
 
-print(SYS .. "loaded | v24 | fixed Lua 200-local limit + configs | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v25 | fixed config wrapper syntax + local limit | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -10429,4 +10429,4 @@ hooks.on_render(function()
 end)
 
 
-print("[Fallen loader] ready | v24 configs local-limit fix")
+print("[Fallen loader] ready | v25 configs syntax fix")
