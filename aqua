@@ -2468,13 +2468,31 @@ function FALLEN_DRAW_SMOOTH_ALPHA(x, y, w, h, c)
     w = math.max(1, math.floor((tonumber(w) or 1) + 0.5))
     h = math.max(1, math.floor((tonumber(h) or 1) + 0.5))
 
-    checker_strip(
-        x,
-        y,
-        w,
-        h
-    )
+    -- Draw checkerboard here directly.
+    -- In v26 this function referenced checker_strip before that local
+    -- function was declared, so Lua resolved it as a global and the
+    -- transparency strip could break/disappear.
+    local cell = 4
 
+    for yy = 0, math.ceil(h / cell) - 1 do
+        for xx = 0, math.ceil(w / cell) - 1 do
+            local light =
+                ((xx + yy) % 2 == 0)
+
+            local v =
+                light and 0.52 or 0.30
+
+            fill(
+                x + xx * cell,
+                y + yy * cell,
+                math.min(cell, w - xx * cell),
+                math.min(cell, h - yy * cell),
+                { v, v, v, 1 }
+            )
+        end
+    end
+
+    -- Left = fully transparent, right = fully opaque.
     for xx = 0, w - 1 do
         local a =
             w > 1
@@ -8184,7 +8202,7 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA = 1
 end)
 
-print(SYS .. "loaded | v26 | smooth color pickers + rounded swatches + smooth FOV | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v27 | restored color-picker alpha control | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -10524,4 +10542,4 @@ hooks.on_render(function()
 end)
 
 
-print("[Fallen loader] ready | v26 smooth pickers + rounded FOV")
+print("[Fallen loader] ready | v27 alpha picker fix")
