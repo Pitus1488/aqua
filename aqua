@@ -2354,28 +2354,202 @@ end
 
 local function color_preview(x, y, w, h)
     local c = fov_color()
+    local radius = math.floor(math.min(w, h) * 0.28)
 
-    local cell = 4
-    for yy = 0, math.ceil(h / cell) - 1 do
-        for xx = 0, math.ceil(w / cell) - 1 do
-            local light = ((xx + yy) % 2 == 0)
-            local v = light and 0.52 or 0.30
+    -- Dark rounded base so alpha still has a visible background,
+    -- but without the hard checker-square look on the tiny swatch.
+    rounded_fill(
+        x,
+        y,
+        w,
+        h,
+        radius,
+        { 0.22, 0.23, 0.27, 1 }
+    )
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        h,
+        radius,
+        { c[1], c[2], c[3], c[4] }
+    )
+
+    rounded_outline(
+        x,
+        y,
+        w,
+        h,
+        radius,
+        C.border,
+        1,
+        { c[1], c[2], c[3], math.max(c[4], 0.01) }
+    )
+end
+
+
+function FALLEN_DRAW_SMOOTH_SV(x, y, w, h, hue)
+    w = math.max(1, math.floor((tonumber(w) or 1) + 0.5))
+    h = math.max(1, math.floor((tonumber(h) or 1) + 0.5))
+    hue = tonumber(hue) or 0
+
+    -- First pass: smooth white -> current hue horizontally.
+    for xx = 0, w - 1 do
+        local sat =
+            w > 1
+            and (xx / (w - 1))
+            or 0
+
+        local r, g, b =
+            hsv_to_rgb(
+                hue,
+                sat,
+                1
+            )
+
+        fill(
+            x + xx,
+            y,
+            1,
+            h,
+            { r, g, b, 1 }
+        )
+    end
+
+    -- Second pass: smooth value fade to black vertically.
+    -- Only one full-width strip per pixel row, so there are no block cells.
+    for yy = 0, h - 1 do
+        local black_alpha =
+            h > 1
+            and (yy / (h - 1))
+            or 0
+
+        if black_alpha > 0 then
             fill(
-                x + xx * cell,
-                y + yy * cell,
-                math.min(cell, w - xx * cell),
-                math.min(cell, h - yy * cell),
-                { v, v, v, 1 }
+                x,
+                y + yy,
+                w,
+                1,
+                { 0, 0, 0, black_alpha }
             )
         end
     end
+end
 
-    -- Deliberately square: no rounded_fill here.
-    fill(x, y, w, h, { c[1], c[2], c[3], c[4] })
-    line(x, y, x + w, y, C.border, 1)
-    line(x, y + h, x + w, y + h, C.border, 1)
-    line(x, y, x, y + h, C.border, 1)
-    line(x + w, y, x + w, y + h, C.border, 1)
+function FALLEN_DRAW_SMOOTH_HUE(x, y, w, h)
+    w = math.max(1, math.floor((tonumber(w) or 1) + 0.5))
+    h = math.max(1, math.floor((tonumber(h) or 1) + 0.5))
+
+    for xx = 0, w - 1 do
+        local hue =
+            w > 1
+            and (xx / (w - 1))
+            or 0
+
+        local r, g, b =
+            hsv_to_rgb(
+                hue,
+                1,
+                1
+            )
+
+        fill(
+            x + xx,
+            y,
+            1,
+            h,
+            { r, g, b, 1 }
+        )
+    end
+end
+
+function FALLEN_DRAW_SMOOTH_ALPHA(x, y, w, h, c)
+    w = math.max(1, math.floor((tonumber(w) or 1) + 0.5))
+    h = math.max(1, math.floor((tonumber(h) or 1) + 0.5))
+
+    checker_strip(
+        x,
+        y,
+        w,
+        h
+    )
+
+    for xx = 0, w - 1 do
+        local a =
+            w > 1
+            and (xx / (w - 1))
+            or 0
+
+        fill(
+            x + xx,
+            y,
+            1,
+            h,
+            {
+                c[1],
+                c[2],
+                c[3],
+                a,
+            }
+        )
+    end
+end
+
+function FALLEN_DRAW_SMOOTH_FOV_CIRCLE(cx, cy, radius, c, thickness)
+    radius =
+        math.max(
+            1,
+            tonumber(radius) or 1
+        )
+
+    local segments =
+        math.floor(
+            clamp(
+                radius * 3.6,
+                180,
+                512
+            )
+        )
+
+    local prev_x =
+        cx + radius
+
+    local prev_y =
+        cy
+
+    for i = 1, segments do
+        local a =
+            (i / segments)
+            * math.pi
+            * 2
+
+        local nx =
+            cx
+            + math.cos(a)
+            * radius
+
+        local ny =
+            cy
+            + math.sin(a)
+            * radius
+
+        DrawLine(
+            prev_x,
+            prev_y,
+            nx,
+            ny,
+            c[1],
+            c[2],
+            c[3],
+            (c[4] or 1)
+                * MENU_RENDER_ALPHA,
+            thickness or 1
+        )
+
+        prev_x = nx
+        prev_y = ny
+    end
 end
 
 local function checker_strip(x, y, w, h)
@@ -2426,30 +2600,16 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     local sv_w = pw - pad * 2
     local sv_h = 188
 
-    -- Saturation/value square. 24x20 cells keeps it smooth without making
-    -- the custom queued renderer unnecessarily heavy.
-    local cols = 24
-    local rows = 20
-    local cw = sv_w / cols
-    local ch = sv_h / rows
     local hue = tonumber(S.aim_fov_h) or 0
 
-    for yy = 0, rows - 1 do
-        local v = 1 - (yy + 0.5) / rows
-
-        for xx = 0, cols - 1 do
-            local s = (xx + 0.5) / cols
-            local r, g, b = hsv_to_rgb(hue, s, v)
-
-            fill(
-                sv_x + xx * cw,
-                sv_y + yy * ch,
-                cw + 0.6,
-                ch + 0.6,
-                { r, g, b, 1 }
-            )
-        end
-    end
+    -- Smooth per-pixel style gradient: no visible 24x20 square cells.
+    FALLEN_DRAW_SMOOTH_SV(
+        sv_x,
+        sv_y,
+        sv_w,
+        sv_h,
+        hue
+    )
 
     local sv_hot = hover(mx, my, sv_x, sv_y, sv_w, sv_h)
 
@@ -2471,20 +2631,12 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     -- Hue strip.
     local hue_y = sv_y + sv_h + 13
     local hue_h = 14
-    local hue_segments = 48
-
-    for i = 0, hue_segments - 1 do
-        local h0 = i / hue_segments
-        local r, g, b = hsv_to_rgb(h0, 1, 1)
-
-        fill(
-            sv_x + (i / hue_segments) * sv_w,
-            hue_y,
-            sv_w / hue_segments + 1,
-            hue_h,
-            { r, g, b, 1 }
-        )
-    end
+    FALLEN_DRAW_SMOOTH_HUE(
+        sv_x,
+        hue_y,
+        sv_w,
+        hue_h
+    )
 
     local hue_hot = hover(mx, my, sv_x, hue_y, sv_w, hue_h)
 
@@ -2504,22 +2656,15 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     -- Alpha strip under hue.
     local alpha_y = hue_y + 29
     local alpha_h = 14
-    checker_strip(sv_x, alpha_y, sv_w, alpha_h)
-
     local col = fov_color()
-    local alpha_segments = 40
 
-    for i = 0, alpha_segments - 1 do
-        local a = (i + 0.5) / alpha_segments
-
-        fill(
-            sv_x + (i / alpha_segments) * sv_w,
-            alpha_y,
-            sv_w / alpha_segments + 1,
-            alpha_h,
-            { col[1], col[2], col[3], a }
-        )
-    end
+    FALLEN_DRAW_SMOOTH_ALPHA(
+        sv_x,
+        alpha_y,
+        sv_w,
+        alpha_h,
+        col
+    )
 
     local alpha_hot = hover(mx, my, sv_x, alpha_y, sv_w, alpha_h)
 
@@ -3511,31 +3656,29 @@ local function world_item_color(item)
 end
 
 local function world_square_swatch(x, y, size, c)
-    local cell = 4
-
-    for yy = 0, math.ceil(size / cell) - 1 do
-        for xx = 0, math.ceil(size / cell) - 1 do
-            local light =
-                ((xx + yy) % 2 == 0)
-
-            local v =
-                light and 0.52 or 0.30
-
-            fill(
-                x + xx * cell,
-                y + yy * cell,
-                math.min(cell, size - xx * cell),
-                math.min(cell, size - yy * cell),
-                { v, v, v, 1 }
+    local radius =
+        math.floor(
+            math.max(
+                3,
+                size * 0.28
             )
-        end
-    end
+        )
 
-    fill(
+    rounded_fill(
         x,
         y,
         size,
         size,
+        radius,
+        { 0.22, 0.23, 0.27, 1 }
+    )
+
+    rounded_fill(
+        x,
+        y,
+        size,
+        size,
+        radius,
         {
             c[1],
             c[2],
@@ -3544,10 +3687,21 @@ local function world_square_swatch(x, y, size, c)
         }
     )
 
-    line(x, y, x + size, y, C.border, 1)
-    line(x, y + size, x + size, y + size, C.border, 1)
-    line(x, y, x, y + size, C.border, 1)
-    line(x + size, y, x + size, y + size, C.border, 1)
+    rounded_outline(
+        x,
+        y,
+        size,
+        size,
+        radius,
+        C.border,
+        1,
+        {
+            c[1],
+            c[2],
+            c[3],
+            math.max(c[4] or 1, 0.01),
+        }
+    )
 end
 
 
@@ -3618,13 +3772,15 @@ local function resource_toggle_row(
         )
 
     if swatch_hot then
-        line(
+        rounded_outline(
             swatch_x - 2,
             swatch_y - 2,
-            swatch_x + swatch_s + 2,
-            swatch_y - 2,
+            swatch_s + 4,
+            swatch_s + 4,
+            6,
             alpha(C.accent, 0.72),
-            1
+            1,
+            { 0.08, 0.08, 0.10, 1 }
         )
     end
 
@@ -3837,36 +3993,13 @@ local function draw_world_color_picker(
         )
         or 0
 
-    local cols = 24
-    local rows = 20
-    local cell_w = sv_w / cols
-    local cell_h = sv_h / rows
-
-    for yy = 0, rows - 1 do
-        local v =
-            1
-            - (yy + 0.5) / rows
-
-        for xx = 0, cols - 1 do
-            local sat =
-                (xx + 0.5) / cols
-
-            local r, g, b =
-                hsv_to_rgb(
-                    hue,
-                    sat,
-                    v
-                )
-
-            fill(
-                sv_x + xx * cell_w,
-                sv_y + yy * cell_h,
-                cell_w + 0.6,
-                cell_h + 0.6,
-                { r, g, b, 1 }
-            )
-        end
-    end
+    FALLEN_DRAW_SMOOTH_SV(
+        sv_x,
+        sv_y,
+        sv_w,
+        sv_h,
+        hue
+    )
 
     local sv_hot =
         hover(
@@ -3944,27 +4077,12 @@ local function draw_world_color_picker(
         + 13
 
     local hue_h = 14
-    local hue_segments = 48
-
-    for i = 0, hue_segments - 1 do
-        local h0 =
-            i / hue_segments
-
-        local r, g, b =
-            hsv_to_rgb(
-                h0,
-                1,
-                1
-            )
-
-        fill(
-            sv_x + (i / hue_segments) * sv_w,
-            hue_y,
-            sv_w / hue_segments + 1,
-            hue_h,
-            { r, g, b, 1 }
-        )
-    end
+    FALLEN_DRAW_SMOOTH_HUE(
+        sv_x,
+        hue_y,
+        sv_w,
+        hue_h
+    )
 
     local hue_hot =
         hover(
@@ -4024,38 +4142,18 @@ local function draw_world_color_picker(
 
     local alpha_h = 14
 
-    checker_strip(
-        sv_x,
-        alpha_y,
-        sv_w,
-        alpha_h
-    )
-
     local current =
         world_color_from_prefix(
             prefix
         )
 
-    local alpha_segments = 40
-
-    for i = 0, alpha_segments - 1 do
-        local a =
-            (i + 0.5)
-            / alpha_segments
-
-        fill(
-            sv_x + (i / alpha_segments) * sv_w,
-            alpha_y,
-            sv_w / alpha_segments + 1,
-            alpha_h,
-            {
-                current[1],
-                current[2],
-                current[3],
-                a,
-            }
-        )
-    end
+    FALLEN_DRAW_SMOOTH_ALPHA(
+        sv_x,
+        alpha_y,
+        sv_w,
+        alpha_h,
+        current
+    )
 
     local alpha_hot =
         hover(
@@ -5816,7 +5914,7 @@ local function fap_draw_fov()
     local col =
         fov_color()
 
-    DrawCircle(
+    FALLEN_DRAW_SMOOTH_FOV_CIRCLE(
         c.X,
         c.Y,
         clamp(
@@ -5825,10 +5923,7 @@ local function fap_draw_fov()
             10,
             600
         ),
-        col[1],
-        col[2],
-        col[3],
-        col[4],
+        col,
         1.2
     )
 end
@@ -8089,7 +8184,7 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA = 1
 end)
 
-print(SYS .. "loaded | v25 | fixed config wrapper syntax + local limit | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v26 | smooth color pickers + rounded swatches + smooth FOV | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -10429,4 +10524,4 @@ hooks.on_render(function()
 end)
 
 
-print("[Fallen loader] ready | v25 configs syntax fix")
+print("[Fallen loader] ready | v26 smooth pickers + rounded FOV")
