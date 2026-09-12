@@ -2389,187 +2389,6 @@ local function color_preview(x, y, w, h)
 end
 
 
-function FALLEN_DRAW_SMOOTH_SV(x, y, w, h, hue)
-    w = math.max(1, math.floor((tonumber(w) or 1) + 0.5))
-    h = math.max(1, math.floor((tonumber(h) or 1) + 0.5))
-    hue = tonumber(hue) or 0
-
-    -- First pass: smooth white -> current hue horizontally.
-    for xx = 0, w - 1 do
-        local sat =
-            w > 1
-            and (xx / (w - 1))
-            or 0
-
-        local r, g, b =
-            hsv_to_rgb(
-                hue,
-                sat,
-                1
-            )
-
-        fill(
-            x + xx,
-            y,
-            1,
-            h,
-            { r, g, b, 1 }
-        )
-    end
-
-    -- Second pass: smooth value fade to black vertically.
-    -- Only one full-width strip per pixel row, so there are no block cells.
-    for yy = 0, h - 1 do
-        local black_alpha =
-            h > 1
-            and (yy / (h - 1))
-            or 0
-
-        if black_alpha > 0 then
-            fill(
-                x,
-                y + yy,
-                w,
-                1,
-                { 0, 0, 0, black_alpha }
-            )
-        end
-    end
-end
-
-function FALLEN_DRAW_SMOOTH_HUE(x, y, w, h)
-    w = math.max(1, math.floor((tonumber(w) or 1) + 0.5))
-    h = math.max(1, math.floor((tonumber(h) or 1) + 0.5))
-
-    for xx = 0, w - 1 do
-        local hue =
-            w > 1
-            and (xx / (w - 1))
-            or 0
-
-        local r, g, b =
-            hsv_to_rgb(
-                hue,
-                1,
-                1
-            )
-
-        fill(
-            x + xx,
-            y,
-            1,
-            h,
-            { r, g, b, 1 }
-        )
-    end
-end
-
-function FALLEN_DRAW_SMOOTH_ALPHA(x, y, w, h, c)
-    w = math.max(1, math.floor((tonumber(w) or 1) + 0.5))
-    h = math.max(1, math.floor((tonumber(h) or 1) + 0.5))
-
-    -- Draw checkerboard here directly.
-    -- In v26 this function referenced checker_strip before that local
-    -- function was declared, so Lua resolved it as a global and the
-    -- transparency strip could break/disappear.
-    local cell = 4
-
-    for yy = 0, math.ceil(h / cell) - 1 do
-        for xx = 0, math.ceil(w / cell) - 1 do
-            local light =
-                ((xx + yy) % 2 == 0)
-
-            local v =
-                light and 0.52 or 0.30
-
-            fill(
-                x + xx * cell,
-                y + yy * cell,
-                math.min(cell, w - xx * cell),
-                math.min(cell, h - yy * cell),
-                { v, v, v, 1 }
-            )
-        end
-    end
-
-    -- Left = fully transparent, right = fully opaque.
-    for xx = 0, w - 1 do
-        local a =
-            w > 1
-            and (xx / (w - 1))
-            or 0
-
-        fill(
-            x + xx,
-            y,
-            1,
-            h,
-            {
-                c[1],
-                c[2],
-                c[3],
-                a,
-            }
-        )
-    end
-end
-
-function FALLEN_DRAW_SMOOTH_FOV_CIRCLE(cx, cy, radius, c, thickness)
-    radius =
-        math.max(
-            1,
-            tonumber(radius) or 1
-        )
-
-    local segments =
-        math.floor(
-            clamp(
-                radius * 3.6,
-                180,
-                512
-            )
-        )
-
-    local prev_x =
-        cx + radius
-
-    local prev_y =
-        cy
-
-    for i = 1, segments do
-        local a =
-            (i / segments)
-            * math.pi
-            * 2
-
-        local nx =
-            cx
-            + math.cos(a)
-            * radius
-
-        local ny =
-            cy
-            + math.sin(a)
-            * radius
-
-        DrawLine(
-            prev_x,
-            prev_y,
-            nx,
-            ny,
-            c[1],
-            c[2],
-            c[3],
-            (c[4] or 1)
-                * MENU_RENDER_ALPHA,
-            thickness or 1
-        )
-
-        prev_x = nx
-        prev_y = ny
-    end
-end
-
 local function checker_strip(x, y, w, h)
     local cell = 7
     local cols = math.ceil(w / cell)
@@ -2620,14 +2439,48 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
 
     local hue = tonumber(S.aim_fov_h) or 0
 
-    -- Smooth per-pixel style gradient: no visible 24x20 square cells.
-    FALLEN_DRAW_SMOOTH_SV(
-        sv_x,
-        sv_y,
-        sv_w,
-        sv_h,
-        hue
-    )
+    -- Smooth SV gradient without visible square cells.
+    local smooth_w = math.max(1, math.floor(sv_w + 0.5))
+    local smooth_h = math.max(1, math.floor(sv_h + 0.5))
+
+    for xx = 0, smooth_w - 1 do
+        local sat =
+            smooth_w > 1
+            and (xx / (smooth_w - 1))
+            or 0
+
+        local r, g, b =
+            hsv_to_rgb(
+                hue,
+                sat,
+                1
+            )
+
+        fill(
+            sv_x + xx,
+            sv_y,
+            1,
+            smooth_h,
+            { r, g, b, 1 }
+        )
+    end
+
+    for yy = 0, smooth_h - 1 do
+        local black_alpha =
+            smooth_h > 1
+            and (yy / (smooth_h - 1))
+            or 0
+
+        if black_alpha > 0 then
+            fill(
+                sv_x,
+                sv_y + yy,
+                smooth_w,
+                1,
+                { 0, 0, 0, black_alpha }
+            )
+        end
+    end
 
     local sv_hot = hover(mx, my, sv_x, sv_y, sv_w, sv_h)
 
@@ -2649,12 +2502,33 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     -- Hue strip.
     local hue_y = sv_y + sv_h + 13
     local hue_h = 14
-    FALLEN_DRAW_SMOOTH_HUE(
-        sv_x,
-        hue_y,
-        sv_w,
-        hue_h
-    )
+    local hue_width =
+        math.max(
+            1,
+            math.floor(sv_w + 0.5)
+        )
+
+    for xx = 0, hue_width - 1 do
+        local h0 =
+            hue_width > 1
+            and (xx / (hue_width - 1))
+            or 0
+
+        local r, g, b =
+            hsv_to_rgb(
+                h0,
+                1,
+                1
+            )
+
+        fill(
+            sv_x + xx,
+            hue_y,
+            1,
+            hue_h,
+            { r, g, b, 1 }
+        )
+    end
 
     local hue_hot = hover(mx, my, sv_x, hue_y, sv_w, hue_h)
 
@@ -2674,15 +2548,39 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     -- Alpha strip under hue.
     local alpha_y = hue_y + 29
     local alpha_h = 14
-    local col = fov_color()
-
-    FALLEN_DRAW_SMOOTH_ALPHA(
+    checker_strip(
         sv_x,
         alpha_y,
         sv_w,
-        alpha_h,
-        col
+        alpha_h
     )
+
+    local col = fov_color()
+    local alpha_width =
+        math.max(
+            1,
+            math.floor(sv_w + 0.5)
+        )
+
+    for xx = 0, alpha_width - 1 do
+        local a =
+            alpha_width > 1
+            and (xx / (alpha_width - 1))
+            or 0
+
+        fill(
+            sv_x + xx,
+            alpha_y,
+            1,
+            alpha_h,
+            {
+                col[1],
+                col[2],
+                col[3],
+                a,
+            }
+        )
+    end
 
     local alpha_hot = hover(mx, my, sv_x, alpha_y, sv_w, alpha_h)
 
@@ -4011,13 +3909,56 @@ local function draw_world_color_picker(
         )
         or 0
 
-    FALLEN_DRAW_SMOOTH_SV(
-        sv_x,
-        sv_y,
-        sv_w,
-        sv_h,
-        hue
-    )
+    local smooth_w =
+        math.max(
+            1,
+            math.floor(sv_w + 0.5)
+        )
+
+    local smooth_h =
+        math.max(
+            1,
+            math.floor(sv_h + 0.5)
+        )
+
+    for xx = 0, smooth_w - 1 do
+        local sat =
+            smooth_w > 1
+            and (xx / (smooth_w - 1))
+            or 0
+
+        local r, g, b =
+            hsv_to_rgb(
+                hue,
+                sat,
+                1
+            )
+
+        fill(
+            sv_x + xx,
+            sv_y,
+            1,
+            smooth_h,
+            { r, g, b, 1 }
+        )
+    end
+
+    for yy = 0, smooth_h - 1 do
+        local black_alpha =
+            smooth_h > 1
+            and (yy / (smooth_h - 1))
+            or 0
+
+        if black_alpha > 0 then
+            fill(
+                sv_x,
+                sv_y + yy,
+                smooth_w,
+                1,
+                { 0, 0, 0, black_alpha }
+            )
+        end
+    end
 
     local sv_hot =
         hover(
@@ -4095,12 +4036,33 @@ local function draw_world_color_picker(
         + 13
 
     local hue_h = 14
-    FALLEN_DRAW_SMOOTH_HUE(
-        sv_x,
-        hue_y,
-        sv_w,
-        hue_h
-    )
+    local hue_width =
+        math.max(
+            1,
+            math.floor(sv_w + 0.5)
+        )
+
+    for xx = 0, hue_width - 1 do
+        local h0 =
+            hue_width > 1
+            and (xx / (hue_width - 1))
+            or 0
+
+        local r, g, b =
+            hsv_to_rgb(
+                h0,
+                1,
+                1
+            )
+
+        fill(
+            sv_x + xx,
+            hue_y,
+            1,
+            hue_h,
+            { r, g, b, 1 }
+        )
+    end
 
     local hue_hot =
         hover(
@@ -4160,18 +4122,43 @@ local function draw_world_color_picker(
 
     local alpha_h = 14
 
+    checker_strip(
+        sv_x,
+        alpha_y,
+        sv_w,
+        alpha_h
+    )
+
     local current =
         world_color_from_prefix(
             prefix
         )
 
-    FALLEN_DRAW_SMOOTH_ALPHA(
-        sv_x,
-        alpha_y,
-        sv_w,
-        alpha_h,
-        current
-    )
+    local alpha_width =
+        math.max(
+            1,
+            math.floor(sv_w + 0.5)
+        )
+
+    for xx = 0, alpha_width - 1 do
+        local a =
+            alpha_width > 1
+            and (xx / (alpha_width - 1))
+            or 0
+
+        fill(
+            sv_x + xx,
+            alpha_y,
+            1,
+            alpha_h,
+            {
+                current[1],
+                current[2],
+                current[3],
+                a,
+            }
+        )
+    end
 
     local alpha_hot =
         hover(
@@ -5932,18 +5919,60 @@ local function fap_draw_fov()
     local col =
         fov_color()
 
-    FALLEN_DRAW_SMOOTH_FOV_CIRCLE(
-        c.X,
-        c.Y,
+    local fov_radius =
         clamp(
             tonumber(S.aim_fov_size)
             or 50,
             10,
             600
-        ),
-        col,
-        1.2
-    )
+        )
+
+    local fov_segments =
+        math.floor(
+            clamp(
+                fov_radius * 3.6,
+                180,
+                512
+            )
+        )
+
+    local prev_x =
+        c.X + fov_radius
+
+    local prev_y =
+        c.Y
+
+    for i = 1, fov_segments do
+        local ang =
+            (i / fov_segments)
+            * math.pi
+            * 2
+
+        local nx =
+            c.X
+            + math.cos(ang)
+            * fov_radius
+
+        local ny =
+            c.Y
+            + math.sin(ang)
+            * fov_radius
+
+        DrawLine(
+            prev_x,
+            prev_y,
+            nx,
+            ny,
+            col[1],
+            col[2],
+            col[3],
+            col[4],
+            1.2
+        )
+
+        prev_x = nx
+        prev_y = ny
+    end
 end
 
 local function fap_tick()
@@ -8202,7 +8231,7 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA = 1
 end)
 
-print(SYS .. "loaded | v27 | restored color-picker alpha control | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v28 | fixed render nil + restored alpha sliders | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -10542,4 +10571,4 @@ hooks.on_render(function()
 end)
 
 
-print("[Fallen loader] ready | v27 alpha picker fix")
+print("[Fallen loader] ready | v28 picker render fix")
