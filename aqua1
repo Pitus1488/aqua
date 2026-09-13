@@ -337,8 +337,15 @@ local A = {
     world_color_picker_key = nil,
     world_color_picker_open = false,
     world_color_picker_drag = nil,
+
+    -- Shared animated picker for World / House / Glow / Aimbot FOV.
+    -- Context anchors are captured in real screen coordinates on click.
+    world_color_picker_anim = 0,
+    world_color_picker_last_t = nil,
     world_color_picker_anchor_x = 0,
     world_color_picker_anchor_y = 0,
+    world_color_picker_anchor_w = 18,
+    world_color_picker_anchor_h = 18,
 
     -- Configs dropdown / text input.
     config_open = false,
@@ -4254,16 +4261,28 @@ local function draw_aimbot_page(
         and hover(mx, my, swatch_x, swatch_y, swatch_s, swatch_s)
     then
         FALLEN_COLOR_INPUT_STOP(true)
-        A.fov_picker_open = not A.fov_picker_open
+
+        local prefix = "aim_fov"
+
+        if A.world_color_picker_open
+            and A.world_color_picker_key == prefix
+        then
+            A.world_color_picker_open = false
+            A.world_color_picker_drag = nil
+        else
+            A.world_color_picker_key = prefix
+            A.world_color_picker_open = true
+            A.world_color_picker_drag = nil
+
+            A.world_color_picker_anchor_x = FALLEN_UI_X(swatch_x)
+            A.world_color_picker_anchor_y = FALLEN_UI_Y(swatch_y)
+            A.world_color_picker_anchor_w = FALLEN_UI_LEN(swatch_s)
+            A.world_color_picker_anchor_h = FALLEN_UI_LEN(swatch_s)
+        end
+
+        A.fov_picker_open = false
         A.fov_picker_drag = nil
         numeric_stop(true)
-    end
-
-    if not A.aim_settings_open then
-        draw_fov_color_picker(
-            mx, my, base_clicked, lmb,
-            swatch_x, swatch_y
-        )
     end
 
     draw_aim_settings_popup(
@@ -4570,13 +4589,21 @@ local function resource_toggle_row(
             A.world_color_picker_key = prefix
             A.world_color_picker_open = true
             A.world_color_picker_drag = nil
+            A.fov_picker_open = false
+            A.fov_picker_drag = nil
         end
 
         A.world_color_picker_anchor_x =
-            swatch_x
+            FALLEN_UI_X(swatch_x)
 
         A.world_color_picker_anchor_y =
-            swatch_y
+            FALLEN_UI_Y(swatch_y)
+
+        A.world_color_picker_anchor_w =
+            FALLEN_UI_LEN(swatch_s)
+
+        A.world_color_picker_anchor_h =
+            FALLEN_UI_LEN(swatch_s)
 
         if numeric_stop then
             numeric_stop(true)
@@ -4589,12 +4616,6 @@ local function resource_toggle_row(
         S[key] = not S[key]
     end
 
-    if A.world_color_picker_open
-        and A.world_color_picker_key == world_color_prefix(item.id)
-    then
-        A.world_color_picker_anchor_x = swatch_x
-        A.world_color_picker_anchor_y = swatch_y
-    end
 end
 
 
@@ -4653,57 +4674,174 @@ end
 
 local function draw_world_color_picker(mx, my, clicked, lmb)
 
-    if not A.world_color_picker_open
-        or not A.world_color_picker_key
+    local now = tick()
+
+    if A.world_color_picker_last_t == nil then
+        A.world_color_picker_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.world_color_picker_last_t,
+            0,
+            0.05
+        )
+
+    A.world_color_picker_last_t = now
+
+    local target =
+        A.world_color_picker_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.world_color_picker_anim or 0)
+        and 13.0
+        or 10.0
+
+    A.world_color_picker_anim =
+        exp_chase(
+            A.world_color_picker_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if target == 0
+        and (A.world_color_picker_anim or 0) < 0.012
     then
+        A.world_color_picker_anim = 0
         A.world_color_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
         return
     end
+
+    if not A.world_color_picker_key then
+        return
+    end
+
+    local anim =
+        clamp(
+            A.world_color_picker_anim or 0,
+            0,
+            1
+        )
+
+    local ease = smooth01(anim)
 
     local prefix =
         A.world_color_picker_key
 
     local anchor_x =
-        A.world_color_picker_anchor_x
+        tonumber(A.world_color_picker_anchor_x)
+        or mx
         or 0
 
     local anchor_y =
-        A.world_color_picker_anchor_y
+        tonumber(A.world_color_picker_anchor_y)
+        or my
         or 0
+
+    local anchor_w =
+        tonumber(A.world_color_picker_anchor_w)
+        or 18
+
+    local anchor_h =
+        tonumber(A.world_color_picker_anchor_h)
+        or 18
 
     local pw = 264
     local ph = 342
 
-    local px =
-        snap(
-            anchor_x
-            - pw
-            + 20
-        )
+    local dims = nil
+    pcall(function()
+        dims = ScreenSize()
+    end)
 
-    local py =
-        snap(
-            anchor_y
-            + 25
-        )
+    local screen_w =
+        dims
+        and tonumber(dims.Width or dims.X)
+        or 1920
 
-    if py + ph > 650 then
-        py =
-            snap(
-                anchor_y
-                - ph
-                - 10
+    local screen_h =
+        dims
+        and tonumber(dims.Height or dims.Y)
+        or 1080
+
+    local gap = 12
+
+    local left_px =
+        anchor_x
+        - pw
+        - gap
+
+    local right_px =
+        anchor_x
+        + anchor_w
+        + gap
+
+    local px = nil
+
+    if left_px >= 8 then
+        px = left_px
+    elseif right_px + pw <= screen_w - 8 then
+        px = right_px
+    else
+        px =
+            clamp(
+                anchor_x - pw * 0.5,
+                8,
+                math.max(8, screen_w - pw - 8)
             )
     end
 
-    py =
+    local py =
         clamp(
-            py,
+            anchor_y - 14,
             8,
-            700 - ph - 8
+            math.max(8, screen_h - ph - 8)
         )
 
-    FALLEN_POPUP_GLOW(px, py, pw, ph, 12, 1)
+    local attach_x =
+        px < anchor_x
+        and (px + pw)
+        or px
+
+    px =
+        px
+        + (anchor_x - attach_x)
+        * (1 - ease)
+        * 0.10
+
+    py =
+        py
+        + (anchor_y - py)
+        * (1 - ease)
+        * 0.06
+
+    px = snap(px)
+    py = snap(py)
+
+    local parent_transform =
+        MENU_UI_TRANSFORM_ACTIVE
+
+    local parent_alpha =
+        MENU_RENDER_ALPHA
+
+    MENU_UI_TRANSFORM_ACTIVE = false
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+        * ease
+
+    FALLEN_POPUP_GLOW(
+        px,
+        py,
+        pw,
+        ph,
+        12,
+        ease
+    )
 
     rounded_fill(
         px,
@@ -5164,11 +5302,23 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
             my,
             anchor_x,
             anchor_y,
-            20,
-            20
+            anchor_w,
+            anchor_h
         )
 
-    if clicked
+    local interactive =
+        A.world_color_picker_open
+        and anim > 0.80
+
+    if interactive
+        and clicked
+        and swatch_hot
+    then
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
+    elseif interactive
+        and clicked
         and not popup_hot
         and not swatch_hot
     then
@@ -5176,6 +5326,12 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
         A.world_color_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
     end
+
+    MENU_UI_TRANSFORM_ACTIVE =
+        parent_transform
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
 end
 
 local function draw_world_settings_popup(
@@ -5414,21 +5570,21 @@ local function draw_world_settings_popup(
                 A.world_color_picker_key = border_prefix
                 A.world_color_picker_open = true
                 A.world_color_picker_drag = nil
+                A.fov_picker_open = false
+                A.fov_picker_drag = nil
             end
 
             A.world_color_picker_anchor_x =
-                border_swatch_x
+                FALLEN_UI_X(border_swatch_x)
 
             A.world_color_picker_anchor_y =
-                border_swatch_y
-        elseif A.world_color_picker_open
-            and A.world_color_picker_key == border_prefix
-        then
-            A.world_color_picker_anchor_x =
-                border_swatch_x
+                FALLEN_UI_Y(border_swatch_y)
 
-            A.world_color_picker_anchor_y =
-                border_swatch_y
+            A.world_color_picker_anchor_w =
+                FALLEN_UI_LEN(18)
+
+            A.world_color_picker_anchor_h =
+                FALLEN_UI_LEN(18)
         end
     end
 
@@ -5549,6 +5705,7 @@ local function draw_visuals_page(
         A.world_settings_open
         or (A.world_settings_anim or 0) > 0.02
         or A.world_color_picker_open == true
+        or (A.world_color_picker_anim or 0) > 0.02
  
 
     local base_clicked =
@@ -7614,10 +7771,14 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
             A.world_color_picker_key = prefix
             A.world_color_picker_open = true
             A.world_color_picker_drag = nil
+            A.fov_picker_open = false
+            A.fov_picker_drag = nil
         end
 
-        A.world_color_picker_anchor_x = swatch_x
-        A.world_color_picker_anchor_y = swatch_y
+        A.world_color_picker_anchor_x = FALLEN_UI_X(swatch_x)
+        A.world_color_picker_anchor_y = FALLEN_UI_Y(swatch_y)
+        A.world_color_picker_anchor_w = FALLEN_UI_LEN(swatch_s)
+        A.world_color_picker_anchor_h = FALLEN_UI_LEN(swatch_s)
 
         if numeric_stop then
             numeric_stop(true)
@@ -7647,12 +7808,6 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
         WORLD_ESP.last_scan = -100
     end
 
-    if A.world_color_picker_open
-        and A.world_color_picker_key == prefix
-    then
-        A.world_color_picker_anchor_x = swatch_x
-        A.world_color_picker_anchor_y = swatch_y
-    end
 end
 
 function world_base_settings_step_anim()
@@ -10602,10 +10757,14 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 A.world_color_picker_key = "menu_glow"
                 A.world_color_picker_open = true
                 A.world_color_picker_drag = nil
+                A.fov_picker_open = false
+                A.fov_picker_drag = nil
             end
 
-            A.world_color_picker_anchor_x = swatch_x
-            A.world_color_picker_anchor_y = swatch_y
+            A.world_color_picker_anchor_x = FALLEN_UI_X(swatch_x)
+            A.world_color_picker_anchor_y = FALLEN_UI_Y(swatch_y)
+            A.world_color_picker_anchor_w = FALLEN_UI_LEN(swatch_w)
+            A.world_color_picker_anchor_h = FALLEN_UI_LEN(swatch_h)
 
             if numeric_stop then numeric_stop(true) end
         end
@@ -10896,6 +11055,7 @@ hooks.on_render(function()
     if clicked
         and drag_hot
         and not A.world_color_picker_open
+        and (A.world_color_picker_anim or 0) <= 0.02
     then
         A.menu_dragging = true
         A.menu_drag_off_x = mx - A.menu_cx
@@ -11098,7 +11258,9 @@ hooks.on_render(function()
     sidebar_tab(
         mx,
         my,
-        clicked and not A.world_color_picker_open,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
         wx + 10,
         wy + 105,
         1
@@ -11108,7 +11270,9 @@ hooks.on_render(function()
     sidebar_tab(
         mx,
         my,
-        clicked and not A.world_color_picker_open,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
         wx + 10,
         wy + 179,
         2
@@ -11213,6 +11377,7 @@ hooks.on_render(function()
     if clicked
         and gear_hot
         and not A.world_color_picker_open
+        and (A.world_color_picker_anim or 0) <= 0.02
     then
         A.menu_settings_open =
             not A.menu_settings_open
@@ -11316,6 +11481,7 @@ hooks.on_render(function()
     if clicked
         and cfg_hot
         and not A.world_color_picker_open
+        and (A.world_color_picker_anim or 0) <= 0.02
     then
         A.config_open =
             not A.config_open
@@ -11362,6 +11528,7 @@ hooks.on_render(function()
         config_overlay_open
         or menu_settings_overlay_open
         or A.world_color_picker_open == true
+        or (A.world_color_picker_anim or 0) > 0.02
 
     local page_clicked =
         clicked
@@ -11399,7 +11566,9 @@ hooks.on_render(function()
     FALLEN_CONFIGS.draw_popup(
         mx,
         my,
-        clicked and not A.world_color_picker_open,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
         lmb,
         cfg_x,
         cfg_y,
@@ -11410,7 +11579,9 @@ hooks.on_render(function()
     FALLEN_DRAW_MENU_SETTINGS(
         mx,
         my,
-        clicked and not A.world_color_picker_open,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
         lmb,
         gear_x,
         gear_y
@@ -11418,7 +11589,9 @@ hooks.on_render(function()
 
     -- TRUE MODAL COLOR PICKER.
     -- Rendered last so it is always above page/config/menu-settings.
-    if A.world_color_picker_open then
+    if A.world_color_picker_open
+        or (A.world_color_picker_anim or 0) > 0.01
+    then
         draw_world_color_picker(
             mx,
             my,
