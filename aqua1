@@ -116,6 +116,7 @@ local defaults = {
     armor_esp_mode = "Normal",
     armor_show_weapon = true,
     armor_onplayer_background = false,
+    armor_onplayer_glass = false,
     armor_esp_size = 18,
     armor_esp_range = 1200,
     armor_esp_smooth = 18,
@@ -10687,6 +10688,85 @@ function FALLEN_ARMOR_DRAW_NORMAL()
     end
 end
 
+function FALLEN_ARMOR_DRAW_ONPLAYER_BACKPLATE(
+    x,
+    y,
+    w,
+    h,
+    glass
+)
+    local old_alpha =
+        MENU_RENDER_ALPHA
+
+    local old_transform =
+        MENU_UI_TRANSFORM_ACTIVE
+
+    MENU_RENDER_ALPHA = 1
+    MENU_UI_TRANSFORM_ACTIVE = false
+
+    local radius =
+        math.floor(
+            clamp(
+                math.min(w, h) * 0.20,
+                4,
+                8
+            )
+        )
+
+    if glass == true then
+        -- Glass = translucent black.
+        rounded_fill_alpha_safe(
+            x,
+            y,
+            w,
+            h,
+            radius,
+            {
+                0.015,
+                0.017,
+                0.023,
+                0.42
+            }
+        )
+
+        -- Very subtle inner-looking highlight along the top.
+        if type(DrawLine) == "function" then
+            DrawLine(
+                x + radius,
+                y + 1,
+                x + w - radius,
+                y + 1,
+                1,
+                1,
+                1,
+                0.08,
+                1
+            )
+        end
+    else
+        -- Background = fully opaque black.
+        rounded_fill_alpha_safe(
+            x,
+            y,
+            w,
+            h,
+            radius,
+            {
+                0,
+                0,
+                0,
+                1.00
+            }
+        )
+    end
+
+    MENU_RENDER_ALPHA =
+        old_alpha
+
+    MENU_UI_TRANSFORM_ACTIVE =
+        old_transform
+end
+
 function FALLEN_ARMOR_DRAW_ON_PLAYERS()
     if not players
         or type(players.get_all) ~= "function"
@@ -10760,19 +10840,16 @@ function FALLEN_ARMOR_DRAW_ON_PLAYERS()
                             sy - y_offset
 
                         if S.armor_onplayer_background == true
-                            and type(DrawBoxFilled) == "function"
+                            or S.armor_onplayer_glass == true
                         then
-                            local pad = 4
+                            local pad = 5
 
-                            DrawBoxFilled(
+                            FALLEN_ARMOR_DRAW_ONPLAYER_BACKPLATE(
                                 start_x - pad,
                                 y - pad,
-                                start_x + total_w + pad,
-                                y + icon + pad,
-                                0,
-                                0,
-                                0,
-                                0.72
+                                total_w + pad * 2,
+                                icon + pad * 2,
+                                S.armor_onplayer_glass == true
                             )
                         end
 
@@ -11552,7 +11629,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
         )
 
     local extra_h =
-        41 * onplayer_eased
+        82 * onplayer_eased
 
     section_title(
         x,
@@ -11754,8 +11831,8 @@ function FALLEN_DRAW_ARMOR_PAGE(
         A.armor_item_cache = {}
     end
 
-    -- Fixed upper separator; the lower separator and all following rows
-    -- slide downward as Background unfolds.
+    -- Conditional On Player rows. Both fade/reveal while the lower
+    -- sliders are smoothly pushed down.
     line(
         x + 12,
         y + 154,
@@ -11773,11 +11850,17 @@ function FALLEN_DRAW_ARMOR_PAGE(
             old_alpha
             * onplayer_eased
 
+        local can_click_extra =
+            controls_clicked
+            and onplayer_anim > 0.92
+
+        local old_background =
+            S.armor_onplayer_background == true
+
         toggle_row(
             mx,
             my,
-            controls_clicked
-                and onplayer_anim > 0.92,
+            can_click_extra,
             x,
             y + 155,
             settings_w,
@@ -11785,6 +11868,45 @@ function FALLEN_DRAW_ARMOR_PAGE(
             "armor_onplayer_background",
             false
         )
+
+        -- Background and Glass are alternative styles.
+        if old_background
+            ~= (S.armor_onplayer_background == true)
+            and S.armor_onplayer_background == true
+        then
+            S.armor_onplayer_glass = false
+        end
+
+        line(
+            x + 12,
+            y + 195,
+            x + settings_w - 12,
+            y + 195,
+            C.divider,
+            1
+        )
+
+        local old_glass =
+            S.armor_onplayer_glass == true
+
+        toggle_row(
+            mx,
+            my,
+            can_click_extra,
+            x,
+            y + 196,
+            settings_w,
+            "Glass",
+            "armor_onplayer_glass",
+            false
+        )
+
+        if old_glass
+            ~= (S.armor_onplayer_glass == true)
+            and S.armor_onplayer_glass == true
+        then
+            S.armor_onplayer_background = false
+        end
 
         MENU_RENDER_ALPHA =
             old_alpha
