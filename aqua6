@@ -9829,10 +9829,14 @@ hooks.on_render(function()
 
     local menu_base_alpha = MENU_RENDER_ALPHA
 
-    -- 35 rounded glow frames around the entire menu.
-    -- Radius grows together with every outward frame, so the glow follows
-    -- the rounded menu corners instead of making square wedges.
-    local glow_rgb = FALLEN_GLOW_COLOR()
+    -- 35 line based glow frames around the entire menu.
+    -- Every line uses the selected Glow Color directly.
+    -- The alpha fades from the edge outward, like a real soft glow.
+    local glow_rgb = {1, 1, 1, 1}
+    pcall(function()
+        glow_rgb = FALLEN_GLOW_COLOR()
+    end)
+
     local glow_strength =
         clamp((tonumber(S.menu_glow_strength) or 100) / 100, 0, 2)
 
