@@ -8576,6 +8576,273 @@ FALLEN_WEAPON_ITEMS = {
 ["sulfur_node"] = true,
 }
 
+FALLEN_WEAPON_DIRECT_ICON_URLS = {
+["Yellow Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a2/Yellow_Keycard.png/revision/latest?format=original",
+["Thread"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/0e/Thread.png/revision/latest?format=original",
+["Tarp"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4d/Tarp.png/revision/latest?format=original",
+["Tape"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/06/Tape.png/revision/latest?format=original",
+["Spring"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/c/cf/Spring.png/revision/latest?format=original",
+["Semi Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/2d/Semi_Receiver.png/revision/latest?format=original",
+["SMG receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/94/SMG_Receiver.png/revision/latest?format=original",
+["SMG Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/94/SMG_Receiver.png/revision/latest?format=original",
+["Rope"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/b/b2/Rope.png/revision/latest?format=original",
+["Rifle Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/8/80/Rifle_Receiver1.png/revision/latest?format=original",
+["Red Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4e/Red_Keycard.png/revision/latest?format=original",
+["Raspberries"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/100?cb=20250108163842",
+["Purple Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/8/87/Purple_Keycard.png/revision/latest?format=original",
+["Power cell"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/09/Power_Cell.png/revision/latest?format=original",
+["Power Cell"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/09/Power_Cell.png/revision/latest?format=original",
+["Pistol Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Pistol_Receiver.png/revision/latest?format=original",
+["Pipe"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6e/Pipe.png/revision/latest?format=original",
+["Pink Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/68/Pink_Keycard.png/revision/latest?format=original",
+["Milk"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4d/Milk.png/revision/latest?format=original",
+["Metal Scraps"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/16/Metal_Scraps.png/revision/latest?format=original",
+["Metal Plating"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/5c/Metal_Plating.png/revision/latest?format=original",
+["Glue"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e7/Glue.png/revision/latest?format=original",
+["Fish Can"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Fish_Can.png/revision/latest?format=original",
+["Duct Tape"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/06/Tape.png/revision/latest?format=original",
+["Copper Cogs"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/c/c4/Copper_Cogs.png/revision/latest?format=original",
+["Circuit board"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9f/Circuit_Boards.png/revision/latest?format=original",
+["Circuit Boards"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9f/Circuit_Boards.png/revision/latest?format=original",
+["Chocolate Bar"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/28/Chocolate_Bar.png/revision/latest?format=original",
+["Cactus flesh"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6b/Cactusflesh.png/revision/latest/scale-to-width-down/100?cb=20250108160111",
+["Blueberries"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/af/Blueberries.png/revision/latest/scale-to-width-down/100?cb=20250108163924",
+["Blade"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6e/Blade.png/revision/latest?format=original",
+["Lighter"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/c/c4/Lighter.png/revision/latest/scale-to-width-down/55?cb=20250407023539",
+["Altyn Helmet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7f/Borishelmet.png/revision/latest/scale-to-width-down/100?cb=20250108175818",
+["Auto Turret"] = "https://static.wikia.nocookie.net/play-rust/images/f/f9/Auto_Turret_icon.png/revision/latest?cb=20151106062203",
+["Balaclava"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/2a/Balaclava.png/revision/latest/scale-to-width-down/100?cb=20250108174723",
+["Bandage"] = "https://static.wikia.nocookie.net/play-rust/images/f/f8/Bandage_icon.png/revision/latest?cb=20151106061541",
+["Base Cabinet"] = "https://static.wikia.nocookie.net/play-rust/images/5/57/Tool_Cupboard_icon.png/revision/latest?cb=20151106061824",
+["Baseball Cap"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/91/Cap.png/revision/latest/scale-to-width-down/100?cb=20250108174935",
+["Bear Trap"] = "https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-trap-bear-300x300.png",
+["Blueberry"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/af/Blueberries.png/revision/latest/scale-to-width-down/100?cb=20250108163924",
+["Blueprint"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/98/Blueprint.png/revision/latest?cb=20250108011413",
+["Bone Armor"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7d/Bonearmour.png/revision/latest/scale-to-width-down/100?cb=20250108175533",
+["Bone Tool"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4e/Bone_Tool.png/revision/latest?cb=20250111164426",
+["Boots"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/59/Boots.png/revision/latest/scale-to-width-down/100?cb=20250108173821",
+["Boris Chestplate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/fb/Borischest.png/revision/latest/scale-to-width-down/100?cb=20250108175533",
+["Boris Helmet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7f/Borishelmet.png/revision/latest/scale-to-width-down/100?cb=20250108175818",
+["Boris's Chestplate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/fb/Borischest.png/revision/latest/scale-to-width-down/100?cb=20250108175533",
+["Boulder"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/21/Boulder.png/revision/latest?cb=20250407023615",
+["Bruno Chestplate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/62/Brunochest.png/revision/latest/scale-to-width-down/100?cb=20250108175253",
+["Bruno Helmet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Brunohelmet.png/revision/latest/scale-to-width-down/100?cb=20250108175533",
+["Bruno's Chestplate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/62/Brunochest.png/revision/latest/scale-to-width-down/100?cb=20250108175253",
+["Bruno's Helmet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Brunohelmet.png/revision/latest/scale-to-width-down/100?cb=20250108175533",
+["Cactus"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6b/Cactusflesh.png/revision/latest/scale-to-width-down/100?cb=20250108160111",
+["Chainsaw"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/c/cc/Chainsaw.png/revision/latest?cb=20250111164731",
+["Cloth Footwraps"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e8/Clothboots.png/revision/latest/scale-to-width-down/100?cb=20250108173612",
+["Cloth Handwraps"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/98/Clothgloves.png/revision/latest/scale-to-width-down/100?cb=20250108175253",
+["Cloth Head Wrap"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Clothhelmet.png/revision/latest/scale-to-width-down/100?cb=20250108175140",
+["Cloth Headwrap"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Clothhelmet.png/revision/latest/scale-to-width-down/100?cb=20250108175140",
+["Cloth Hoodie"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/95/Hoodie.png/revision/latest/scale-to-width-down/100?cb=20250108171940",
+["Cloth Pants"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/61/Clothpants.png/revision/latest/scale-to-width-down/100?cb=20250108174207",
+["Cloth Shirt"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/8/8d/Clothshirt.png/revision/latest/scale-to-width-down/100?cb=20250108200247",
+["Collared Shirt"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/b/ba/Collaredshirt.png/revision/latest/scale-to-width-down/100?cb=20250108173822",
+["Corn"] = "https://static.wikia.nocookie.net/play-rust/images/0/0a/Corn_icon.png/revision/latest?cb=20151106061809",
+["Crossbow"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/51/Crossbow_.png/revision/latest/scale-to-width-down/180?cb=20250108154725",
+["Dynamite Bundle"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/b/b3/Dynamite_Bundle.png/revision/latest?cb=20250112104649",
+["Dynamite Stick"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/20/Dynamite_Stick.png/revision/latest?cb=20250112104836",
+["Flannel Jacket"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/26/Flanneljacket.png/revision/latest/scale-to-width-down/100?cb=20250108174334",
+["Garage Door"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a6/Garage_Door.png/revision/latest?cb=20250111213531",
+["Hammer"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/8/81/Hammer.png/revision/latest?cb=20250108004728",
+["Hard Hat"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4e/Hardhat.png/revision/latest/scale-to-width-down/100?cb=20250108174723",
+["Hazmat Suit"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/68/Hazmat.png/revision/latest?cb=20250108173611",
+["Hemp"] = "https://static.wikia.nocookie.net/play-rust/images/c/c9/Hemp_Clone_icon.png/revision/latest?cb=20170122060314",
+["Hemp Fiber"] = "https://static.wikia.nocookie.net/play-rust/images/c/c9/Hemp_Clone_icon.png/revision/latest?cb=20170122060314",
+["Hoodie"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/95/Hoodie.png/revision/latest/scale-to-width-down/100?cb=20250108171940",
+["Iron Shard Hatchet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/d7/Iron_Shard_Hatchet.png/revision/latest?cb=20250111164603",
+["Iron Shard Pickaxe"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/d0/Iron_Shard_Pickaxe.png/revision/latest?cb=20250111164539",
+["Landmine"] = "https://www.corrosionhour.com/wp-content/uploads/2022/04/rust-trap-landmine-homemade-300x300.png",
+["Large Battery"] = "https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-electric-battery-rechargable-large-300x300.png",
+["Large Box"] = "https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-box-wooden-large-300x300.png",
+["Large Medkit"] = "https://static.wikia.nocookie.net/play-rust/images/9/99/Large_Medkit_icon.png/revision/latest?cb=20151106054425",
+["Leather Boots"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6d/Leatherboots.png/revision/latest/scale-to-width-down/100?cb=20250108174207",
+["Leather Gloves"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/62/Leathergloves.png/revision/latest/scale-to-width-down/100?cb=20250108175140",
+["Leather Pants"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/3/3b/Leatherpants.png/revision/latest/scale-to-width-down/100?cb=20250108173822",
+["Leather Poncho"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/b/ba/Leatherponcho.png/revision/latest/scale-to-width-down/100?cb=20250108173822",
+["Leather Shirt"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/0a/Leathertunic.png/revision/latest/scale-to-width-down/100?cb=20250108174207",
+["Leather_Pants"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/3/3b/Leatherpants.png/revision/latest/scale-to-width-down/100?cb=20250108173822",
+["Lemon"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/3/35/Lemon.png/revision/latest/scale-to-width-down/100?cb=20250108163730",
+["Machete"] = "https://static.wikia.nocookie.net/play-rust/images/3/34/Machete_icon.png/revision/latest?cb=20151106060741",
+["Medium Battery"] = "https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-electric-battery-rechargable-medium-300x300.png",
+["Metal"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Metal Door"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/c/cd/Metal_Door.png/revision/latest?cb=20250112101940",
+["Metal Double Door"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e5/Metal_Double_Door.png/revision/latest?cb=20250111213501",
+["Metal Node"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Metal Ore"] = "https://static.wikia.nocookie.net/play-rust/images/0/0a/Metal_Ore_icon.png/revision/latest?cb=20151106060814",
+["MetalNode"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Metal_Node"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Military AA12"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/57/Military_AA12.png/revision/latest/scale-to-width-down/180?cb=20250109110407",
+["Military Backpack"] = "https://www.corrosionhour.com/wp-content/uploads/2024/01/rust-largebackpack-300x300.png",
+["Military Barret"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/26/Military_Barrett_.png/revision/latest/scale-to-width-down/180?cb=20250108155608",
+["Military Barrett"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/26/Military_Barrett_.png/revision/latest/scale-to-width-down/180?cb=20250108155608",
+["Military Chestplate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/c/c6/Militarychest.png/revision/latest/scale-to-width-down/100?cb=20250108174935",
+["Military Gloves"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a8/Salvagedgloves.png/revision/latest/scale-to-width-down/100?cb=20250108175140",
+["Military Helmet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9f/Militaryhelmet.png/revision/latest/scale-to-width-down/100?cb=20250108174723",
+["Military Leggings"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/70/Militarylegs.png/revision/latest/scale-to-width-down/100?cb=20250108174723",
+["Military M39"] = "https://static.wikia.nocookie.net/play-rust/images/3/36/M39_Rifle_icon.png/revision/latest?cb=20190420225317",
+["Military M4A1"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/b/b3/Military_M4A1.png/revision/latest/scale-to-width-down/180?cb=20250108152536",
+["Military MP7"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/69/Military_MP7_.png/revision/latest/scale-to-width-down/180?cb=20250108153052",
+["Military PKM"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a6/Military_PKM.png/revision/latest/scale-to-width-down/180?cb=20250108152201",
+["Military USP"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/c/c8/Military_USP_.png/revision/latest/scale-to-width-down/180?cb=20250108155646",
+["Mining Drill"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f0/Mining_Drill.png/revision/latest?cb=20250111164710",
+["Nail Gun"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/68/Nail_Gun_.png/revision/latest/scale-to-width-down/180?cb=20250108154650",
+["Nailgun"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/68/Nail_Gun_.png/revision/latest/scale-to-width-down/180?cb=20250108154650",
+["Pants"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7c/Pants1.png/revision/latest?cb=20250108173612",
+["Phosphate"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Pumpkin"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/64/Pumpkin.png/revision/latest/scale-to-width-down/100?cb=20250108163605",
+["Pumpkin Launcher"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/b/b1/Pumpkin_Launcher_.png/revision/latest?cb=20250108161011",
+["Raspberry"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/100?cb=20250108163842",
+["Salvaged AK4"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/ab/Fallen_-_Ak47.png/revision/latest/scale-to-width-down/180?cb=20250107194018",
+["Salvaged AK47"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/ab/Fallen_-_Ak47.png/revision/latest/scale-to-width-down/180?cb=20250107194018",
+["Salvaged AK74u"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a5/Salvaged_AK74U_.png/revision/latest/scale-to-width-down/180?cb=20250108153258",
+["Salvaged Backpack"] = "https://www.corrosionhour.com/wp-content/uploads/2024/01/rust-smallbackpack-300x300.png",
+["Salvaged Break Action"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/78/Salvaged_Break_Action.png/revision/latest/scale-to-width-down/180?cb=20250109110155",
+["Salvaged Chestplate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e2/Salvagedchest.png/revision/latest/scale-to-width-down/100?cb=20250108174457",
+["Salvaged Gloves"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a8/Salvagedgloves.png/revision/latest/scale-to-width-down/100?cb=20250108175140",
+["Salvaged Helmet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/46/Salvagedhelm.png/revision/latest/scale-to-width-down/100?cb=20250108174457",
+["Salvaged Leggings"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/b/be/Salvagedlegs.png/revision/latest/scale-to-width-down/100?cb=20250108175140",
+["Salvaged M14"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/55/Salvaged_M14_.png/revision/latest/scale-to-width-down/180?cb=20250108155717",
+["Salvaged Metal Door"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/d4/Salvaged_Metal_Door.png/revision/latest?cb=20250111213231",
+["Salvaged P250"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/1c/Salvaged_P250.png/revision/latest/scale-to-width-down/180?cb=20250108155928",
+["Salvaged Pipe Rifle"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/50/Pipe_Rifle.png/revision/latest/scale-to-width-down/180?cb=20250109111303",
+["Salvaged Pump Action"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/0a/Salvaged_Pump_Action.png/revision/latest/scale-to-width-down/180?cb=20250109110837",
+["Salvaged Python"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/2d/Salvaged_Python_.png/revision/latest/scale-to-width-down/180?cb=20250108155754",
+["Salvaged RPG"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/11/Salvaged_RPG_.png/revision/latest?cb=20250108161113",
+["Salvaged SMG"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/d4/Salvaged_SMG_.png/revision/latest/scale-to-width-down/180?cb=20250108153138",
+["Salvaged Shotgun"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a0/Salvaged_Shotgun_.png/revision/latest/scale-to-width-down/180?cb=20250108154605",
+["Salvaged Skorpion"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/c/c6/Salvaged_Skorpion_.png/revision/latest/scale-to-width-down/180?cb=20250108153325",
+["Salvaged Sniper"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/56/Salvaged_Sniper.png/revision/latest/scale-to-width-down/180?cb=20250302204446",
+["Shorts"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/47/Pants.png/revision/latest/scale-to-width-down/100?cb=20250108174206",
+["Shotgun Turret"] = "https://static.wikia.nocookie.net/play-rust/images/6/6c/Shotgun_Trap_icon.png/revision/latest/scale-to-width-down/268?cb=20170721103159",
+["Sleeping Bag"] = "https://static.wikia.nocookie.net/play-rust/images/b/be/Sleeping_Bag_icon.png/revision/latest?cb=20160211200428",
+["Small Battery"] = "https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-electric-battery-rechargable-small-300x300.png",
+["Small Box"] = "https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-box-wooden-300x300.png",
+["Small Medkit"] = "https://static.wikia.nocookie.net/play-rust/images/9/99/Medical_Syringe_icon.png/revision/latest?cb=20151106061059",
+["Steel Axe"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/c/ce/Steel_Axe.png/revision/latest?cb=20250111164646",
+["Steel Chestplate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/3/3b/Steelchest.png/revision/latest/scale-to-width-down/100?cb=20250108174335",
+["Steel Door"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/61/Steel_Door.png/revision/latest?cb=20250112102424",
+["Steel Double Door"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/e/ec/Steel_Double_Door.png/revision/latest?cb=20250111213604",
+["Steel Helmet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Steel_Helmet.png/revision/latest/scale-to-width-down/100?cb=20250108133300",
+["Steel Leggings"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/d6/Steellegs.png/revision/latest/scale-to-width-down/100?cb=20250108174457",
+["Steel Pickaxe"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/d1/Steel_Pickaxe.png/revision/latest?cb=20250111164626",
+["Stone"] = "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest?cb=20150405123145",
+["Stone Hatchet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/d6/Stone_Hatchet.png/revision/latest?cb=20250111164512",
+["Stone Node"] = "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest?cb=20150405123145",
+["Stone Ore"] = "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest?cb=20150405123145",
+["Stone Pickaxe"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/40/Stone_Pickaxe.png/revision/latest?cb=20250111164447",
+["Stone Spear"] = "https://static.wikia.nocookie.net/play-rust/images/0/0a/Stone_Spear_icon.png/revision/latest?cb=20151106061726",
+["StoneNode"] = "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest?cb=20150405123145",
+["Stone_Node"] = "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest?cb=20150405123145",
+["Stones"] = "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest?cb=20150405123145",
+["Storage Cabinet"] = "https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-coffin-storage-300x300.png",
+["Sulfur"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Sulfur Node"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Sulfur Ore"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["SulfurNode"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Sulfur_Node"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Tactical Gloves"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a8/Salvagedgloves.png/revision/latest/scale-to-width-down/100?cb=20250108175140",
+["Tank Top"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/2b/Tanktop.png/revision/latest/scale-to-width-down/100?cb=20250108173612",
+["Timed Charge"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6d/Timed_Charge.png/revision/latest?cb=20250112104716",
+["Tomato"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9d/Tomato.png/revision/latest/scale-to-width-down/100?cb=20250108164012",
+["Trap Door"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9f/Trap_Door.png/revision/latest?cb=20250112102923",
+["Tree"] = "https://static.wikia.nocookie.net/play-rust/images/f/f2/Wood_icon.png/revision/latest?cb=20151106061551",
+["Tree Large"] = "https://static.wikia.nocookie.net/play-rust/images/f/f2/Wood_icon.png/revision/latest?cb=20151106061551",
+["Tree Medium"] = "https://static.wikia.nocookie.net/play-rust/images/f/f2/Wood_icon.png/revision/latest?cb=20151106061551",
+["Tree Small"] = "https://static.wikia.nocookie.net/play-rust/images/f/f2/Wood_icon.png/revision/latest?cb=20151106061551",
+["Tree XL"] = "https://static.wikia.nocookie.net/play-rust/images/f/f2/Wood_icon.png/revision/latest?cb=20151106061551",
+["Wetsuit"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/5f/Wetsuit.png/revision/latest?cb=20250108175934",
+["Windmill"] = "https://static.wikia.nocookie.net/play-rust/images/f/f2/Wind_Turbine_icon.png/revision/latest/scale-to-width-down/1000?cb=20151106061147",
+["Wire Cutters"] = "https://static.wikia.nocookie.net/play-rust/images/e/e0/Wire_Tool_icon.png/revision/latest?cb=20230420081635",
+["Wooden Bow"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/13/Wooden_Bow_.png/revision/latest/scale-to-width-down/180?cb=20250108154800",
+["Wooden Chestplate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/8/87/Woodchest.png/revision/latest/scale-to-width-down/100?cb=20250108174335",
+["Wooden Door"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/2c/Wooden_Door.png/revision/latest?cb=20250111212634",
+["Wooden Double Door"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/af/Wooden_Double_Door.png/revision/latest?cb=20250112101523",
+["Wooden Helmet"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/2/20/Woodhelm.png/revision/latest/scale-to-width-down/100?cb=20250108174335",
+["Wooden Leggings"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f8/Woodleg.png/revision/latest/scale-to-width-down/100?cb=20250108174456",
+["Wooden Spear"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/17/Wooden_Spear.png/revision/latest?cb=20250407032830",
+["Wool"] = "https://static.wikia.nocookie.net/play-rust/images/c/c9/Hemp_Clone_icon.png/revision/latest?cb=20170122060314",
+["metal_node"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["stone_node"] = "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest?cb=20150405123145",
+["sulfur_node"] = "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
+["Wooden Crate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/00/Wooden_Crate.png/revision/latest/scale-to-width-down/180?cb=20250112010042",
+["Locked Wooden Crate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/00/Wooden_Crate.png/revision/latest/scale-to-width-down/180?cb=20250112010042",
+["Metal Crate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e7/Metal_Crate.png/revision/latest/scale-to-width-down/180?cb=20250112011044",
+["Locked Metal Crate"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e7/Metal_Crate.png/revision/latest/scale-to-width-down/180?cb=20250112011044",
+["Steel Crate"] = "https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339",
+["Locked Steel Crate"] = "https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339",
+["Food Crate"] = "https://static.wikia.nocookie.net/play-rust/images/d/d7/Basic_Crate.png/revision/latest/scale-to-width-down/177?cb=20250128033438",
+["Timed Crate"] = "https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339",
+["Care Package"] = "https://static.wikia.nocookie.net/play-rust/images/4/49/Airdrop_Supply_Crate.jpg/revision/latest/scale-to-width-down/300?cb=20140723124718",
+["Trash Can"] = "https://static.wikia.nocookie.net/fallensurvival/images/6/6e/Trash.png/revision/latest/scale-to-width-down/320?cb=20240613051520",
+["Oil Barrel"] = "https://static.wikia.nocookie.net/fallensurvival/images/0/06/Oil.png/revision/latest/scale-to-width-down/320?cb=20240613051409",
+["Body Bag"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6d/Body_Bag.png/revision/latest?format=original",
+["Sleeper"] = "https://static.wikia.nocookie.net/play-rust/images/b/be/Sleeping_Bag_icon.png/revision/latest?cb=20160211200428",
+["Wooden Boat"] = "https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931",
+["Military Boat"] = "https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931",
+["Salvaged Flycopter"] = "https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-transport-minicopter-300x300.png",
+["Flycopter"] = "https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-transport-minicopter-300x300.png",
+}
+
+FALLEN_WEAPON_DIRECT_ALIASES = {
+["Blueberries"] = "Blueberry",
+["Cactus Flesh"] = "Cactus flesh",
+["Cactusflesh"] = "Cactus flesh",
+["Circuit Board"] = "Circuit board",
+["Circuit Boards"] = "Circuit board",
+["Pink Keycard"] = "Pink Card",
+["Power Cell"] = "Power cell",
+["Purple Keycard"] = "Purple Card",
+["Raspberries"] = "Raspberry",
+["Red Keycard"] = "Red Card",
+["SMG Receiver"] = "SMG receiver",
+["Yellow Keycard"] = "Yellow Card",
+["Ligther"] = "Lighter",
+["lighter"] = "Lighter",
+["Torch"] = "Lighter",
+["Flashlight"] = "Lighter",
+["AA12"] = "Military AA12",
+["AK-47"] = "Salvaged AK47",
+["AK4"] = "Salvaged AK4",
+["AK47"] = "Salvaged AK47",
+["AK74U"] = "Salvaged AK74u",
+["AK74u"] = "Salvaged AK74u",
+["Axe"] = "Steel Axe",
+["Barret"] = "Military Barrett",
+["Barrett"] = "Military Barrett",
+["Bow"] = "Wooden Bow",
+["Break Action"] = "Salvaged Break Action",
+["C4"] = "Timed Charge",
+["Charge"] = "Timed Charge",
+["Crossbow"] = "Crossbow",
+["Double Barrel"] = "Salvaged Double Barrel",
+["Drill"] = "Mining Drill",
+["Dynamite"] = "Dynamite Stick",
+["Hatchet"] = "Stone Hatchet",
+["M14"] = "Salvaged M14",
+["M39"] = "Military M39",
+["M4"] = "Military M4A1",
+["M4A1"] = "Military M4A1",
+["MP7"] = "Military MP7",
+["Medkit"] = "Large Medkit",
+["Military Barret"] = "Military Barrett",
+["Nail Gun"] = "Nail Gun",
+["Nailgun"] = "Nail Gun",
+["P250"] = "Salvaged P250",
+["PKM"] = "Military PKM",
+["Pickaxe"] = "Stone Pickaxe",
+["Pipe Rifle"] = "Salvaged Pipe Rifle",
+["Pump Action"] = "Salvaged Pump Action",
+["Python"] = "Salvaged Python",
+["RPG"] = "Salvaged RPG",
+["SMG"] = "Salvaged SMG",
+["Shotgun"] = "Salvaged Shotgun",
+["Skorpion"] = "Salvaged Skorpion",
+["Sniper"] = "Salvaged Sniper",
+["USP"] = "Military USP",
+}
+
 FALLEN_WEAPON_ICON_CACHE = FALLEN_WEAPON_ICON_CACHE or {}
 
 FALLEN_ARMOR_ICON_CACHE = FALLEN_ARMOR_ICON_CACHE or {}
@@ -9068,19 +9335,86 @@ end
 
 function FALLEN_WEAPON_NORMALIZE(name)
     local s =
-        string.lower(
-            tostring(name or "")
-        )
+        tostring(name or "")
 
-    return
+    s =
+        string.lower(s)
+
+    s =
         string.gsub(
             s,
             "[^%w]",
             ""
         )
+
+    return s
 end
 
-function FALLEN_WEAPON_URLS(name)
+function FALLEN_WEAPON_MAKE_FANDOM_FALLBACKS(url)
+    local out = {}
+    local seen = {}
+
+    local function add(u)
+        if u
+            and u ~= ""
+            and not seen[u]
+        then
+            out[#out + 1] = u
+            seen[u] = true
+        end
+    end
+
+    if not url then
+        return out
+    end
+
+    local base =
+        string.match(
+            url,
+            "^(.-)/revision/latest"
+        )
+
+    if base then
+        add(
+            base
+            .. "/revision/latest?format=original"
+        )
+
+        add(
+            base
+            .. "/revision/latest/scale-to-width-down/180?format=original"
+        )
+
+        add(
+            base
+            .. "/revision/latest/scale-to-width-down/100?format=original"
+        )
+    end
+
+    add(url)
+
+    if string.find(
+        url,
+        "?",
+        1,
+        true
+    )
+    then
+        add(
+            url
+            .. "&format=original"
+        )
+    else
+        add(
+            url
+            .. "?format=original"
+        )
+    end
+
+    return out
+end
+
+function FALLEN_WEAPON_DIRECT_URL(name)
     if not name then
         return nil
     end
@@ -9088,56 +9422,64 @@ function FALLEN_WEAPON_URLS(name)
     local raw =
         tostring(name)
 
-    if FALLEN_WEAPON_ICON_ALIASES
-        and FALLEN_WEAPON_ICON_ALIASES[raw]
-    then
-        local alias =
-            FALLEN_WEAPON_ICON_ALIASES[raw]
-
-        if type(alias) == "string"
-            and string.find(alias, "^https?://")
-        then
-            return { alias }
-        end
-
-        raw = alias
-    end
-
-    if FALLEN_WEAPON_ICON_URLS[raw] then
+    if FALLEN_WEAPON_DIRECT_ICON_URLS[raw] then
         return
-            FALLEN_WEAPON_ICON_URLS[raw]
+            FALLEN_WEAPON_DIRECT_ICON_URLS[raw]
     end
 
-    local wanted =
+    local alias =
+        FALLEN_WEAPON_DIRECT_ALIASES[raw]
+
+    if alias
+        and FALLEN_WEAPON_DIRECT_ICON_URLS[alias]
+    then
+        return
+            FALLEN_WEAPON_DIRECT_ICON_URLS[alias]
+    end
+
+    local normalized =
         FALLEN_WEAPON_NORMALIZE(raw)
 
-    for key, urls in pairs(
-        FALLEN_WEAPON_ICON_URLS
+    if alias then
+        normalized =
+            FALLEN_WEAPON_NORMALIZE(alias)
+    end
+
+    for key, url in pairs(
+        FALLEN_WEAPON_DIRECT_ICON_URLS
     ) do
-        local normalized =
+        local nk =
             FALLEN_WEAPON_NORMALIZE(key)
 
-        if normalized == wanted
-            or (
-                wanted ~= ""
-                and normalized ~= ""
-                and (
-                    string.find(
-                        normalized,
-                        wanted,
-                        1,
-                        true
-                    )
-                    or string.find(
-                        wanted,
-                        normalized,
-                        1,
-                        true
-                    )
+        if nk == normalized then
+            return url
+        end
+    end
+
+    for key, url in pairs(
+        FALLEN_WEAPON_DIRECT_ICON_URLS
+    ) do
+        local nk =
+            FALLEN_WEAPON_NORMALIZE(key)
+
+        if normalized ~= ""
+            and nk ~= ""
+            and (
+                string.find(
+                    nk,
+                    normalized,
+                    1,
+                    true
+                )
+                or string.find(
+                    normalized,
+                    nk,
+                    1,
+                    true
                 )
             )
         then
-            return urls
+            return url
         end
     end
 
@@ -9145,11 +9487,7 @@ function FALLEN_WEAPON_URLS(name)
 end
 
 function FALLEN_WEAPON_ICON(name)
-    local urls =
-        FALLEN_WEAPON_URLS(name)
-
-    if type(urls) ~= "table"
-        or #urls == 0
+    if not name
         or type(LoadImage) ~= "function"
     then
         return nil
@@ -9158,75 +9496,107 @@ function FALLEN_WEAPON_ICON(name)
     local key =
         tostring(name)
 
+    local url =
+        FALLEN_WEAPON_DIRECT_URL(key)
+
+    if not url then
+        return nil
+    end
+
     local st =
         FALLEN_WEAPON_ICON_CACHE[key]
 
     if not st then
+        local urls =
+            FALLEN_WEAPON_MAKE_FANDOM_FALLBACKS(
+                url
+            )
+
         st = {
+            urls = urls,
             index = 1,
             handle = nil,
             dead = false,
         }
 
         FALLEN_WEAPON_ICON_CACHE[key] = st
+
+        if urls[1] then
+            local ok, handle =
+                pcall(
+                    LoadImage,
+                    urls[1]
+                )
+
+            if ok and handle then
+                st.handle = handle
+            end
+        end
     end
 
     if st.dead then
         return nil
     end
 
-    if not st.handle then
-        local url =
-            urls[st.index]
-
-        if not url then
-            st.dead = true
-            return nil
-        end
-
-        local ok, handle =
-            pcall(
-                LoadImage,
-                url
-            )
-
-        if ok and handle then
-            st.handle = handle
-        else
-            st.index = st.index + 1
-            return nil
-        end
-    end
-
-    if type(IsImageReady) == "function" then
+    if st.handle
+        and type(IsImageReady) == "function"
+    then
         local ok, ready =
             pcall(
                 IsImageReady,
                 st.handle
             )
 
-        if ok and ready == true then
+        if ok
+            and ready == true
+        then
             return st.handle
         end
     end
 
-    if type(IsImageFailed) == "function" then
+    if st.handle
+        and type(IsImageFailed) == "function"
+    then
         local ok, failed =
             pcall(
                 IsImageFailed,
                 st.handle
             )
 
-        if ok and failed == true then
-            st.index = st.index + 1
+        if ok
+            and failed == true
+        then
+            st.index =
+                (st.index or 1)
+                + 1
+
             st.handle = nil
 
-            if not urls[st.index] then
+            local next_url =
+                st.urls
+                and st.urls[st.index]
+
+            if next_url then
+                local load_ok, handle =
+                    pcall(
+                        LoadImage,
+                        next_url
+                    )
+
+                if load_ok
+                    and handle
+                then
+                    st.handle = handle
+                end
+            else
                 st.dead = true
             end
+
+            return nil
         end
     end
 
+    -- Not ready yet: do not DrawImage until IsImageReady says true.
     return nil
 end
 
@@ -11279,6 +11649,9 @@ function FALLEN_DRAW_ARMOR_PAGE(
         1
     )
 
+    local old_show_weapon =
+        S.armor_show_weapon == true
+
     toggle_row(
         mx,
         my,
@@ -11290,6 +11663,13 @@ function FALLEN_DRAW_ARMOR_PAGE(
         "armor_show_weapon",
         false
     )
+
+    if old_show_weapon
+        ~= (S.armor_show_weapon == true)
+    then
+        FALLEN_WEAPON_ICON_CACHE = {}
+        A.armor_item_cache = {}
+    end
 
     line(
         x + 12,
