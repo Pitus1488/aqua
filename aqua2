@@ -5959,6 +5959,28 @@ local function draw_visuals_page(
             right_total
         )
 
+    local left_row_clicked =
+        base_clicked
+        and hover(
+            mx,
+            my,
+            left_x,
+            base_card_y,
+            col_w,
+            base_card_h
+        )
+
+    local right_row_clicked =
+        base_clicked
+        and hover(
+            mx,
+            my,
+            right_x,
+            base_card_y,
+            col_w,
+            base_card_h
+        )
+
     for i = 1, left_total do
         local by =
             base_card_y
@@ -5974,7 +5996,7 @@ local function draw_visuals_page(
                 world_base_compact_row(
                     mx,
                     my,
-                    base_clicked,
+                    left_row_clicked,
                     left_x,
                     by,
                     col_w,
@@ -6002,7 +6024,7 @@ local function draw_visuals_page(
                 world_base_compact_row(
                     mx,
                     my,
-                    base_clicked,
+                    right_row_clicked,
                     right_x,
                     by,
                     col_w,
@@ -6011,6 +6033,76 @@ local function draw_visuals_page(
             end
         end
     end
+
+    -- Manual viewport clipping.
+    -- Drawing in this API has no clip/scissor function, so fractional
+    -- scrolling otherwise lets a partial row leak above/below the card.
+    local clip_top_y =
+        base_section_y + 18
+
+    local clip_top_h =
+        math.max(
+            0,
+            base_card_y - clip_top_y
+        )
+
+    if clip_top_h > 0 then
+        fill(
+            left_x,
+            clip_top_y,
+            col_w,
+            clip_top_h,
+            C.content
+        )
+
+        fill(
+            right_x,
+            clip_top_y,
+            col_w,
+            clip_top_h,
+            C.content
+        )
+    end
+
+    local clip_bottom_y =
+        base_card_y
+        + base_card_h
+
+    local menu_content_bottom =
+        cy + 618
+
+    local clip_bottom_h =
+        math.max(
+            0,
+            menu_content_bottom
+            - clip_bottom_y
+        )
+
+    if clip_bottom_h > 0 then
+        fill(
+            left_x,
+            clip_bottom_y,
+            col_w,
+            clip_bottom_h,
+            C.content
+        )
+
+        fill(
+            right_x,
+            clip_bottom_y,
+            col_w,
+            clip_bottom_h,
+            C.content
+        )
+    end
+
+    -- Redraw the section title because the top mask intentionally sits
+    -- immediately below it.
+    section_title(
+        cx,
+        base_section_y,
+        "Base / House ESP"
+    )
 
     -- Render settings first, then the reusable color picker on top.
     draw_world_settings_popup(
@@ -8009,6 +8101,48 @@ function world_base_column_scroll_step(
         A[nav .. "down"] = down
         A[nav .. "pgup"] = pgup
         A[nav .. "pgdn"] = pgdn
+
+        -- Mouse fallback for this API build:
+        -- hold the middle mouse button over a column and drag vertically.
+        -- One row of mouse movement equals roughly one list row.
+        local middle = false
+
+        pcall(function()
+            middle =
+                Windows.IsKeyPressed(0x04)
+                == true
+        end)
+
+        local pan_key =
+            p .. "_middle_pan"
+
+        local pan_y_key =
+            p .. "_middle_pan_y"
+
+        if middle then
+            if not A[pan_key] then
+                A[pan_key] = true
+                A[pan_y_key] = my
+            else
+                local old_y =
+                    tonumber(A[pan_y_key])
+                    or my
+
+                local dy =
+                    my - old_y
+
+                if math.abs(dy) > 0.01 then
+                    A[target_key] =
+                        A[target_key]
+                        - (dy / 41)
+
+                    A[pan_y_key] = my
+                end
+            end
+        else
+            A[pan_key] = false
+            A[pan_y_key] = nil
+        end
     else
         A[wheel_key] = 0
 
@@ -8017,6 +8151,9 @@ function world_base_column_scroll_step(
         A[nav .. "down"] = false
         A[nav .. "pgup"] = false
         A[nav .. "pgdn"] = false
+
+        A[p .. "_middle_pan"] = false
+        A[p .. "_middle_pan_y"] = nil
     end
 
     A[target_key] =
