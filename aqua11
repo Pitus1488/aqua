@@ -126,6 +126,7 @@ local defaults = {
 
     -- Visual hit effect: fires only when the locked Aimbot target loses HP.
     hit_effect_enabled = false,
+    hit_effect_style = "Fallen Combo",
     hit_effect_size = 38,
     hit_effect_h = 0.58,
     hit_effect_s = 0.55,
@@ -396,6 +397,10 @@ local A = {
     bullet_tracer_style_open = false,
     bullet_tracer_style_anim = 0,
     bullet_tracer_style_last_t = nil,
+
+    hit_effect_style_open = false,
+    hit_effect_style_anim = 0,
+    hit_effect_style_last_t = nil,
 
     -- Armor ESP runtime/UI state.
     armor_mode_dropdown_open = false,
@@ -8317,9 +8322,13 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     spark_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2728.png",
     star_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2b50.png",
     flash_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a5.png",
+    ring_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4ab.png",
+    smoke_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a8.png",
     spark = nil,
     star = nil,
     flash = nil,
+    ring = nil,
+    smoke = nil,
 }
 
 function FALLEN_BT_STYLE_INDEX()
@@ -8329,17 +8338,22 @@ function FALLEN_BT_STYLE_INDEX()
             or "Neon"
         )
 
-    -- Backwards compatibility with configs from the previous build.
+    -- Backwards compatibility with older configs.
     if style == "Real Neon" then
         S.bullet_tracer_style = "Neon"
         style = "Neon"
     elseif style == "Wave Lightning" then
         S.bullet_tracer_style = "Lightning"
         style = "Lightning"
+    elseif style == "Gradient Laser" then
+        S.bullet_tracer_style = "Rainbow"
+        style = "Rainbow"
     end
 
     if style == "Lightning" then
         return 1
+    elseif style == "Rainbow" then
+        return 2
     end
 
     if style ~= "Neon" then
@@ -8819,7 +8833,73 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
     local style =
         FALLEN_BT_STYLE_INDEX()
 
-    if style == 1 then
+    if style == 2 then
+        -- Rainbow: animated full-spectrum gradient along the tracer.
+        local segs = 36
+
+        for i = 1, segs do
+            local u0 =
+                (i - 1) / segs
+
+            local u1 =
+                i / segs
+
+            local x0 =
+                sx + (ex - sx) * u0
+
+            local y0 =
+                sy + (ey - sy) * u0
+
+            local x1 =
+                sx + (ex - sx) * u1
+
+            local y1 =
+                sy + (ey - sy) * u1
+
+            local hue =
+                (
+                    tick() * 0.20
+                    + u1 * 0.92
+                    + ((tr.seed or 1) % 97) / 97
+                ) % 1
+
+            local rr, gg, bb =
+                hsv_to_rgb(
+                    hue,
+                    0.88,
+                    1
+                )
+
+            DrawLine(
+                x0, y0, x1, y1,
+                rr, gg, bb,
+                alpha * 0.12,
+                thick + 14
+            )
+
+            DrawLine(
+                x0, y0, x1, y1,
+                rr, gg, bb,
+                alpha * 0.32,
+                thick + 7
+            )
+
+            DrawLine(
+                x0, y0, x1, y1,
+                rr, gg, bb,
+                alpha * 0.96,
+                thick + 1.5
+            )
+
+            DrawLine(
+                x0, y0, x1, y1,
+                1, 1, 1,
+                alpha * 0.24,
+                1
+            )
+        end
+
+    elseif style == 1 then
         -- Lightning = the old Wave Lightning style.
         local segs = 42
         local dx = ex - sx
@@ -9022,6 +9102,424 @@ function FALLEN_HITFX_COLOR()
         )
 end
 
+function FALLEN_HITFX_STYLE_INDEX()
+    local style =
+        tostring(
+            S.hit_effect_style
+            or "Fallen Combo"
+        )
+
+    if style == "Tesla Boom" then return 0 end
+    if style == "Fallen Spark" then return 1 end
+    if style == "Fallen SmokeRing" then return 2 end
+    if style == "Fallen particles.js" then return 3 end
+
+    if style ~= "Fallen Combo" then
+        S.hit_effect_style = "Fallen Combo"
+    end
+
+    return 4
+end
+
+function FALLEN_HITFX_DRAW_IMAGE(
+    handle,
+    x,
+    y,
+    w,
+    h,
+    r,
+    g,
+    b,
+    a
+)
+    if not handle
+        or type(DrawImage) ~= "function"
+        or a <= 0.002
+    then
+        return
+    end
+
+    DrawImage(
+        handle,
+        x,
+        y,
+        w,
+        h,
+        r,
+        g,
+        b,
+        a,
+        math.max(
+            2,
+            math.min(w, h) * 0.08
+        )
+    )
+end
+
+function FALLEN_HITFX_IMAGE(
+    key,
+    url
+)
+    return
+        FALLEN_BT_IMAGE_GET(
+            key,
+            url
+        )
+end
+
+function FALLEN_HITFX_RAND(seed)
+    local x =
+        math.sin(
+            (seed or 1) * 12.9898
+            + 78.233
+        ) * 43758.5453
+
+    return x - math.floor(x)
+end
+
+function FALLEN_HITFX_DRAW_FALLEN(
+    kind,
+    sx,
+    sy,
+    size,
+    t,
+    alpha,
+    col,
+    seed
+)
+    local out =
+        1
+        - (1 - t) * (1 - t)
+
+    local fade =
+        math.max(
+            0,
+            1 - t * t
+        )
+
+    local flash =
+        FALLEN_HITFX_IMAGE(
+            "flash",
+            FALLEN_BT_IMAGE.flash_url
+        )
+
+    local ring =
+        FALLEN_HITFX_IMAGE(
+            "ring",
+            FALLEN_BT_IMAGE.ring_url
+        )
+
+    local spark =
+        FALLEN_HITFX_IMAGE(
+            "spark",
+            FALLEN_BT_IMAGE.spark_url
+        )
+
+    local smoke =
+        FALLEN_HITFX_IMAGE(
+            "smoke",
+            FALLEN_BT_IMAGE.smoke_url
+        )
+
+    local star =
+        FALLEN_HITFX_IMAGE(
+            "star",
+            FALLEN_BT_IMAGE.star_url
+        )
+
+    if kind == 1 then
+        -- Fallen Spark.
+        local s =
+            size
+            * (
+                1.25
+                + 2.35 * out
+            )
+
+        local a =
+            alpha
+            * math.max(
+                0,
+                1 - t * 2.6
+            )
+
+        FALLEN_HITFX_DRAW_IMAGE(
+            flash,
+            sx - s * 0.5,
+            sy - s * 0.5,
+            s,
+            s,
+            1,
+            1,
+            1,
+            a
+        )
+
+        local s2 =
+            size
+            * (
+                0.90
+                + 1.55 * out
+            )
+
+        FALLEN_HITFX_DRAW_IMAGE(
+            spark,
+            sx - s2 * 0.5,
+            sy - s2 * 0.5,
+            s2,
+            s2,
+            col[1],
+            col[2],
+            col[3],
+            alpha * 0.78 * fade
+        )
+
+    elseif kind == 2 then
+        -- Fallen SmokeRing.
+        local s =
+            size
+            * (
+                0.95
+                + 3.55 * out
+            )
+
+        FALLEN_HITFX_DRAW_IMAGE(
+            ring,
+            sx - s * 0.5,
+            sy - s * 0.5,
+            s,
+            s,
+            col[1],
+            col[2],
+            col[3],
+            alpha * 0.88 * fade
+        )
+
+        local s2 =
+            size
+            * (
+                1.15
+                + 4.10 * out
+            )
+
+        FALLEN_HITFX_DRAW_IMAGE(
+            smoke or ring,
+            sx - s2 * 0.5,
+            sy - s2 * 0.5,
+            s2,
+            s2,
+            0.86,
+            0.92,
+            1.0,
+            alpha * 0.28 * fade
+        )
+
+    elseif kind == 3 then
+        -- Fallen particles.js.
+        for k = 1, 6 do
+            local sd =
+                (seed or 1)
+                + k * 19.73
+
+            local ang =
+                (k / 6)
+                * math.pi
+                * 2
+                + math.sin(sd) * 0.45
+
+            local spread =
+                size
+                * (
+                    0.40
+                    + 2.25 * out
+                )
+                * (
+                    0.70
+                    + FALLEN_HITFX_RAND(sd + 2) * 0.75
+                )
+
+            local px =
+                sx + math.cos(ang) * spread
+
+            local py =
+                sy + math.sin(ang) * spread
+
+            local ps =
+                size
+                * (
+                    0.65
+                    + FALLEN_HITFX_RAND(sd + 4) * 0.65
+                )
+
+            local rr = col[1]
+            local gg = col[2]
+            local bb = col[3]
+
+            if k % 2 == 1 then
+                rr, gg, bb =
+                    1.0, 0.22, 0.86
+            end
+
+            FALLEN_HITFX_DRAW_IMAGE(
+                spark,
+                px - ps * 0.5,
+                py - ps * 0.5,
+                ps,
+                ps,
+                rr,
+                gg,
+                bb,
+                alpha * 0.92 * fade
+            )
+        end
+
+        local s =
+            size
+            * (
+                0.45
+                + 1.30 * out
+            )
+
+        FALLEN_HITFX_DRAW_IMAGE(
+            star or spark,
+            sx - s * 0.5,
+            sy - s * 0.5,
+            s,
+            s,
+            1,
+            1,
+            1,
+            alpha * 0.62 * fade
+        )
+
+    else
+        -- Fallen Combo = Spark + SmokeRing + particles.
+        local s =
+            size
+            * (
+                0.75
+                + 2.35 * out
+            )
+
+        FALLEN_HITFX_DRAW_IMAGE(
+            flash,
+            sx - s * 0.5,
+            sy - s * 0.5,
+            s,
+            s,
+            1,
+            1,
+            1,
+            alpha
+                * math.max(
+                    0,
+                    1 - t * 4.5
+                )
+        )
+
+        s =
+            size
+            * (
+                0.62
+                + 3.25 * out
+            )
+
+        FALLEN_HITFX_DRAW_IMAGE(
+            ring,
+            sx - s * 0.5,
+            sy - s * 0.5,
+            s,
+            s,
+            col[1],
+            col[2],
+            col[3],
+            alpha * 0.82 * fade
+        )
+
+        local smoke_s =
+            size
+            * (
+                1.05
+                + 3.95 * out
+            )
+
+        FALLEN_HITFX_DRAW_IMAGE(
+            smoke or ring,
+            sx - smoke_s * 0.5,
+            sy - smoke_s * 0.5,
+            smoke_s,
+            smoke_s,
+            0.74,
+            0.90,
+            1.0,
+            alpha * 0.16 * fade
+        )
+
+        for k = 1, 10 do
+            local sd =
+                (seed or 1)
+                + k * 13.37
+
+            local ang =
+                (k / 10)
+                * math.pi
+                * 2
+                + math.sin(sd) * 0.30
+
+            local spread =
+                size
+                * (
+                    0.35
+                    + 2.20 * out
+                )
+                * (
+                    0.55
+                    + FALLEN_HITFX_RAND(sd + 2) * 0.95
+                )
+
+            local px =
+                sx + math.cos(ang) * spread
+
+            local py =
+                sy + math.sin(ang) * spread
+
+            local ps =
+                size
+                * (
+                    0.28
+                    + FALLEN_HITFX_RAND(sd + 4) * 0.62
+                )
+
+            local rr = col[1]
+            local gg = col[2]
+            local bb = col[3]
+
+            if k % 2 == 1 then
+                rr, gg, bb =
+                    1.0, 0.22, 0.86
+            end
+
+            FALLEN_HITFX_DRAW_IMAGE(
+                spark,
+                px - ps * 0.5,
+                py - ps * 0.5,
+                ps,
+                ps,
+                rr,
+                gg,
+                bb,
+                alpha
+                    * (
+                        0.42
+                        + 0.38
+                        * FALLEN_HITFX_RAND(sd + 6)
+                    )
+                    * fade
+            )
+        end
+    end
+end
+
 function FALLEN_HITFX_TARGET_KEY()
     return
         FAP.current_target_addr
@@ -9148,124 +9646,98 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
             96
         )
 
-    -- Source-style visual hit: white flash + expanding ring + sparks.
-    if type(DrawCircle) == "function" then
-        local flash =
-            math.max(
-                0,
-                1 - t * 2.6
-            )
+    local style =
+        FALLEN_HITFX_STYLE_INDEX()
 
-        DrawCircle(
-            s.X,
-            s.Y,
-            size
-                * (
-                    0.12
-                    + flash * 0.16
-                ),
-            1,
-            1,
-            1,
-            alpha * 0.90,
-            2
-        )
+    if style == 0 then
+        -- Tesla Boom: jagged electric burst from the original style 3.
+        if type(DrawLine) == "function" then
+            for k = 1, 12 do
+                local ang =
+                    ((k / 12) * math.pi * 2)
+                    + math.sin(tick() * 14 + k) * 0.16
 
-        DrawCircle(
-            s.X,
-            s.Y,
-            size
-                * (
-                    0.22
-                    + t * 0.90
-                ),
-            col[1],
-            col[2],
-            col[3],
-            alpha * 0.42,
-            1.5
-        )
-
-        DrawCircle(
-            s.X,
-            s.Y,
-            size
-                * (
-                    0.10
-                    + t * 0.45
-                ),
-            col[1],
-            col[2],
-            col[3],
-            alpha * 0.22,
-            3.5
-        )
-    end
-
-    if type(DrawLine) == "function" then
-        for k = 1, 16 do
-            local seed =
-                (hit.seed or 1)
-                + k * 12.989
-
-            local ang =
-                (k / 16)
-                * math.pi
-                * 2
-                + math.sin(seed) * 0.22
-
-            local speed =
-                0.42
-                + 0.58
-                * math.abs(
-                    math.sin(
-                        seed * 1.71
+                local len =
+                    size
+                    * (
+                        0.18
+                        + 0.55
+                        * math.abs(
+                            math.sin(
+                                (hit.seed or 1)
+                                + k * 1.33
+                            )
+                        )
                     )
+
+                local midx =
+                    s.X
+                    + math.cos(ang) * len * 0.55
+                    + math.sin(k * 2.1 + (hit.seed or 1)) * 2
+
+                local midy =
+                    s.Y
+                    + math.sin(ang) * len * 0.55
+                    + math.cos(k * 1.7 + (hit.seed or 1)) * 2
+
+                local ex =
+                    s.X + math.cos(ang) * len
+
+                local ey =
+                    s.Y + math.sin(ang) * len
+
+                DrawLine(
+                    s.X,
+                    s.Y,
+                    midx,
+                    midy,
+                    col[1],
+                    col[2],
+                    col[3],
+                    alpha * 0.50,
+                    2.2
                 )
 
-            local len =
-                size
-                * (
-                    0.18
-                    + t * 1.05
+                DrawLine(
+                    midx,
+                    midy,
+                    ex,
+                    ey,
+                    col[1],
+                    col[2],
+                    col[3],
+                    alpha * 0.78,
+                    1.2
                 )
-                * speed
+            end
+        end
 
-            local tail =
-                size
-                * (
-                    0.08
-                    + 0.14 * (1 - t)
-                )
-                * speed
-
-            DrawLine(
-                s.X
-                    + math.cos(ang)
-                    * (len - tail),
-                s.Y
-                    + math.sin(ang)
-                    * (len - tail),
-                s.X
-                    + math.cos(ang)
-                    * len,
-                s.Y
-                    + math.sin(ang)
-                    * len,
+        if type(DrawCircle) == "function" then
+            DrawCircle(
+                s.X,
+                s.Y,
+                2 + size * 0.03,
                 col[1],
                 col[2],
                 col[3],
-                alpha
-                    * (
-                        0.35
-                        + 0.40 * speed
-                    ),
-                1.2
+                alpha * 0.92,
+                1.4
             )
         end
+
+    else
+        FALLEN_HITFX_DRAW_FALLEN(
+            style,
+            s.X,
+            s.Y,
+            size,
+            t,
+            alpha,
+            col,
+            hit.seed
+        )
     end
 end
-
 function FALLEN_HITFX_DRAW()
     if type(FALLEN_HITFX.items) ~= "table" then
         FALLEN_HITFX.items = {}
@@ -18614,6 +19086,7 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
     local options = {
         "Neon",
         "Lightning",
+        "Rainbow",
     }
 
     local item_h = 27
@@ -18741,6 +19214,206 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
     return panel_hot
 end
 
+function FALLEN_HITFX_STYLE_DROPDOWN_STEP()
+    local now = tick()
+
+    if A.hit_effect_style_last_t == nil then
+        A.hit_effect_style_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.hit_effect_style_last_t,
+            0,
+            0.05
+        )
+
+    A.hit_effect_style_last_t = now
+
+    local target =
+        A.hit_effect_style_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.hit_effect_style_anim or 0)
+        and 16
+        or 12
+
+    A.hit_effect_style_anim =
+        exp_chase(
+            A.hit_effect_style_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if math.abs(
+        (A.hit_effect_style_anim or 0)
+        - target
+    ) < 0.0015
+    then
+        A.hit_effect_style_anim = target
+    end
+
+    return
+        clamp(
+            A.hit_effect_style_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    local anim =
+        FALLEN_HITFX_STYLE_DROPDOWN_STEP()
+
+    if anim <= 0.004
+        and not A.hit_effect_style_open
+    then
+        return false
+    end
+
+    local options = {
+        "Tesla Boom",
+        "Fallen Spark",
+        "Fallen SmokeRing",
+        "Fallen particles.js",
+        "Fallen Combo",
+    }
+
+    local item_h = 27
+    local full_h =
+        #options * item_h
+
+    local visible_h =
+        full_h
+        * ease_out_cubic(anim)
+
+    local panel_h =
+        math.max(
+            2,
+            visible_h
+        )
+
+    FALLEN_POPUP_GLOW(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        0.9
+    )
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        { 0.070, 0.074, 0.087, 1 }
+    )
+
+    local panel_hot =
+        hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            panel_h
+        )
+
+    for i, option in ipairs(options) do
+        local iy =
+            y + (i - 1) * item_h
+
+        local reveal =
+            clamp(
+                (
+                    visible_h
+                    - (i - 1) * item_h
+                )
+                / item_h,
+                0,
+                1
+            )
+
+        if reveal > 0.12 then
+            local item_hot =
+                reveal > 0.92
+                and hover(
+                    mx,
+                    my,
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4
+                )
+
+            if item_hot then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4,
+                    5,
+                    { 0.105, 0.111, 0.132, 1 }
+                )
+            end
+
+            local selected =
+                tostring(
+                    S.hit_effect_style
+                    or "Fallen Combo"
+                ) == option
+
+            if selected then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    3,
+                    item_h - 4,
+                    1,
+                    C.accent
+                )
+            end
+
+            text(
+                x + 12,
+                iy + 8,
+                option,
+                FALLEN_HOVER_TEXT(
+                    "hitfx_style:"
+                    .. tostring(option),
+                    item_hot,
+                    selected
+                        and C.text
+                        or C.text_dim
+                )
+            )
+
+            if clicked
+                and item_hot
+                and A.hit_effect_style_open
+            then
+                S.hit_effect_style = option
+                A.hit_effect_style_open = false
+                return true
+            end
+        end
+    end
+
+    return panel_hot
+end
+
 function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     mx,
     my,
@@ -18758,6 +19431,8 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     local dropdown_open =
         A.bullet_tracer_style_open
         or (A.bullet_tracer_style_anim or 0) > 0.02
+        or A.hit_effect_style_open
+        or (A.hit_effect_style_anim or 0) > 0.02
 
     local controls_clicked =
         clicked
@@ -18861,7 +19536,14 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
                 or S.bullet_tracer_style == "Wave Lightning"
             )
             and "Lightning"
-            or "Neon"
+            or (
+                (
+                    S.bullet_tracer_style == "Rainbow"
+                    or S.bullet_tracer_style == "Gradient Laser"
+                )
+                and "Rainbow"
+                or "Neon"
+            )
         ),
         FALLEN_HOVER_TEXT(
             "tracer_style_value",
@@ -18885,6 +19567,10 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     then
         A.bullet_tracer_style_open =
             not A.bullet_tracer_style_open
+
+        if A.bullet_tracer_style_open then
+            A.hit_effect_style_open = false
+        end
 
         numeric_stop(true)
     end
@@ -19064,7 +19750,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         right_x,
         y + 25,
         right_w,
-        173,
+        214,
         11
     )
 
@@ -19089,8 +19775,111 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         1
     )
 
-    local hit_color_y =
+    local hit_style_y =
         y + 73
+
+    local hit_style_box_w =
+        math.min(
+            168,
+            right_w * 0.60
+        )
+
+    local hit_style_box_x =
+        right_x
+        + right_w
+        - hit_style_box_w
+        - 12
+
+    local hit_style_box_y =
+        hit_style_y + 8
+
+    local hit_style_box_hot =
+        hover(
+            mx,
+            my,
+            hit_style_box_x,
+            hit_style_box_y,
+            hit_style_box_w,
+            25
+        )
+
+    text(
+        right_x + 13,
+        hit_style_y + 14,
+        "Hit Effect Style",
+        FALLEN_HOVER_TEXT(
+            "hitfx_style_label",
+            row_hover(
+                mx,
+                my,
+                right_x,
+                hit_style_y,
+                right_w,
+                41
+            ),
+            C.text
+        )
+    )
+
+    rounded_fill(
+        hit_style_box_x,
+        hit_style_box_y,
+        hit_style_box_w,
+        25,
+        6,
+        hit_style_box_hot
+            and { 0.110, 0.115, 0.135, 1 }
+            or C.toggle_off
+    )
+
+    text(
+        hit_style_box_x + 10,
+        hit_style_box_y + 7,
+        tostring(
+            S.hit_effect_style
+            or "Fallen Combo"
+        ),
+        FALLEN_HOVER_TEXT(
+            "hitfx_style_value",
+            hit_style_box_hot,
+            C.text
+        )
+    )
+
+    text(
+        hit_style_box_x + hit_style_box_w - 18,
+        hit_style_box_y + 7,
+        A.hit_effect_style_open
+            and "^"
+            or "v",
+        C.text_dim
+    )
+
+    if clicked
+        and hit_style_box_hot
+        and not A.world_color_picker_open
+    then
+        A.hit_effect_style_open =
+            not A.hit_effect_style_open
+
+        if A.hit_effect_style_open then
+            A.bullet_tracer_style_open = false
+        end
+
+        numeric_stop(true)
+    end
+
+    line(
+        right_x + 12,
+        y + 113,
+        right_x + right_w - 12,
+        y + 113,
+        C.divider,
+        1
+    )
+
+    local hit_color_y =
+        y + 114
 
     local hit_color_hot =
         row_hover(
@@ -19186,9 +19975,9 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
 
     line(
         right_x + 12,
-        y + 113,
+        y + 154,
         right_x + right_w - 12,
-        y + 113,
+        y + 154,
         C.divider,
         1
     )
@@ -19199,7 +19988,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         controls_clicked,
         lmb,
         right_x,
-        y + 114,
+        y + 155,
         right_w,
         "Hit Effect Size",
         "hit_effect_size",
@@ -19226,6 +20015,26 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         and not A.world_color_picker_open
     then
         A.bullet_tracer_style_open = false
+    end
+
+    local hit_dropdown_hot =
+        FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
+            mx,
+            my,
+            clicked
+                and not A.world_color_picker_open,
+            hit_style_box_x,
+            hit_style_box_y + 30,
+            hit_style_box_w
+        )
+
+    if clicked
+        and A.hit_effect_style_open
+        and not hit_style_box_hot
+        and not hit_dropdown_hot
+        and not A.world_color_picker_open
+    then
+        A.hit_effect_style_open = false
     end
 end
 
