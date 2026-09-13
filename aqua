@@ -6086,21 +6086,38 @@ local function draw_visuals_page(
             + 4
             + ((i - 1) - left_scroll) * base_row_h
 
-        if by + base_row_h > base_card_y + 2
-            and by < base_card_y + base_card_h - 2
-        then
-            local cfg = WORLD_BASE_ITEMS[i]
+        local row_alpha =
+            world_base_row_clip_alpha(
+                by,
+                base_card_y,
+                base_card_h
+            )
+
+        if row_alpha > 0.008 then
+            local cfg =
+                WORLD_BASE_ITEMS[i]
 
             if cfg then
+                local old_alpha =
+                    MENU_RENDER_ALPHA
+
+                MENU_RENDER_ALPHA =
+                    old_alpha
+                    * row_alpha
+
                 world_base_compact_row(
                     mx,
                     my,
-                    left_row_clicked,
+                    left_row_clicked
+                        and row_alpha > 0.72,
                     left_x,
                     by,
                     col_w,
                     cfg
                 )
+
+                MENU_RENDER_ALPHA =
+                    old_alpha
             end
         end
     end
@@ -6111,157 +6128,47 @@ local function draw_visuals_page(
             + 4
             + ((i - 1) - right_scroll) * base_row_h
 
-        if by + base_row_h > base_card_y + 2
-            and by < base_card_y + base_card_h - 2
-        then
+        local row_alpha =
+            world_base_row_clip_alpha(
+                by,
+                base_card_y,
+                base_card_h
+            )
+
+        if row_alpha > 0.008 then
             local cfg =
                 WORLD_BASE_ITEMS[
                     left_total + i
                 ]
 
             if cfg then
+                local old_alpha =
+                    MENU_RENDER_ALPHA
+
+                MENU_RENDER_ALPHA =
+                    old_alpha
+                    * row_alpha
+
                 world_base_compact_row(
                     mx,
                     my,
-                    right_row_clicked,
+                    right_row_clicked
+                        and row_alpha > 0.72,
                     right_x,
                     by,
                     col_w,
                     cfg
                 )
+
+                MENU_RENDER_ALPHA =
+                    old_alpha
             end
         end
     end
 
-    -- Manual viewport clipping.
-    -- Drawing in this API has no clip/scissor function, so fractional
-    -- scrolling otherwise lets a partial row leak above/below the card.
-    -- Hard top clipping for smooth fractional scrolling.
-    -- Cover EVERYTHING above the card first.
-    local clip_top_y =
-        base_section_y - 2
-
-    local clip_top_h =
-        math.max(
-            0,
-            base_card_y - clip_top_y
-        )
-
-    if clip_top_h > 0 then
-        fill(
-            left_x,
-            clip_top_y,
-            col_w,
-            clip_top_h,
-            C.content
-        )
-
-        fill(
-            right_x,
-            clip_top_y,
-            col_w,
-            clip_top_h,
-            C.content
-        )
-    end
-
-    -- Final top-seam cap.
-    -- In Glass mode C.content is translucent, so the old mask could still
-    -- let a few pixels of the previous scrolling row show through.
-    -- Use a very narrow fully-opaque strip immediately ABOVE the card.
-    -- It does not touch the first real row or the rounded card corners.
-    fill(
-        left_x + 8,
-        base_card_y - 10,
-        col_w - 16,
-        10,
-        {
-            C.content[1],
-            C.content[2],
-            C.content[3],
-            1
-        }
-    )
-
-    fill(
-        right_x + 8,
-        base_card_y - 10,
-        col_w - 16,
-        10,
-        {
-            C.content[1],
-            C.content[2],
-            C.content[3],
-            1
-        }
-    )
-
-    -- Small inner guard, kept below all normal row text/swatch content.
-    fill(
-        left_x + 10,
-        base_card_y + 1,
-        col_w - 20,
-        9,
-        {
-            C.card[1],
-            C.card[2],
-            C.card[3],
-            1
-        }
-    )
-
-    fill(
-        right_x + 10,
-        base_card_y + 1,
-        col_w - 20,
-        9,
-        {
-            C.card[1],
-            C.card[2],
-            C.card[3],
-            1
-        }
-    )
-
-    local clip_bottom_y =
-        base_card_y
-        + base_card_h
-
-    local menu_content_bottom =
-        cy + 618
-
-    local clip_bottom_h =
-        math.max(
-            0,
-            menu_content_bottom
-            - clip_bottom_y
-        )
-
-    if clip_bottom_h > 0 then
-        fill(
-            left_x,
-            clip_bottom_y,
-            col_w,
-            clip_bottom_h,
-            C.content
-        )
-
-        fill(
-            right_x,
-            clip_bottom_y,
-            col_w,
-            clip_bottom_h,
-            C.content
-        )
-    end
-
-    -- Redraw the section title because the mask intentionally covers
-    -- the complete area behind it.
-    section_title(
-        cx,
-        base_section_y,
-        "Base / House ESP"
-    )
+    -- Rows are virtually clipped by alpha fading before they reach
+    -- the card edges. No opaque/translucent masks are drawn here, which
+    -- keeps both Default and Glass styles clean.
 
     -- Render settings first, then the reusable color picker on top.
     draw_world_settings_popup(
@@ -7922,6 +7829,57 @@ function world_draw_tunable_box3d(pos, cfg, col, alpha)
     end
 
     return false
+end
+
+function world_base_row_clip_alpha(
+    row_y,
+    card_y,
+    card_h
+)
+    local center =
+        row_y + 20.5
+
+    local top_full =
+        card_y + 25
+
+    local top_zero =
+        card_y + 7
+
+    local bottom_full =
+        card_y + card_h - 25
+
+    local bottom_zero =
+        card_y + card_h - 7
+
+    local top_a =
+        clamp(
+            (center - top_zero)
+            / math.max(
+                1,
+                top_full - top_zero
+            ),
+            0,
+            1
+        )
+
+    local bottom_a =
+        clamp(
+            (bottom_zero - center)
+            / math.max(
+                1,
+                bottom_zero - bottom_full
+            ),
+            0,
+            1
+        )
+
+    return
+        smooth01(
+            math.min(
+                top_a,
+                bottom_a
+            )
+        )
 end
 
 function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
