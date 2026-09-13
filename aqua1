@@ -78,6 +78,7 @@ local S = _G.FallenLua_Menu
 local defaults = {
     visible = true,
     tab = 1,
+    visuals_subtab = 1, -- 1 = World, 2 = Armor
     anim = 1,
 
     -- Aimbot page
@@ -380,6 +381,11 @@ local A = {
     sidebar_indicator_y = nil,
     sidebar_indicator_last_t = nil,
     sidebar_tab_anim = {},
+
+    -- RMB-expandable nested Visuals tabs.
+    visuals_expanded = false,
+    visuals_expand_anim = 0,
+    visuals_expand_last_t = nil,
 
     -- Shared 2-second text hover animation state.
     text_hover_anim = {},
@@ -2172,6 +2178,45 @@ local function icon_world(x, y, c)
     line(x + 9.5, y + 10, x + 13, y + 6.8, c, 1.1)
 end
 
+function FALLEN_ICON_GLOBE(x, y, c)
+    local cx = x + 8
+    local cy = y + 8
+    local r = 6
+
+    circle(cx, cy, r, c, 1.15)
+
+    -- Equator / meridian.
+    line(cx - 5, cy, cx + 5, cy, c, 1.0)
+    line(cx, cy - 5.5, cx, cy + 5.5, c, 1.0)
+
+    -- Simple curved-longitude impression.
+    line(cx - 3.6, cy - 4.3, cx - 1.8, cy, c, 0.9)
+    line(cx - 1.8, cy, cx - 3.6, cy + 4.3, c, 0.9)
+
+    line(cx + 3.6, cy - 4.3, cx + 1.8, cy, c, 0.9)
+    line(cx + 1.8, cy, cx + 3.6, cy + 4.3, c, 0.9)
+end
+
+function FALLEN_ICON_ARMOR(x, y, c)
+    -- Pixel-ish chestplate silhouette based on the reference image.
+    -- Drawn with lines so it scales cleanly with the menu.
+    line(x + 3,  y + 2,  x + 6,  y + 2,  c, 1.8)
+    line(x + 6,  y + 2,  x + 7,  y + 5,  c, 1.8)
+    line(x + 7,  y + 5,  x + 9,  y + 5,  c, 1.8)
+    line(x + 9,  y + 5,  x + 10, y + 2,  c, 1.8)
+    line(x + 10, y + 2,  x + 13, y + 2,  c, 1.8)
+
+    line(x + 3,  y + 2,  x + 1,  y + 5,  c, 1.8)
+    line(x + 1,  y + 5,  x + 3,  y + 7,  c, 1.8)
+    line(x + 3,  y + 7,  x + 4,  y + 14, c, 1.8)
+
+    line(x + 13, y + 2,  x + 15, y + 5,  c, 1.8)
+    line(x + 15, y + 5,  x + 13, y + 7,  c, 1.8)
+    line(x + 13, y + 7,  x + 12, y + 14, c, 1.8)
+
+    line(x + 4,  y + 14, x + 12, y + 14, c, 1.8)
+end
+
 local ICONS = {
     icon_aim,
     icon_world,
@@ -2183,7 +2228,7 @@ local ICONS = {
 
 local TABS = {
     { group = "AIMBOT", label = "Aimbot" },
-    { group = "VISUALS", label = "World" },
+    { group = "VISUALS", label = "Visuals" },
 }
 
 local function sidebar_tab(mx, my, clicked, x, y, index)
@@ -7704,7 +7749,7 @@ local function fap_draw_fov()
             col[1],
             col[2],
             col[3],
-            0.50
+            col[4] * 0.50
         )
     end
 
@@ -13587,16 +13632,287 @@ hooks.on_render(function()
     )
 
     text(wx + 22, wy + 159, "VISUALS", C.text_faint)
+
+    local visuals_parent_x =
+        wx + 10
+
+    local visuals_parent_y =
+        wy + 179
+
+    local visuals_parent_hot =
+        hover(
+            mx,
+            my,
+            visuals_parent_x,
+            visuals_parent_y,
+            152,
+            35
+        )
+
     sidebar_tab(
         mx,
         my,
         clicked
             and not A.world_color_picker_open
             and (A.world_color_picker_anim or 0) <= 0.02,
-        wx + 10,
-        wy + 179,
+        visuals_parent_x,
+        visuals_parent_y,
         2
     )
+
+    -- RMB on Visuals expands/collapses World + Armor.
+    if rmb_clicked
+        and visuals_parent_hot
+        and not A.world_color_picker_open
+        and (A.world_color_picker_anim or 0) <= 0.02
+    then
+        A.visuals_expanded =
+            not A.visuals_expanded
+
+        S.tab = 2
+        S.anim = 0
+
+        A.aim_settings_open = false
+        A.fov_settings_open = false
+        A.aim_part_dropdown_open = false
+        A.world_settings_open = false
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
+        numeric_stop(true)
+        aim_bind_cancel()
+    end
+
+    local visuals_now =
+        tick()
+
+    if A.visuals_expand_last_t == nil then
+        A.visuals_expand_last_t =
+            visuals_now
+    end
+
+    local visuals_dt =
+        clamp(
+            visuals_now
+            - A.visuals_expand_last_t,
+            0,
+            0.05
+        )
+
+    A.visuals_expand_last_t =
+        visuals_now
+
+    local visuals_target =
+        A.visuals_expanded
+        and 1
+        or 0
+
+    A.visuals_expand_anim =
+        exp_chase(
+            A.visuals_expand_anim or 0,
+            visuals_target,
+            13,
+            visuals_dt
+        )
+
+    local visuals_expand =
+        clamp(
+            A.visuals_expand_anim or 0,
+            0,
+            1
+        )
+
+    if visuals_expand > 0.008 then
+        local old_sidebar_alpha =
+            MENU_RENDER_ALPHA
+
+        MENU_RENDER_ALPHA =
+            old_sidebar_alpha
+            * smooth01(visuals_expand)
+
+        local child_x =
+            wx + 26
+
+        local child_w =
+            136
+
+        local child_h =
+            31
+
+        local collapse_shift =
+            (1 - visuals_expand)
+            * 15
+
+        local world_y =
+            wy + 219
+            - collapse_shift
+
+        local armor_y =
+            wy + 252
+            - collapse_shift
+
+        local world_hot =
+            hover(
+                mx,
+                my,
+                child_x,
+                world_y,
+                child_w,
+                child_h
+            )
+
+        local armor_hot =
+            hover(
+                mx,
+                my,
+                child_x,
+                armor_y,
+                child_w,
+                child_h
+            )
+
+        local child_interactive =
+            A.visuals_expanded
+            and visuals_expand > 0.92
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02
+
+        -- World child.
+        if S.tab == 2
+            and (tonumber(S.visuals_subtab) or 1) == 1
+        then
+            rounded_fill(
+                child_x,
+                world_y,
+                child_w,
+                child_h,
+                7,
+                alpha(C.selected, 0.88)
+            )
+        elseif world_hot then
+            rounded_fill(
+                child_x,
+                world_y,
+                child_w,
+                child_h,
+                7,
+                alpha(C.card_hover, 0.55)
+            )
+        end
+
+        local world_col =
+            FALLEN_HOVER_TEXT(
+                "sidebar_visual_world",
+                world_hot,
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 1) == 1
+                )
+                    and C.text
+                    or C.text_dim
+            )
+
+        FALLEN_ICON_GLOBE(
+            child_x + 10,
+            world_y + 7,
+            (
+                S.tab == 2
+                and (tonumber(S.visuals_subtab) or 1) == 1
+            )
+                and C.accent
+                or C.text_dim
+        )
+
+        text(
+            child_x + 36,
+            world_y + 9,
+            "World",
+            world_col
+        )
+
+        -- Armor child.
+        if S.tab == 2
+            and (tonumber(S.visuals_subtab) or 1) == 2
+        then
+            rounded_fill(
+                child_x,
+                armor_y,
+                child_w,
+                child_h,
+                7,
+                alpha(C.selected, 0.88)
+            )
+        elseif armor_hot then
+            rounded_fill(
+                child_x,
+                armor_y,
+                child_w,
+                child_h,
+                7,
+                alpha(C.card_hover, 0.55)
+            )
+        end
+
+        local armor_col =
+            FALLEN_HOVER_TEXT(
+                "sidebar_visual_armor",
+                armor_hot,
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 1) == 2
+                )
+                    and C.text
+                    or C.text_dim
+            )
+
+        FALLEN_ICON_ARMOR(
+            child_x + 10,
+            armor_y + 7,
+            (
+                S.tab == 2
+                and (tonumber(S.visuals_subtab) or 1) == 2
+            )
+                and C.accent
+                or C.text_dim
+        )
+
+        text(
+            child_x + 36,
+            armor_y + 9,
+            "Armor",
+            armor_col
+        )
+
+        if child_interactive
+            and clicked
+        then
+            if world_hot then
+                S.tab = 2
+                S.visuals_subtab = 1
+                S.anim = 0
+
+                A.world_settings_open = false
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+                FALLEN_COLOR_INPUT_STOP(true)
+                numeric_stop(true)
+            elseif armor_hot then
+                S.tab = 2
+                S.visuals_subtab = 2
+                S.anim = 0
+
+                A.world_settings_open = false
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+                A.base_box_settings_open = false
+                FALLEN_COLOR_INPUT_STOP(true)
+                numeric_stop(true)
+            end
+        end
+
+        MENU_RENDER_ALPHA =
+            old_sidebar_alpha
+    end
 
     -- Sidebar footer: live Roblox avatar + username.
     update_profile()
@@ -13868,16 +14184,26 @@ hooks.on_render(function()
             page_w
         )
     elseif S.tab == 2 then
-        draw_visuals_page(
-            mx,
-            my,
-            page_clicked,
-            lmb,
-            page_rmb_clicked,
-            page_x,
-            page_y,
-            page_w
-        )
+        if (tonumber(S.visuals_subtab) or 1) == 2 then
+            -- Armor container. Content intentionally left clean for the
+            -- next Armor features.
+            section_title(
+                page_x,
+                page_y,
+                "Armor"
+            )
+        else
+            draw_visuals_page(
+                mx,
+                my,
+                page_clicked,
+                lmb,
+                page_rmb_clicked,
+                page_x,
+                page_y,
+                page_w
+            )
+        end
     end
 
     -- Config dropdown is rendered last so it always sits above page controls.
