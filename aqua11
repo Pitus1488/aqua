@@ -128,7 +128,6 @@ local defaults = {
     hit_effect_enabled = false,
     -- Temporarily fixed to Fallen Spark while we test hit registration.
     hit_effect_style = "Fallen Spark",
-    hit_effect_size = 12,
     hit_effect_h = 0.58,
     hit_effect_s = 0.55,
     hit_effect_v = 1.00,
@@ -8351,11 +8350,13 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     flash_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a5.png",
     ring_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4ab.png",
     smoke_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a8.png",
+    boom_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548823359545016411/nwy9966m3ZxyeZg2yY7qRfyMUHDmG1knvQlNHz9odq2zEWGUtjPVaqiCSKK-mNBmmSMdL6xi12PZs_eIdFviRo8Ir7vv7MvEIzyP_1.png?ex=6aa875a8&is=6aa72428&hm=9b596e1dd0db49ede18049cac09f2701f9ede3166bf14aec9300a7fac0c1d109&",
     spark = nil,
     star = nil,
     flash = nil,
     ring = nil,
     smoke = nil,
+    boom = nil,
 }
 
 function FALLEN_BT_STYLE_INDEX()
@@ -9119,11 +9120,21 @@ function FALLEN_HITFX_COLOR()
 end
 
 function FALLEN_HITFX_STYLE_INDEX()
-    if S.hit_effect_style ~= "Fallen Spark" then
+    local style =
+        tostring(
+            S.hit_effect_style
+            or "Fallen Spark"
+        )
+
+    if style == "Boom" then
+        return 1
+    end
+
+    if style ~= "Fallen Spark" then
         S.hit_effect_style = "Fallen Spark"
     end
 
-    return 1
+    return 0
 end
 
 function FALLEN_HITFX_DRAW_IMAGE(
@@ -9233,12 +9244,12 @@ function FALLEN_HITFX_DRAW_FALLEN(
         )
 
     if kind == 1 then
-        -- Fallen Spark.
+        -- Fallen Spark, compact version. Base is fixed at 32.
         local s =
             size
             * (
-                1.25
-                + 2.35 * out
+                0.72
+                + 0.48 * out
             )
 
         local a =
@@ -9263,8 +9274,8 @@ function FALLEN_HITFX_DRAW_FALLEN(
         local s2 =
             size
             * (
-                0.90
-                + 1.55 * out
+                0.62
+                + 0.40 * out
             )
 
         FALLEN_HITFX_DRAW_IMAGE(
@@ -9660,30 +9671,74 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
             1
         )
 
-    local alpha = 1 - t
-    local col = FALLEN_HITFX_COLOR()
-    alpha = alpha * (col[4] or 1)
+    local alpha =
+        1 - t
 
-    -- Smaller test effect.
-    local size =
-        clamp(
-            tonumber(S.hit_effect_size) or 12,
-            6,
-            32
+    local col =
+        FALLEN_HITFX_COLOR()
+
+    alpha =
+        alpha
+        * (col[4] or 1)
+
+    -- Fixed base size. No Hit Effect Size setting anymore.
+    local size = 32
+
+    local style =
+        FALLEN_HITFX_STYLE_INDEX()
+
+    if style == 1 then
+        -- Boom: exactly the PNG supplied by the user.
+        local boom =
+            FALLEN_HITFX_IMAGE(
+                "boom",
+                FALLEN_BT_IMAGE.boom_url
+            )
+
+        if boom then
+            local out =
+                1
+                - (1 - t)
+                * (1 - t)
+
+            local fade =
+                math.max(
+                    0,
+                    1 - t * t
+                )
+
+            -- Compact 32px-base pop: about 28 -> 42 px.
+            local draw_size =
+                size
+                * (
+                    0.88
+                    + 0.42 * out
+                )
+
+            FALLEN_HITFX_DRAW_IMAGE(
+                boom,
+                s.X - draw_size * 0.5,
+                s.Y - draw_size * 0.5,
+                draw_size,
+                draw_size,
+                1,
+                1,
+                1,
+                alpha * fade
+            )
+        end
+    else
+        FALLEN_HITFX_DRAW_FALLEN(
+            1,
+            s.X,
+            s.Y,
+            size,
+            t,
+            alpha,
+            col,
+            hit.seed
         )
-        * 0.72
-
-    -- Spark only for now.
-    FALLEN_HITFX_DRAW_FALLEN(
-        1,
-        s.X,
-        s.Y,
-        size,
-        t,
-        alpha,
-        col,
-        hit.seed
-    )
+    end
 end
 function FALLEN_HITFX_DRAW()
     if type(FALLEN_HITFX.items) ~= "table" then
@@ -19229,11 +19284,8 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
     end
 
     local options = {
-        "Tesla Boom",
         "Fallen Spark",
-        "Fallen SmokeRing",
-        "Fallen particles.js",
-        "Fallen Combo",
+        "Boom",
     }
 
     local item_h = 27
@@ -19378,6 +19430,8 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     local dropdown_open =
         A.bullet_tracer_style_open
         or (A.bullet_tracer_style_anim or 0) > 0.02
+        or A.hit_effect_style_open
+        or (A.hit_effect_style_anim or 0) > 0.02
 
 
     local controls_clicked =
@@ -19721,8 +19775,111 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         1
     )
 
-    local hit_color_y =
+    local hit_style_y =
         y + 73
+
+    local hit_style_box_w =
+        math.min(
+            164,
+            right_w * 0.60
+        )
+
+    local hit_style_box_x =
+        right_x
+        + right_w
+        - hit_style_box_w
+        - 12
+
+    local hit_style_box_y =
+        hit_style_y + 8
+
+    local hit_style_box_hot =
+        hover(
+            mx,
+            my,
+            hit_style_box_x,
+            hit_style_box_y,
+            hit_style_box_w,
+            25
+        )
+
+    text(
+        right_x + 13,
+        hit_style_y + 14,
+        "Hit Effect Style",
+        FALLEN_HOVER_TEXT(
+            "hitfx_style_label",
+            row_hover(
+                mx,
+                my,
+                right_x,
+                hit_style_y,
+                right_w,
+                41
+            ),
+            C.text
+        )
+    )
+
+    rounded_fill(
+        hit_style_box_x,
+        hit_style_box_y,
+        hit_style_box_w,
+        25,
+        6,
+        hit_style_box_hot
+            and { 0.110, 0.115, 0.135, 1 }
+            or C.toggle_off
+    )
+
+    text(
+        hit_style_box_x + 10,
+        hit_style_box_y + 7,
+        tostring(
+            S.hit_effect_style
+            or "Fallen Spark"
+        ),
+        FALLEN_HOVER_TEXT(
+            "hitfx_style_value",
+            hit_style_box_hot,
+            C.text
+        )
+    )
+
+    text(
+        hit_style_box_x + hit_style_box_w - 18,
+        hit_style_box_y + 7,
+        A.hit_effect_style_open
+            and "^"
+            or "v",
+        C.text_dim
+    )
+
+    if clicked
+        and hit_style_box_hot
+        and not A.world_color_picker_open
+    then
+        A.hit_effect_style_open =
+            not A.hit_effect_style_open
+
+        if A.hit_effect_style_open then
+            A.bullet_tracer_style_open = false
+        end
+
+        numeric_stop(true)
+    end
+
+    line(
+        right_x + 12,
+        y + 113,
+        right_x + right_w - 12,
+        y + 113,
+        C.divider,
+        1
+    )
+
+    local hit_color_y =
+        y + 114
 
     local hit_color_hot =
         row_hover(
@@ -19816,30 +19973,6 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         numeric_stop(true)
     end
 
-    line(
-        right_x + 12,
-        y + 113,
-        right_x + right_w - 12,
-        y + 113,
-        C.divider,
-        1
-    )
-
-    slider_row(
-        mx,
-        my,
-        controls_clicked,
-        lmb,
-        right_x,
-        y + 114,
-        right_w,
-        "Hit Effect Size",
-        "hit_effect_size",
-        6,
-        32,
-        "int"
-    )
-
     local dropdown_hot =
         FALLEN_DRAW_BT_STYLE_DROPDOWN(
             mx,
@@ -19858,6 +19991,26 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         and not A.world_color_picker_open
     then
         A.bullet_tracer_style_open = false
+    end
+
+    local hit_dropdown_hot =
+        FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
+            mx,
+            my,
+            clicked
+                and not A.world_color_picker_open,
+            hit_style_box_x,
+            hit_style_box_y + 30,
+            hit_style_box_w
+        )
+
+    if clicked
+        and A.hit_effect_style_open
+        and not hit_style_box_hot
+        and not hit_dropdown_hot
+        and not A.world_color_picker_open
+    then
+        A.hit_effect_style_open = false
     end
 
 
