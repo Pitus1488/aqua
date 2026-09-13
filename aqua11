@@ -8367,6 +8367,215 @@ FALLEN_WEAPON_ICON_ALIASES = {
 ["Nail Gun"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/68/Nail_Gun_.png/revision/latest/scale-to-width-down/180?cb=20250108154650",
 }
 
+FALLEN_WEAPON_ITEMS = {
+["Blade"] = true,
+["Blueberries"] = true,
+["Cactus Flesh"] = true,
+["Cactus flesh"] = true,
+["Cactusflesh"] = true,
+["Chocolate Bar"] = true,
+["Circuit Board"] = true,
+["Circuit Boards"] = true,
+["Circuit board"] = true,
+["Copper Cogs"] = true,
+["Duct Tape"] = true,
+["Fish Can"] = true,
+["Glue"] = true,
+["Ligther"] = true,
+["Metal Plating"] = true,
+["Metal Scraps"] = true,
+["Milk"] = true,
+["Pink Card"] = true,
+["Pink Keycard"] = true,
+["Pipe"] = true,
+["Pistol Receiver"] = true,
+["Power Cell"] = true,
+["Power cell"] = true,
+["Purple Card"] = true,
+["Purple Keycard"] = true,
+["Raspberries"] = true,
+["Red Card"] = true,
+["Red Keycard"] = true,
+["Rifle Receiver"] = true,
+["Rope"] = true,
+["SMG Receiver"] = true,
+["SMG receiver"] = true,
+["Semi Receiver"] = true,
+["Spring"] = true,
+["Tape"] = true,
+["Tarp"] = true,
+["Thread"] = true,
+["Yellow Card"] = true,
+["Yellow Keycard"] = true,
+["lighter"] = true,
+["Altyn Helmet"] = true,
+["Auto Turret"] = true,
+["Balaclava"] = true,
+["Bandage"] = true,
+["Base Cabinet"] = true,
+["Baseball Cap"] = true,
+["Bear Trap"] = true,
+["Blueberry"] = true,
+["Blueprint"] = true,
+["Bone Armor"] = true,
+["Bone Tool"] = true,
+["Boots"] = true,
+["Boris Chestplate"] = true,
+["Boris Helmet"] = true,
+["Boris's Chestplate"] = true,
+["Boulder"] = true,
+["Bruno Chestplate"] = true,
+["Bruno Helmet"] = true,
+["Bruno's Chestplate"] = true,
+["Bruno's Helmet"] = true,
+["Bruno's M4A1"] = true,
+["Cactus"] = true,
+["Chainsaw"] = true,
+["Cloth Footwraps"] = true,
+["Cloth Handwraps"] = true,
+["Cloth Head Wrap"] = true,
+["Cloth Headwrap"] = true,
+["Cloth Hoodie"] = true,
+["Cloth Pants"] = true,
+["Cloth Shirt"] = true,
+["Collared Shirt"] = true,
+["Corn"] = true,
+["Crossbow"] = true,
+["Dynamite Bundle"] = true,
+["Dynamite Stick"] = true,
+["Flannel Jacket"] = true,
+["Garage Door"] = true,
+["Halloween Scythe"] = true,
+["Hammer"] = true,
+["Hard Hat"] = true,
+["Hazmat Suit"] = true,
+["Hemp"] = true,
+["Hemp Fiber"] = true,
+["Hoodie"] = true,
+["Iron Shard Hatchet"] = true,
+["Iron Shard Pickaxe"] = true,
+["Landmine"] = true,
+["Large Battery"] = true,
+["Large Box"] = true,
+["Large Medkit"] = true,
+["Leather Boots"] = true,
+["Leather Gloves"] = true,
+["Leather Pants"] = true,
+["Leather Poncho"] = true,
+["Leather Shirt"] = true,
+["Leather_Pants"] = true,
+["Lemon"] = true,
+["Lighter"] = true,
+["Machete"] = true,
+["Medium Battery"] = true,
+["Metal"] = true,
+["Metal Door"] = true,
+["Metal Double Door"] = true,
+["Metal Node"] = true,
+["Metal Ore"] = true,
+["MetalNode"] = true,
+["Metal_Node"] = true,
+["Military AA12"] = true,
+["Military Backpack"] = true,
+["Military Barret"] = true,
+["Military Barrett"] = true,
+["Military Chestplate"] = true,
+["Military Gloves"] = true,
+["Military Grenade Launcher"] = true,
+["Military Helmet"] = true,
+["Military Leggings"] = true,
+["Military M39"] = true,
+["Military M4A1"] = true,
+["Military MP7"] = true,
+["Military PKM"] = true,
+["Military USP"] = true,
+["Mining Drill"] = true,
+["Nail Gun"] = true,
+["Nailgun"] = true,
+["Pants"] = true,
+["Phosphate"] = true,
+["Pumpkin"] = true,
+["Pumpkin Launcher"] = true,
+["Raspberry"] = true,
+["Salvaged AK4"] = true,
+["Salvaged AK47"] = true,
+["Salvaged AK74u"] = true,
+["Salvaged Backpack"] = true,
+["Salvaged Break Action"] = true,
+["Salvaged Chestplate"] = true,
+["Salvaged Double Barrel"] = true,
+["Salvaged Gloves"] = true,
+["Salvaged Grenade Launcher"] = true,
+["Salvaged Helmet"] = true,
+["Salvaged Leggings"] = true,
+["Salvaged M14"] = true,
+["Salvaged Metal Door"] = true,
+["Salvaged P250"] = true,
+["Salvaged Pipe Rifle"] = true,
+["Salvaged Pump Action"] = true,
+["Salvaged Python"] = true,
+["Salvaged RPG"] = true,
+["Salvaged SMG"] = true,
+["Salvaged Shotgun"] = true,
+["Salvaged Shovel"] = true,
+["Salvaged Skorpion"] = true,
+["Salvaged Sniper"] = true,
+["Saw Bat"] = true,
+["Shorts"] = true,
+["Shotgun Turret"] = true,
+["Sleeping Bag"] = true,
+["Small Battery"] = true,
+["Small Box"] = true,
+["Small Medkit"] = true,
+["Steel Axe"] = true,
+["Steel Chestplate"] = true,
+["Steel Door"] = true,
+["Steel Double Door"] = true,
+["Steel Helmet"] = true,
+["Steel Leggings"] = true,
+["Steel Pickaxe"] = true,
+["Steel Shovel"] = true,
+["Stone"] = true,
+["Stone Hatchet"] = true,
+["Stone Node"] = true,
+["Stone Ore"] = true,
+["Stone Pickaxe"] = true,
+["Stone Spear"] = true,
+["StoneNode"] = true,
+["Stone_Node"] = true,
+["Stones"] = true,
+["Storage Cabinet"] = true,
+["Sulfur"] = true,
+["Sulfur Node"] = true,
+["Sulfur Ore"] = true,
+["SulfurNode"] = true,
+["Sulfur_Node"] = true,
+["Tactical Gloves"] = true,
+["Tank Top"] = true,
+["Timed Charge"] = true,
+["Tomato"] = true,
+["Trap Door"] = true,
+["Tree"] = true,
+["Tree Large"] = true,
+["Tree Medium"] = true,
+["Tree Small"] = true,
+["Tree XL"] = true,
+["Wetsuit"] = true,
+["Windmill"] = true,
+["Wire Cutters"] = true,
+["Wooden Bow"] = true,
+["Wooden Chestplate"] = true,
+["Wooden Door"] = true,
+["Wooden Double Door"] = true,
+["Wooden Helmet"] = true,
+["Wooden Leggings"] = true,
+["Wooden Spear"] = true,
+["Wool"] = true,
+["metal_node"] = true,
+["stone_node"] = true,
+["sulfur_node"] = true,
+}
+
 FALLEN_WEAPON_ICON_CACHE = FALLEN_WEAPON_ICON_CACHE or {}
 
 FALLEN_ARMOR_ICON_CACHE = FALLEN_ARMOR_ICON_CACHE or {}
@@ -8518,18 +8727,6 @@ function FALLEN_ARMOR_SCAN(root, out_items, seen, depth)
             and FALLEN_ARMOR_MAP[id]
             or nil
 
-        -- Some builds expose the visible armor name instead of Armor_###.
-        if not display
-            and name
-        then
-            for _, mapped_name in pairs(FALLEN_ARMOR_MAP) do
-                if tostring(name) == tostring(mapped_name) then
-                    display = mapped_name
-                    break
-                end
-            end
-        end
-
         if display
             and not seen[display]
         then
@@ -8558,32 +8755,195 @@ function FALLEN_ARMOR_PLAYER_KEY(p)
     )
 end
 
-function FALLEN_ARMOR_WEAPON_NAME(p)
-    if not p then
+function FALLEN_ARMOR_CLEAN_TOOL_NAME(name)
+    if not name
+        or name == ""
+    then
         return nil
     end
 
-    local direct = {
-        p.tool,
-        p.weapon,
-        p.equipped_tool,
-        p.held_item,
-        p.current_tool,
-        p.current_weapon,
+    name = tostring(name)
+    name = string.gsub(name, "^%s+", "")
+    name = string.gsub(name, "%s+$", "")
+
+    if name == "" then
+        return nil
+    end
+
+    return name
+end
+
+function FALLEN_ARMOR_IS_ARMOR_OR_CLOTHING_NAME(name)
+    if not name then
+        return false
+    end
+
+    if FALLEN_ARMOR_MAP[name] then
+        return true
+    end
+
+    for _, armor_name in pairs(FALLEN_ARMOR_MAP) do
+        if name == armor_name then
+            return true
+        end
+    end
+
+    local lowered =
+        string.lower(
+            tostring(name)
+        )
+
+    local bad = {
+        "pants",
+        "shirt",
+        "helmet",
+        "chestplate",
+        "leggings",
+        "gloves",
+        "boots",
+        "hoodie",
+        "hazmat",
+        "balaclava",
+        "cap",
+        "wetsuit",
+        "backpack",
+        "armor",
+        "footwraps",
+        "handwraps",
+        "head wrap",
+        "jacket",
+        "tank top",
+        "shorts",
     }
 
-    for _, value in ipairs(direct) do
+    for _, key in ipairs(bad) do
+        if string.find(
+            lowered,
+            key,
+            1,
+            true
+        )
+        then
+            return true
+        end
+    end
+
+    return false
+end
+
+function FALLEN_ARMOR_IS_WEAPON_NAME(name)
+    if not name
+        or name == ""
+    then
+        return false
+    end
+
+    if FALLEN_ARMOR_IS_ARMOR_OR_CLOTHING_NAME(name) then
+        return false
+    end
+
+    if FALLEN_WEAPON_ITEMS[name] then
+        return true
+    end
+
+    local lowered =
+        string.lower(
+            tostring(name)
+        )
+
+    local good = {
+        "ak",
+        "m4",
+        "m39",
+        "aa12",
+        "mp7",
+        "pkm",
+        "usp",
+        "barret",
+        "barrett",
+        "shotgun",
+        "smg",
+        "p250",
+        "python",
+        "rpg",
+        "sniper",
+        "bow",
+        "spear",
+        "nail",
+        "grenade",
+        "launcher",
+        "axe",
+        "pickaxe",
+        "hatchet",
+        "shovel",
+        "drill",
+        "chainsaw",
+        "machete",
+        "medkit",
+        "bandage",
+        "wire cutters",
+        "dynamite",
+        "charge",
+        "hammer",
+        "blueprint",
+        "boulder",
+        "lighter",
+        "crossbow",
+        "revolver",
+        "rifle",
+        "skorpion",
+    }
+
+    for _, key in ipairs(good) do
+        if string.find(
+            lowered,
+            key,
+            1,
+            true
+        )
+        then
+            return true
+        end
+    end
+
+    return false
+end
+
+function FALLEN_ARMOR_WEAPON_NAME(target)
+    if not target then
+        return nil
+    end
+
+    -- Exact direct fields from the supplied working Armor ESP.
+    local direct_fields = {
+        target.tool,
+        target.weapon,
+        target.item,
+        target.equipped_tool,
+        target.held_item,
+        target.current_tool,
+        target.current_weapon,
+    }
+
+    for _, value in ipairs(direct_fields) do
         if type(value) == "string"
             and value ~= ""
         then
-            return tostring(value)
+            local name =
+                FALLEN_ARMOR_CLEAN_TOOL_NAME(
+                    value
+                )
+
+            if FALLEN_ARMOR_IS_WEAPON_NAME(name) then
+                return name
+            end
         end
     end
 
     local addr_fields = {
-        p.tool_addr,
-        p.weapon_addr,
-        p.item_addr,
+        target.tool_addr,
+        target.weapon_addr,
+        target.item_addr,
     }
 
     if rbx
@@ -8599,14 +8959,16 @@ function FALLEN_ARMOR_WEAPON_NAME(p)
                         addr
                     )
 
-                if ok and inst then
+                if ok
+                    and inst
+                then
                     local name =
-                        FALLEN_ARMOR_SAFE_NAME(inst)
+                        FALLEN_ARMOR_CLEAN_TOOL_NAME(
+                            FALLEN_ARMOR_SAFE_NAME(inst)
+                        )
 
-                    if name
-                        and name ~= ""
-                    then
-                        return tostring(name)
+                    if FALLEN_ARMOR_IS_WEAPON_NAME(name) then
+                        return name
                     end
                 end
             end
@@ -8614,7 +8976,7 @@ function FALLEN_ARMOR_WEAPON_NAME(p)
     end
 
     local char =
-        FALLEN_ARMOR_CHAR(p)
+        FALLEN_ARMOR_CHAR(target)
 
     if char then
         local methods = {
@@ -8628,18 +8990,21 @@ function FALLEN_ARMOR_WEAPON_NAME(p)
             local ok, tool =
                 pcall(function()
                     if char[method] then
-                        return char[method](char)
+                        return
+                            char[method](char)
                     end
                 end)
 
-            if ok and tool then
+            if ok
+                and tool
+            then
                 local name =
-                    FALLEN_ARMOR_SAFE_NAME(tool)
+                    FALLEN_ARMOR_CLEAN_TOOL_NAME(
+                        FALLEN_ARMOR_SAFE_NAME(tool)
+                    )
 
-                if name
-                    and name ~= ""
-                then
-                    return tostring(name)
+                if FALLEN_ARMOR_IS_WEAPON_NAME(name) then
+                    return name
                 end
             end
         end
@@ -8656,12 +9021,12 @@ function FALLEN_ARMOR_WEAPON_NAME(p)
             and tool
         then
             local name =
-                FALLEN_ARMOR_SAFE_NAME(tool)
+                FALLEN_ARMOR_CLEAN_TOOL_NAME(
+                    FALLEN_ARMOR_SAFE_NAME(tool)
+                )
 
-            if name
-                and name ~= ""
-            then
-                return tostring(name)
+            if FALLEN_ARMOR_IS_WEAPON_NAME(name) then
+                return name
             end
         end
 
@@ -8674,21 +9039,24 @@ function FALLEN_ARMOR_WEAPON_NAME(p)
             and type(children) == "table"
         then
             for _, child in ipairs(children) do
-                local ok_class, class =
-                    pcall(function()
-                        return child:get_class()
-                    end)
-
-                if ok_class
-                    and class == "Tool"
-                then
-                    local name =
+                local name =
+                    FALLEN_ARMOR_CLEAN_TOOL_NAME(
                         FALLEN_ARMOR_SAFE_NAME(child)
+                    )
 
-                    if name
-                        and name ~= ""
+                if FALLEN_ARMOR_IS_WEAPON_NAME(name) then
+                    local ok_class, class =
+                        pcall(function()
+                            return child:get_class()
+                        end)
+
+                    if (
+                        ok_class
+                        and class == "Tool"
+                    )
+                        or FALLEN_WEAPON_ITEMS[name]
                     then
-                        return tostring(name)
+                        return name
                     end
                 end
             end
@@ -8723,8 +9091,16 @@ function FALLEN_WEAPON_URLS(name)
     if FALLEN_WEAPON_ICON_ALIASES
         and FALLEN_WEAPON_ICON_ALIASES[raw]
     then
-        raw =
+        local alias =
             FALLEN_WEAPON_ICON_ALIASES[raw]
+
+        if type(alias) == "string"
+            and string.find(alias, "^https?://")
+        then
+            return { alias }
+        end
+
+        raw = alias
     end
 
     if FALLEN_WEAPON_ICON_URLS[raw] then
@@ -8874,8 +9250,13 @@ function FALLEN_ARMOR_ITEMS(p)
     local cached =
         A.armor_item_cache[key]
 
+    local ttl =
+        S.armor_show_weapon == true
+        and 0.18
+        or 0.65
+
     if cached
-        and now - (cached.t or 0) < 0.65
+        and now - (cached.t or 0) < ttl
     then
         return cached.items or {}
     end
