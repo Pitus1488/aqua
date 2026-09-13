@@ -10265,22 +10265,25 @@ print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA
 -- Fallen Survival loader
 -- Adapted for the user's custom Lua API.
 
--- Product artwork.
--- CONFIRMED WORKING METHOD:
---   Drawing.LoadImageFromFile("C:\Users\vmerk\Downloads\noFilter (1).png")
--- This is the exact method that worked in the standalone test (#3).
-local PRODUCT_IMAGE_PATH =
-    "C:\\Users\\vmerk\\Downloads\\noFilter (1).png"
+-- Product artwork (URL loader image)
+-- Same image object is reused by both loader pages.
 
-local product_image = nil
+_G.FALLEN_LOADER_PRODUCT_IMAGE_URL =
+    "https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&"
 
-if Drawing and type(Drawing.LoadImageFromFile) == "function" then
+_G.FALLEN_LOADER_PRODUCT_IMAGE =
+    _G.FALLEN_LOADER_PRODUCT_IMAGE or nil
+
+if not _G.FALLEN_LOADER_PRODUCT_IMAGE
+    and type(LoadImage) == "function" then
+
     pcall(function()
-        product_image =
-            Drawing.LoadImageFromFile(PRODUCT_IMAGE_PATH)
+        _G.FALLEN_LOADER_PRODUCT_IMAGE =
+            LoadImage(_G.FALLEN_LOADER_PRODUCT_IMAGE_URL)
     end)
 end
 
+local product_image = _G.FALLEN_LOADER_PRODUCT_IMAGE
 local logo_image = product_image
 
 local last_time = tick()
@@ -11779,20 +11782,13 @@ hooks.on_render(function()
                 0.04, 0.04, 0.05, pa
             )
 
-            if not FallenDrawLoaderImage(
-                card_x + 12 * scale,
-                card_y - lift + 15 * scale,
-                image_size,
-                image_size
-            ) then
-                Drawing.DrawTextWithOutline(
-                    card_x + 12 * scale + image_size / 2,
-                    card_y - lift + 28 * scale,
-                    "FS",
-                    0.86, 0.55, 0.14, pa,
-                    0, 0, 0, pa
-                )
-            end
+            Drawing.DrawTextWithOutline(
+                card_x + 12 * scale + image_size / 2,
+                card_y - lift + 28 * scale,
+                "FS",
+                0.86, 0.55, 0.14, pa,
+                0, 0, 0, pa
+            )
         end
 
         Drawing.DrawText(
@@ -12609,252 +12605,3 @@ print("[Fallen loader] ready | v44 syntax fix")
 hooks.on_render(function()
     pcall(draw_fallen_toasts)
 end)
-
-
--- Fallen loader image URL fix (no local variables)
-_G.FALLEN_LOADER_IMAGE_URL = "https://tr.rbxcdn.com/180DAY-d45aa60d5a73b73506aaaba675bff1a1/768/432/Image/Webp/noFilter"
-_G.FALLEN_LOADER_IMAGE = _G.FALLEN_LOADER_IMAGE or nil
-_G.FALLEN_LOADER_IMAGE_STARTED = _G.FALLEN_LOADER_IMAGE_STARTED or false
-
-function Fallen_LoadLoaderImageURL()
-    if _G.FALLEN_LOADER_IMAGE_STARTED then
-        return _G.FALLEN_LOADER_IMAGE
-    end
-
-    _G.FALLEN_LOADER_IMAGE_STARTED = true
-
-    if type(LoadImage) == "function" then
-        pcall(function()
-            _G.FALLEN_LOADER_IMAGE = LoadImage(_G.FALLEN_LOADER_IMAGE_URL)
-        end)
-    end
-
-    return _G.FALLEN_LOADER_IMAGE
-end
-
-function Fallen_DrawLoaderImageURL(x, y, w, h)
-    if type(DrawImage) ~= "function" then
-        return false
-    end
-
-    if not _G.FALLEN_LOADER_IMAGE then
-        Fallen_LoadLoaderImageURL()
-    end
-
-    if _G.FALLEN_LOADER_IMAGE then
-        DrawImage(_G.FALLEN_LOADER_IMAGE, x, y, w, h)
-        return true
-    end
-
-    return false
-end
-
-
--- Fallen Loader Discord image
-_G.FallenLoaderImageURL = "https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&"
-_G.FallenLoaderImage = _G.FallenLoaderImage or nil
-_G.FallenLoaderImageStarted = _G.FallenLoaderImageStarted or false
-
-function FallenGetLoaderImage()
-    if _G.FallenLoaderImageStarted then
-        return _G.FallenLoaderImage
-    end
-
-    _G.FallenLoaderImageStarted = true
-
-    if type(LoadImage) == "function" then
-        local ok, img = pcall(function()
-            return LoadImage(_G.FallenLoaderImageURL)
-        end)
-
-        if ok then
-            _G.FallenLoaderImage = img
-        end
-    end
-
-    return _G.FallenLoaderImage
-end
-
-function FallenDrawLoaderImage(x, y, w, h)
-    local img = FallenGetLoaderImage()
-
-    if img and type(Drawing.DrawImage) == "function" then
-        local ready = true
-
-        if type(IsImageReady) == "function" then
-            local ok, state = pcall(IsImageReady, img)
-            if ok then
-                ready = state
-            end
-        end
-
-        if ready then
-            Drawing.DrawImage(img, x, y, w, h)
-            return true
-        end
-    end
-
-    return false
-end
-
-
--- =========================================================
--- Fallen Loader persistent image cache for all pages
--- =========================================================
-
-_G.FallenLoaderCachedImage = _G.FallenLoaderCachedImage or nil
-_G.FallenLoaderCachedImageLoaded = _G.FallenLoaderCachedImageLoaded or false
-
-function FallenCacheLoaderImage()
-    if _G.FallenLoaderCachedImageLoaded then
-        return _G.FallenLoaderCachedImage
-    end
-
-    _G.FallenLoaderCachedImageLoaded = true
-
-    if _G.FallenLoaderImage then
-        _G.FallenLoaderCachedImage = _G.FallenLoaderImage
-        return _G.FallenLoaderCachedImage
-    end
-
-    if type(LoadImage) == "function" then
-        local ok, img = pcall(function()
-            return LoadImage("https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&")
-        end)
-
-        if ok then
-            _G.FallenLoaderCachedImage = img
-        end
-    end
-
-    return _G.FallenLoaderCachedImage
-end
-
-function FallenDrawCachedLoaderImage(x,y,w,h)
-    local img = FallenCacheLoaderImage()
-
-    if img and type(DrawImage) == "function" then
-        local ready = true
-
-        if type(IsImageReady) == "function" then
-            local ok, state = pcall(IsImageReady, img)
-            if ok then
-                ready = state
-            end
-        end
-
-        if ready then
-            DrawImage(img,x,y,w,h)
-            return true
-        end
-    end
-
-    return false
-end
-
-
--- =========================================================
--- Loader image persistent renderer v2
--- Keeps image alive between loader pages
--- =========================================================
-
-_G.FallenPersistentLoaderImage = _G.FallenPersistentLoaderImage or nil
-_G.FallenPersistentLoaderImageStarted = _G.FallenPersistentLoaderImageStarted or false
-
-function FallenGetPersistentLoaderImage()
-    if _G.FallenPersistentLoaderImage then
-        return _G.FallenPersistentLoaderImage
-    end
-
-    if _G.FallenPersistentLoaderImageStarted then
-        return nil
-    end
-
-    _G.FallenPersistentLoaderImageStarted = true
-
-    if type(LoadImage) == "function" then
-        local ok, image = pcall(function()
-            return LoadImage("https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&")
-        end)
-
-        if ok then
-            _G.FallenPersistentLoaderImage = image
-        end
-    end
-
-    return _G.FallenPersistentLoaderImage
-end
-
-function FallenDrawPersistentLoaderImage(x,y,w,h)
-    local image = FallenGetPersistentLoaderImage()
-
-    if not image then
-        return false
-    end
-
-    if type(DrawImage) ~= "function" then
-        return false
-    end
-
-    local ready = true
-
-    if type(IsImageReady) == "function" then
-        local ok, state = pcall(IsImageReady, image)
-        if ok then
-            ready = state
-        end
-    end
-
-    if ready then
-        DrawImage(image,x,y,w,h)
-        return true
-    end
-
-    return false
-end
-
-
--- =========================================================
--- Loader image block renderer
--- Put this call inside each loader card block where the image belongs:
--- FallenRenderLoaderCardImage(card_x, card_y, image_size)
--- =========================================================
-
-_G.FallenBlockLoaderImage = _G.FallenBlockLoaderImage or nil
-_G.FallenBlockLoaderImageStarted = _G.FallenBlockLoaderImageStarted or false
-
-function FallenRenderLoaderCardImage(x, y, size)
-    if not _G.FallenBlockLoaderImageStarted then
-        _G.FallenBlockLoaderImageStarted = true
-
-        if type(LoadImage) == "function" then
-            local ok, img = pcall(function()
-                return LoadImage("https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&")
-            end)
-
-            if ok then
-                _G.FallenBlockLoaderImage = img
-            end
-        end
-    end
-
-    local img = _G.FallenBlockLoaderImage
-
-    if img and type(DrawImage) == "function" then
-        local ready = true
-
-        if type(IsImageReady) == "function" then
-            local ok, state = pcall(IsImageReady, img)
-            if ok then
-                ready = state
-            end
-        end
-
-        if ready then
-            DrawImage(img, x, y, size, size)
-            return true
-        end
-    end
-
-    return false
-end
