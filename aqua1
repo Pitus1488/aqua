@@ -9484,12 +9484,12 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             FALLEN_COLOR_INPUT_STOP(true)
 
             if A.world_color_picker_open
-                and A.world_color_picker_key == "menu_style"
+                and A.world_color_picker_key == "menu_glow"
             then
                 A.world_color_picker_open = false
                 A.world_color_picker_drag = nil
             else
-                A.world_color_picker_key = "menu_style"
+                A.world_color_picker_key = "menu_glow"
                 A.world_color_picker_open = true
                 A.world_color_picker_drag = nil
             end
@@ -10098,7 +10098,7 @@ hooks.on_render(function()
 
             A.world_settings_open = false
 
-            if A.world_color_picker_key ~= "menu_style" then
+            if A.world_color_picker_key ~= "menu_glow" then
                 A.world_color_picker_open = false
                 A.world_color_picker_drag = nil
             end
@@ -10284,7 +10284,7 @@ hooks.on_render(function()
 
     -- Reuse the same full HSV/alpha picker for Glow Color.
     if A.world_color_picker_open
-        and A.world_color_picker_key == "menu_style"
+        and A.world_color_picker_key == "menu_glow"
     then
         draw_world_color_picker(
             mx,
