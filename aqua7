@@ -4283,7 +4283,7 @@ local WORLD_UI_ITEMS = {
         key = "world_stone_node",
         label = "Stone Node",
         color = { 0.55, 0.55, 0.55, 1 },
-        -- Rust stone icon loaded from URL.
+        -- Rust stone icon
         direct_urls = {
             "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest/scale-to-width-down/50?cb=20150405123145",
         },
@@ -7570,10 +7570,25 @@ local function world_load_direct_icon(cfg)
     if not st then
         st = {
             index = 1,
-            handle = Drawing.LoadImage(urls[1]),
-            dead = false
+            handle = nil,
+            dead = false,
+            started = false
         }
         WORLD_ESP.icons[name] = st
+    end
+
+    if not st.started then
+        st.started = true
+        local ok, img = pcall(function()
+            return Drawing.LoadImage(urls[1])
+        end)
+        if ok then
+            st.handle = img
+        else
+            st.dead = true
+            warn("[Fallen-lua] icon load failed: " .. tostring(img))
+            return nil
+        end
     end
 
     if st.dead then
@@ -7670,6 +7685,16 @@ local function world_draw_icon(
     if handle
         and type(DrawImage) == "function"
     then
+        local ready = true
+        if type(IsImageReady) == "function" then
+            local ok, r = pcall(IsImageReady, handle)
+            ready = ok and r == true
+        end
+
+        if not ready then
+            return
+        end
+
         DrawImage(
             handle,
             x - size * 0.5,
