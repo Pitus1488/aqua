@@ -12812,3 +12812,49 @@ function FallenDrawPersistentLoaderImage(x,y,w,h)
 
     return false
 end
+
+
+-- =========================================================
+-- Loader image block renderer
+-- Put this call inside each loader card block where the image belongs:
+-- FallenRenderLoaderCardImage(card_x, card_y, image_size)
+-- =========================================================
+
+_G.FallenBlockLoaderImage = _G.FallenBlockLoaderImage or nil
+_G.FallenBlockLoaderImageStarted = _G.FallenBlockLoaderImageStarted or false
+
+function FallenRenderLoaderCardImage(x, y, size)
+    if not _G.FallenBlockLoaderImageStarted then
+        _G.FallenBlockLoaderImageStarted = true
+
+        if type(LoadImage) == "function" then
+            local ok, img = pcall(function()
+                return LoadImage("https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&")
+            end)
+
+            if ok then
+                _G.FallenBlockLoaderImage = img
+            end
+        end
+    end
+
+    local img = _G.FallenBlockLoaderImage
+
+    if img and type(DrawImage) == "function" then
+        local ready = true
+
+        if type(IsImageReady) == "function" then
+            local ok, state = pcall(IsImageReady, img)
+            if ok then
+                ready = state
+            end
+        end
+
+        if ready then
+            DrawImage(img, x, y, size, size)
+            return true
+        end
+    end
+
+    return false
+end
