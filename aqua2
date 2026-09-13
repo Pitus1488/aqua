@@ -4687,6 +4687,22 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
             + 25
         )
 
+    if py + ph > 650 then
+        py =
+            snap(
+                anchor_y
+                - ph
+                - 10
+            )
+    end
+
+    py =
+        clamp(
+            py,
+            8,
+            700 - ph - 8
+        )
+
     FALLEN_POPUP_GLOW(px, py, pw, ph, 12, 1)
 
     rounded_fill(
@@ -5532,6 +5548,7 @@ local function draw_visuals_page(
     local overlay_open =
         A.world_settings_open
         or (A.world_settings_anim or 0) > 0.02
+        or A.world_color_picker_open == true
  
 
     local base_clicked =
@@ -5803,7 +5820,7 @@ local function draw_visuals_page(
                     base_clicked,
                     left_x,
                     by,
-                    col_w - 10,
+                    col_w,
                     cfg
                 )
             end
@@ -5831,7 +5848,7 @@ local function draw_visuals_page(
                     base_clicked,
                     right_x,
                     by,
-                    col_w - 10,
+                    col_w,
                     cfg
                 )
             end
@@ -5848,12 +5865,6 @@ local function draw_visuals_page(
         dots_y
     )
 
-    draw_world_color_picker(
-        mx,
-        my,
-        clicked,
-        lmb
-    )
 end
 
 
@@ -7517,7 +7528,7 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
     local col = world_color_from_prefix(prefix)
 
     text(
-        x + 13,
+        x + 29,
         y + 14,
         cfg.label,
         hot and C.text or alpha(C.text, 0.92)
@@ -7809,8 +7820,48 @@ function world_base_column_scroll_step(
                 A[target_key] = A[target_key] + 1
             end
         end
+
+        -- This API build does not document a mouse-wheel delta event.
+        -- Up/Down/PageUp/PageDown affect only the column under the cursor.
+        local up, down, pgup, pgdn = false, false, false, false
+
+        pcall(function()
+            up = Windows.IsKeyPressed(VK.UP) == true
+            down = Windows.IsKeyPressed(VK.DOWN) == true
+            pgup = Windows.IsKeyPressed(0x21) == true
+            pgdn = Windows.IsKeyPressed(0x22) == true
+        end)
+
+        local nav = p .. "_nav_"
+
+        if up and not A[nav .. "up"] then
+            A[target_key] = A[target_key] - 1
+        end
+
+        if down and not A[nav .. "down"] then
+            A[target_key] = A[target_key] + 1
+        end
+
+        if pgup and not A[nav .. "pgup"] then
+            A[target_key] = A[target_key] - visible_rows
+        end
+
+        if pgdn and not A[nav .. "pgdn"] then
+            A[target_key] = A[target_key] + visible_rows
+        end
+
+        A[nav .. "up"] = up
+        A[nav .. "down"] = down
+        A[nav .. "pgup"] = pgup
+        A[nav .. "pgdn"] = pgdn
     else
         A[wheel_key] = 0
+
+        local nav = p .. "_nav_"
+        A[nav .. "up"] = false
+        A[nav .. "down"] = false
+        A[nav .. "pgup"] = false
+        A[nav .. "pgdn"] = false
     end
 
     A[target_key] =
@@ -7837,7 +7888,7 @@ function world_base_column_scroll_step(
         A[visual_key] = A[target_key]
     end
 
-    local track_x = x + w - 6
+    local track_x = x + w - 5
     local track_y = y + 6
     local track_h = h - 12
 
@@ -10842,7 +10893,10 @@ hooks.on_render(function()
             20
         )
 
-    if clicked and drag_hot then
+    if clicked
+        and drag_hot
+        and not A.world_color_picker_open
+    then
         A.menu_dragging = true
         A.menu_drag_off_x = mx - A.menu_cx
         A.menu_drag_off_y = my - A.menu_cy
@@ -11041,10 +11095,24 @@ hooks.on_render(function()
     )
 
     text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
-    sidebar_tab(mx, my, clicked, wx + 10, wy + 105, 1)
+    sidebar_tab(
+        mx,
+        my,
+        clicked and not A.world_color_picker_open,
+        wx + 10,
+        wy + 105,
+        1
+    )
 
     text(wx + 22, wy + 159, "VISUALS", C.text_faint)
-    sidebar_tab(mx, my, clicked, wx + 10, wy + 179, 2)
+    sidebar_tab(
+        mx,
+        my,
+        clicked and not A.world_color_picker_open,
+        wx + 10,
+        wy + 179,
+        2
+    )
 
     -- Sidebar footer: live Roblox avatar + username.
     update_profile()
@@ -11144,6 +11212,7 @@ hooks.on_render(function()
 
     if clicked
         and gear_hot
+        and not A.world_color_picker_open
     then
         A.menu_settings_open =
             not A.menu_settings_open
@@ -11246,6 +11315,7 @@ hooks.on_render(function()
 
     if clicked
         and cfg_hot
+        and not A.world_color_picker_open
     then
         A.config_open =
             not A.config_open
@@ -11291,6 +11361,7 @@ hooks.on_render(function()
     local any_overlay_open =
         config_overlay_open
         or menu_settings_overlay_open
+        or A.world_color_picker_open == true
 
     local page_clicked =
         clicked
@@ -11328,7 +11399,7 @@ hooks.on_render(function()
     FALLEN_CONFIGS.draw_popup(
         mx,
         my,
-        clicked,
+        clicked and not A.world_color_picker_open,
         lmb,
         cfg_x,
         cfg_y,
@@ -11339,16 +11410,15 @@ hooks.on_render(function()
     FALLEN_DRAW_MENU_SETTINGS(
         mx,
         my,
-        clicked,
+        clicked and not A.world_color_picker_open,
         lmb,
         gear_x,
         gear_y
     )
 
-    -- Reuse the same full HSV/alpha picker for Glow Color.
-    if A.world_color_picker_open
-        and A.world_color_picker_key == "menu_glow"
-    then
+    -- TRUE MODAL COLOR PICKER.
+    -- Rendered last so it is always above page/config/menu-settings.
+    if A.world_color_picker_open then
         draw_world_color_picker(
             mx,
             my,
