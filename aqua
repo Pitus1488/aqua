@@ -11194,6 +11194,126 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
 end
 
 -- =========================================================
+-- Menu focus isolation
+-- When the Drawing menu is open, focus Blueberry instead of Roblox so
+-- mouse/keyboard input does not also control the game in the background.
+-- Globals are intentional: this script is already near Lua's local limit.
+-- =========================================================
+
+FALLEN_BLUEBERRY_WINDOW = FALLEN_BLUEBERRY_WINDOW or nil
+FALLEN_BLUEBERRY_FOCUS_WARNED = FALLEN_BLUEBERRY_FOCUS_WARNED or false
+
+function FALLEN_FIND_BLUEBERRY_WINDOW()
+    if not Windows or type(Windows.FindWindow) ~= "function" then
+        return nil
+    end
+
+    if FALLEN_BLUEBERRY_WINDOW then
+        return FALLEN_BLUEBERRY_WINDOW
+    end
+
+    local titles = {
+        "Blueberry",
+        "blueberry",
+        "BlueBerry",
+        "Blueberry External",
+        "Blueberry Menu",
+        "Blueberry Loader",
+    }
+
+    for i = 1, #titles do
+        local ok, hwnd =
+            pcall(
+                Windows.FindWindow,
+                titles[i]
+            )
+
+        if ok and hwnd then
+            FALLEN_BLUEBERRY_WINDOW = hwnd
+            return hwnd
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_FOCUS_BLUEBERRY()
+    if not Windows
+        or type(Windows.SetForegroundWindow) ~= "function"
+    then
+        return false
+    end
+
+    local hwnd =
+        FALLEN_FIND_BLUEBERRY_WINDOW()
+
+    if not hwnd then
+        if not FALLEN_BLUEBERRY_FOCUS_WARNED then
+            FALLEN_BLUEBERRY_FOCUS_WARNED = true
+
+            if type(warn) == "function" then
+                pcall(
+                    warn,
+                    "[Fallen-lua] Blueberry window not found; menu input cannot be isolated from Roblox focus."
+                )
+            end
+        end
+
+        return false
+    end
+
+    local ok, result =
+        pcall(
+            Windows.SetForegroundWindow,
+            hwnd
+        )
+
+    return
+        ok
+        and result ~= false
+end
+
+function FALLEN_FOCUS_ROBLOX()
+    if not Windows then
+        return false
+    end
+
+    if type(Windows.FocusRoblox) == "function" then
+        local ok, result =
+            pcall(
+                Windows.FocusRoblox
+            )
+
+        return
+            ok
+            and result ~= false
+    end
+
+    if type(Windows.GetRobloxWindow) == "function"
+        and type(Windows.SetForegroundWindow) == "function"
+    then
+        local ok_hwnd, hwnd =
+            pcall(
+                Windows.GetRobloxWindow
+            )
+
+        if ok_hwnd and hwnd then
+            local ok, result =
+                pcall(
+                    Windows.SetForegroundWindow,
+                    hwnd
+                )
+
+            return
+                ok
+                and result ~= false
+        end
+    end
+
+    return false
+end
+
+-- =========================================================
 -- Render
 -- =========================================================
 
@@ -11212,6 +11332,16 @@ hooks.on_render(function()
         and not A.color_input.focus
     then
         S.visible = not S.visible
+
+        if S.visible then
+            -- Focus the Blueberry host window BEFORE the user starts
+            -- interacting with the Drawing menu. Roblox therefore loses
+            -- foreground focus and does not receive subsequent menu clicks.
+            FALLEN_FOCUS_BLUEBERRY()
+        else
+            -- Give control back to the game as soon as the menu is closed.
+            FALLEN_FOCUS_ROBLOX()
+        end
 
         if not S.visible then
             numeric_stop(true)
