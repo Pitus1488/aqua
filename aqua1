@@ -128,11 +128,6 @@ local defaults = {
     hit_effect_enabled = false,
     -- Temporarily fixed to Fallen Spark while we test hit registration.
     hit_effect_style = "Fallen Spark",
-    hit_effect_h = 0.58,
-    hit_effect_s = 0.55,
-    hit_effect_v = 1.00,
-    hit_effect_alpha = 100,
-
     -- Armor ESP.
     armor_esp_enabled = false,
     armor_esp_mode = "Normal",
@@ -9113,10 +9108,8 @@ FALLEN_HITFX = FALLEN_HITFX or {
 }
 
 function FALLEN_HITFX_COLOR()
-    return
-        world_color_from_prefix(
-            "hit_effect"
-        )
+    -- No tinting: preserve the original image colors.
+    return { 1, 1, 1, 1 }
 end
 
 function FALLEN_HITFX_STYLE_INDEX()
@@ -9284,9 +9277,9 @@ function FALLEN_HITFX_DRAW_FALLEN(
             sy - s2 * 0.5,
             s2,
             s2,
-            col[1],
-            col[2],
-            col[3],
+            1,
+            1,
+            1,
             alpha * 0.78 * fade
         )
 
@@ -9681,8 +9674,56 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
         alpha
         * (col[4] or 1)
 
-    -- Fixed base size. No Hit Effect Size setting anymore.
-    local size = 32
+    -- Distance-aware screen size:
+    -- close targets stay compact, far targets shrink smoothly,
+    -- but never become too tiny to notice.
+    local size = 18
+
+    local cam = nil
+
+    pcall(function()
+        if aim and aim.get_camera_position then
+            cam = aim.get_camera_position()
+        end
+    end)
+
+    if cam
+        and cam.X
+        and cam.Y
+        and cam.Z
+    then
+        local dx =
+            (hit.x or 0) - cam.X
+
+        local dy =
+            (hit.y or 0) - cam.Y
+
+        local dz =
+            (hit.z or 0) - cam.Z
+
+        local dist =
+            math.sqrt(
+                dx * dx
+                + dy * dy
+                + dz * dz
+            )
+
+        -- 0m  -> ~24 px
+        -- 50m -> ~21 px
+        -- 150m -> ~17 px
+        -- very far -> bottoms out around 15 px
+        local t =
+            clamp(
+                dist / 180,
+                0,
+                1
+            )
+
+        size =
+            24
+            + (15 - 24)
+            * smooth01(t)
+    end
 
     local style =
         FALLEN_HITFX_STYLE_INDEX()
@@ -19750,7 +19791,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         right_x,
         y + 25,
         right_w,
-        173,
+        96,
         11
     )
 
@@ -19869,109 +19910,6 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         numeric_stop(true)
     end
 
-    line(
-        right_x + 12,
-        y + 113,
-        right_x + right_w - 12,
-        y + 113,
-        C.divider,
-        1
-    )
-
-    local hit_color_y =
-        y + 114
-
-    local hit_color_hot =
-        row_hover(
-            mx,
-            my,
-            right_x,
-            hit_color_y,
-            right_w,
-            41
-        )
-
-    text(
-        right_x + 13,
-        hit_color_y + 14,
-        "Hit Effect Color",
-        FALLEN_HOVER_TEXT(
-            "hit_effect_color",
-            hit_color_hot,
-            C.text
-        )
-    )
-
-    local hit_swatch_w = 24
-    local hit_swatch_h = 20
-
-    local hit_swatch_x =
-        right_x
-        + right_w
-        - 46
-
-    local hit_swatch_y =
-        hit_color_y + 10
-
-    rounded_fill(
-        hit_swatch_x,
-        hit_swatch_y,
-        hit_swatch_w,
-        hit_swatch_h,
-        5,
-        FALLEN_HITFX_COLOR()
-    )
-
-    local hit_swatch_hot =
-        hover(
-            mx,
-            my,
-            hit_swatch_x,
-            hit_swatch_y,
-            hit_swatch_w,
-            hit_swatch_h
-        )
-
-    if controls_clicked
-        and hit_swatch_hot
-    then
-        FALLEN_COLOR_INPUT_STOP(true)
-
-        if A.world_color_picker_open
-            and A.world_color_picker_key == "hit_effect"
-        then
-            A.world_color_picker_open = false
-            A.world_color_picker_drag = nil
-        else
-            A.world_color_picker_key =
-                "hit_effect"
-
-            A.world_color_picker_open = true
-            A.world_color_picker_drag = nil
-
-            A.world_color_picker_anchor_x =
-                FALLEN_UI_X(
-                    hit_swatch_x
-                )
-
-            A.world_color_picker_anchor_y =
-                FALLEN_UI_Y(
-                    hit_swatch_y
-                )
-
-            A.world_color_picker_anchor_w =
-                FALLEN_UI_LEN(
-                    hit_swatch_w
-                )
-
-            A.world_color_picker_anchor_h =
-                FALLEN_UI_LEN(
-                    hit_swatch_h
-                )
-        end
-
-        numeric_stop(true)
-    end
 
     local dropdown_hot =
         FALLEN_DRAW_BT_STYLE_DROPDOWN(
