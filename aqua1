@@ -1016,12 +1016,75 @@ local function rounded_outline(x, y, w, h, r, c, thickness, inner_color)
 end
 
 local function text(x, y, s, c)
+    local sx =
+        FALLEN_UI_X(x)
+
+    local sy =
+        FALLEN_UI_Y(y)
+
+    local alpha_value =
+        (c[4] or 1)
+        * MENU_RENDER_ALPHA
+
+    local hover_grow =
+        clamp(
+            tonumber(c[5]) or 0,
+            0,
+            1
+        )
+
+    -- DrawText has a fixed font size in this API. Four very small animated
+    -- edge passes create a smooth ~half-pixel visual enlargement on hover.
+    if hover_grow > 0.01 then
+        local spread =
+            FALLEN_UI_LEN(
+                0.55 * hover_grow
+            )
+
+        local edge_alpha =
+            alpha_value
+            * 0.34
+            * hover_grow
+
+        DrawText(
+            sx - spread,
+            sy,
+            tostring(s),
+            c[1], c[2], c[3],
+            edge_alpha
+        )
+
+        DrawText(
+            sx + spread,
+            sy,
+            tostring(s),
+            c[1], c[2], c[3],
+            edge_alpha
+        )
+
+        DrawText(
+            sx,
+            sy - spread,
+            tostring(s),
+            c[1], c[2], c[3],
+            edge_alpha
+        )
+
+        DrawText(
+            sx,
+            sy + spread,
+            tostring(s),
+            c[1], c[2], c[3],
+            edge_alpha
+        )
+    end
+
     DrawText(
-        FALLEN_UI_X(x),
-        FALLEN_UI_Y(y),
+        sx,
+        sy,
         tostring(s),
         c[1], c[2], c[3],
-        (c[4] or 1) * MENU_RENDER_ALPHA
+        alpha_value
     )
 end
 
@@ -2480,7 +2543,9 @@ function FALLEN_HOVER_TEXT(key, hot, base_color)
     A.text_hover_time[key] = now
 
     local v = tonumber(A.text_hover_anim[key]) or 0
-    local step = dt / 2.0
+
+    -- One second from grey -> white and one second back.
+    local step = dt / 1.0
 
     if hot then
         v = math.min(1, v + step)
@@ -2490,11 +2555,20 @@ function FALLEN_HOVER_TEXT(key, hot, base_color)
 
     A.text_hover_anim[key] = v
 
-    return mix_color(
-        base_color or C.text,
-        C.white,
+    local eased =
         smooth01(v)
-    )
+
+    local out =
+        mix_color(
+            base_color or C.text,
+            C.white,
+            eased
+        )
+
+    -- Fifth value is consumed only by text(); normal colors stay untouched.
+    out[5] = eased
+
+    return out
 end
 
 local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
@@ -17649,11 +17723,31 @@ hooks.on_render(function()
     text(wx + 26, wy + 27, "Fallen-lua", C.text)
 
     -- Sidebar
+    -- COMMON/Misc is physically pushed down by the Visuals child expansion.
+    -- 0 => close under Visuals, 1 => below World + Armor.
+    local common_layout_expand =
+        smooth01(
+            clamp(
+                A.visuals_expand_anim or 0,
+                0,
+                1
+            )
+        )
+
+    local common_layout_shift =
+        74 * common_layout_expand
+
+    local common_label_y =
+        wy + 233 + common_layout_shift
+
+    local misc_tab_y =
+        wy + 253 + common_layout_shift
+
     local sidebar_target_y
 
     if S.tab == 3 then
         sidebar_target_y =
-            wy + 327
+            misc_tab_y
     elseif S.tab == 2 then
         sidebar_target_y =
             wy + 179
@@ -18053,10 +18147,29 @@ hooks.on_render(function()
             old_sidebar_alpha
     end
 
-    -- Common section.
+    -- Common section follows the same Visuals expansion animation.
+    -- Recalculate from the just-updated expand value so it tracks perfectly.
+    common_layout_expand =
+        smooth01(
+            clamp(
+                visuals_expand,
+                0,
+                1
+            )
+        )
+
+    common_layout_shift =
+        74 * common_layout_expand
+
+    common_label_y =
+        wy + 233 + common_layout_shift
+
+    misc_tab_y =
+        wy + 253 + common_layout_shift
+
     text(
         wx + 22,
-        wy + 307,
+        common_label_y,
         "COMMON",
         C.text_faint
     )
@@ -18068,7 +18181,7 @@ hooks.on_render(function()
             and not A.world_color_picker_open
             and (A.world_color_picker_anim or 0) <= 0.02,
         wx + 10,
-        wy + 327,
+        misc_tab_y,
         3
     )
 
