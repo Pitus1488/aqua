@@ -7137,7 +7137,7 @@ end
 
 -- House/Base objects from the user's known-working K1_BASE_ITEMS list.
 -- These are intentionally text-only for now.
-local WORLD_BASE_ITEMS = {
+WORLD_BASE_ITEMS = {
     { id = "base_cabinet", label = "Base Cabinet", names = { ["Base Cabinet"] = true, ["Cabinet"] = true }, color = { 1.00, 0.80, 0.05, 1 } },
     { id = "storage_cabinet", label = "Storage Cabinet", names = { ["Storage Cabinet"] = true, ["Large Cabinet"] = true }, color = { 0.60, 0.40, 0.20, 1 } },
     { id = "small_box", label = "Small Box", names = { ["Small Storage Box"] = true, ["Small Box"] = true }, color = { 0.50, 0.30, 0.10, 1 } },
@@ -8074,7 +8074,7 @@ local function world_draw_entry(
     end
 end
 
-local function world_draw_base_entry(
+function world_draw_base_entry(
     entry,
     my_pos
 )
