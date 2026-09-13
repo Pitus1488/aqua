@@ -11275,7 +11275,7 @@ end
 
 function FALLEN_WEATHER_SPAWN_SNOW(screen_w)
     local p = {
-        x = FALLEN_WEATHER_RAND(10, math.max(11, w - 10)),
+        x = FALLEN_WEATHER_RAND(10, math.max(11, screen_w - 10)),
         y = FALLEN_WEATHER_RAND(-18, -4),
         vx = FALLEN_WEATHER_RAND(-8, 8),
         vy = FALLEN_WEATHER_RAND(22, 46),
@@ -11289,7 +11289,7 @@ end
 
 function FALLEN_WEATHER_SPAWN_RAIN(screen_w)
     local p = {
-        x = FALLEN_WEATHER_RAND(12, math.max(13, w - 12)),
+        x = FALLEN_WEATHER_RAND(12, math.max(13, screen_w - 12)),
         y = FALLEN_WEATHER_RAND(-36, -8),
         speed = FALLEN_WEATHER_RAND(300, 470),
         drift = FALLEN_WEATHER_RAND(-52, -28),
