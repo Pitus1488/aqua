@@ -228,7 +228,7 @@ local C = {
     border      = { 0.210, 0.220, 0.250, 0.18 },
     divider     = { 0.220, 0.230, 0.260, 0.15 },
 
-    text        = { 0.600, 0.620, 0.680, 1.00 },
+    text        = { 0.860, 0.865, 0.900, 1.00 },
     text_dim    = { 0.560, 0.580, 0.650, 1.00 },
     text_faint  = { 0.360, 0.390, 0.500, 1.00 },
 
@@ -575,15 +575,13 @@ function Fallen_TextHoverColor(id, hovered)
     local value = state[id] or 0
     local target = hovered and 1 or 0
 
-    -- Slow smooth transition (~2.5 sec)
-    value = value + (target - value) * 0.012
+    value = value + (target - value) * 0.025
     state[id] = value
 
-    -- Dark gray -> white
     return {
-        0.55 + value * 0.42,
-        0.57 + value * 0.41,
-        0.62 + value * 0.36,
+        0.72 + value * 0.25,
+        0.74 + value * 0.24,
+        0.78 + value * 0.20,
         1
     }
 end
@@ -921,8 +919,6 @@ local function text(x, y, s, c)
         (c[4] or 1) * MENU_RENDER_ALPHA
     )
 end
-
-
 
 local function centered_text(cx, y, s, c)
     if type(DrawTextWithOutline) == "function" then
@@ -12630,3 +12626,55 @@ hooks.on_render(function()
 end)
 
 -- Hover text: darker gray base -> white, slow 2s style transition.
+
+
+-- =========================================================
+-- Fallen Loader Image URL replacement
+-- Uses direct URL instead of local folder image
+-- =========================================================
+
+local FALLEN_LOADER_IMAGE_URL = "https://tr.rbxcdn.com/180DAY-d45aa60d5a73b73506aaaba675bff1a1/768/432/Image/Webp/noFilter"
+
+FALLEN_LOADER_IMAGE_OBJECT = FALLEN_LOADER_IMAGE_OBJECT or nil
+FALLEN_LOADER_IMAGE_STARTED = FALLEN_LOADER_IMAGE_STARTED or false
+
+function Fallen_LoadLoaderURLImage()
+    if FALLEN_LOADER_IMAGE_STARTED then
+        return FALLEN_LOADER_IMAGE_OBJECT
+    end
+
+    FALLEN_LOADER_IMAGE_STARTED = true
+
+    if type(LoadImage) ~= "function" then
+        return nil
+    end
+
+    local ok, img = pcall(function()
+        return LoadImage(FALLEN_LOADER_IMAGE_URL)
+    end)
+
+    if ok then
+        FALLEN_LOADER_IMAGE_OBJECT = img
+    end
+
+    return FALLEN_LOADER_IMAGE_OBJECT
+end
+
+function Fallen_DrawLoaderURLImage(x, y, w, h)
+    local img = Fallen_LoadLoaderURLImage()
+
+    if not img or type(DrawImage) ~= "function" then
+        return false
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready = pcall(IsImageReady, img)
+        if ok and not ready then
+            return false
+        end
+    end
+
+    DrawImage(img, x, y, w, h)
+    return true
+end
+
