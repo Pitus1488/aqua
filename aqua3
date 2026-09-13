@@ -1,71 +1,6 @@
--- FALLEN UI BASE SAFE MODE
--- Feature modules can be disabled later without deleting UI code.
-
--- Loader/menu transition gate.
-_G.FallenSurvivalLoaded = false
-_G.FallenMenuReady = false
-
--- Menu boot state for loader integration.
-_G.FallenLua_Menu = _G.FallenLua_Menu or {}
-if _G.FallenLua_Menu.visible == nil then
-    _G.FallenLua_Menu.visible = false
-end
 
 
--- World icon url map (generated from WORLD_UI_ITEMS direct_urls)
-K1_LOOT_DIRECT_ICONS = {
-wooden_crate = {
-"https://static.wikia.nocookie.net/fallen-survival-new/images/0/00/Wooden_Crate.png/revision/latest?format=original",
-"https://static.wikia.nocookie.net/play-rust/images/d/d7/Basic_Crate.png/revision/latest/scale-to-width-down/177?cb=20250128033438"
-},
-metal_crate = {
-"https://static.wikia.nocookie.net/fallen-survival-new/images/e/e7/Metal_Crate.png/revision/latest?format=original",
-"https://static.wikia.nocookie.net/play-rust/images/d/d7/Military_Crate.png/revision/latest/scale-to-width-down/220?cb=20250128033521"
-},
-steel_crate = {
-"https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339",
-"https://static.wikia.nocookie.net/play-rust/images/a/ad/Elite_Crate.png/revision/latest/scale-to-width-down/220?cb=20250128033555"
-},
-food_crate = {
-"https://static.wikia.nocookie.net/play-rust/images/8/80/Food-crate.png/revision/latest?cb=20180609013614",
-"https://static.wikia.nocookie.net/play-rust/images/1/10/Food_crate.png/revision/latest/scale-to-width-down/220?cb=20160106151034"
-},
-timed_crate = {
-"https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339"
-},
-care_package = {
-"https://static.wikia.nocookie.net/play-rust/images/4/49/Airdrop_Supply_Crate.jpg/revision/latest/scale-to-width-down/300?cb=20140723124718"
-},
-trash_can = {
-"https://static.wikia.nocookie.net/play-rust/images/e/eb/Tech_Trash_icon.png/revision/latest?cb=20161117193341",
-"https://static.wikia.nocookie.net/fallensurvival/images/6/6e/Trash.png/revision/latest?format=original"
-},
-oil_barrel = {
-"https://files.facepunch.com/wiki/files/b67cc/8de6b04b1f5b0bb.png",
-"https://files.facepunch.com/wiki/files/b67cc/8de6b061b27ee29.png",
-"https://static.wikia.nocookie.net/fallensurvival/images/0/06/Oil.png/revision/latest?format=original"
-},
-body_bag = {
-"https://rustlabs.com/img/items180/halloween.lootbag.large.png",
-"https://rustlabs.com/img/items180/halloween.lootbag.medium.png",
-"https://rustlabs.com/img/items180/halloween.lootbag.small.png",
-"https://static.thenounproject.com/png/body-bag-icon-4390423-512.png"
-},
-sleeper = {
-"https://static.wikia.nocookie.net/play-rust/images/b/be/Sleeping_Bag_icon.png/revision/latest?cb=20160211200428"
-},
-wooden_boat = {
-"https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931"
-},
-military_boat = {
-"https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931"
-},
-flycopter = {
-"https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-transport-minicopter-300x300.png",
-"https://static.wikia.nocookie.net/play-rust/images/4/49/Airdrop_Supply_Crate.jpg/revision/latest/scale-to-width-down/300?cb=20140723124718"
-}
-}
-
+-- COPIED OLD ICON LOGIC
 K1_LOOT_DIRECT_ICON_STATE = {}
 function k1_resolve_loot_direct_icon(id)
 if not id or not K1_LOOT_DIRECT_ICONS then return nil end
@@ -92,6 +27,174 @@ end
 end
 if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
 return nil
+end
+
+
+function k1_icon_candidates(name, id)
+local n = k1_title_clean(name)
+local list = { n }
+if id == "stone_node" then
+list[#list+1] = "Stone"
+list[#list+1] = "Stones"
+list[#list+1] = "Stone Ore"
+list[#list+1] = "Stone Node"
+list[#list+1] = "Stone_Node"
+elseif id == "metal_node" then
+list[#list+1] = "Metal Ore"
+list[#list+1] = "Metal"
+list[#list+1] = "Metal Node"
+list[#list+1] = "Metal_Node"
+elseif id == "phosphate_node" then
+list[#list+1] = "Phosphate"
+list[#list+1] = "Phosphate Node"
+list[#list+1] = "Sulfur Ore"
+list[#list+1] = "Sulfur"
+list[#list+1] = "Sulfur_Node"
+elseif id == "corn_plant" then
+list[#list+1] = "Corn"
+elseif id == "tomato_plant" then
+list[#list+1] = "Tomato"
+elseif id == "lemon_plant" then
+list[#list+1] = "Lemon"
+elseif id == "raspberry_plant" then
+list[#list+1] = "Raspberry"
+list[#list+1] = "Raspberries"
+elseif id == "blueberry_plant" then
+list[#list+1] = "Blueberry"
+list[#list+1] = "Blueberries"
+elseif id == "wool_plant" then
+list[#list+1] = "Wool"
+elseif id == "pumpkin_plant" then
+list[#list+1] = "Pumpkin"
+elseif id == "deer" then
+list[#list+1] = "Deer"
+elseif id == "boar" then
+list[#list+1] = "Wild Boar"
+list[#list+1] = "Boar"
+elseif id == "wolf" then
+list[#list+1] = "Wolf"
+elseif id == "wooden_crate" then
+list[#list+1] = "Wooden Crate"
+list[#list+1] = "Locked Wooden Crate"
+elseif id == "metal_crate" then
+list[#list+1] = "Metal Crate"
+list[#list+1] = "Locked Metal Crate"
+elseif id == "steel_crate" then
+list[#list+1] = "Steel Crate"
+list[#list+1] = "Locked Steel Crate"
+elseif id == "food_crate" then
+list[#list+1] = "Food Crate"
+elseif id == "timed_crate" then
+list[#list+1] = "Timed Crate"
+elseif id == "care_package" then
+list[#list+1] = "Care Package"
+elseif id == "trash_can" then
+list[#list+1] = "Trash Can"
+elseif id == "oil_barrel" then
+list[#list+1] = "Oil Barrel"
+elseif id == "body_bag" then
+list[#list+1] = "Body Bag"
+elseif id == "sleeper" then
+list[#list+1] = "Sleeper"
+elseif id == "wooden_boat" then
+list[#list+1] = "Wooden Boat"
+elseif id == "military_boat" then
+list[#list+1] = "Military Boat"
+elseif id == "flycopter" then
+list[#list+1] = "Salvaged Flycopter"
+list[#list+1] = "Flycopter"
+elseif id == "dropped_item" then
+list[#list+1] = string.gsub(n, "^Salvaged%s+", "")
+list[#list+1] = string.gsub(n, "^Military%s+", "")
+list[#list+1] = string.gsub(n, "^Wooden%s+", "")
+list[#list+1] = string.gsub(n, "^Improvised%s+", "")
+if string.find(string.lower(n), "double") and string.find(string.lower(n), "barrel") then
+list[#list+1] = "Salvaged Shotgun"
+list[#list+1] = "Shotgun"
+end
+if string.find(string.lower(n), "pipe") and string.find(string.lower(n), "rifle") then
+list[#list+1] = "Salvaged Pipe Rifle"
+list[#list+1] = "Pipe Rifle"
+end
+end
+local out, seen = {}, {}
+for _, v in ipairs(list) do
+v = k1_title_clean(v)
+if v ~= "" and not seen[v] then
+seen[v] = true
+out[#out+1] = v
+end
+end
+return out
+end
+local function k1_fetch_wiki_icon(title)
+title = k1_title_clean(title)
+if title == "" then return nil end
+local st = k1_wiki_icon_state[title]
+if st then
+if st.dead then return nil end
+if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
+if st.handle and Drawing.IsImageFailed and Drawing.IsImageFailed(st.handle) then st.dead = true; return nil end
+return nil
+end
+st = { dead = false, handle = nil, url = nil }
+k1_wiki_icon_state[title] = st
+pcall(function()
+if not (Http and Http.get and Json and Json.decode and Drawing and Drawing.LoadImage) then st.dead = true; return end
+local api = "https://fallen-survival-new.fandom.com/api.php?action=query&format=json&redirects=1&prop=pageimages&piprop=thumbnail|original&pithumbsize=180&titles=" .. k1_url_encode(title)
+local ok, status, body = Http.get(api, { timeout_ms = 6500 })
+if (not ok) or status ~= 200 or not body then st.dead = true; return end
+local j = Json.decode(body)
+if not j or not j.query or not j.query.pages then st.dead = true; return end
+for _, page in pairs(j.query.pages) do
+local src = nil
+if page.thumbnail and page.thumbnail.source then src = page.thumbnail.source end
+if (not src) and page.original and page.original.source then src = page.original.source end
+if src and src ~= "" then
+st.url = src
+st.handle = Drawing.LoadImage(src)
+return
+end
+end
+st.dead = true
+end)
+if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
+return nil
+end
+
+
+function k1_resolve_icon_handle_uncached(name, id)
+if K1_LOOT_ICON_IDS and K1_LOOT_ICON_IDS[id] then
+local direct = k1_resolve_loot_direct_icon(id)
+if direct then return direct end
+end
+local candidates = k1_icon_candidates(name, id)
+for _, cand in ipairs(candidates) do
+local handle = nil
+pcall(function()
+if get_icon then handle = get_icon(cand) end
+end)
+if handle and Drawing.IsImageReady(handle) then return handle end
+pcall(function()
+if get_weapon_icon then handle = get_weapon_icon(cand) end
+end)
+if handle and Drawing.IsImageReady(handle) then return handle end
+handle = k1_fetch_wiki_icon(cand)
+if handle and Drawing.IsImageReady(handle) then return handle end
+end
+return nil
+end
+-- FALLEN UI BASE SAFE MODE
+-- Feature modules can be disabled later without deleting UI code.
+
+-- Loader/menu transition gate.
+_G.FallenSurvivalLoaded = false
+_G.FallenMenuReady = false
+
+-- Menu boot state for loader integration.
+_G.FallenLua_Menu = _G.FallenLua_Menu or {}
+if _G.FallenLua_Menu.visible == nil then
+    _G.FallenLua_Menu.visible = false
 end
 
 -- =========================================================
@@ -1053,8 +1156,6 @@ local function aim_vk_name(vk)
         [0x05] = "Mouse4",
         [0x06] = "Mouse5",
         [0x08] = "Backspace",
-
-
         [0x09] = "Tab",
         [0x0D] = "Enter",
         [0x10] = "Shift",
@@ -2055,8 +2156,6 @@ local function config_input_poll()
         if config_input_edge(0x30 + digit)
             or config_input_edge(0x60 + digit)
         then
-
-
             A.config_input_buffer =
                 (A.config_input_buffer or "")
                 .. tostring(digit)
@@ -3057,8 +3156,6 @@ function FALLEN_COLOR_INPUT_POLL()
             return
         end
     end
-
-
 end
 
 local function color_preview(x, y, w, h)
@@ -4059,8 +4156,6 @@ local function draw_aim_settings_popup(
                 row_x,
                 row_y,
                 row_w,
-
-
                 41
             )
 
@@ -5061,8 +5156,6 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
         + clamp(
             (tonumber(S[prefix .. "_alpha"]) or 100) / 100,
             0,
-
-
             1
         )
         * sv_w
@@ -6064,7 +6157,6 @@ local function fap_refresh_weapon()
         FAP.bullet_speed = 300
         FAP.gravity = 30
 
-
     elseif weapon == "Crossbow" then
         FAP.bullet_speed = 400
         FAP.gravity = 35
@@ -7064,8 +7156,6 @@ local WORLD_RESOURCES = {
         folder = "Plants",
         names = { ["Corn Plant"] = true },
         label = "Corn",
-
-
         color = { 1.00, 0.90, 0.25, 1 },
         icon_names = { "Corn", "Corn Plant" },
         short = "CO",
@@ -7648,45 +7738,192 @@ local function world_icon_ready(handle)
         and ready == true
 end
 
+local function world_load_direct_icon(cfg)
+    if not cfg then
+        return nil
+    end
+
+    local rec =
+        WORLD_ESP.icons[
+            cfg.id
+        ]
+
+    if not rec then
+        rec = {
+            index = 1,
+            handle = nil,
+            dead = false,
+            retry = 0,
+            source = nil,
+            reported_ready = false,
+            reported_failed = false,
+        }
+
+        WORLD_ESP.icons[cfg.id] =
+            rec
+    end
+
+    if rec.dead then
+        return nil
+    end
+
+    local now = tick()
+
+    if rec.retry
+        and now < rec.retry
+        and not rec.handle
+    then
+        return nil
+    end
+
+    if not rec.handle then
+        -- Preferred path for locally supplied icons.
+        -- This is identical to the method that worked for noFilter (1).png.
+        if cfg.local_icon_path
+            and type(Drawing.LoadImageFromFile) == "function"
+        then
+            local ok, handle =
+                pcall(
+                    Drawing.LoadImageFromFile,
+                    cfg.local_icon_path
+                )
+
+            if ok and handle then
+                rec.handle = handle
+                rec.source = "local"
+                rec.reported_ready = false
+                rec.reported_failed = false
+                return nil
+            end
+
+            rec.retry = now + 1.0
+            return nil
+        end
+
+        -- Other resources still use their direct URL list for now.
+        local urls =
+            cfg.direct_urls
+            or {}
+
+        local url =
+            urls[
+                rec.index or 1
+            ]
+
+        if not url then
+            rec.dead = true
+            return nil
+        end
+
+        if type(LoadImage) ~= "function" then
+            rec.dead = true
+            return nil
+        end
+
+        local ok, handle =
+            pcall(
+                LoadImage,
+                url
+            )
+
+        if ok and handle then
+            rec.handle = handle
+            rec.source = "url"
+            rec.retry = 0
+            rec.reported_ready = false
+            rec.reported_failed = false
+        else
+            rec.index =
+                (rec.index or 1)
+                + 1
+
+            rec.retry =
+                now + 1.0
+        end
+
+        return nil
+    end
+
+    if world_icon_ready(
+        rec.handle
+    ) then
+        if rec.reported_ready ~= true then
+            rec.reported_ready = true
+
+            print(
+                SYS
+                .. "icon READY: "
+                .. tostring(cfg.id)
+                .. " ["
+                .. tostring(rec.source or "?")
+                .. "]"
+            )
+        end
+
+        return rec.handle
+    end
+
+    if type(IsImageFailed) == "function" then
+        local ok, failed =
+            pcall(
+                IsImageFailed,
+                rec.handle
+            )
+
+        if ok and failed then
+            if rec.reported_failed ~= true then
+                rec.reported_failed = true
+
+                warn(
+                    SYS
+                    .. "icon FAILED: "
+                    .. tostring(cfg.id)
+                    .. " ["
+                    .. tostring(rec.source or "?")
+                    .. "]"
+                )
+            end
+
+            rec.handle = nil
+
+            if cfg.local_icon_path then
+                -- Keep retrying the exact local file path rather than
+                -- silently switching Stone back to a web URL.
+                rec.retry =
+                    now + 2.0
+            else
+                rec.index =
+                    (rec.index or 1)
+                    + 1
+
+                local urls =
+                    cfg.direct_urls
+                    or {}
+
+                if not urls[rec.index] then
+                    rec.dead = true
+                else
+                    rec.retry =
+                        now + 0.35
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
 local function world_resolve_icon(cfg)
     if not cfg then
         return nil
     end
 
-    -- Fixed: use the same fallback/cached image resolver as the working version.
-    -- The old build called k1_resolve_icon_handle(), but this file does not
-    -- contain that function, so icons always returned nil.
-    if type(k1_resolve_loot_direct_icon) == "function" then
-        local handle = k1_resolve_loot_direct_icon(cfg.id)
-        if handle then
-            return handle
-        end
-    end
-
-    -- Fallback: load the resource's own URL list.
-    if cfg.direct_urls and type(LoadImage) == "function" then
-        local key = "__world_direct_" .. tostring(cfg.id)
-        _G.FallenWorldIconCache = _G.FallenWorldIconCache or {}
-        local cached = _G.FallenWorldIconCache[key]
-        if cached and world_icon_ready(cached) then
-            return cached
-        end
-
-        for _, url in ipairs(cfg.direct_urls) do
-            local ok, img = pcall(LoadImage, url)
-            if ok and img then
-                _G.FallenWorldIconCache[key] = img
-                return img
-            end
-        end
-    end
-
-    -- Compatibility with external icon packs.
     if type(k1_resolve_icon_handle) == "function" then
         local handle = k1_resolve_icon_handle(
             cfg.label,
             cfg.id
         )
+
         if handle then
             return handle
         end
@@ -8094,8 +8331,6 @@ function FALLEN_CONFIGS.button(
             hot
             and { 0.34, 0.105, 0.115, 1 }
             or { 0.245, 0.082, 0.092, 1 }
-
-
     else
         bg =
             hot
@@ -9096,8 +9331,6 @@ function FALLEN_MENU_TYPE_DROPDOWN_STEP()
         A.menu_type_dropdown_anim = 0
     elseif target == 1
         and (A.menu_type_dropdown_anim or 0) > 0.992
-
-
     then
         A.menu_type_dropdown_anim = 1
     end
@@ -10097,8 +10330,6 @@ hooks.on_render(function()
             or "v",
         C.text_dim
     )
-
-
 
     if clicked
         and cfg_hot
@@ -11100,8 +11331,6 @@ hooks.on_render(function()
     -- Close button remains clickable because the right-most area is excluded.
     local loader_drag_hot =
         inside(
-
-
             mx, my,
             x + 8 * scale,
             y + 2 * scale,
@@ -12102,8 +12331,6 @@ hooks.on_render(function()
 
         local by =
             snap(
-
-
                 y +
                 h -
                 54 * scale
