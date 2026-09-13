@@ -14,36 +14,56 @@ end
 
 -- World icon url map (generated from WORLD_UI_ITEMS direct_urls)
 K1_LOOT_DIRECT_ICONS = {
-    ["stone_node"] = {
-        "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest/scale-to-width-down/50?cb=20150405123145",
-    },
-    ["metal_node"] = {
-        "https://static.wikia.nocookie.net/play-rust/images/0/0a/Metal_Ore_icon.png/revision/latest/scale-to-width-down/50?cb=20151106060814",
-    },
-    ["phosphate_node"] = {
-        "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest/scale-to-width-down/50?cb=20151106061904",
-    },
-    ["wool_plant"] = {
-        "https://static.wikia.nocookie.net/play-rust/images/f/f7/Cloth_icon.png/revision/latest/scale-to-width-down/50?cb=20151106071629",
-    },
-    ["corn_plant"] = {
-        "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f8/Corn.png/revision/latest?cb=20250108134637",
-    },
-    ["tomato_plant"] = {
-        "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9d/Tomato.png/revision/latest/scale-to-width-down/55?cb=20250108164012",
-    },
-    ["pumpkin_plant"] = {
-        "https://static.wikia.nocookie.net/fallen-survival-new/images/6/64/Pumpkin.png/revision/latest/scale-to-width-down/55?cb=20250108163605",
-    },
-    ["lemon_plant"] = {
-        "https://static.wikia.nocookie.net/fallen-survival-new/images/3/35/Lemon.png/revision/latest/scale-to-width-down/55?cb=20250108163730",
-    },
-    ["raspberry_plant"] = {
-        "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/55?cb=20250108163842",
-    },
-    ["blueberry_plant"] = {
-        "https://static.wikia.nocookie.net/fallen-survival-new/images/a/af/Blueberries.png/revision/latest/scale-to-width-down/55?cb=20250108163924",
-    },
+wooden_crate = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/0/00/Wooden_Crate.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/play-rust/images/d/d7/Basic_Crate.png/revision/latest/scale-to-width-down/177?cb=20250128033438"
+},
+metal_crate = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/e/e7/Metal_Crate.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/play-rust/images/d/d7/Military_Crate.png/revision/latest/scale-to-width-down/220?cb=20250128033521"
+},
+steel_crate = {
+"https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339",
+"https://static.wikia.nocookie.net/play-rust/images/a/ad/Elite_Crate.png/revision/latest/scale-to-width-down/220?cb=20250128033555"
+},
+food_crate = {
+"https://static.wikia.nocookie.net/play-rust/images/8/80/Food-crate.png/revision/latest?cb=20180609013614",
+"https://static.wikia.nocookie.net/play-rust/images/1/10/Food_crate.png/revision/latest/scale-to-width-down/220?cb=20160106151034"
+},
+timed_crate = {
+"https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339"
+},
+care_package = {
+"https://static.wikia.nocookie.net/play-rust/images/4/49/Airdrop_Supply_Crate.jpg/revision/latest/scale-to-width-down/300?cb=20140723124718"
+},
+trash_can = {
+"https://static.wikia.nocookie.net/play-rust/images/e/eb/Tech_Trash_icon.png/revision/latest?cb=20161117193341",
+"https://static.wikia.nocookie.net/fallensurvival/images/6/6e/Trash.png/revision/latest?format=original"
+},
+oil_barrel = {
+"https://files.facepunch.com/wiki/files/b67cc/8de6b04b1f5b0bb.png",
+"https://files.facepunch.com/wiki/files/b67cc/8de6b061b27ee29.png",
+"https://static.wikia.nocookie.net/fallensurvival/images/0/06/Oil.png/revision/latest?format=original"
+},
+body_bag = {
+"https://rustlabs.com/img/items180/halloween.lootbag.large.png",
+"https://rustlabs.com/img/items180/halloween.lootbag.medium.png",
+"https://rustlabs.com/img/items180/halloween.lootbag.small.png",
+"https://static.thenounproject.com/png/body-bag-icon-4390423-512.png"
+},
+sleeper = {
+"https://static.wikia.nocookie.net/play-rust/images/b/be/Sleeping_Bag_icon.png/revision/latest?cb=20160211200428"
+},
+wooden_boat = {
+"https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931"
+},
+military_boat = {
+"https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931"
+},
+flycopter = {
+"https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-transport-minicopter-300x300.png",
+"https://static.wikia.nocookie.net/play-rust/images/4/49/Airdrop_Supply_Crate.jpg/revision/latest/scale-to-width-down/300?cb=20140723124718"
+}
 }
 
 K1_LOOT_DIRECT_ICON_STATE = {}
