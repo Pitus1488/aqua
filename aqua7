@@ -2070,14 +2070,14 @@ end
 -- =========================================================
 
 local function icon_aim(x, y, c)
-    -- Text based Aimbot icon for cleaner sidebar alignment.
-    -- Uses the same accent color as the old icon.
-    text(
-        x + 1,
-        y - 1,
-        "⦻",
-        c
-    )
+    -- Custom Aimbot icon: circle + X crosshair.
+    -- Uses Drawing primitives because the Lua API may not render symbols.
+    local cx = x + 7
+    local cy = y + 7
+
+    circle(cx, cy, 6, c, 1.1)
+    line(cx - 5, cy - 5, cx + 5, cy + 5, c, 1.1)
+    line(cx + 5, cy - 5, cx - 5, cy + 5, c, 1.1)
 end
 
 local function icon_world(x, y, c)
