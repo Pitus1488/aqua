@@ -380,6 +380,10 @@ local A = {
     weather_mouse_x = nil,
     weather_mouse_y = nil,
 
+    -- Previous menu position is used to give resting snow real inertia.
+    weather_menu_last_x = nil,
+    weather_menu_last_y = nil,
+
     weather_snow_spawn = 0,
     weather_rain_spawn = 0,
     weather_last_t = nil,
@@ -11349,17 +11353,16 @@ end
 
 function FALLEN_WEATHER_ADD_SNOW_BANK(
     hit_x,
-    menu_x,
-    menu_w,
+    menu_y,
     radius,
-    incoming_vx
+    incoming_vx,
+    incoming_vy
 )
     if type(A.weather_snow_bank) ~= "table" then
         A.weather_snow_bank = {}
     end
 
     if #A.weather_snow_bank >= 64 then
-        -- Keep the bank bounded. Remove one older low-energy piece.
         table.remove(
             A.weather_snow_bank,
             1
@@ -11373,30 +11376,27 @@ function FALLEN_WEATHER_ADD_SNOW_BANK(
             2.25
         )
 
-    local rx =
-        clamp(
-            (tonumber(hit_x) or menu_x) - menu_x,
-            radius + 3,
-            math.max(
-                radius + 3,
-                menu_w - radius - 3
-            )
-        )
-
     A.weather_snow_bank[#A.weather_snow_bank + 1] = {
-        rx = rx,
-        ry = -radius - FALLEN_WEATHER_RAND(0.1, 1.0),
+        -- ABSOLUTE SCREEN coordinates.
+        x = tonumber(hit_x) or 0,
+        y =
+            (tonumber(menu_y) or 0)
+            - radius
+            - FALLEN_WEATHER_RAND(0.15, 0.9),
 
         vx =
-            (tonumber(incoming_vx) or 0) * 0.18
-            + FALLEN_WEATHER_RAND(-4, 4),
+            (tonumber(incoming_vx) or 0) * 0.22
+            + FALLEN_WEATHER_RAND(-5, 5),
 
-        vy = FALLEN_WEATHER_RAND(-8, -1),
+        vy =
+            math.min(
+                0,
+                (tonumber(incoming_vy) or 0) * 0.08
+            )
+            - FALLEN_WEATHER_RAND(0, 5),
 
         r = radius,
         a = FALLEN_WEATHER_RAND(0.62, 0.94),
-
-        -- Tiny variation so the pile is not visually flat.
         shade = FALLEN_WEATHER_RAND(0.92, 1.0),
     }
 end
@@ -11407,6 +11407,7 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
     menu_y,
     menu_w,
     menu_h,
+    screen_w,
     screen_h
 )
     if type(A.weather_snow_bank) ~= "table" then
@@ -11416,6 +11417,43 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
     local bank =
         A.weather_snow_bank
 
+    -- ---------------------------------
+    -- MENU VELOCITY
+    -- ---------------------------------
+    local last_menu_x =
+        tonumber(A.weather_menu_last_x)
+        or menu_x
+
+    local last_menu_y =
+        tonumber(A.weather_menu_last_y)
+        or menu_y
+
+    local safe_dt =
+        math.max(
+            0.001,
+            dt
+        )
+
+    local menu_vx =
+        clamp(
+            (menu_x - last_menu_x) / safe_dt,
+            -1400,
+            1400
+        )
+
+    local menu_vy =
+        clamp(
+            (menu_y - last_menu_y) / safe_dt,
+            -1400,
+            1400
+        )
+
+    A.weather_menu_last_x = menu_x
+    A.weather_menu_last_y = menu_y
+
+    -- ---------------------------------
+    -- MOUSE BRUSH
+    -- ---------------------------------
     local mx, my =
         mouse_pos()
 
@@ -11430,43 +11468,36 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
     local mdx =
         clamp(
             mx - last_mx,
-            -45,
-            45
+            -70,
+            70
         )
 
     local mdy =
         clamp(
             my - last_my,
-            -45,
-            45
+            -70,
+            70
         )
 
     A.weather_mouse_x = mx
     A.weather_mouse_y = my
 
-    -- Mouse "brush": simply moving the cursor through the snow pushes it.
     for i = 1, #bank do
         local p =
             bank[i]
 
-        local px =
-            menu_x + p.rx
-
-        local py =
-            menu_y + p.ry
-
         local dx =
-            px - mx
+            p.x - mx
 
         local dy =
-            py - my
+            p.y - my
 
         local d2 =
             dx * dx
             + dy * dy
 
         local influence =
-            30
+            42
 
         if d2 < influence * influence then
             local dist =
@@ -11485,64 +11516,70 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
                     1
                 )
 
-            -- Cursor motion is the main impulse.
+            -- Much stronger cursor momentum.
             p.vx =
                 p.vx
                 + mdx
-                * (2.0 + strength * 3.2)
+                * (5.5 + strength * 7.5)
                 * strength
 
             p.vy =
                 p.vy
                 + mdy
-                * (0.7 + strength * 1.2)
+                * (2.8 + strength * 4.5)
                 * strength
 
-            -- Also gently repel from the cursor so a slow sweep still works.
+            -- Strong local repulsion, so even a slow mouse sweep pushes snow.
             p.vx =
                 p.vx
                 + (dx / dist)
-                * 44
+                * 150
                 * strength
                 * dt
 
             p.vy =
                 p.vy
                 + (dy / dist)
-                * 26
+                * 95
                 * strength
                 * dt
         end
     end
 
-    -- Light 2D circle physics. Gravity + particle separation makes
-    -- an uneven little snow pile instead of a straight painted line.
+    -- ---------------------------------
+    -- FREE PHYSICS
+    -- ---------------------------------
     for i = 1, #bank do
         local p =
             bank[i]
 
+        p.old_x = p.x
+        p.old_y = p.y
+
         p.vy =
             (tonumber(p.vy) or 0)
-            + 125 * dt
+            + 170 * dt
 
+        -- Air drag only. Do NOT attach particles to the menu.
         p.vx =
             (tonumber(p.vx) or 0)
             * math.max(
                 0,
-                1 - 2.3 * dt
+                1 - 0.70 * dt
             )
 
-        p.rx =
-            (tonumber(p.rx) or 0)
+        p.x =
+            (tonumber(p.x) or 0)
             + p.vx * dt
 
-        p.ry =
-            (tonumber(p.ry) or 0)
+        p.y =
+            (tonumber(p.y) or 0)
             + p.vy * dt
     end
 
-    -- Resolve snowball-to-snowball overlap.
-    -- 64 max pieces => at most ~2k pairs, cheap enough for this effect.
+    -- ---------------------------------
+    -- PARTICLE-PARTICLE COLLISION
+    -- ---------------------------------
     for i = 1, #bank - 1 do
         local a =
             bank[i]
@@ -11552,10 +11589,10 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
                 bank[j]
 
             local dx =
-                b.rx - a.rx
+                b.x - a.x
 
             local dy =
-                b.ry - a.ry
+                b.y - a.y
 
             local min_d =
                 (a.r or 1)
@@ -11579,32 +11616,31 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
 
                 local push =
                     (min_d - d)
-                    * 0.52
+                    * 0.54
 
-                a.rx =
-                    a.rx
+                a.x =
+                    a.x
                     - nx * push
 
-                a.ry =
-                    a.ry
+                a.y =
+                    a.y
                     - ny * push
 
-                b.rx =
-                    b.rx
+                b.x =
+                    b.x
                     + nx * push
 
-                b.ry =
-                    b.ry
+                b.y =
+                    b.y
                     + ny * push
 
-                -- Small energy transfer so mouse pushes propagate through pile.
                 local rel =
                     (b.vx - a.vx) * nx
                     + (b.vy - a.vy) * ny
 
                 if rel < 0 then
                     local impulse =
-                        -rel * 0.18
+                        -rel * 0.20
 
                     a.vx =
                         a.vx
@@ -11626,7 +11662,9 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
         end
     end
 
-    -- Roof collision and edge falling.
+    -- ---------------------------------
+    -- MENU ROOF COLLISION
+    -- ---------------------------------
     for i = #bank, 1, -1 do
         local p =
             bank[i]
@@ -11634,30 +11672,69 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
         local r =
             tonumber(p.r) or 1
 
-        local on_roof =
-            p.rx >= r
-            and p.rx <= menu_w - r
+        local inside_roof_x =
+            p.x >= menu_x + r
+            and p.x <= menu_x + menu_w - r
 
-        if on_roof
-            and p.ry + r > 0
-        then
-            p.ry = -r
+        local old_bottom =
+            (p.old_y or p.y) + r
 
-            if p.vy > 0 then
+        local new_bottom =
+            p.y + r
+
+        local roof_contact =
+            inside_roof_x
+            and (
+                -- Normal falling collision.
+                (
+                    old_bottom <= menu_y + 1
+                    and new_bottom >= menu_y
+                )
+                -- Menu moved UP into the particle.
+                or (
+                    menu_vy < -15
+                    and new_bottom > menu_y
+                    and p.y < menu_y + r * 2.5
+                )
+            )
+
+        if roof_contact then
+            p.y =
+                menu_y - r
+
+            if menu_vy < -15 then
+                -- Fast upward menu motion actually throws snow upward.
                 p.vy =
-                    -p.vy * 0.08
+                    math.min(
+                        p.vy,
+                        menu_vy * 0.82
+                    )
+                    - math.min(
+                        55,
+                        math.abs(menu_vy) * 0.06
+                    )
+            elseif p.vy > 0 then
+                p.vy =
+                    -p.vy * 0.10
             end
 
-            -- Snow has strong friction when resting.
+            -- Horizontal menu motion gives a little shove, but snow is not glued.
             p.vx =
                 p.vx
-                * 0.86
+                + menu_vx * 0.035
+
+            -- Ground friction only while actually touching the roof.
+            p.vx =
+                p.vx
+                * 0.84
         end
 
-        -- Once pushed off the roof, let it fall naturally.
-        if p.rx < -35
-            or p.rx > menu_w + 35
-            or menu_y + p.ry > screen_h + 30
+        -- When menu moves DOWN, the snow keeps its old world/screen position.
+        -- Gravity then makes it fall back onto the roof naturally.
+
+        if p.x < -45
+            or p.x > screen_w + 45
+            or p.y > screen_h + 45
         then
             table.remove(
                 bank,
@@ -11666,33 +11743,28 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
         end
     end
 
-    -- Draw after physics. Because weather is rendered AFTER the menu,
-    -- these pieces visibly sit right on the top border.
+    -- ---------------------------------
+    -- DRAW
+    -- ---------------------------------
     if (A.weather_snow_alpha or 0) > 0.01 then
         for i = 1, #bank do
             local p =
                 bank[i]
 
-            local px =
-                menu_x + p.rx
-
-            local py =
-                menu_y + p.ry
-
             local r =
                 p.r or 1
 
-            if px + r >= 0
-                and px - r <= menu_x + menu_w + 40
-                and py + r >= 0
-                and py - r <= screen_h
+            if p.x + r >= 0
+                and p.x - r <= screen_w
+                and p.y + r >= 0
+                and p.y - r <= screen_h
             then
                 local shade =
                     p.shade or 1
 
                 circle_fill(
-                    px,
-                    py,
+                    p.x,
+                    p.y,
                     r,
                     {
                         0.88 * shade,
@@ -11705,8 +11777,8 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
 
                 if r > 1.25 then
                     circle_fill(
-                        px - r * 0.22,
-                        py - r * 0.25,
+                        p.x - r * 0.22,
+                        p.y - r * 0.25,
                         r * 0.35,
                         {
                             1,
@@ -11722,12 +11794,17 @@ function FALLEN_WEATHER_UPDATE_SNOW_BANK(
         end
     end
 
-    if S.menu_snow ~= true
+    if (
+        S.visible ~= true
+        or S.menu_snow ~= true
+    )
         and (A.weather_snow_alpha or 0) < 0.015
     then
         A.weather_snow_bank = {}
         A.weather_mouse_x = nil
         A.weather_mouse_y = nil
+        A.weather_menu_last_x = nil
+        A.weather_menu_last_y = nil
     end
 end
 
@@ -11774,23 +11851,31 @@ function FALLEN_DRAW_MENU_WEATHER(
     A.weather_snow_alpha =
         exp_chase(
             A.weather_snow_alpha or 0,
-            S.menu_snow == true and 1 or 0,
-            5.5,
+            (
+                S.visible == true
+                and S.menu_snow == true
+            ) and 1 or 0,
+            4.0,
             dt
         )
 
     A.weather_rain_alpha =
         exp_chase(
             A.weather_rain_alpha or 0,
-            S.menu_rain == true and 1 or 0,
-            6.5,
+            (
+                S.visible == true
+                and S.menu_rain == true
+            ) and 1 or 0,
+            4.8,
             dt
         )
 
     -- ---------------------------------
     -- SNOW
     -- ---------------------------------
-    if S.menu_snow == true then
+    if S.visible == true
+        and S.menu_snow == true
+    then
         A.weather_snow_spawn =
             (A.weather_snow_spawn or 0)
             + dt * 14
@@ -11858,10 +11943,10 @@ function FALLEN_DRAW_MENU_WEATHER(
             then
                 FALLEN_WEATHER_ADD_SNOW_BANK(
                     hit_x,
-                    menu_x,
-                    menu_w,
+                    menu_y,
                     p.r,
-                    p.vx
+                    p.vx,
+                    p.vy
                 )
 
                 table.remove(
@@ -11936,12 +12021,16 @@ function FALLEN_DRAW_MENU_WEATHER(
         menu_y,
         menu_w,
         menu_h,
+        screen_w,
         screen_h
     )
 
     -- Once disabled, old flakes are allowed to fade out naturally,
     -- then the table is cleared.
-    if S.menu_snow ~= true
+    if (
+        S.visible ~= true
+        or S.menu_snow ~= true
+    )
         and A.weather_snow_alpha < 0.015
     then
         A.weather_snow = {}
@@ -11951,7 +12040,9 @@ function FALLEN_DRAW_MENU_WEATHER(
     -- ---------------------------------
     -- RAIN
     -- ---------------------------------
-    if S.menu_rain == true then
+    if S.visible == true
+        and S.menu_rain == true
+    then
         A.weather_rain_spawn =
             (A.weather_rain_spawn or 0)
             + dt * 34
@@ -12117,7 +12208,10 @@ function FALLEN_DRAW_MENU_WEATHER(
         end
     end
 
-    if S.menu_rain ~= true
+    if (
+        S.visible ~= true
+        or S.menu_rain ~= true
+    )
         and A.weather_rain_alpha < 0.015
     then
         A.weather_rain = {}
@@ -12947,15 +13041,23 @@ hooks.on_render(function()
         return
     end
 
-    if (A.menu_open or 0) <= 0.004 then
-        return
-    end
+    local weather_active =
+        (
+            S.visible == true
+            and (
+                S.menu_snow == true
+                or S.menu_rain == true
+            )
+        )
+        or (A.weather_snow_alpha or 0) > 0.01
+        or (A.weather_rain_alpha or 0) > 0.01
+        or (
+            type(A.weather_snow_bank) == "table"
+            and #A.weather_snow_bank > 0
+            and (A.weather_snow_alpha or 0) > 0.005
+        )
 
-    if S.menu_snow ~= true
-        and S.menu_rain ~= true
-        and (A.weather_snow_alpha or 0) < 0.01
-        and (A.weather_rain_alpha or 0) < 0.01
-    then
+    if not weather_active then
         return
     end
 
