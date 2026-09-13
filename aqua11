@@ -13666,21 +13666,10 @@ hooks.on_render(function()
         and not A.world_color_picker_open
         and (A.world_color_picker_anim or 0) <= 0.02
     then
+        -- RMB only expands/collapses the nested Visuals menu.
+        -- It must NOT change the currently selected main page.
         A.visuals_expanded =
             not A.visuals_expanded
-
-        S.tab = 2
-        S.anim = 0
-
-        A.aim_settings_open = false
-        A.fov_settings_open = false
-        A.aim_part_dropdown_open = false
-        A.world_settings_open = false
-        A.world_color_picker_open = false
-        A.world_color_picker_drag = nil
-        FALLEN_COLOR_INPUT_STOP(true)
-        numeric_stop(true)
-        aim_bind_cancel()
     end
 
     local visuals_now =
