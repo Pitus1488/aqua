@@ -11273,7 +11273,7 @@ function FALLEN_WEATHER_RAND(a, b)
         * math.random()
 end
 
-function FALLEN_WEATHER_SPAWN_SNOW(w)
+function FALLEN_WEATHER_SPAWN_SNOW(screen_w)
     local p = {
         x = FALLEN_WEATHER_RAND(10, math.max(11, w - 10)),
         y = FALLEN_WEATHER_RAND(-18, -4),
@@ -11287,7 +11287,7 @@ function FALLEN_WEATHER_SPAWN_SNOW(w)
     A.weather_snow[#A.weather_snow + 1] = p
 end
 
-function FALLEN_WEATHER_SPAWN_RAIN(w)
+function FALLEN_WEATHER_SPAWN_RAIN(screen_w)
     local p = {
         x = FALLEN_WEATHER_RAND(12, math.max(13, w - 12)),
         y = FALLEN_WEATHER_RAND(-36, -8),
@@ -11300,34 +11300,70 @@ function FALLEN_WEATHER_SPAWN_RAIN(w)
     A.weather_rain[#A.weather_rain + 1] = p
 end
 
-function FALLEN_WEATHER_SPLASH(x, y)
+function FALLEN_WEATHER_SPLASH(x, y, normal_x, normal_y)
     local amount =
-        math.random(2, 4)
+        math.random(3, 5)
+
+    normal_x = tonumber(normal_x) or 0
+    normal_y = tonumber(normal_y) or -1
 
     for i = 1, amount do
-        if #A.weather_splashes >= 90 then
+        if #A.weather_splashes >= 110 then
             break
         end
 
         local life =
-            FALLEN_WEATHER_RAND(0.16, 0.32)
+            FALLEN_WEATHER_RAND(0.16, 0.34)
+
+        local side =
+            FALLEN_WEATHER_RAND(-1, 1)
+
+        local speed =
+            FALLEN_WEATHER_RAND(34, 78)
 
         A.weather_splashes[#A.weather_splashes + 1] = {
-            x = x + FALLEN_WEATHER_RAND(-2.5, 2.5),
-            y = y,
-            vx = FALLEN_WEATHER_RAND(-42, 42),
-            vy = FALLEN_WEATHER_RAND(-72, -30),
+            x = x + FALLEN_WEATHER_RAND(-2.2, 2.2),
+            y = y + FALLEN_WEATHER_RAND(-1.2, 1.2),
+
+            vx =
+                normal_x * speed
+                + side * FALLEN_WEATHER_RAND(18, 44),
+
+            vy =
+                normal_y * speed
+                - FALLEN_WEATHER_RAND(4, 20),
+
             life = life,
             max_life = life,
-            a = FALLEN_WEATHER_RAND(0.30, 0.58),
+            a = FALLEN_WEATHER_RAND(0.32, 0.62),
         }
     end
 end
 
-function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
+function FALLEN_DRAW_MENU_WEATHER(
+    screen_w,
+    screen_h,
+    menu_x,
+    menu_y,
+    menu_w,
+    menu_h
+)
     if type(A.weather_snow) ~= "table" then A.weather_snow = {} end
     if type(A.weather_rain) ~= "table" then A.weather_rain = {} end
     if type(A.weather_splashes) ~= "table" then A.weather_splashes = {} end
+
+    screen_w = math.max(1, tonumber(screen_w) or 1)
+    screen_h = math.max(1, tonumber(screen_h) or 1)
+
+    menu_x = tonumber(menu_x) or 0
+    menu_y = tonumber(menu_y) or 0
+    menu_w = tonumber(menu_w) or 0
+    menu_h = tonumber(menu_h) or 0
+
+    local old_transform =
+        MENU_UI_TRANSFORM_ACTIVE
+
+    MENU_UI_TRANSFORM_ACTIVE = false
 
     local now = tick()
 
@@ -11366,15 +11402,15 @@ function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
     if S.menu_snow == true then
         A.weather_snow_spawn =
             (A.weather_snow_spawn or 0)
-            + dt * 20
+            + dt * 36
 
         while A.weather_snow_spawn >= 1
-            and #A.weather_snow < 72
+            and #A.weather_snow < 120
         do
             A.weather_snow_spawn =
                 A.weather_snow_spawn - 1
 
-            FALLEN_WEATHER_SPAWN_SNOW(w)
+            FALLEN_WEATHER_SPAWN_SNOW(screen_w)
         end
     end
 
@@ -11393,23 +11429,23 @@ function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
                 + math.sin(now * 1.45 + p.phase) * 7
             ) * dt
 
-        if p.y > h + 8
+        if p.y > screen_h + 8
             or p.x < -12
-            or p.x > w + 12
+            or p.x > screen_w + 12
         then
             table.remove(
                 A.weather_snow,
                 i
             )
         elseif A.weather_snow_alpha > 0.01
-            and p.y - p.r >= 7
-            and p.y + p.r <= h - 7
-            and p.x - p.r >= 7
-            and p.x + p.r <= w - 7
+            and p.y - p.r >= 2
+            and p.y + p.r <= screen_h - 2
+            and p.x - p.r >= 2
+            and p.x + p.r <= screen_w - 2
         then
             circle_fill(
-                wx + p.x,
-                wy + p.y,
+                p.x,
+                p.y,
                 p.r,
                 {
                     0.90,
@@ -11423,8 +11459,8 @@ function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
 
             if p.r > 1.30 then
                 circle_fill(
-                    wx + p.x - 0.45,
-                    wy + p.y - 0.45,
+                    p.x - 0.45,
+                    p.y - 0.45,
                     p.r * 0.38,
                     {
                         1,
@@ -11454,15 +11490,15 @@ function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
     if S.menu_rain == true then
         A.weather_rain_spawn =
             (A.weather_rain_spawn or 0)
-            + dt * 47
+            + dt * 82
 
         while A.weather_rain_spawn >= 1
-            and #A.weather_rain < 85
+            and #A.weather_rain < 150
         do
             A.weather_rain_spawn =
                 A.weather_rain_spawn - 1
 
-            FALLEN_WEATHER_SPAWN_RAIN(w)
+            FALLEN_WEATHER_SPAWN_RAIN(screen_w)
         end
     end
 
@@ -11470,8 +11506,14 @@ function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
         local p =
             A.weather_rain[i]
 
+        local old_x =
+            p.x
+
         local old_y =
             p.y
+
+        local old_tip_y =
+            old_y + p.len
 
         p.y =
             p.y
@@ -11481,47 +11523,124 @@ function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
             p.x
             + p.drift * dt
 
-        local hit_y =
-            h - 8
+        local new_tip_y =
+            p.y + p.len
 
-        if p.y + p.len >= hit_y then
-            if old_y + p.len < hit_y
-                and A.weather_rain_alpha > 0.08
-            then
-                FALLEN_WEATHER_SPLASH(
-                    clamp(
-                        p.x,
-                        10,
-                        w - 10
-                    ),
-                    hit_y
+        local menu_right =
+            menu_x + menu_w
+
+        local menu_bottom =
+            menu_y + menu_h
+
+        local collided = false
+
+        -- TOP EDGE COLLISION:
+        -- rain falls behind the UI and splashes when it reaches the menu roof.
+        if menu_w > 0
+            and menu_h > 0
+            and old_tip_y < menu_y
+            and new_tip_y >= menu_y
+        then
+            local denom =
+                new_tip_y - old_tip_y
+
+            local t =
+                denom ~= 0
+                and clamp(
+                    (menu_y - old_tip_y)
+                    / denom,
+                    0,
+                    1
                 )
-            end
+                or 1
 
+            local hit_x =
+                old_x
+                + (p.x - old_x) * t
+
+            if hit_x >= menu_x + 8
+                and hit_x <= menu_right - 8
+            then
+                if A.weather_rain_alpha > 0.08 then
+                    FALLEN_WEATHER_SPLASH(
+                        hit_x,
+                        menu_y - 1,
+                        0,
+                        -1
+                    )
+                end
+
+                collided = true
+            end
+        end
+
+        -- RIGHT EDGE COLLISION:
+        -- drops drift to the left, so some can strike the menu's right wall.
+        if not collided
+            and menu_w > 0
+            and menu_h > 0
+            and old_x > menu_right
+            and p.x <= menu_right
+        then
+            local denom =
+                old_x - p.x
+
+            local t =
+                denom ~= 0
+                and clamp(
+                    (old_x - menu_right)
+                    / denom,
+                    0,
+                    1
+                )
+                or 1
+
+            local hit_y =
+                old_tip_y
+                + (new_tip_y - old_tip_y) * t
+
+            if hit_y >= menu_y + 8
+                and hit_y <= menu_bottom - 8
+            then
+                if A.weather_rain_alpha > 0.08 then
+                    FALLEN_WEATHER_SPLASH(
+                        menu_right + 1,
+                        hit_y,
+                        1,
+                        0
+                    )
+                end
+
+                collided = true
+            end
+        end
+
+        if collided then
             table.remove(
                 A.weather_rain,
                 i
             )
-        elseif p.x < -25
-            or p.x > w + 25
+        elseif p.y > screen_h + 30
+            or p.x < -35
+            or p.x > screen_w + 35
         then
             table.remove(
                 A.weather_rain,
                 i
             )
         elseif A.weather_rain_alpha > 0.01
-            and p.y >= 9
-            and p.y + p.len <= h - 8
+            and p.y >= -4
+            and p.y <= screen_h + 4
         then
             local tail_dx =
                 (p.drift / p.speed)
                 * p.len
 
             line(
-                wx + p.x - tail_dx,
-                wy + p.y - p.len,
-                wx + p.x,
-                wy + p.y,
+                p.x - tail_dx,
+                p.y - p.len,
+                p.x,
+                p.y,
                 {
                     0.56,
                     0.72,
@@ -11580,16 +11699,16 @@ function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
                     1
                 )
 
-            if p.x >= 7
-                and p.x <= w - 7
-                and p.y >= 7
-                and p.y <= h - 7
+            if p.x >= 1
+                and p.x <= screen_w - 1
+                and p.y >= 1
+                and p.y <= screen_h - 1
             then
                 line(
-                    wx + p.x,
-                    wy + p.y,
-                    wx + p.x - p.vx * 0.020,
-                    wy + p.y - p.vy * 0.020,
+                    p.x,
+                    p.y,
+                    p.x - p.vx * 0.020,
+                    p.y - p.vy * 0.020,
                     {
                         0.66,
                         0.80,
@@ -11603,6 +11722,9 @@ function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
             end
         end
     end
+
+    MENU_UI_TRANSFORM_ACTIVE =
+        old_transform
 end
 
 -- =========================================================
@@ -11830,6 +11952,30 @@ hooks.on_render(function()
 
     local menu_base_alpha = MENU_RENDER_ALPHA
 
+    -- Full-screen animated weather lives BEHIND the entire menu.
+    -- Convert the current menu rectangle to real screen coordinates first,
+    -- then the weather renderer temporarily disables the menu transform.
+    local weather_menu_x =
+        FALLEN_UI_X(wx)
+
+    local weather_menu_y =
+        FALLEN_UI_Y(wy)
+
+    local weather_menu_w =
+        FALLEN_UI_LEN(WIN_W)
+
+    local weather_menu_h =
+        FALLEN_UI_LEN(WIN_H)
+
+    FALLEN_DRAW_MENU_WEATHER(
+        sw,
+        sh,
+        weather_menu_x,
+        weather_menu_y,
+        weather_menu_w,
+        weather_menu_h
+    )
+
     -- 35 line based glow frames around the entire menu.
     -- Every line uses the selected Glow Color directly.
     -- The alpha fades from the edge outward, like a real soft glow.
@@ -11890,15 +12036,6 @@ hooks.on_render(function()
         WIN_H,
         OUTER_R,
         C.content
-    )
-
-    -- Weather lives on the menu background: above the base surfaces,
-    -- below every card/text/control.
-    FALLEN_DRAW_MENU_WEATHER(
-        wx,
-        wy,
-        WIN_W,
-        WIN_H
     )
 
     -- Let the base become mostly visible before layered controls/cards fade in.
