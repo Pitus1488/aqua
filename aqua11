@@ -126,8 +126,7 @@ local defaults = {
 
     -- Visual hit effect: fires only when the locked Aimbot target loses HP.
     hit_effect_enabled = false,
-    -- Temporarily fixed to Fallen Spark while we test hit registration.
-    hit_effect_style = "Fallen Spark",
+    hit_effect_style = "Hit 1",
     -- Armor ESP.
     armor_esp_enabled = false,
     armor_esp_mode = "Normal",
@@ -9120,17 +9119,29 @@ function FALLEN_HITFX_STYLE_INDEX()
     local style =
         tostring(
             S.hit_effect_style
-            or "Fallen Spark"
+            or "Hit 1"
         )
 
-    if style == "Boom" then
-        return 1
+    -- Backwards compatibility with old names.
+    if style == "Fallen Spark" then
+        S.hit_effect_style = "Hit 1"
+        style = "Hit 1"
+    elseif style == "Boom" then
+        S.hit_effect_style = "Hit 2"
+        style = "Hit 2"
     elseif style == "Smoke Sparks" then
+        S.hit_effect_style = "Hit 3"
+        style = "Hit 3"
+    end
+
+    if style == "Hit 2" then
+        return 1
+    elseif style == "Hit 3" then
         return 2
     end
 
-    if style ~= "Fallen Spark" then
-        S.hit_effect_style = "Fallen Spark"
+    if style ~= "Hit 1" then
+        S.hit_effect_style = "Hit 1"
     end
 
     return 0
@@ -9818,8 +9829,9 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
         end
 
     elseif style == 2 then
-        -- Smoke Sparks:
-        -- smoke slowly evaporates over 0.5 sec, while sparks fly outward.
+        -- Hit 3:
+        -- large smoke cloud that expands and evaporates smoothly,
+        -- with sparks flying out from the center.
         local smoke_img =
             FALLEN_HITFX_IMAGE(
                 "user_smoke",
@@ -9838,11 +9850,16 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
                 1 - t
             )
 
+        local grow =
+            smooth01(t)
+
+        -- Make this effect match the larger distance-scaled feel
+        -- of the previous hit effects.
         local smoke_size =
             size
             * (
-                0.95
-                + 0.45 * smooth01(t)
+                1.35
+                + 1.35 * grow
             )
 
         if smoke_img then
@@ -9855,18 +9872,18 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
                 1,
                 1,
                 1,
-                alpha * 0.92 * fade
+                alpha * 0.98 * fade
             )
         end
 
         if sparks_img then
-            for k = 1, 7 do
+            for k = 1, 8 do
                 local seed =
                     (hit.seed or 1)
                     + k * 17.19
 
                 local ang =
-                    (k / 7)
+                    (k / 8)
                     * math.pi
                     * 2
                     + math.sin(seed) * 0.33
@@ -9874,8 +9891,8 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
                 local spread =
                     size
                     * (
-                        0.10
-                        + 0.78 * t
+                        0.16
+                        + 1.20 * grow
                     )
                     * (
                         0.90
@@ -9893,14 +9910,14 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
                 local spark_size =
                     size
                     * (
-                        0.22
+                        0.34
                         + math.abs(
                             math.sin(seed * 0.77)
-                        ) * 0.18
+                        ) * 0.24
                     )
                     * (
-                        1.08
-                        - 0.35 * t
+                        1.10
+                        - 0.22 * t
                     )
 
                 FALLEN_HITFX_DRAW_IMAGE(
@@ -9914,8 +9931,8 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
                     1,
                     alpha
                         * (
-                            0.72
-                            - 0.28 * t
+                            0.82
+                            - 0.32 * t
                         )
                 )
             end
@@ -9948,7 +9965,7 @@ function FALLEN_HITFX_DRAW()
 
     local life =
         style == 2
-        and 0.50
+        and 1.50
         or 0.74
 
     for i = #FALLEN_HITFX.items, 1, -1 do
@@ -19487,9 +19504,9 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
     end
 
     local options = {
-        "Fallen Spark",
-        "Boom",
-        "Smoke Sparks",
+        "Hit 1",
+        "Hit 2",
+        "Hit 3",
     }
 
     local item_h = 27
@@ -20041,7 +20058,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         hit_style_box_y + 7,
         tostring(
             S.hit_effect_style
-            or "Fallen Spark"
+            or "Hit 1"
         ),
         FALLEN_HOVER_TEXT(
             "hitfx_style_value",
