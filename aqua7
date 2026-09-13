@@ -7641,12 +7641,33 @@ local function world_load_direct_icon(cfg)
         return nil
     end
 
-    local candidates = cfg.icon_names or {cfg.label}
+    local candidates = {}
+
+    if type(k1_icon_candidates) == "function" then
+        local ok, list = pcall(
+            k1_icon_candidates,
+            cfg.label,
+            cfg.id
+        )
+
+        if ok and type(list) == "table" then
+            candidates = list
+        end
+    end
+
+    if #candidates == 0 then
+        candidates = cfg.icon_names or { cfg.label }
+    end
 
     for _, name in ipairs(candidates) do
-        local handle = k1_resolve_loot_direct_icon(name, cfg.id)
-        if handle then
-            return handle
+        local urls = K1_LOOT_DIRECT_ICONS and K1_LOOT_DIRECT_ICONS[name]
+
+        if urls then
+            local handle = k1_resolve_loot_direct_icon(name)
+
+            if handle then
+                return handle
+            end
         end
     end
 
