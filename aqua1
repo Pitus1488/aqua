@@ -5508,6 +5508,10 @@ local function draw_visuals_page(
     cy,
     cw
 )
+    A.base_box_settings_open = false
+    A.base_box_settings_anim = 0
+    A.base_box_settings_id = nil
+
     section_title(
         cx,
         cy,
@@ -5528,8 +5532,7 @@ local function draw_visuals_page(
     local overlay_open =
         A.world_settings_open
         or (A.world_settings_anim or 0) > 0.02
-        or A.base_box_settings_open == true
-        or (A.base_box_settings_anim or 0) > 0.02
+ 
 
     local base_clicked =
         clicked
@@ -5708,8 +5711,7 @@ local function draw_visuals_page(
         end
     end
 
-    -- Base / House: same Fallen-lua row style, but scrollable so the
-    -- page does not overflow. Two columns show five logical rows at once.
+    -- Base / House: independent smooth scrolling on left and right.
     local base_section_y =
         cards_y
         + 25
@@ -5719,15 +5721,23 @@ local function draw_visuals_page(
     section_title(
         cx,
         base_section_y,
-        "Base / House 3D ESP"
+        "Base / House ESP"
     )
 
-    local base_card_y = base_section_y + 25
+    local base_card_y =
+        base_section_y + 25
+
     local base_visible_rows = 5
     local base_row_h = 41
-    local base_card_h = base_visible_rows * base_row_h + 8
-    local base_logical_rows = 11
-    local base_max_scroll = base_logical_rows - base_visible_rows
+    local base_card_h =
+        base_visible_rows * base_row_h + 8
+
+    local left_total = 11
+    local right_total =
+        math.max(
+            0,
+            #WORLD_BASE_ITEMS - left_total
+        )
 
     card(
         left_x,
@@ -5745,78 +5755,88 @@ local function draw_visuals_page(
         11
     )
 
-    local base_scroll = world_base_scroll_step(
-        mx,
-        my,
-        base_clicked,
-        lmb,
-        left_x,
-        base_card_y,
-        (right_x + col_w) - left_x,
-        base_card_h,
-        base_max_scroll
-    )
+    local left_scroll =
+        world_base_column_scroll_step(
+            "left",
+            mx,
+            my,
+            base_clicked,
+            lmb,
+            left_x,
+            base_card_y,
+            col_w,
+            base_card_h,
+            base_visible_rows,
+            left_total
+        )
 
-    for row = 1, base_visible_rows do
-        local logical_row = base_scroll + row
-        local left_index = logical_row
-        local right_index = base_logical_rows + logical_row
-        local by = base_card_y + 4 + (row - 1) * base_row_h
+    local right_scroll =
+        world_base_column_scroll_step(
+            "right",
+            mx,
+            my,
+            base_clicked,
+            lmb,
+            right_x,
+            base_card_y,
+            col_w,
+            base_card_h,
+            base_visible_rows,
+            right_total
+        )
 
-        local left_cfg = WORLD_BASE_ITEMS[left_index]
-        if left_cfg then
-            world_base_compact_row(
-                mx,
-                my,
-                base_clicked,
-                left_x,
-                by,
-                col_w,
-                left_cfg
-            )
-        end
+    for i = 1, left_total do
+        local by =
+            base_card_y
+            + 4
+            + ((i - 1) - left_scroll) * base_row_h
 
-        local right_cfg = WORLD_BASE_ITEMS[right_index]
-        if right_cfg then
-            world_base_compact_row(
-                mx,
-                my,
-                base_clicked,
-                right_x,
-                by,
-                col_w - 10,
-                right_cfg
-            )
-        end
+        if by + base_row_h > base_card_y + 2
+            and by < base_card_y + base_card_h - 2
+        then
+            local cfg = WORLD_BASE_ITEMS[i]
 
-        if row < base_visible_rows then
-            line(
-                left_x + 12,
-                by + 40,
-                left_x + col_w - 12,
-                by + 40,
-                C.divider,
-                1
-            )
-
-            line(
-                right_x + 12,
-                by + 40,
-                right_x + col_w - 18,
-                by + 40,
-                C.divider,
-                1
-            )
+            if cfg then
+                world_base_compact_row(
+                    mx,
+                    my,
+                    base_clicked,
+                    left_x,
+                    by,
+                    col_w - 10,
+                    cfg
+                )
+            end
         end
     end
 
-    -- Small range indicator; scrollbar itself is drawn on the right edge.
-    text(
-        right_x + col_w - 72,
-        base_section_y + 4,
-        tostring(base_scroll + 1) .. "-" .. tostring(math.min(base_scroll + base_visible_rows, base_logical_rows)) .. "/" .. tostring(base_logical_rows),
-        C.text_faint
-    )
+    for i = 1, right_total do
+        local by =
+            base_card_y
+            + 4
+            + ((i - 1) - right_scroll) * base_row_h
+
+        if by + base_row_h > base_card_y + 2
+            and by < base_card_y + base_card_h - 2
+        then
+            local cfg =
+                WORLD_BASE_ITEMS[
+                    left_total + i
+                ]
+
+            if cfg then
+                world_base_compact_row(
+                    mx,
+                    my,
+                    base_clicked,
+                    right_x,
+                    by,
+                    col_w - 10,
+                    cfg
+                )
+            end
+        end
+    end
 
     -- Render settings first, then the reusable color picker on top.
     draw_world_settings_popup(
@@ -5826,16 +5846,6 @@ local function draw_visuals_page(
         lmb,
         dots_x,
         dots_y
-    )
-
-    draw_base_box_settings_popup(
-        mx,
-        my,
-        clicked,
-        lmb,
-        cx,
-        cy,
-        cw
     )
 
     draw_world_color_picker(
@@ -7261,6 +7271,35 @@ WORLD_BASE_ITEMS = {
 -- Deliberately global: the host Lua has a 200-local main-chunk limit.
 -- =========================================================
 
+function world_base_color_prefix(id)
+    return "world_base_color_" .. tostring(id)
+end
+
+function world_base_rgb_to_hsv(r, g, b)
+    r = clamp(tonumber(r) or 1, 0, 1)
+    g = clamp(tonumber(g) or 1, 0, 1)
+    b = clamp(tonumber(b) or 1, 0, 1)
+
+    local mx = math.max(r, g, b)
+    local mn = math.min(r, g, b)
+    local d = mx - mn
+
+    local h = 0
+    if d > 0.000001 then
+        if mx == r then
+            h = ((g - b) / d) % 6
+        elseif mx == g then
+            h = ((b - r) / d) + 2
+        else
+            h = ((r - g) / d) + 4
+        end
+        h = h / 6
+    end
+
+    local s = mx <= 0 and 0 or (d / mx)
+    return h, s, mx
+end
+
 function world_base_state_key(cfg, suffix)
     if not cfg or not cfg.id then
         return nil
@@ -7285,6 +7324,32 @@ function world_base_ensure_state(cfg)
     if S[p .. "_oz"] == nil then S[p .. "_oz"] = 0 end
 
     if S[p .. "_thick"] == nil then S[p .. "_thick"] = 1.4 end
+
+    local cp = world_base_color_prefix(cfg.id)
+
+    if S[cp .. "_h"] == nil
+        or S[cp .. "_s"] == nil
+        or S[cp .. "_v"] == nil
+        or S[cp .. "_alpha"] == nil
+    then
+        local c = cfg.color or {1, 1, 1, 1}
+        local h, s, v =
+            world_base_rgb_to_hsv(
+                c[1] or 1,
+                c[2] or 1,
+                c[3] or 1
+            )
+
+        if S[cp .. "_h"] == nil then S[cp .. "_h"] = h end
+        if S[cp .. "_s"] == nil then S[cp .. "_s"] = s end
+        if S[cp .. "_v"] == nil then S[cp .. "_v"] = v end
+        if S[cp .. "_alpha"] == nil then
+            S[cp .. "_alpha"] =
+                math.floor(
+                    clamp(c[4] or 1, 0, 1) * 100 + 0.5
+                )
+        end
+    end
 end
 
 function world_base_enabled(cfg)
@@ -7448,54 +7513,16 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
     local hot = row_hover(mx, my, x, y, w, h)
     local key = "world_base_" .. tostring(cfg.id)
     local enabled = S[key] == true
-
-    local col = cfg.color or {1, 1, 1, 1}
-
-    -- Same square color preview used by the Resource ESP rows.
-    local swatch_s = 18
-    local swatch_x = x + 12
-    local swatch_y = y + 11
-
-    world_square_swatch(
-        swatch_x,
-        swatch_y,
-        swatch_s,
-        col
-    )
+    local prefix = world_base_color_prefix(cfg.id)
+    local col = world_color_from_prefix(prefix)
 
     text(
-        x + 40,
+        x + 13,
         y + 14,
         cfg.label,
         hot and C.text or alpha(C.text, 0.92)
     )
 
-    -- Settings button in the same visual language as the menu's "..." button.
-    local dots_w = 27
-    local dots_h = 25
-    local dots_x = x + w - 82
-    local dots_y = y + 8
-    local dots_hot = hover(mx, my, dots_x, dots_y, dots_w, dots_h)
-
-    if dots_hot then
-        rounded_fill(
-            dots_x,
-            dots_y,
-            dots_w,
-            dots_h,
-            6,
-            { 0.105, 0.110, 0.130, 1 }
-        )
-    end
-
-    centered_text(
-        dots_x + dots_w * 0.5,
-        y + 13,
-        "...",
-        dots_hot and C.text or C.text_faint
-    )
-
-    -- Same animated rounded toggle used everywhere else in Fallen-lua.
     if A.toggles[key] == nil then
         A.toggles[key] = enabled and 1 or 0
     end
@@ -7507,11 +7534,31 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
         A.toggles[key] = target
     end
 
-    local tw = 35
-    local th = 19
+    local tw, th = 35, 19
     local tx = x + w - tw - 12
     local ty = y + 11
-    local toggle_hot = hover(mx, my, tx, ty, tw, th)
+
+    -- Same placement as Ore / Plants.
+    local swatch_s = 18
+    local swatch_x = tx - swatch_s - 12
+    local swatch_y = y + 11
+
+    world_square_swatch(
+        swatch_x,
+        swatch_y,
+        swatch_s,
+        col
+    )
+
+    local swatch_hot =
+        hover(
+            mx,
+            my,
+            swatch_x,
+            swatch_y,
+            swatch_s,
+            swatch_s
+        )
 
     rounded_fill(
         tx,
@@ -7526,11 +7573,12 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
         )
     )
 
-    local knob_x = lerp(
-        tx + 9.5,
-        tx + tw - 9.5,
-        A.toggles[key]
-    )
+    local knob_x =
+        lerp(
+            tx + 9.5,
+            tx + tw - 9.5,
+            A.toggles[key]
+        )
 
     circle_fill(
         knob_x,
@@ -7543,25 +7591,56 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
         )
     )
 
+    if clicked and swatch_hot then
+        FALLEN_COLOR_INPUT_STOP(true)
+
+        if A.world_color_picker_open
+            and A.world_color_picker_key == prefix
+        then
+            A.world_color_picker_open = false
+            A.world_color_picker_drag = nil
+        else
+            A.world_color_picker_key = prefix
+            A.world_color_picker_open = true
+            A.world_color_picker_drag = nil
+        end
+
+        A.world_color_picker_anchor_x = swatch_x
+        A.world_color_picker_anchor_y = swatch_y
+
+        if numeric_stop then
+            numeric_stop(true)
+        end
+
+        return
+    end
+
+    local toggle_hot =
+        hover(
+            mx,
+            my,
+            tx,
+            ty,
+            tw,
+            th
+        )
+
     if clicked and toggle_hot then
         S[key] = not enabled
         WORLD_ESP.last_scan = -100
         return
     end
 
-    if clicked and (dots_hot or (hot and not toggle_hot)) then
-        A.base_box_settings_id = cfg.id
-        A.base_box_settings_open = true
-        A.base_box_open_click_guard = true
-        A.base_box_settings_last_t = tick()
+    if clicked and hot and not swatch_hot then
+        S[key] = not enabled
+        WORLD_ESP.last_scan = -100
+    end
 
-        A.world_settings_open = false
-        A.world_color_picker_open = false
-        A.world_color_picker_drag = nil
-
-        if numeric_stop then
-            numeric_stop(true)
-        end
+    if A.world_color_picker_open
+        and A.world_color_picker_key == prefix
+    then
+        A.world_color_picker_anchor_x = swatch_x
+        A.world_color_picker_anchor_y = swatch_y
     end
 end
 
@@ -7601,149 +7680,276 @@ function world_base_settings_step_anim()
 end
 
 function world_base_read_wheel()
-    if not Windows then
-        return 0
-    end
-
-    -- Wheel input is not documented in every API build, so probe the
-    -- common exported names without making the menu depend on one of them.
-    local names = {
+    local candidates = {
         "GetMouseWheelDelta",
         "GetWheelDelta",
         "MouseWheelDelta",
         "GetMouseWheel",
+        "MouseWheel",
+        "WheelDelta",
+        "wheel_delta",
+        "mouse_wheel_delta",
+        "get_mouse_wheel_delta",
+        "get_wheel_delta",
     }
 
-    for i = 1, #names do
-        local fn = Windows[names[i]]
-        if type(fn) == "function" then
-            local ok, value = pcall(fn)
-            if ok and type(value) == "number" and value ~= 0 then
-                return value
+    local function probe(t)
+        if type(t) ~= "table" then
+            return 0
+        end
+
+        for i = 1, #candidates do
+            local v = t[candidates[i]]
+
+            if type(v) == "function" then
+                local ok, result = pcall(v)
+                if ok and type(result) == "number" and result ~= 0 then
+                    return result
+                end
+            elseif type(v) == "number" and v ~= 0 then
+                return v
             end
         end
+
+        for k, v in pairs(t) do
+            if type(k) == "string"
+                and string.find(
+                    string.lower(k),
+                    "wheel",
+                    1,
+                    true
+                )
+            then
+                if type(v) == "function" then
+                    local ok, result = pcall(v)
+                    if ok and type(result) == "number" and result ~= 0 then
+                        return result
+                    end
+                elseif type(v) == "number" and v ~= 0 then
+                    return v
+                end
+            end
+        end
+
+        return 0
     end
+
+    local value = probe(Windows)
+    if value ~= 0 then return value end
+
+    value = probe(_G)
+    if value ~= 0 then return value end
+
+    value = probe(_G.Input)
+    if value ~= 0 then return value end
+
+    value = probe(_G.input)
+    if value ~= 0 then return value end
+
+    value = probe(_G.Mouse)
+    if value ~= 0 then return value end
+
+    value = probe(_G.mouse)
+    if value ~= 0 then return value end
 
     return 0
 end
 
-function world_base_scroll_step(mx, my, clicked, lmb, x, y, w, h, max_scroll)
-    max_scroll = math.max(0, tonumber(max_scroll) or 0)
+function world_base_column_scroll_step(
+    side,
+    mx,
+    my,
+    clicked,
+    lmb,
+    x,
+    y,
+    w,
+    h,
+    visible_rows,
+    total_rows
+)
+    local p = "base_" .. tostring(side) .. "_scroll"
+    local target_key = p .. "_target"
+    local visual_key = p .. "_visual"
+    local drag_key = p .. "_dragging"
+    local drag_off_key = p .. "_drag_offset"
+    local last_t_key = p .. "_last_t"
+    local wheel_key = p .. "_wheel_raw"
 
-    if A.base_list_scroll_target == nil then
-        A.base_list_scroll_target = 0
-    end
-    if A.base_list_scroll_visual == nil then
-        A.base_list_scroll_visual = A.base_list_scroll_target
-    end
+    local max_scroll =
+        math.max(
+            0,
+            (tonumber(total_rows) or 0)
+            - (tonumber(visible_rows) or 0)
+        )
 
-    A.base_list_scroll_target = clamp(
-        tonumber(A.base_list_scroll_target) or 0,
-        0,
-        max_scroll
-    )
+    if A[target_key] == nil then A[target_key] = 0 end
+    if A[visual_key] == nil then A[visual_key] = A[target_key] end
+
+    A[target_key] =
+        clamp(
+            tonumber(A[target_key]) or 0,
+            0,
+            max_scroll
+        )
 
     local hot = hover(mx, my, x, y, w, h)
 
     if hot then
-        local now = tick()
-        local wheel = world_base_read_wheel()
+        local raw = world_base_read_wheel()
 
-        if wheel ~= 0 and now - (A.base_list_last_wheel_at or 0) > 0.045 then
-            A.base_list_last_wheel_at = now
+        if raw == 0 then
+            A[wheel_key] = 0
+        elseif raw ~= (A[wheel_key] or 0) then
+            A[wheel_key] = raw
 
-            if wheel > 0 then
-                A.base_list_scroll_target = A.base_list_scroll_target - 1
+            if raw > 0 then
+                A[target_key] = A[target_key] - 1
             else
-                A.base_list_scroll_target = A.base_list_scroll_target + 1
+                A[target_key] = A[target_key] + 1
             end
         end
-
-        -- Guaranteed fallback on API builds that don't expose wheel delta.
-        local up = false
-        local down = false
-        pcall(function()
-            up = Windows.IsKeyPressed(0x26) == true
-            down = Windows.IsKeyPressed(0x28) == true
-        end)
-
-        if up and not A.base_scroll_up_prev then
-            A.base_list_scroll_target = A.base_list_scroll_target - 1
-        end
-        if down and not A.base_scroll_down_prev then
-            A.base_list_scroll_target = A.base_list_scroll_target + 1
-        end
-
-        A.base_scroll_up_prev = up
-        A.base_scroll_down_prev = down
     else
-        A.base_scroll_up_prev = false
-        A.base_scroll_down_prev = false
+        A[wheel_key] = 0
     end
 
-    A.base_list_scroll_target = clamp(
-        A.base_list_scroll_target,
-        0,
-        max_scroll
-    )
+    A[target_key] =
+        clamp(
+            A[target_key],
+            0,
+            max_scroll
+        )
 
-    -- Smooth scrollbar motion.
-    A.base_list_scroll_visual = lerp(
-        A.base_list_scroll_visual,
-        A.base_list_scroll_target,
-        A.base_scroll_dragging and 0.42 or 0.20
-    )
+    local now = tick()
+    local last_t = A[last_t_key] or now
+    local dt = clamp(now - last_t, 0, 0.05)
+    A[last_t_key] = now
 
-    if math.abs(A.base_list_scroll_visual - A.base_list_scroll_target) < 0.002 then
-        A.base_list_scroll_visual = A.base_list_scroll_target
+    A[visual_key] =
+        exp_chase(
+            tonumber(A[visual_key]) or A[target_key],
+            A[target_key],
+            A[drag_key] and 18.0 or 11.0,
+            dt
+        )
+
+    if math.abs(A[visual_key] - A[target_key]) < 0.002 then
+        A[visual_key] = A[target_key]
     end
 
-    -- Styled scrollbar on the far-right side of the Base list.
-    local track_x = x + w - 7
-    local track_y = y + 5
-    local track_h = h - 10
-    local knob_h = max_scroll > 0 and math.max(34, track_h * (5 / (5 + max_scroll))) or track_h
-    local travel = math.max(0, track_h - knob_h)
-    local frac = max_scroll > 0 and (A.base_list_scroll_visual / max_scroll) or 0
-    local knob_y = track_y + travel * frac
+    local track_x = x + w - 6
+    local track_y = y + 6
+    local track_h = h - 12
+
+    local ratio =
+        total_rows > 0
+        and clamp(visible_rows / total_rows, 0, 1)
+        or 1
+
+    local knob_h =
+        max_scroll > 0
+        and math.max(32, track_h * ratio)
+        or track_h
+
+    local travel =
+        math.max(
+            0,
+            track_h - knob_h
+        )
+
+    local frac =
+        max_scroll > 0
+        and clamp(A[visual_key] / max_scroll, 0, 1)
+        or 0
+
+    local knob_y =
+        track_y
+        + travel * frac
 
     rounded_fill(
         track_x,
         track_y,
-        3,
-        track_h,
         2,
-        alpha(C.toggle_off, 0.58)
+        track_h,
+        1,
+        alpha(C.toggle_off, 0.48)
     )
 
     rounded_fill(
         track_x - 1,
         knob_y,
-        5,
+        4,
         knob_h,
-        3,
-        A.base_scroll_dragging and C.accent or alpha(C.accent_dim, 0.86)
+        2,
+        A[drag_key]
+            and C.accent
+            or alpha(C.accent_dim, 0.82)
     )
 
-    local knob_hot = hover(mx, my, track_x - 5, knob_y - 2, 13, knob_h + 4)
-    local track_hot = hover(mx, my, track_x - 5, track_y, 13, track_h)
+    local knob_hot =
+        hover(
+            mx,
+            my,
+            track_x - 5,
+            knob_y - 2,
+            12,
+            knob_h + 4
+        )
 
-    if clicked and (knob_hot or track_hot) and max_scroll > 0 then
-        A.base_scroll_dragging = true
-        A.base_scroll_drag_offset = knob_hot and (my - knob_y) or (knob_h * 0.5)
+    local track_hot =
+        hover(
+            mx,
+            my,
+            track_x - 5,
+            track_y,
+            12,
+            track_h
+        )
+
+    if clicked
+        and max_scroll > 0
+        and (knob_hot or track_hot)
+    then
+        A[drag_key] = true
+
+        A[drag_off_key] =
+            knob_hot
+            and (my - knob_y)
+            or (knob_h * 0.5)
     end
 
-    if A.base_scroll_dragging and lmb and max_scroll > 0 then
-        local wanted_y = my - (A.base_scroll_drag_offset or knob_h * 0.5)
-        local t = travel > 0 and clamp((wanted_y - track_y) / travel, 0, 1) or 0
-        A.base_list_scroll_target = math.floor(t * max_scroll + 0.5)
-    elseif A.base_scroll_dragging and not lmb then
-        A.base_scroll_dragging = false
+    if A[drag_key]
+        and lmb
+        and max_scroll > 0
+    then
+        local wanted_y =
+            my
+            - (A[drag_off_key] or knob_h * 0.5)
+
+        local t =
+            travel > 0
+            and clamp(
+                (wanted_y - track_y) / travel,
+                0,
+                1
+            )
+            or 0
+
+        A[target_key] =
+            t * max_scroll
+    elseif A[drag_key]
+        and not lmb
+    then
+        A[drag_key] = false
     end
 
-    return math.floor(A.base_list_scroll_target + 0.5)
+    return
+        clamp(
+            tonumber(A[visual_key]) or 0,
+            0,
+            max_scroll
+        )
 end
-
 
 function draw_base_box_settings_popup(mx, my, clicked, lmb, cx, cy, cw)
     local anim = world_base_settings_step_anim()
@@ -8814,7 +9020,15 @@ function world_draw_base_entry(
     end
 
     local cfg = entry.cfg
-    local col = cfg.color or { 1, 1, 1, 1 }
+    world_base_ensure_state(cfg)
+
+    local col =
+        world_color_from_prefix(
+            world_base_color_prefix(
+                cfg.id
+            )
+        )
+
     local alpha = col[4] or 1
 
     if S.world_fade_distance == true
@@ -8829,15 +9043,6 @@ function world_draw_base_entry(
                 1
             )
     end
-
-    -- Axis-aligned 3D wireframe. Native DrawBox3D is a 12-edge cuboid;
-    -- fallback path explicitly draws the same 12 lines.
-    world_draw_tunable_box3d(
-        pos,
-        cfg,
-        col,
-        alpha
-    )
 
     local screen =
         world_screen(
