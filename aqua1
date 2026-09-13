@@ -2037,23 +2037,30 @@ local function mouse_pos()
     end
 
     if type(a) == "table" then
-        return tonumber(a.X or a.x or a[1]) or 0,
-               tonumber(a.Y or a.y or a[2]) or 0
-    end
-
-    if type(a) == "number" and type(b) == "number" then
-        return a, b
-    end
-
-    if Windows and type(Windows.GetMousePos) == "function" then
+        a = tonumber(a.X or a.x or a[1]) or 0
+        b = tonumber(a.Y or a.y or a[2]) or 0
+    elseif type(a) == "number" and type(b) == "number" then
+        -- already valid
+    elseif Windows and type(Windows.GetMousePos) == "function" then
         local ok, m = pcall(Windows.GetMousePos)
         if ok and m then
-            return tonumber(m.X or m.x) or 0,
-                   tonumber(m.Y or m.y) or 0
+            a = tonumber(m.X or m.x) or 0
+            b = tonumber(m.Y or m.y) or 0
         end
     end
 
-    return 0, 0
+    a = tonumber(a) or 0
+    b = tonumber(b) or 0
+
+    -- Convert physical mouse coordinates back into menu coordinates.
+    -- The UI is rendered through FALLEN_UI_X/Y when Menu Scale is used,
+    -- but mouse input stayed in screen space, causing picker offset.
+    if MENU_UI_TRANSFORM_ACTIVE and MENU_UI_SCALE and MENU_UI_SCALE ~= 0 then
+        a = MENU_UI_ORIGIN_X + (a - MENU_UI_ORIGIN_X) / MENU_UI_SCALE
+        b = MENU_UI_ORIGIN_Y + (b - MENU_UI_ORIGIN_Y) / MENU_UI_SCALE
+    end
+
+    return a, b
 end
 
 local function hover(mx, my, x, y, w, h)
