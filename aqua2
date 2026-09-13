@@ -108,9 +108,9 @@ local defaults = {
     menu_glow_strength = 100,
 
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
-    menu_glow_h = 0.66,
-    menu_glow_s = 0.55,
-    menu_glow_v = 1.00,
+    menu_glow_h = 0.00,
+    menu_glow_s = 0.00,
+    menu_glow_v = 0.00,
     menu_glow_alpha = 100,
 
     -- Visuals / Resource ESP
@@ -9366,12 +9366,19 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or ease_in_out_cubic(raw)
 
     local pw = 278
-    local ph = 210
+    local ph = 260
     local px = snap(anchor_x + 18)
     local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
     local shell_h = math.max(38, ph - (1 - anim) * 46)
 
     local interactive = raw > 0.96 and A.menu_settings_open
+
+    -- When Glow Color picker is open, clicks belong to the picker first.
+    -- Do not close the whole Menu settings popup while choosing colors.
+    if A.world_color_picker_open and A.world_color_picker_key == "menu_glow" then
+        interactive = true
+    end
+
     local ui_clicked = clicked and interactive
     local row_clicked =
         ui_clicked
