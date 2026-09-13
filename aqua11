@@ -149,6 +149,8 @@ local defaults = {
     -- Menu appearance.
     menu_scale_percent = 100,
     menu_type = "default",
+    -- Temporary Blur PNG opacity control (0..100).
+    menu_blur_alpha = 50,
 
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
     menu_glow_strength = 100,
@@ -17549,7 +17551,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or ease_in_out_cubic(raw)
 
     local pw = 278
-    local ph = 344
+    local ph = 385
     local px = snap(anchor_x + 18)
     local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
     local shell_h = math.max(38, ph - (1 - anim) * 46)
@@ -17769,8 +17771,8 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             A.menu_scale_dropdown_open = false
         end
 
-        -- Animated background weather.
-        -- Uses the exact same row/toggle style as the rest of Fallen-lua.
+        -- Blur PNG opacity.
+        -- Mainly useful while tweaking the temporary Blur menu type.
         if shell_h > 246 then
             line(
                 px + 12,
@@ -17781,19 +17783,24 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 1
             )
 
-            toggle_row(
+            slider_row(
                 mx,
                 my,
-                row_clicked,
+                ui_clicked,
+                lmb,
                 px + 8,
-                py + 204,
+                py + 205,
                 pw - 16,
-                "Snow",
-                "menu_snow",
-                false
+                "Blur Alpha",
+                "menu_blur_alpha",
+                0,
+                100,
+                "int"
             )
         end
 
+        -- Animated background weather.
+        -- Uses the exact same row/toggle style as the rest of Fallen-lua.
         if shell_h > 287 then
             line(
                 px + 12,
@@ -17811,8 +17818,8 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 px + 8,
                 py + 245,
                 pw - 16,
-                "Rain",
-                "menu_rain",
+                "Snow",
+                "menu_snow",
                 false
             )
         end
@@ -17833,6 +17840,29 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 row_clicked,
                 px + 8,
                 py + 286,
+                pw - 16,
+                "Rain",
+                "menu_rain",
+                false
+            )
+        end
+
+        if shell_h > 369 then
+            line(
+                px + 12,
+                py + 326,
+                px + pw - 12,
+                py + 326,
+                C.divider,
+                1
+            )
+
+            toggle_row(
+                mx,
+                my,
+                row_clicked,
+                px + 8,
+                py + 327,
                 pw - 16,
                 "Lightning",
                 "menu_lightning",
@@ -20456,7 +20486,11 @@ hooks.on_render(function()
                 1,
                 1,
                 1,
-                0.50 * menu_base_alpha,
+                clamp(
+                    (tonumber(S.menu_blur_alpha) or 50) / 100,
+                    0,
+                    1
+                ) * menu_base_alpha,
                 OUTER_R
             )
         end
