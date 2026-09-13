@@ -564,28 +564,6 @@ local function update_profile()
     start_avatar_worker()
 end
 
-
--- =========================================================
--- Fallen text hover animation (low local count safe)
--- =========================================================
-_G.FallenTextHoverState = _G.FallenTextHoverState or {}
-
-function Fallen_TextHoverColor(id, hovered)
-    local state = _G.FallenTextHoverState
-    local value = state[id] or 0
-    local target = hovered and 1 or 0
-
-    value = value + (target - value) * 0.025
-    state[id] = value
-
-    return {
-        0.72 + value * 0.25,
-        0.74 + value * 0.24,
-        0.78 + value * 0.20,
-        1
-    }
-end
-
 -- =========================================================
 -- Helpers
 -- =========================================================
@@ -12625,56 +12603,41 @@ hooks.on_render(function()
     pcall(draw_fallen_toasts)
 end)
 
--- Hover text: darker gray base -> white, slow 2s style transition.
 
+-- Fallen loader image URL fix (no local variables)
+_G.FALLEN_LOADER_IMAGE_URL = "https://tr.rbxcdn.com/180DAY-d45aa60d5a73b73506aaaba675bff1a1/768/432/Image/Webp/noFilter"
+_G.FALLEN_LOADER_IMAGE = _G.FALLEN_LOADER_IMAGE or nil
+_G.FALLEN_LOADER_IMAGE_STARTED = _G.FALLEN_LOADER_IMAGE_STARTED or false
 
--- =========================================================
--- Fallen Loader Image URL replacement
--- Uses direct URL instead of local folder image
--- =========================================================
-
-local FALLEN_LOADER_IMAGE_URL = "https://tr.rbxcdn.com/180DAY-d45aa60d5a73b73506aaaba675bff1a1/768/432/Image/Webp/noFilter"
-
-FALLEN_LOADER_IMAGE_OBJECT = FALLEN_LOADER_IMAGE_OBJECT or nil
-FALLEN_LOADER_IMAGE_STARTED = FALLEN_LOADER_IMAGE_STARTED or false
-
-function Fallen_LoadLoaderURLImage()
-    if FALLEN_LOADER_IMAGE_STARTED then
-        return FALLEN_LOADER_IMAGE_OBJECT
+function Fallen_LoadLoaderImageURL()
+    if _G.FALLEN_LOADER_IMAGE_STARTED then
+        return _G.FALLEN_LOADER_IMAGE
     end
 
-    FALLEN_LOADER_IMAGE_STARTED = true
+    _G.FALLEN_LOADER_IMAGE_STARTED = true
 
-    if type(LoadImage) ~= "function" then
-        return nil
+    if type(LoadImage) == "function" then
+        pcall(function()
+            _G.FALLEN_LOADER_IMAGE = LoadImage(_G.FALLEN_LOADER_IMAGE_URL)
+        end)
     end
 
-    local ok, img = pcall(function()
-        return LoadImage(FALLEN_LOADER_IMAGE_URL)
-    end)
-
-    if ok then
-        FALLEN_LOADER_IMAGE_OBJECT = img
-    end
-
-    return FALLEN_LOADER_IMAGE_OBJECT
+    return _G.FALLEN_LOADER_IMAGE
 end
 
-function Fallen_DrawLoaderURLImage(x, y, w, h)
-    local img = Fallen_LoadLoaderURLImage()
-
-    if not img or type(DrawImage) ~= "function" then
+function Fallen_DrawLoaderImageURL(x, y, w, h)
+    if type(DrawImage) ~= "function" then
         return false
     end
 
-    if type(IsImageReady) == "function" then
-        local ok, ready = pcall(IsImageReady, img)
-        if ok and not ready then
-            return false
-        end
+    if not _G.FALLEN_LOADER_IMAGE then
+        Fallen_LoadLoaderImageURL()
     end
 
-    DrawImage(img, x, y, w, h)
-    return true
-end
+    if _G.FALLEN_LOADER_IMAGE then
+        DrawImage(_G.FALLEN_LOADER_IMAGE, x, y, w, h)
+        return true
+    end
 
+    return false
+end
