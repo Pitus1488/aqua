@@ -6037,8 +6037,10 @@ local function draw_visuals_page(
     -- Manual viewport clipping.
     -- Drawing in this API has no clip/scissor function, so fractional
     -- scrolling otherwise lets a partial row leak above/below the card.
+    -- Hard top clipping for smooth fractional scrolling.
+    -- Cover EVERYTHING above the card first.
     local clip_top_y =
-        base_section_y + 18
+        base_section_y - 2
 
     local clip_top_h =
         math.max(
@@ -6063,6 +6065,25 @@ local function draw_visuals_page(
             C.content
         )
     end
+
+    -- Also mask a small strip INSIDE the top of each card.
+    -- This catches glyphs/swatch edges from the row that is sliding out,
+    -- while preserving the rounded outer corners.
+    fill(
+        left_x + 3,
+        base_card_y + 1,
+        col_w - 6,
+        9,
+        C.card
+    )
+
+    fill(
+        right_x + 3,
+        base_card_y + 1,
+        col_w - 6,
+        9,
+        C.card
+    )
 
     local clip_bottom_y =
         base_card_y
@@ -6096,8 +6117,8 @@ local function draw_visuals_page(
         )
     end
 
-    -- Redraw the section title because the top mask intentionally sits
-    -- immediately below it.
+    -- Redraw the section title because the mask intentionally covers
+    -- the complete area behind it.
     section_title(
         cx,
         base_section_y,
@@ -8180,7 +8201,9 @@ function world_base_column_scroll_step(
         A[visual_key] = A[target_key]
     end
 
-    local track_x = x + w - 5
+    -- Keep the scrollbar away from the toggle/swatch controls.
+    -- The rail sits on the outer card edge instead of inside the row.
+    local track_x = x + w + 1
     local track_y = y + 6
     local track_h = h - 12
 
@@ -8212,7 +8235,7 @@ function world_base_column_scroll_step(
     rounded_fill(
         track_x,
         track_y,
-        2,
+        1.5,
         track_h,
         1,
         alpha(C.toggle_off, 0.48)
@@ -8221,7 +8244,7 @@ function world_base_column_scroll_step(
     rounded_fill(
         track_x - 1,
         knob_y,
-        4,
+        3,
         knob_h,
         2,
         A[drag_key]
@@ -8233,9 +8256,9 @@ function world_base_column_scroll_step(
         hover(
             mx,
             my,
-            track_x - 5,
+            track_x - 3,
             knob_y - 2,
-            12,
+            8,
             knob_h + 4
         )
 
@@ -8243,9 +8266,9 @@ function world_base_column_scroll_step(
         hover(
             mx,
             my,
-            track_x - 5,
+            track_x - 3,
             track_y,
-            12,
+            8,
             track_h
         )
 
