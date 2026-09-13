@@ -1,3 +1,4 @@
+```
 -- FALLEN UI BASE SAFE MODE
 -- Feature modules can be disabled later without deleting UI code.
 
@@ -998,6 +999,10 @@ local function aim_vk_name(vk)
         [0x05] = "Mouse4",
         [0x06] = "Mouse5",
         [0x08] = "Backspace",
+
+```
+
+```
         [0x09] = "Tab",
         [0x0D] = "Enter",
         [0x10] = "Shift",
@@ -1998,6 +2003,10 @@ local function config_input_poll()
         if config_input_edge(0x30 + digit)
             or config_input_edge(0x60 + digit)
         then
+
+```
+
+```
             A.config_input_buffer =
                 (A.config_input_buffer or "")
                 .. tostring(digit)
@@ -2998,6 +3007,10 @@ function FALLEN_COLOR_INPUT_POLL()
             return
         end
     end
+
+```
+
+```
 end
 
 local function color_preview(x, y, w, h)
@@ -3998,6 +4011,10 @@ local function draw_aim_settings_popup(
                 row_x,
                 row_y,
                 row_w,
+
+```
+
+```
                 41
             )
 
@@ -4998,6 +5015,10 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
         + clamp(
             (tonumber(S[prefix .. "_alpha"]) or 100) / 100,
             0,
+
+```
+
+```
             1
         )
         * sv_w
@@ -5999,6 +6020,9 @@ local function fap_refresh_weapon()
         FAP.bullet_speed = 300
         FAP.gravity = 30
 
+```
+
+```
     elseif weapon == "Crossbow" then
         FAP.bullet_speed = 400
         FAP.gravity = 35
@@ -6998,6 +7022,10 @@ local WORLD_RESOURCES = {
         folder = "Plants",
         names = { ["Corn Plant"] = true },
         label = "Corn",
+
+```
+
+```
         color = { 1.00, 0.90, 0.25, 1 },
         icon_names = { "Corn", "Corn Plant" },
         short = "CO",
@@ -7585,12 +7613,22 @@ local function world_resolve_icon(cfg)
         return nil
     end
 
+    -- Fixed: use the same fallback/cached image resolver as the working version.
+    -- The old build called k1_resolve_icon_handle(), but this file does not
+    -- contain that function, so icons always returned nil.
+    if type(k1_resolve_loot_direct_icon) == "function" then
+        local handle = k1_resolve_loot_direct_icon(cfg.id)
+        if handle then
+            return handle
+        end
+    end
+
+    -- Compatibility with external icon packs.
     if type(k1_resolve_icon_handle) == "function" then
         local handle = k1_resolve_icon_handle(
             cfg.label,
             cfg.id
         )
-
         if handle then
             return handle
         end
@@ -7998,6 +8036,10 @@ function FALLEN_CONFIGS.button(
             hot
             and { 0.34, 0.105, 0.115, 1 }
             or { 0.245, 0.082, 0.092, 1 }
+
+```
+
+```
     else
         bg =
             hot
@@ -8998,6 +9040,10 @@ function FALLEN_MENU_TYPE_DROPDOWN_STEP()
         A.menu_type_dropdown_anim = 0
     elseif target == 1
         and (A.menu_type_dropdown_anim or 0) > 0.992
+
+```
+
+```
     then
         A.menu_type_dropdown_anim = 1
     end
@@ -9998,6 +10044,10 @@ hooks.on_render(function()
         C.text_dim
     )
 
+
+```
+
+```
     if clicked
         and cfg_hot
     then
@@ -10998,6 +11048,10 @@ hooks.on_render(function()
     -- Close button remains clickable because the right-most area is excluded.
     local loader_drag_hot =
         inside(
+
+```
+
+```
             mx, my,
             x + 8 * scale,
             y + 2 * scale,
@@ -11998,6 +12052,10 @@ hooks.on_render(function()
 
         local by =
             snap(
+
+```
+
+```
                 y +
                 h -
                 54 * scale
@@ -12466,3 +12524,4 @@ print("[Fallen loader] ready | v44 syntax fix")
 hooks.on_render(function()
     pcall(draw_fallen_toasts)
 end)
+```
