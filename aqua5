@@ -1,828 +1,3 @@
--- WORLD ICONS ORIGINAL COPY
-K1_LOOT_DIRECT_ICONS = {
-wooden_crate = {
-"https://static.wikia.nocookie.net/fallen-survival-new/images/0/00/Wooden_Crate.png/revision/latest?format=original",
-"https://static.wikia.nocookie.net/play-rust/images/d/d7/Basic_Crate.png/revision/latest/scale-to-width-down/177?cb=20250128033438"
-},
-metal_crate = {
-"https://static.wikia.nocookie.net/fallen-survival-new/images/e/e7/Metal_Crate.png/revision/latest?format=original",
-"https://static.wikia.nocookie.net/play-rust/images/d/d7/Military_Crate.png/revision/latest/scale-to-width-down/220?cb=20250128033521"
-},
-steel_crate = {
-"https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339",
-"https://static.wikia.nocookie.net/play-rust/images/a/ad/Elite_Crate.png/revision/latest/scale-to-width-down/220?cb=20250128033555"
-},
-food_crate = {
-"https://static.wikia.nocookie.net/play-rust/images/8/80/Food-crate.png/revision/latest?cb=20180609013614",
-"https://static.wikia.nocookie.net/play-rust/images/1/10/Food_crate.png/revision/latest/scale-to-width-down/220?cb=20160106151034"
-},
-timed_crate = {
-"https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339"
-},
-care_package = {
-"https://static.wikia.nocookie.net/play-rust/images/4/49/Airdrop_Supply_Crate.jpg/revision/latest/scale-to-width-down/300?cb=20140723124718"
-},
-trash_can = {
-"https://static.wikia.nocookie.net/play-rust/images/e/eb/Tech_Trash_icon.png/revision/latest?cb=20161117193341",
-"https://static.wikia.nocookie.net/fallensurvival/images/6/6e/Trash.png/revision/latest?format=original"
-},
-oil_barrel = {
-"https://files.facepunch.com/wiki/files/b67cc/8de6b04b1f5b0bb.png",
-"https://files.facepunch.com/wiki/files/b67cc/8de6b061b27ee29.png",
-"https://static.wikia.nocookie.net/fallensurvival/images/0/06/Oil.png/revision/latest?format=original"
-},
-body_bag = {
-"https://rustlabs.com/img/items180/halloween.lootbag.large.png",
-"https://rustlabs.com/img/items180/halloween.lootbag.medium.png",
-"https://rustlabs.com/img/items180/halloween.lootbag.small.png",
-"https://static.thenounproject.com/png/body-bag-icon-4390423-512.png"
-},
-sleeper = {
-"https://static.wikia.nocookie.net/play-rust/images/b/be/Sleeping_Bag_icon.png/revision/latest?cb=20160211200428"
-},
-wooden_boat = {
-"https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931"
-},
-military_boat = {
-"https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931"
-},
-flycopter = {
-"https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-transport-minicopter-300x300.png",
-"https://static.wikia.nocookie.net/play-rust/images/4/49/Airdrop_Supply_Crate.jpg/revision/latest/scale-to-width-down/300?cb=20140723124718"
-}
-}
-K1_LOOT_DIRECT_ICON_STATE = {}
-function k1_resolve_loot_direct_icon(id)
-if not id or not K1_LOOT_DIRECT_ICONS then return nil end
-local urls = K1_LOOT_DIRECT_ICONS[id]
-if not urls then return nil end
-local st = K1_LOOT_DIRECT_ICON_STATE[id]
-if not st then
-st = { index = 1, handle = nil, dead = false }
-K1_LOOT_DIRECT_ICON_STATE[id] = st
-end
-if st.dead then return nil end
-if not st.handle and urls[st.index] then
-st.handle = Drawing.LoadImage(urls[st.index])
-end
-if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
-if st.handle and Drawing.IsImageFailed and Drawing.IsImageFailed(st.handle) then
-st.index = st.index + 1
-st.handle = nil
-if urls[st.index] then
-st.handle = Drawing.LoadImage(urls[st.index])
-else
-st.dead = true
-end
-end
-if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
-return nil
-end
-local function k1_url_encode(s)
-s = tostring(s or "")
-s = string.gsub(s, "\n", " ")
-s = string.gsub(s, "([^%w%-%_%.%~ ])", function(c)
-return string.format("%%%02X", string.byte(c))
-end)
-s = string.gsub(s, " ", "%%20")
-return s
-end
-local function k1_title_clean(s)
-s = tostring(s or "")
-s = string.gsub(s, "^PREFAB_ANIMAL_", "")
-s = string.gsub(s, "_", " ")
-s = string.gsub(s, "%s+", " ")
-s = string.gsub(s, "^%s+", "")
-s = string.gsub(s, "%s+$", "")
-if s == "WILDBOAR" then s = "Wild Boar" end
-if s == "DEER" then s = "Deer" end
-if s == "WOLF" then s = "Wolf" end
-return s
-end
-local function k1_icon_candidates(name, id)
-local n = k1_title_clean(name)
-local list = { n }
-if id == "stone_node" then
-list[#list+1] = "Stone"
-list[#list+1] = "Stones"
-list[#list+1] = "Stone Ore"
-list[#list+1] = "Stone Node"
-list[#list+1] = "Stone_Node"
-elseif id == "metal_node" then
-list[#list+1] = "Metal Ore"
-list[#list+1] = "Metal"
-list[#list+1] = "Metal Node"
-list[#list+1] = "Metal_Node"
-elseif id == "phosphate_node" then
-list[#list+1] = "Phosphate"
-list[#list+1] = "Phosphate Node"
-list[#list+1] = "Sulfur Ore"
-list[#list+1] = "Sulfur"
-list[#list+1] = "Sulfur_Node"
-elseif id == "corn_plant" then
-list[#list+1] = "Corn"
-elseif id == "tomato_plant" then
-list[#list+1] = "Tomato"
-elseif id == "lemon_plant" then
-list[#list+1] = "Lemon"
-elseif id == "raspberry_plant" then
-list[#list+1] = "Raspberry"
-list[#list+1] = "Raspberries"
-elseif id == "blueberry_plant" then
-list[#list+1] = "Blueberry"
-list[#list+1] = "Blueberries"
-elseif id == "wool_plant" then
-list[#list+1] = "Wool"
-elseif id == "pumpkin_plant" then
-list[#list+1] = "Pumpkin"
-elseif id == "deer" then
-list[#list+1] = "Deer"
-elseif id == "boar" then
-list[#list+1] = "Wild Boar"
-list[#list+1] = "Boar"
-elseif id == "wolf" then
-list[#list+1] = "Wolf"
-elseif id == "wooden_crate" then
-list[#list+1] = "Wooden Crate"
-list[#list+1] = "Locked Wooden Crate"
-elseif id == "metal_crate" then
-list[#list+1] = "Metal Crate"
-list[#list+1] = "Locked Metal Crate"
-elseif id == "steel_crate" then
-list[#list+1] = "Steel Crate"
-list[#list+1] = "Locked Steel Crate"
-elseif id == "food_crate" then
-list[#list+1] = "Food Crate"
-elseif id == "timed_crate" then
-list[#list+1] = "Timed Crate"
-elseif id == "care_package" then
-list[#list+1] = "Care Package"
-elseif id == "trash_can" then
-list[#list+1] = "Trash Can"
-elseif id == "oil_barrel" then
-list[#list+1] = "Oil Barrel"
-elseif id == "body_bag" then
-list[#list+1] = "Body Bag"
-elseif id == "sleeper" then
-list[#list+1] = "Sleeper"
-elseif id == "wooden_boat" then
-list[#list+1] = "Wooden Boat"
-elseif id == "military_boat" then
-list[#list+1] = "Military Boat"
-elseif id == "flycopter" then
-list[#list+1] = "Salvaged Flycopter"
-list[#list+1] = "Flycopter"
-elseif id == "dropped_item" then
-list[#list+1] = string.gsub(n, "^Salvaged%s+", "")
-list[#list+1] = string.gsub(n, "^Military%s+", "")
-list[#list+1] = string.gsub(n, "^Wooden%s+", "")
-list[#list+1] = string.gsub(n, "^Improvised%s+", "")
-if string.find(string.lower(n), "double") and string.find(string.lower(n), "barrel") then
-list[#list+1] = "Salvaged Shotgun"
-list[#list+1] = "Shotgun"
-end
-if string.find(string.lower(n), "pipe") and string.find(string.lower(n), "rifle") then
-list[#list+1] = "Salvaged Pipe Rifle"
-list[#list+1] = "Pipe Rifle"
-end
-end
-local out, seen = {}, {}
-for _, v in ipairs(list) do
-v = k1_title_clean(v)
-if v ~= "" and not seen[v] then
-seen[v] = true
-out[#out+1] = v
-end
-end
-return out
-end
-local function k1_fetch_wiki_icon(title)
-title = k1_title_clean(title)
-if title == "" then return nil end
-local st = k1_wiki_icon_state[title]
-if st then
-if st.dead then return nil end
-if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
-if st.handle and Drawing.IsImageFailed and Drawing.IsImageFailed(st.handle) then st.dead = true; return nil end
-return nil
-end
-st = { dead = false, handle = nil, url = nil }
-k1_wiki_icon_state[title] = st
-pcall(function()
-if not (Http and Http.get and Json and Json.decode and Drawing and Drawing.LoadImage) then st.dead = true; return end
-local api = "https://fallen-survival-new.fandom.com/api.php?action=query&format=json&redirects=1&prop=pageimages&piprop=thumbnail|original&pithumbsize=180&titles=" .. k1_url_encode(title)
-local ok, status, body = Http.get(api, { timeout_ms = 6500 })
-if (not ok) or status ~= 200 or not body then st.dead = true; return end
-local j = Json.decode(body)
-if not j or not j.query or not j.query.pages then st.dead = true; return end
-for _, page in pairs(j.query.pages) do
-local src = nil
-if page.thumbnail and page.thumbnail.source then src = page.thumbnail.source end
-if (not src) and page.original and page.original.source then src = page.original.source end
-if src and src ~= "" then
-st.url = src
-st.handle = Drawing.LoadImage(src)
-return
-end
-end
-st.dead = true
-end)
-if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
-return nil
-end
-function k1_resolve_icon_handle_uncached(name, id)
-if K1_LOOT_ICON_IDS and K1_LOOT_ICON_IDS[id] then
-local direct = k1_resolve_loot_direct_icon(id)
-if direct then return direct end
-end
-local candidates = k1_icon_candidates(name, id)
-for _, cand in ipairs(candidates) do
-local handle = nil
-pcall(function()
-if get_icon then handle = get_icon(cand) end
-end)
-if handle and Drawing.IsImageReady(handle) then return handle end
-pcall(function()
-if get_weapon_icon then handle = get_weapon_icon(cand) end
-end)
-if handle and Drawing.IsImageReady(handle) then return handle end
-handle = k1_fetch_wiki_icon(cand)
-if handle and Drawing.IsImageReady(handle) then return handle end
-end
-return nil
-end
-function k1_resolve_icon_handle(name, id)
-if not __EC16 then __EC16 = {} end
-if not __EC16.iconHandleCache then __EC16.iconHandleCache = {} end
-local key = tostring(id or "") .. "|" .. tostring(name or "")
-local now = tick()
-local rec = __EC16.iconHandleCache[key]
-if rec and rec.handle and Drawing and Drawing.IsImageReady and Drawing.IsImageReady(rec.handle) then
-return rec.handle
-end
-if rec and rec.handle and Drawing and Drawing.IsImageFailed and Drawing.IsImageFailed(rec.handle) then
-__EC16.iconHandleCache[key] = { t = now, fail = true, retry = now + 8.0 }
-return nil
-end
-if rec and rec.retry and now < rec.retry then
-return nil
-end
-if rec and (now - (rec.t or 0)) < 1.25 then
-return nil
-end
-local frame = math.floor(now * 10)
-if __EC16.iconResolveFrame ~= frame then
-__EC16.iconResolveFrame = frame
-__EC16.iconResolveBudget = 2
-end
-if (__EC16.iconResolveBudget or 0) <= 0 then
-__EC16.iconHandleCache[key] = { t = now, fail = false, retry = now + 0.35 }
-return nil
-end
-__EC16.iconResolveBudget = (__EC16.iconResolveBudget or 0) - 1
-local handle = k1_resolve_icon_handle_uncached(name, id)
-if handle then
-__EC16.iconHandleCache[key] = { t = now, handle = handle, retry = now + 0.50 }
-return handle
-end
-__EC16.iconHandleCache[key] = { t = now, fail = false, retry = now + 2.0 }
-return nil
-end
-
-function k1_draw_bodybag_vector(x, y, size, alpha)
-if not Drawing then return false end
-alpha = alpha or 1
-local h = size * 0.86
-local w = size * 0.46
-local top = y - h * 0.42
-local bottom = y + h * 0.42
-local left = x - w * 0.5
-local right = x + w * 0.5
-if Drawing.DrawCircleFilled then
-Drawing.DrawCircleFilled(x, top + w * 0.28, w * 0.50, 0.015, 0.015, 0.018, 0.95 * alpha)
-Drawing.DrawCircleFilled(x, bottom - w * 0.24, w * 0.50, 0.015, 0.015, 0.018, 0.95 * alpha)
-end
-if Drawing.DrawBoxFilled then
-Drawing.DrawBoxFilled(left, top + w * 0.24, right, bottom - w * 0.20, 0.015, 0.015, 0.018, 0.95 * alpha)
-Drawing.DrawBoxFilled(left + w * 0.10, top + w * 0.14, right - w * 0.10, bottom - w * 0.10, 0.045, 0.045, 0.050, 0.82 * alpha)
-Drawing.DrawBoxFilled(left + w * 0.43, top + w * 0.18, left + w * 0.55, bottom - w * 0.16, 0.72, 0.72, 0.75, 0.55 * alpha)
-end
-if Drawing.DrawLine then
-Drawing.DrawLine(left - 1, top + h * 0.23, right + 1, top + h * 0.23, 0.78, 0.78, 0.80, 0.75 * alpha, 1)
-Drawing.DrawLine(left - 1, y, right + 1, y, 0.78, 0.78, 0.80, 0.75 * alpha, 1)
-Drawing.DrawLine(left - 1, bottom - h * 0.23, right + 1, bottom - h * 0.23, 0.78, 0.78, 0.80, 0.75 * alpha, 1)
-Drawing.DrawLine(x, top + w * 0.12, x, bottom - w * 0.12, 0.0, 0.0, 0.0, 0.75 * alpha, 1)
-end
-return true
-end
-local function k1_draw_icon_circle(name, id, x, y, size, alpha)
-if not (Drawing and Drawing.DrawCircleFilled and Drawing.DrawCircle) then return end
-size = math.floor(size or 18)
-if size < 10 then size = 10 end
-if size > 48 then size = 48 end
-alpha = alpha or 1
-if alpha < 0.05 then return end
-local radius = (size * 0.5) + 3
-Drawing.DrawCircleFilled(x, y, radius, 0.02, 0.02, 0.03, 0.90 * alpha)
-Drawing.DrawCircle(x, y, radius, __EC_PINK_R, __EC_PINK_G, __EC_PINK_B, 0.95 * alpha, 1.4)
-local handle = nil
-handle = k1_resolve_icon_handle(name, id)
-if handle then
-Drawing.DrawImage(handle, x - size * 0.5, y - size * 0.5, size, size, 1, 1, 1, alpha, math.max(2, size * 0.16))
-else
-local txt = short_name and short_name(name) or tostring(name or "?")
-if id == "stone_node" then txt = "ST" end
-if id == "metal_node" then txt = "ME" end
-if id == "phosphate_node" then txt = "PH" end
-if id == "corn_plant" then txt = "CO" end
-if id == "tomato_plant" then txt = "TO" end
-if id == "lemon_plant" then txt = "LE" end
-if id == "raspberry_plant" then txt = "RA" end
-if id == "blueberry_plant" then txt = "BL" end
-if id == "wool_plant" then txt = "WO" end
-if id == "pumpkin_plant" then txt = "PU" end
-if id == "deer" then txt = "DE" end
-if id == "boar" then txt = "BO" end
-if id == "wolf" then txt = "WF" end
-if id == "wooden_crate" then txt = "WC" end
-if id == "metal_crate" then txt = "MC" end
-if id == "steel_crate" then txt = "SC" end
-if id == "food_crate" then txt = "FC" end
-if id == "timed_crate" then txt = "TC" end
-if id == "care_package" then txt = "CP" end
-if id == "trash_can" then txt = "TC" end
-if id == "oil_barrel" then txt = "OB" end
-if id == "body_bag" then txt = "BB" end
-if id == "sleeper" then txt = "SL" end
-if id == "wooden_boat" then txt = "WB" end
-if id == "military_boat" then txt = "MB" end
-if id == "flycopter" then txt = "FL" end
-if txt and #txt > 2 then txt = string.sub(txt, 1, 2) end
-Drawing.DrawTextWithOutline(x, y - 6, txt or "?", 1, 1, 1, 0.98 * alpha, 0, 0, 0, 0.98 * alpha)
-end
-end
-local function k1_should_show_icon(id)
-if UIManager.GetCheckboxValue("k1_loot_show_icon") == true then
-if K1_LOOT_ICON_IDS[id] then return true end
-end
-if UIManager.GetCheckboxValue("k1_dropped_item_show_icon") == true then
-if K1_WORLD_ICON_IDS[id] or id == "dropped_item" then return true end
-end
-if UIManager.GetCheckboxValue("k1_ore_show_icon") == true then
-if id == "stone_node" or id == "metal_node" or id == "phosphate_node" then return true end
-end
-return false
-end
-function k1_icon_visuals(id, dist, range)
-local size = 16
-local alpha = 1
-if K1_LOOT_ICON_IDS[id] then
-size = UIManager.GetSliderIntValue("k1_loot_icon_size") or 16
-if UIManager.GetCheckboxValue("k1_loot_fade_distance") == true and range and range > 0 then
-alpha = 1 - ((dist or 0) / range) * 0.78
-end
-elseif K1_WORLD_ICON_IDS[id] or id == "dropped_item" or id == "stone_node" or id == "metal_node" or id == "phosphate_node" then
-size = UIManager.GetSliderIntValue("k1_world_icon_size") or 16
-if UIManager.GetCheckboxValue("k1_world_fade_distance") == true and range and range > 0 then
-alpha = 1 - ((dist or 0) / range) * 0.78
-end
-end
-if size < 10 then size = 10 end
-if size > 48 then size = 48 end
-if alpha < 0.18 then alpha = 0.18 end
-if alpha > 1 then alpha = 1 end
-return size, alpha
-end
-local function k1_draw_2d_box(x, y, w, h, r, g, b, a)
-if w < 2 or h < 2 then return end
-local len = math.min(18, math.max(6, math.min(w, h) * 0.28))
-local th = 2
-k1_draw_line(x, y, x + len, y, r, g, b, a, th)
-k1_draw_line(x, y, x, y + len, r, g, b, a, th)
-k1_draw_line(x + w, y, x + w - len, y, r, g, b, a, th)
-k1_draw_line(x + w, y, x + w, y + len, r, g, b, a, th)
-k1_draw_line(x, y + h, x + len, y + h, r, g, b, a, th)
-k1_draw_line(x, y + h, x, y + h - len, r, g, b, a, th)
-k1_draw_line(x + w, y + h, x + w - len, y + h, r, g, b, a, th)
-k1_draw_line(x + w, y + h, x + w, y + h - len, r, g, b, a, th)
-end
-local function k1_base_screen_box_size(id, dist)
-local base_w = 46
-local base_h = 30
-if id == "wooden_door" or id == "salvaged_door" or id == "metal_door" or id == "steel_door" then
-base_w, base_h = 34, 58
-elseif id == "wooden_double_door" or id == "metal_double_door" or id == "steel_double_door" or id == "garage_door" then
-base_w, base_h = 58, 58
-elseif id == "small_box" then
-base_w, base_h = 32, 24
-elseif id == "large_box" or id == "storage_cabinet" or id == "base_cabinet" then
-base_w, base_h = 42, 34
-elseif id == "sleeping_bag" then
-base_w, base_h = 54, 20
-elseif id == "shotgun_turret" or id == "auto_turret" then
-base_w, base_h = 36, 36
-elseif id == "solar_panel" then
-base_w, base_h = 56, 24
-elseif id == "windmill" then
-base_w, base_h = 70, 90
-end
-local scale = 1.0
-if dist > 0 then
-scale = math.max(0.45, math.min(1.35, 42 / dist))
-end
-return base_w * scale, base_h * scale
-end
-local function k1_part_data(part)
-if not part or not part.Position then return nil end
-local sx, sy, sz = 2, 2, 2
-if part.Size then
-sx = part.Size.X or sx
-sy = part.Size.Y or sy
-sz = part.Size.Z or sz
-end
-return {
-x = part.Position.X,
-y = part.Position.Y,
-z = part.Position.Z,
-sx = sx,
-sy = sy,
-sz = sz
-}
-end
-local function k1_collect_model_parts(model)
-local parts = {}
-local main = k1_find(model, "Main")
-local data = k1_part_data(main)
-if data then
-parts[#parts + 1] = data
-end
-local children = k1_children(model)
-if children then
-for _, child in ipairs(children) do
-if #parts >= 12 then break end
-if child and child.Position and (child.ClassName == "Part" or child.ClassName == "MeshPart" or child.ClassName == "UnionOperation") then
-data = k1_part_data(child)
-if data then parts[#parts + 1] = data end
-end
-end
-end
-if #parts == 0 then
-local pos = k1_part_pos(model)
-if pos then
-parts[1] = {
-x = pos.X,
-y = pos.Y,
-z = pos.Z,
-sx = 3,
-sy = 3,
-sz = 3
-}
-end
-end
-return parts
-end
-local function k1_project_bounds(parts)
-if not parts or #parts == 0 then return nil end
-local min_x, min_y = 999999, 999999
-local max_x, max_y = -999999, -999999
-local valid = false
-for _, p in ipairs(parts) do
-local hx = (p.sx or 2) * 0.5
-local hy = (p.sy or 2) * 0.5
-local hz = (p.sz or 2) * 0.5
-local corners = {
-{p.x - hx, p.y - hy, p.z - hz},
-{p.x + hx, p.y - hy, p.z - hz},
-{p.x - hx, p.y + hy, p.z - hz},
-{p.x + hx, p.y + hy, p.z - hz},
-{p.x - hx, p.y - hy, p.z + hz},
-{p.x + hx, p.y - hy, p.z + hz},
-{p.x - hx, p.y + hy, p.z + hz},
-{p.x + hx, p.y + hy, p.z + hz}
-}
-for i = 1, 8 do
-local c = corners[i]
-local s = Drawing.WorldToScreen({ X = c[1], Y = c[2], Z = c[3] })
-if s and s.X and s.X ~= -1 then
-valid = true
-if s.X < min_x then min_x = s.X end
-if s.X > max_x then max_x = s.X end
-if s.Y < min_y then min_y = s.Y end
-if s.Y > max_y then max_y = s.Y end
-end
-end
-end
-if not valid then return nil end
-local w = max_x - min_x
-local h = max_y - min_y
-if w <= 1 or h <= 1 then return nil end
-if w > 900 or h > 700 then return nil end
-return min_x, min_y, w, h
-end
-local function k1_refresh_folders()
-local now = tick()
-if now - k1.workspace_folders.last < 6 and k1.workspace_folders.bases then return end
-k1.workspace_folders.last = now
-k1.workspace_folders.nodes = k1_find("Workspace", "Nodes")
-k1.workspace_folders.plants = k1_find("Workspace", "Plants")
-k1.workspace_folders.animals = k1_find("Workspace", "Animals")
-k1.workspace_folders.drops = k1_find("Workspace", "Drops")
-k1.workspace_folders.bases = k1_find("Workspace", "Bases")
-k1.workspace_folders.loners = k1.workspace_folders.bases and k1_find(k1.workspace_folders.bases, "Loners") or nil
-end
-local function k1_any(list)
-for _, cfg in ipairs(list) do
-if k1_enabled(cfg.id) then return true end
-end
-return false
-end
-function k1_norm_name_for_match(v)
-v = tostring(v or "")
-v = string.lower(v)
-v = string.gsub(v, "%s+", "")
-v = string.gsub(v, "_", "")
-v = string.gsub(v, "%-", "")
-v = string.gsub(v, "%(%s*clone%s*%)", "")
-return v
-end
-function k1_cfg_name_match(cfg, objName)
-if not cfg then return false end
-if not cfg.names then return true end
-if cfg.names[objName] then return true end
-local n = k1_norm_name_for_match(objName)
-for k, _ in pairs(cfg.names) do
-if n == k1_norm_name_for_match(k) then return true end
-end
-return false
-end
-local function k1_signature(list)
-local sig = ""
-for _, cfg in ipairs(list) do
-if k1_enabled(cfg.id) then
-sig = sig .. cfg.id .. ";"
-end
-end
-return sig
-end
-local function k1_draw(pos, label, id, color, range, my, box, sx, sy, sz, is_base)
-if not pos then return end
-local dist = k1_dist(pos, my)
-if dist > range then return end
-local s = k1_screen(pos)
-if not s then return end
-local r, g, b, a = k1_color_value(id, color)
-local iconSize, fadeAlpha = k1_icon_visuals(id, dist, range)
-a = a * fadeAlpha
-if box and ((not is_base) or UIManager.GetCheckboxValue("k1_base_outline")) then
-k1_draw_box3d(pos, sx or 4, sy or 4, sz or 4, r, g, b, a, 2)
-end
-local dropShowIcon = k1_should_show_icon(id)
-if dropShowIcon then
-k1_draw_icon_circle(label, id, s.X, s.Y - 18, iconSize, fadeAlpha)
-end
-if (not is_base) or UIManager.GetCheckboxValue("k1_base_text") then
-local textY = s.Y
-if dropShowIcon then textY = textY + 2 end
-Drawing.DrawTextWithOutline(s.X, textY, label, r, g, b, a, 0, 0, 0, fadeAlpha)
-if UIManager.GetCheckboxValue("k1_show_distance") then
-Drawing.DrawTextWithOutline(s.X, textY + 14, string.format("%.0fm", dist), r, g, b, a, 0, 0, 0, fadeAlpha)
-end
-end
-end
-local function k1_draw_world(my)
-if not k1_any(K1_WORLD_ITEMS) then return end
-k1_refresh_folders()
-local range = UIManager.GetSliderIntValue("k1_world_range") or 500
-for _, cfg in ipairs(K1_WORLD_ITEMS) do
-if k1_enabled(cfg.id) then
-local folder = k1.workspace_folders[cfg.folder]
-local children = k1_children(folder)
-if children then
-for i = 1, #children do
-local model = children[i]
-if model and model.Name and k1_cfg_name_match(cfg, model.Name) then
-local pos = k1_part_pos(model)
-local label = cfg.id == "dropped_item" and (model.Name or cfg.label) or cfg.label
-k1_draw(pos, label, cfg.id, cfg.color, range, my, false)
-end
-end
-end
-end
-end
-end
-local function k1_rescan_loot()
-k1.loot_folder_cache = {}
-if not k1_any(K1_LOOT_ITEMS) then return end
-k1_refresh_folders()
-local loners = k1.workspace_folders.loners
-local type_folders = k1_children(loners)
-if not type_folders then return end
-for _, type_folder in ipairs(type_folders) do
-if #k1.loot_folder_cache >= 120 then break end
-if type_folder and type_folder.Name then
-for _, cfg in ipairs(K1_LOOT_ITEMS) do
-if k1_enabled(cfg.id) and k1_cfg_name_match(cfg, type_folder.Name) then
-local models = k1_children(type_folder)
-if models then
-for _, model in ipairs(models) do
-if #k1.loot_folder_cache >= 120 then break end
-local pos = nil
-local main = k1_find(model, "Main")
-if main and main.Position then pos = main.Position end
-if not pos then
-local inner = k1_find(model, type_folder.Name)
-local inner_main = inner and k1_find(inner, "Main")
-if inner_main and inner_main.Position then pos = inner_main.Position end
-end
-if not pos then
-pos = k1_part_pos(model)
-end
-if pos then
-table.insert(k1.loot_folder_cache, {
-pos = pos,
-cfg = cfg,
-model = model
-})
-end
-end
-end
-break
-end
-end
-end
-end
-end
-local function k1_draw_loot(my)
-if not k1_any(K1_LOOT_ITEMS) then
-k1.loot_folder_cache = {}
-k1.last_loot_signature = ""
-return
-end
-local now = tick()
-local sig = k1_signature(K1_LOOT_ITEMS)
-if sig ~= k1.last_loot_signature then
-k1.last_loot_signature = sig
-k1.last_loot_cache = now
-pcall(function()
-k1_rescan_loot()
-end)
-end
-local range = UIManager.GetSliderIntValue("k1_loot_range") or 350
-for _, entry in ipairs(k1.loot_folder_cache) do
-if entry and entry.cfg and entry.pos and k1_enabled(entry.cfg.id) then
-k1_draw(entry.pos, entry.cfg.label, entry.cfg.id, entry.cfg.color, range, my, false)
-end
-end
-end
-local function k1_rescan_base()
-k1.base_folder_cache = {}
-k1_refresh_folders()
-local bases = k1.workspace_folders.bases
-local bases_children = k1_children(bases)
-if not bases_children then return end
-for _, base_folder in ipairs(bases_children) do
-if #k1.base_folder_cache >= 180 then break end
-if base_folder and base_folder.Name ~= "Loners" then
-local base_children = k1_children(base_folder)
-if base_children then
-for _, type_folder in ipairs(base_children) do
-if #k1.base_folder_cache >= 180 then break end
-if type_folder and type_folder.Name then
-for _, cfg in ipairs(K1_BASE_ITEMS) do
-if k1_enabled(cfg.id) and k1_cfg_name_match(cfg, type_folder.Name) then
-local children = k1_children(type_folder)
-if children then
-for _, model in ipairs(children) do
-if #k1.base_folder_cache >= 180 then break end
-if model and model.ClassName == "Model" then
-local pos = k1_part_pos(model)
-if pos then
-table.insert(k1.base_folder_cache, {
-pos = pos,
-cfg = cfg
-})
-end
-end
-end
-else
-local pos = k1_part_pos(type_folder)
-if pos then
-table.insert(k1.base_folder_cache, {
-pos = pos,
-cfg = cfg
-})
-end
-end
-break
-end
-end
-end
-end
-end
-end
-end
-end
-local function k1_draw_base(my)
-if not k1_any(K1_BASE_ITEMS) then
-k1.base_folder_cache = {}
-k1.last_base_signature = ""
-return
-end
-local now = tick()
-local sig = k1_signature(K1_BASE_ITEMS)
-if sig ~= k1.last_base_signature then
-k1.last_base_signature = sig
-k1.last_base_cache = now
-pcall(function()
-k1_rescan_base()
-end)
-end
-local range = UIManager.GetSliderIntValue("k1_base_range") or 220
-for _, entry in ipairs(k1.base_folder_cache) do
-if entry and entry.cfg and k1_enabled(entry.cfg.id) and entry.pos then
-local dist = k1_dist(entry.pos, my)
-if dist <= range then
-local screen = k1_screen(entry.pos)
-if screen then
-local r, g, b, a = k1_color_value(entry.cfg.id, entry.cfg.color)
-if true then
-Drawing.DrawTextWithOutline(screen.X, screen.Y, entry.cfg.label, r, g, b, a, 0, 0, 0, 1)
-if UIManager.GetCheckboxValue("k1_show_distance") then
-Drawing.DrawTextWithOutline(screen.X, screen.Y + 14, string.format("%.0fm", dist), r, g, b, a, 0, 0, 0, 1)
-end
-end
-end
-end
-end
-end
-end
-local function k1_create_item(cfg)
-UIManager.CreateCheckbox("k1_" .. cfg.id, cfg.title, false)
-UIManager.SetElementParent("k1_" .. cfg.id, K1_TAB)
-UIManager.CreateColorPicker("k1_" .. cfg.id .. "_color", "", cfg.color.r, cfg.color.g, cfg.color.b, cfg.color.a)
-UIManager.SetElementParent("k1_" .. cfg.id .. "_color", K1_TAB)
-UIManager.SetElementSameLine("k1_" .. cfg.id .. "_color", true)
-end
-UIManager.CreateSeparator("fallen_sep_esp")
-UIManager.SetElementParent("fallen_sep_esp", TAB_ID)
-UIManager.CreateText("k1_world_title", "World")
-UIManager.SetElementParent("k1_world_title", K1_TAB)
-UIManager.CreateSliderInt("k1_world_range", "World Range", 25, 2000, 500)
-UIManager.SetElementParent("k1_world_range", K1_TAB)
-UIManager.CreateSliderInt("k1_world_icon_size", "World Icon Size", 10, 48, 16)
-UIManager.SetElementParent("k1_world_icon_size", K1_TAB)
-UIManager.CreateCheckbox("k1_world_fade_distance", "Fade by Distance", false)
-UIManager.SetElementParent("k1_world_fade_distance", K1_TAB)
-for _, cfg in ipairs(K1_WORLD_ITEMS) do k1_create_item(cfg) end
-UIManager.CreateCheckbox("k1_dropped_item_show_icon", "Show Icons", false)
-UIManager.SetElementParent("k1_dropped_item_show_icon", K1_TAB)
-UIManager.CreateCheckbox("k1_ore_show_icon", "Ore Icons", false)
-UIManager.SetElementParent("k1_ore_show_icon", K1_TAB)
-UIManager.CreateSeparator("k1_sep_loot")
-UIManager.SetElementParent("k1_sep_loot", K1_TAB)
-UIManager.CreateText("k1_loot_title", "Loot")
-UIManager.SetElementParent("k1_loot_title", K1_TAB)
-UIManager.CreateSliderInt("k1_loot_range", "Loot Range", 25, 2000, 350)
-UIManager.SetElementParent("k1_loot_range", K1_TAB)
-UIManager.CreateSliderInt("k1_loot_icon_size", "Loot Icon Size", 10, 48, 16)
-UIManager.SetElementParent("k1_loot_icon_size", K1_TAB)
-UIManager.CreateCheckbox("k1_loot_show_icon", "Show Icon", false)
-UIManager.SetElementParent("k1_loot_show_icon", K1_TAB)
-UIManager.CreateCheckbox("k1_loot_fade_distance", "Fade by Distance", false)
-UIManager.SetElementParent("k1_loot_fade_distance", K1_TAB)
-for _, cfg in ipairs(K1_LOOT_ITEMS) do k1_create_item(cfg) end
-UIManager.CreateCheckbox("k1_flycopter_sit", "copter-sit", false, function(v)
-ap_copter_sit_enabled = v == true
-end)
-UIManager.SetElementParent("k1_flycopter_sit", K1_TAB)
-UIManager.CreateButton("k1_flycopter_sit_key", "c-sit Key: None", function()
-ap_begin_tp_bind_capture("copter_sit")
-end)
-UIManager.SetElementParent("k1_flycopter_sit_key", K1_TAB)
-UIManager.CreateText("k1_flycopter_sit_hint", "R3 S200 + E")
-UIManager.SetElementParent("k1_flycopter_sit_hint", K1_TAB)
-UIManager.CreateSeparator("k1_sep_base")
-UIManager.SetElementParent("k1_sep_base", K1_TAB)
-UIManager.CreateText("k1_base_title", "Base")
-UIManager.SetElementParent("k1_base_title", K1_TAB)
-UIManager.CreateSliderInt("k1_base_range", "Base Range", 25, 2000, 220)
-UIManager.SetElementParent("k1_base_range", K1_TAB)
-UIManager.CreateCheckbox("k1_base_text", "Base Text", true)
-UIManager.SetElementParent("k1_base_text", K1_TAB)
-for _, cfg in ipairs(K1_BASE_ITEMS) do k1_create_item(cfg) end
-UIManager.CreateSeparator("k1_sep_misc")
-UIManager.SetElementParent("k1_sep_misc", K1_TAB)
-UIManager.CreateCheckbox("k1_show_distance", "Show Distance", true)
-UIManager.SetElementParent("k1_show_distance", K1_TAB)
-UIManager.CreateButton("k1_force_rescan", "Force Rescan", function()
-k1.workspace_folders.last = 0
-k1.last_base_cache = 0
-k1.last_loot_cache = 0
-k1.last_loot_signature = ""
-k1.last_base_signature = ""
-k1.base_folder_cache = {}
-k1.loot_folder_cache = {}
-
 -- FALLEN UI BASE SAFE MODE
 -- Feature modules can be disabled later without deleting UI code.
 
@@ -5118,7 +4293,7 @@ local WORLD_UI_ITEMS = {
         label = "Metal Node",
         color = { 0.70, 0.55, 0.35, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/play-rust/images/0/0a/Metal_Ore_icon.png/revision/latest/scale-to-width-down/50?cb=20151106060814",
+            "https://static.wikia.nocookie.net/play-rust/images/0/0a/Metal_Ore_icon.png/revision/latest?cb=20151106060814",
         },
     },
     {
@@ -5127,7 +4302,7 @@ local WORLD_UI_ITEMS = {
         label = "Phosphate Node",
         color = { 0.25, 0.85, 0.25, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest/scale-to-width-down/50?cb=20151106061904",
+            "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
         },
     },
     {
@@ -5136,7 +4311,7 @@ local WORLD_UI_ITEMS = {
         label = "Wool Plant",
         color = { 0.90, 0.90, 0.90, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/play-rust/images/f/f7/Cloth_icon.png/revision/latest/scale-to-width-down/50?cb=20151106071629",
+            "https://static.wikia.nocookie.net/play-rust/images/c/c9/Hemp_Clone_icon.png/revision/latest?cb=20170122060314",
         },
     },
     {
@@ -5145,7 +4320,7 @@ local WORLD_UI_ITEMS = {
         label = "Corn Plant",
         color = { 1.00, 0.90, 0.25, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f8/Corn.png/revision/latest?cb=20250108134637",
+            "https://static.wikia.nocookie.net/play-rust/images/0/0a/Corn_icon.png/revision/latest?cb=20151106061809",
         },
     },
     {
@@ -5154,7 +4329,7 @@ local WORLD_UI_ITEMS = {
         label = "Tomato Plant",
         color = { 1.00, 0.30, 0.30, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9d/Tomato.png/revision/latest/scale-to-width-down/55?cb=20250108164012",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9d/Tomato.png/revision/latest/scale-to-width-down/100?cb=20250108164012",
         },
     },
     {
@@ -5163,7 +4338,7 @@ local WORLD_UI_ITEMS = {
         label = "Pumpkin Plant",
         color = { 1.00, 0.50, 0.10, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/6/64/Pumpkin.png/revision/latest/scale-to-width-down/55?cb=20250108163605",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/6/64/Pumpkin.png/revision/latest/scale-to-width-down/100?cb=20250108163605",
         },
     },
     {
@@ -5172,7 +4347,7 @@ local WORLD_UI_ITEMS = {
         label = "Lemon Plant",
         color = { 1.00, 1.00, 0.30, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/3/35/Lemon.png/revision/latest/scale-to-width-down/55?cb=20250108163730",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/3/35/Lemon.png/revision/latest/scale-to-width-down/100?cb=20250108163730",
         },
     },
     {
@@ -5181,7 +4356,7 @@ local WORLD_UI_ITEMS = {
         label = "Raspberry Plant",
         color = { 0.90, 0.20, 0.50, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/55?cb=20250108163842",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/100?cb=20250108163842",
         },
     },
     {
@@ -5190,7 +4365,7 @@ local WORLD_UI_ITEMS = {
         label = "Blueberry Plant",
         color = { 0.30, 0.35, 1.00, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/a/af/Blueberries.png/revision/latest/scale-to-width-down/55?cb=20250108163924",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/a/af/Blueberries.png/revision/latest/scale-to-width-down/100?cb=20250108163924",
         },
     },
 }
@@ -8377,23 +7552,189 @@ local function world_icon_ready(handle)
         and ready == true
 end
 
-local function world_resolve_icon(cfg)
+local function world_load_direct_icon(cfg)
     if not cfg then
         return nil
     end
 
-    if type(k1_resolve_icon_handle) == "function" then
-        local handle = k1_resolve_icon_handle(
-            cfg.label,
+    local rec =
+        WORLD_ESP.icons[
             cfg.id
-        )
+        ]
 
-        if handle then
-            return handle
+    if not rec then
+        rec = {
+            index = 1,
+            handle = nil,
+            dead = false,
+            retry = 0,
+            source = nil,
+            reported_ready = false,
+            reported_failed = false,
+        }
+
+        WORLD_ESP.icons[cfg.id] =
+            rec
+    end
+
+    if rec.dead then
+        return nil
+    end
+
+    local now = tick()
+
+    if rec.retry
+        and now < rec.retry
+        and not rec.handle
+    then
+        return nil
+    end
+
+    if not rec.handle then
+        -- Preferred path for locally supplied icons.
+        -- This is identical to the method that worked for noFilter (1).png.
+        if cfg.local_icon_path
+            and type(Drawing.LoadImageFromFile) == "function"
+        then
+            local ok, handle =
+                pcall(
+                    Drawing.LoadImageFromFile,
+                    cfg.local_icon_path
+                )
+
+            if ok and handle then
+                rec.handle = handle
+                rec.source = "local"
+                rec.reported_ready = false
+                rec.reported_failed = false
+                return nil
+            end
+
+            rec.retry = now + 1.0
+            return nil
+        end
+
+        -- Other resources still use their direct URL list for now.
+        local urls =
+            cfg.direct_urls
+            or {}
+
+        local url =
+            urls[
+                rec.index or 1
+            ]
+
+        if not url then
+            rec.dead = true
+            return nil
+        end
+
+        if type(LoadImage) ~= "function" then
+            rec.dead = true
+            return nil
+        end
+
+        local ok, handle =
+            pcall(
+                LoadImage,
+                url
+            )
+
+        if ok and handle then
+            rec.handle = handle
+            rec.source = "url"
+            rec.retry = 0
+            rec.reported_ready = false
+            rec.reported_failed = false
+        else
+            rec.index =
+                (rec.index or 1)
+                + 1
+
+            rec.retry =
+                now + 1.0
+        end
+
+        return nil
+    end
+
+    if world_icon_ready(
+        rec.handle
+    ) then
+        if rec.reported_ready ~= true then
+            rec.reported_ready = true
+
+            print(
+                SYS
+                .. "icon READY: "
+                .. tostring(cfg.id)
+                .. " ["
+                .. tostring(rec.source or "?")
+                .. "]"
+            )
+        end
+
+        return rec.handle
+    end
+
+    if type(IsImageFailed) == "function" then
+        local ok, failed =
+            pcall(
+                IsImageFailed,
+                rec.handle
+            )
+
+        if ok and failed then
+            if rec.reported_failed ~= true then
+                rec.reported_failed = true
+
+                warn(
+                    SYS
+                    .. "icon FAILED: "
+                    .. tostring(cfg.id)
+                    .. " ["
+                    .. tostring(rec.source or "?")
+                    .. "]"
+                )
+            end
+
+            rec.handle = nil
+
+            if cfg.local_icon_path then
+                -- Keep retrying the exact local file path rather than
+                -- silently switching Stone back to a web URL.
+                rec.retry =
+                    now + 2.0
+            else
+                rec.index =
+                    (rec.index or 1)
+                    + 1
+
+                local urls =
+                    cfg.direct_urls
+                    or {}
+
+                if not urls[rec.index] then
+                    rec.dead = true
+                else
+                    rec.retry =
+                        now + 0.35
+                end
+            end
         end
     end
 
     return nil
+end
+
+local function world_resolve_icon(cfg)
+    -- The original user script's get_icon() was a LOCAL helper, therefore
+    -- it cannot be called from this standalone menu script. Use the same
+    -- direct URL approach here instead.
+    return
+        world_load_direct_icon(
+            cfg
+        )
 end
 
 
@@ -8404,50 +7745,12 @@ local function world_draw_icon(
     size,
     a
 )
-    if type(DrawCircleFilled) ~= "function"
-        or type(DrawCircle) ~= "function"
-    then
-        return
-    end
-
     size =
         clamp(
             tonumber(size) or 18,
             10,
             48
         )
-
-    local radius =
-        size * 0.5
-        + 3
-
-    DrawCircleFilled(
-        x,
-        y,
-        radius,
-        0.02,
-        0.02,
-        0.03,
-        0.90 * a
-    )
-
-    local border =
-        world_color_from_prefix(
-            "world_icon_border"
-        )
-
-    DrawCircle(
-        x,
-        y,
-        radius,
-        border[1],
-        border[2],
-        border[3],
-        0.95
-            * a
-            * (border[4] or 1),
-        1.4
-    )
 
     local handle =
         world_resolve_icon(
@@ -8467,27 +7770,11 @@ local function world_draw_icon(
             1,
             1,
             a,
-            math.max(
-                2,
-                size * 0.16
-            )
-        )
-    elseif type(DrawTextWithOutline) == "function" then
-        DrawTextWithOutline(
-            x,
-            y - 6,
-            cfg.short or "?",
-            1,
-            1,
-            1,
-            0.98 * a,
-            0,
-            0,
-            0,
-            0.98 * a
+            0
         )
     end
 end
+
 
 local function world_resource_color(cfg)
     if not cfg or not cfg.id then
