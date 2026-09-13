@@ -922,16 +922,7 @@ local function text(x, y, s, c)
     )
 end
 
-local function text_hover(x, y, s, id, hovered)
-    local c = Fallen_TextHoverColor(id, hovered)
-    DrawText(
-        FALLEN_UI_X(x),
-        FALLEN_UI_Y(y),
-        tostring(s),
-        c[1], c[2], c[3],
-        c[4] * MENU_RENDER_ALPHA
-    )
-end
+
 
 local function centered_text(cx, y, s, c)
     if type(DrawTextWithOutline) == "function" then
