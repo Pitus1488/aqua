@@ -100,6 +100,15 @@ local defaults = {
     aim_fov_v = 1.00,
     aim_fov_alpha = 100,
 
+    -- FOV glow ring.
+    aim_fov_glow_enabled = false,
+    aim_fov_glow_strength = 60,
+    aim_fov_glow_spread = 6,
+    aim_fov_glow_h = 0.66,
+    aim_fov_glow_s = 0.10,
+    aim_fov_glow_v = 1.00,
+    aim_fov_glow_alpha = 70,
+
     -- Menu appearance.
     menu_scale_percent = 100,
     menu_type = "default",
@@ -323,6 +332,11 @@ local A = {
     aim_settings_open = false,
     aim_settings_anim = 0,
     aim_settings_last_t = nil,
+
+    -- FOV glow popup.
+    fov_settings_open = false,
+    fov_settings_anim = 0,
+    fov_settings_last_t = nil,
 
     -- Body-part dropdown inside Aimbot settings.
     aim_part_dropdown_open = false,
@@ -2708,6 +2722,22 @@ local function fov_color()
     }
 end
 
+local function fov_glow_color()
+    local r, g, b =
+        hsv_to_rgb(
+            S.aim_fov_glow_h,
+            S.aim_fov_glow_s,
+            S.aim_fov_glow_v
+        )
+
+    return {
+        r,
+        g,
+        b,
+        clamp((tonumber(S.aim_fov_glow_alpha) or 70) / 100, 0, 1),
+    }
+end
+
 local function rgb_hex(r, g, b)
     local rr = math.floor(clamp(r, 0, 1) * 255 + 0.5)
     local gg = math.floor(clamp(g, 0, 1) * 255 + 0.5)
@@ -3690,6 +3720,47 @@ local function aim_settings_step_anim()
     return clamp(A.aim_settings_anim or 0, 0, 1)
 end
 
+local function fov_settings_step_anim()
+    local now = tick()
+
+    if A.fov_settings_last_t == nil then
+        A.fov_settings_last_t = now
+    end
+
+    local dt = clamp(now - A.fov_settings_last_t, 0, 0.05)
+    A.fov_settings_last_t = now
+
+    local target =
+        A.fov_settings_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.fov_settings_anim or 0)
+        and 15
+        or 11
+
+    A.fov_settings_anim =
+        exp_chase(
+            A.fov_settings_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if target == 0
+        and (A.fov_settings_anim or 0) < 0.028
+    then
+        A.fov_settings_anim = 0
+    elseif target == 1
+        and (A.fov_settings_anim or 0) > 0.992
+    then
+        A.fov_settings_anim = 1
+    end
+
+    return clamp(A.fov_settings_anim or 0, 0, 1)
+end
+
 local function aim_part_dropdown_step_anim()
     local now = tick()
 
@@ -4240,6 +4311,291 @@ local function draw_aim_settings_popup(
     MENU_RENDER_ALPHA = parent_menu_alpha
 end
 
+local function draw_fov_settings_popup(
+    mx,
+    my,
+    clicked,
+    lmb,
+    dots_x,
+    dots_y
+)
+    local raw_anim =
+        fov_settings_step_anim()
+
+    if raw_anim <= 0.001
+        and not A.fov_settings_open
+    then
+        return
+    end
+
+    local parent_menu_alpha = MENU_RENDER_ALPHA
+
+    local popup_fade =
+        ease_out_cubic(
+            clamp(raw_anim, 0, 1)
+        )
+
+    MENU_RENDER_ALPHA =
+        parent_menu_alpha
+        * popup_fade
+
+    local anim
+
+    if A.fov_settings_open then
+        anim =
+            ease_out_cubic(raw_anim)
+    else
+        anim =
+            ease_in_out_cubic(raw_anim)
+    end
+
+    local pw = 300
+    local ph = 206
+
+    local base_px =
+        dots_x
+        - pw
+        + 28
+
+    local base_py =
+        dots_y
+        + 31
+
+    local retract =
+        1 - anim
+
+    local px =
+        base_px
+        + retract * 14
+
+    local py =
+        base_py
+        - retract * 34
+
+    px = snap(px)
+    py = snap(py)
+
+    local shell_h =
+        math.max(
+            28,
+            ph
+            - retract * 58
+        )
+
+    local interactive =
+        raw_anim > 0.96
+        and A.fov_settings_open
+
+    local ui_clicked =
+        clicked
+        and interactive
+
+    FALLEN_POPUP_GLOW(px, py, pw, shell_h, 11, 1)
+
+    rounded_fill(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        { 0.062, 0.066, 0.077, 1 }
+    )
+
+    local details_visible =
+        raw_anim > 0.42
+
+    text(
+        px + 13,
+        py + 12,
+        "FOV glow settings",
+        C.text
+    )
+
+    if shell_h > 39 then
+        line(
+            px + 12,
+            py + 34,
+            px + pw - 12,
+            py + 34,
+            C.divider,
+            1
+        )
+    end
+
+    if details_visible then
+        toggle_row(
+            mx,
+            my,
+            ui_clicked,
+            px + 8,
+            py + 35,
+            pw - 16,
+            "Glow",
+            "aim_fov_glow_enabled",
+            false
+        )
+
+        if shell_h > 84 then
+            line(
+                px + 12,
+                py + 74,
+                px + pw - 12,
+                py + 74,
+                C.divider,
+                1
+            )
+        end
+
+        if shell_h > 119 then
+            slider_row(
+                mx,
+                my,
+                ui_clicked,
+                lmb,
+                px + 8,
+                py + 75,
+                pw - 16,
+                "Strength",
+                "aim_fov_glow_strength",
+                0,
+                100
+            )
+        end
+
+        if shell_h > 154 then
+            line(
+                px + 12,
+                py + 114,
+                px + pw - 12,
+                py + 114,
+                C.divider,
+                1
+            )
+        end
+
+        if shell_h > 189 then
+            slider_row(
+                mx,
+                my,
+                ui_clicked,
+                lmb,
+                px + 8,
+                py + 115,
+                pw - 16,
+                "Spread",
+                "aim_fov_glow_spread",
+                1,
+                12
+            )
+        end
+
+        if shell_h > 200 then
+            line(
+                px + 12,
+                py + 154,
+                px + pw - 12,
+                py + 154,
+                C.divider,
+                1
+            )
+        end
+
+        if shell_h > 180 then
+            local row_y =
+                py + 155
+
+            local hot =
+                row_hover(
+                    mx,
+                    my,
+                    px + 8,
+                    row_y,
+                    pw - 16,
+                    41
+                )
+
+            text(
+                px + 21,
+                row_y + 14,
+                "Glow Color",
+                FALLEN_HOVER_TEXT(
+                    "aim_fov_glow_color",
+                    hot,
+                    C.text
+                )
+            )
+
+            local swatch_s = 18
+            local swatch_x =
+                px + pw - 49
+
+            local swatch_y =
+                row_y + 11
+
+            color_preview(
+                swatch_x,
+                swatch_y,
+                swatch_s,
+                swatch_s
+            )
+
+            if ui_clicked
+                and hover(mx, my, swatch_x, swatch_y, swatch_s, swatch_s)
+            then
+                FALLEN_COLOR_INPUT_STOP(true)
+
+                local prefix = "aim_fov_glow"
+
+                if A.world_color_picker_open
+                    and A.world_color_picker_key == prefix
+                then
+                    A.world_color_picker_open = false
+                    A.world_color_picker_drag = nil
+                else
+                    A.world_color_picker_key = prefix
+                    A.world_color_picker_open = true
+                    A.world_color_picker_drag = nil
+
+                    A.world_color_picker_anchor_x = FALLEN_UI_X(swatch_x)
+                    A.world_color_picker_anchor_y = FALLEN_UI_Y(swatch_y)
+                    A.world_color_picker_anchor_w = FALLEN_UI_LEN(swatch_s)
+                    A.world_color_picker_anchor_h = FALLEN_UI_LEN(swatch_s)
+                end
+            end
+        end
+    end
+
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            shell_h
+        )
+
+    local dots_hot =
+        hover(
+            mx,
+            my,
+            dots_x,
+            dots_y,
+            27,
+            25
+        )
+
+    if interactive
+        and clicked
+        and not popup_hot
+        and not dots_hot
+    then
+        A.fov_settings_open = false
+    end
+
+    MENU_RENDER_ALPHA = parent_menu_alpha
+end
+
 local function draw_aimbot_page(
     mx, my, clicked, lmb, rmb_clicked, cx, cy, cw
 )
@@ -4253,6 +4609,8 @@ local function draw_aimbot_page(
     local overlay_open =
         A.aim_settings_open
         or (A.aim_settings_anim or 0) > 0.02
+        or A.fov_settings_open
+        or (A.fov_settings_anim or 0) > 0.02
         or A.aim_bind_listening
 
     local base_clicked =
@@ -4301,6 +4659,7 @@ local function draw_aimbot_page(
 
     if rmb_clicked and aimbot_row_hot then
         A.aim_settings_open = not A.aim_settings_open
+        A.fov_settings_open = false
 
         if A.aim_settings_open then
             numeric_stop(true)
@@ -4336,13 +4695,46 @@ local function draw_aimbot_page(
     section_title(rx, cy, "Aim FOV")
     card(rx, cy + 25, right_w, 139, 11)
 
+    local fov_dots_x = rx + right_w - 79
+    local fov_dots_y = cy + 40
+    local fov_dots_hot =
+        hover(
+            mx,
+            my,
+            fov_dots_x,
+            fov_dots_y,
+            27,
+            25
+        )
+
     toggle_row(
-        mx, my, base_clicked,
+        mx, my, base_clicked and not fov_dots_hot,
         rx, cy + 32, right_w,
         "Aim FOV",
         "aim_fov_enabled",
-        false
+        true
     )
+
+    local fov_row_hot =
+        hover(
+            mx,
+            my,
+            rx,
+            cy + 32,
+            right_w,
+            41
+        )
+
+    if (base_clicked and fov_dots_hot)
+        or (rmb_clicked and fov_row_hot)
+    then
+        A.fov_settings_open = not A.fov_settings_open
+        A.aim_settings_open = false
+
+        if not A.fov_settings_open then
+            numeric_stop(true)
+        end
+    end
 
     line(rx + 12, cy + 72, rx + right_w - 12, cy + 72, C.divider, 1)
 
@@ -4421,6 +4813,15 @@ local function draw_aimbot_page(
         rmb_clicked,
         dots_x,
         dots_y
+    )
+
+    draw_fov_settings_popup(
+        mx,
+        my,
+        clicked,
+        lmb,
+        fov_dots_x,
+        fov_dots_y
     )
 end
 
@@ -7266,6 +7667,80 @@ local function fap_draw_fov()
                 512
             )
         )
+
+    if S.aim_fov_glow_enabled == true then
+        local gc =
+            fov_glow_color()
+
+        local glow_strength =
+            clamp(
+                (tonumber(S.aim_fov_glow_strength) or 60) / 100,
+                0,
+                1
+            )
+
+        local glow_spread =
+            math.floor(
+                clamp(
+                    tonumber(S.aim_fov_glow_spread) or 6,
+                    1,
+                    12
+                )
+            )
+
+        if glow_strength > 0.001
+            and gc[4] > 0.001
+        then
+            for ring = glow_spread, 1, -1 do
+                local ring_radius =
+                    fov_radius + ring
+
+                local ring_alpha =
+                    gc[4]
+                    * glow_strength
+                    * (ring / glow_spread)
+                    * 0.42
+
+                local ring_prev_x =
+                    c.X + ring_radius
+
+                local ring_prev_y =
+                    c.Y
+
+                for i = 1, fov_segments do
+                    local ang =
+                        (i / fov_segments)
+                        * math.pi
+                        * 2
+
+                    local nx =
+                        c.X
+                        + math.cos(ang)
+                        * ring_radius
+
+                    local ny =
+                        c.Y
+                        + math.sin(ang)
+                        * ring_radius
+
+                    DrawLine(
+                        ring_prev_x,
+                        ring_prev_y,
+                        nx,
+                        ny,
+                        gc[1],
+                        gc[2],
+                        gc[3],
+                        ring_alpha,
+                        1.2 + ring * 0.18
+                    )
+
+                    ring_prev_x = nx
+                    ring_prev_y = ny
+                end
+            end
+        end
+    end
 
     local prev_x =
         c.X + fov_radius
