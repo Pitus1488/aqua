@@ -9832,7 +9832,7 @@ hooks.on_render(function()
     -- 35 rounded glow frames around the entire menu.
     -- Radius grows together with every outward frame, so the glow follows
     -- the rounded menu corners instead of making square wedges.
-    local glow_rgb = { 0, 0, 0, 1 }
+    local glow_rgb = FALLEN_GLOW_COLOR()
     local glow_strength =
         clamp((tonumber(S.menu_glow_strength) or 100) / 100, 0, 2)
 
