@@ -11308,7 +11308,7 @@ function FALLEN_WEATHER_SPLASH(x, y, normal_x, normal_y)
     normal_y = tonumber(normal_y) or -1
 
     for i = 1, amount do
-        if #A.weather_splashes >= 110 then
+        if #A.weather_splashes >= 48 then
             break
         end
 
@@ -11402,10 +11402,10 @@ function FALLEN_DRAW_MENU_WEATHER(
     if S.menu_snow == true then
         A.weather_snow_spawn =
             (A.weather_snow_spawn or 0)
-            + dt * 36
+            + dt * 16
 
         while A.weather_snow_spawn >= 1
-            and #A.weather_snow < 120
+            and #A.weather_snow < 52
         do
             A.weather_snow_spawn =
                 A.weather_snow_spawn - 1
@@ -11442,6 +11442,14 @@ function FALLEN_DRAW_MENU_WEATHER(
             and p.y + p.r <= screen_h - 2
             and p.x - p.r >= 2
             and p.x + p.r <= screen_w - 2
+            and not (
+                menu_w > 0
+                and menu_h > 0
+                and p.x + p.r >= menu_x
+                and p.x - p.r <= menu_x + menu_w
+                and p.y + p.r >= menu_y
+                and p.y - p.r <= menu_y + menu_h
+            )
         then
             circle_fill(
                 p.x,
@@ -11490,10 +11498,10 @@ function FALLEN_DRAW_MENU_WEATHER(
     if S.menu_rain == true then
         A.weather_rain_spawn =
             (A.weather_rain_spawn or 0)
-            + dt * 82
+            + dt * 34
 
         while A.weather_rain_spawn >= 1
-            and #A.weather_rain < 150
+            and #A.weather_rain < 64
         do
             A.weather_rain_spawn =
                 A.weather_rain_spawn - 1
@@ -11967,14 +11975,15 @@ hooks.on_render(function()
     local weather_menu_h =
         FALLEN_UI_LEN(WIN_H)
 
-    FALLEN_DRAW_MENU_WEATHER(
-        sw,
-        sh,
-        weather_menu_x,
-        weather_menu_y,
-        weather_menu_w,
-        weather_menu_h
-    )
+    FALLEN_WEATHER_MENU_RECT = {
+        screen_w = sw,
+        screen_h = sh,
+        x = weather_menu_x,
+        y = weather_menu_y,
+        w = weather_menu_w,
+        h = weather_menu_h,
+        open_alpha = MENU_RENDER_ALPHA,
+    }
 
     -- 35 line based glow frames around the entire menu.
     -- Every line uses the selected Glow Color directly.
@@ -12471,6 +12480,70 @@ hooks.on_render(function()
     -- Keep helper state sane for the next frame.
     MENU_UI_TRANSFORM_ACTIVE = false
     MENU_RENDER_ALPHA = 1
+end)
+
+-- Weather is deliberately rendered in a SECOND pass after the full menu.
+-- If the Drawing backend has a per-frame primitive budget, the interface
+-- always gets priority. Particles are excluded from the menu rectangle, so
+-- visually they still remain behind the UI.
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    if (A.menu_open or 0) <= 0.004 then
+        return
+    end
+
+    if S.menu_snow ~= true
+        and S.menu_rain ~= true
+        and (A.weather_snow_alpha or 0) < 0.01
+        and (A.weather_rain_alpha or 0) < 0.01
+    then
+        return
+    end
+
+    local r =
+        FALLEN_WEATHER_MENU_RECT
+
+    if not r then
+        return
+    end
+
+    -- Main menu callback restores these to neutral at its end; force them
+    -- neutral anyway so this pass cannot affect the next frame's menu.
+    local old_transform = MENU_UI_TRANSFORM_ACTIVE
+    local old_alpha = MENU_RENDER_ALPHA
+
+    MENU_UI_TRANSFORM_ACTIVE = false
+    MENU_RENDER_ALPHA = 1
+
+    local ok, err =
+        pcall(
+            FALLEN_DRAW_MENU_WEATHER,
+            r.screen_w,
+            r.screen_h,
+            r.x,
+            r.y,
+            r.w,
+            r.h
+        )
+
+    MENU_UI_TRANSFORM_ACTIVE = old_transform
+    MENU_RENDER_ALPHA = old_alpha
+
+    if not ok
+        and type(warn) == "function"
+    then
+        -- Do not spam every frame if an API-specific primitive fails.
+        if not FALLEN_WEATHER_DRAW_WARNED then
+            FALLEN_WEATHER_DRAW_WARNED = true
+            pcall(
+                warn,
+                "[Fallen-lua weather] " .. tostring(err)
+            )
+        end
+    end
 end)
 
 print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA1)")
