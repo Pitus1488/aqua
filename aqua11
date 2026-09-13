@@ -9708,21 +9708,72 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
                 + dz * dz
             )
 
-        -- 0m  -> ~24 px
-        -- 50m -> ~21 px
-        -- 150m -> ~17 px
-        -- very far -> bottoms out around 15 px
-        local t =
-            clamp(
-                dist / 180,
-                0,
-                1
-            )
+        -- Distance curve:
+        --   0m   -> 70 px
+        --   50m  -> 45 px
+        --   150m -> 30 px
+        --   300m -> 22 px
+        --   600m+ -> 18 px minimum
+        if dist <= 50 then
+            local t =
+                smooth01(
+                    clamp(
+                        dist / 50,
+                        0,
+                        1
+                    )
+                )
 
-        size =
-            24
-            + (15 - 24)
-            * smooth01(t)
+            size =
+                70
+                + (45 - 70)
+                * t
+
+        elseif dist <= 150 then
+            local t =
+                smooth01(
+                    clamp(
+                        (dist - 50) / 100,
+                        0,
+                        1
+                    )
+                )
+
+            size =
+                45
+                + (30 - 45)
+                * t
+
+        elseif dist <= 300 then
+            local t =
+                smooth01(
+                    clamp(
+                        (dist - 150) / 150,
+                        0,
+                        1
+                    )
+                )
+
+            size =
+                30
+                + (22 - 30)
+                * t
+
+        else
+            local t =
+                smooth01(
+                    clamp(
+                        (dist - 300) / 300,
+                        0,
+                        1
+                    )
+                )
+
+            size =
+                22
+                + (18 - 22)
+                * t
+        end
     end
 
     local style =
