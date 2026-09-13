@@ -8346,12 +8346,16 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     ring_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4ab.png",
     smoke_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a8.png",
     boom_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548823359545016411/nwy9966m3ZxyeZg2yY7qRfyMUHDmG1knvQlNHz9odq2zEWGUtjPVaqiCSKK-mNBmmSMdL6xi12PZs_eIdFviRo8Ir7vv7MvEIzyP_1.png?ex=6aa875a8&is=6aa72428&hm=9b596e1dd0db49ede18049cac09f2701f9ede3166bf14aec9300a7fac0c1d109&",
+    user_smoke_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827221538373713/i-_2__1.png?ex=6aa87941&is=6aa727c1&hm=1ee45d81a647ee5169c400f33c1db3f3b0d0c928f9962b478ade3af141cf2e85&",
+    user_sparks_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827784342671370/i-_3__1.png?ex=6aa879c7&is=6aa72847&hm=0d8a98fa5a309eb38a94c26ad4fa0d409ac7170689aa935d6754b564eecf0d46&",
     spark = nil,
     star = nil,
     flash = nil,
     ring = nil,
     smoke = nil,
     boom = nil,
+    user_smoke = nil,
+    user_sparks = nil,
 }
 
 function FALLEN_BT_STYLE_INDEX()
@@ -9121,6 +9125,8 @@ function FALLEN_HITFX_STYLE_INDEX()
 
     if style == "Boom" then
         return 1
+    elseif style == "Smoke Sparks" then
+        return 2
     end
 
     if style ~= "Fallen Spark" then
@@ -9667,18 +9673,8 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
     local alpha =
         1 - t
 
-    local col =
-        FALLEN_HITFX_COLOR()
-
-    alpha =
-        alpha
-        * (col[4] or 1)
-
-    -- Distance-aware screen size:
-    -- close targets stay compact, far targets shrink smoothly,
-    -- but never become too tiny to notice.
-    local size = 18
-
+    -- HitFX now always uses original image colors.
+    local size = 0
     local cam = nil
 
     pcall(function()
@@ -9715,7 +9711,7 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
         --   300m -> 22 px
         --   600m+ -> 18 px minimum
         if dist <= 50 then
-            local t =
+            local tt =
                 smooth01(
                     clamp(
                         dist / 50,
@@ -9727,10 +9723,10 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
             size =
                 70
                 + (45 - 70)
-                * t
+                * tt
 
         elseif dist <= 150 then
-            local t =
+            local tt =
                 smooth01(
                     clamp(
                         (dist - 50) / 100,
@@ -9742,10 +9738,10 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
             size =
                 45
                 + (30 - 45)
-                * t
+                * tt
 
         elseif dist <= 300 then
-            local t =
+            local tt =
                 smooth01(
                     clamp(
                         (dist - 150) / 150,
@@ -9757,10 +9753,10 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
             size =
                 30
                 + (22 - 30)
-                * t
+                * tt
 
         else
-            local t =
+            local tt =
                 smooth01(
                     clamp(
                         (dist - 300) / 300,
@@ -9772,15 +9768,17 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
             size =
                 22
                 + (18 - 22)
-                * t
+                * tt
         end
+    else
+        size = 32
     end
 
     local style =
         FALLEN_HITFX_STYLE_INDEX()
 
     if style == 1 then
-        -- Boom: exactly the PNG supplied by the user.
+        -- Boom: use the supplied PNG in its original colors.
         local boom =
             FALLEN_HITFX_IMAGE(
                 "boom",
@@ -9799,7 +9797,6 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
                     1 - t * t
                 )
 
-            -- Compact 32px-base pop: about 28 -> 42 px.
             local draw_size =
                 size
                 * (
@@ -9819,7 +9816,113 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
                 alpha * fade
             )
         end
+
+    elseif style == 2 then
+        -- Smoke Sparks:
+        -- smoke slowly evaporates over 0.5 sec, while sparks fly outward.
+        local smoke_img =
+            FALLEN_HITFX_IMAGE(
+                "user_smoke",
+                FALLEN_BT_IMAGE.user_smoke_url
+            )
+
+        local sparks_img =
+            FALLEN_HITFX_IMAGE(
+                "user_sparks",
+                FALLEN_BT_IMAGE.user_sparks_url
+            )
+
+        local fade =
+            math.max(
+                0,
+                1 - t
+            )
+
+        local smoke_size =
+            size
+            * (
+                0.95
+                + 0.45 * smooth01(t)
+            )
+
+        if smoke_img then
+            FALLEN_HITFX_DRAW_IMAGE(
+                smoke_img,
+                s.X - smoke_size * 0.5,
+                s.Y - smoke_size * 0.5,
+                smoke_size,
+                smoke_size,
+                1,
+                1,
+                1,
+                alpha * 0.92 * fade
+            )
+        end
+
+        if sparks_img then
+            for k = 1, 7 do
+                local seed =
+                    (hit.seed or 1)
+                    + k * 17.19
+
+                local ang =
+                    (k / 7)
+                    * math.pi
+                    * 2
+                    + math.sin(seed) * 0.33
+
+                local spread =
+                    size
+                    * (
+                        0.10
+                        + 0.78 * t
+                    )
+                    * (
+                        0.90
+                        + math.abs(
+                            math.sin(seed * 1.31)
+                        ) * 0.55
+                    )
+
+                local px =
+                    s.X + math.cos(ang) * spread
+
+                local py =
+                    s.Y + math.sin(ang) * spread
+
+                local spark_size =
+                    size
+                    * (
+                        0.22
+                        + math.abs(
+                            math.sin(seed * 0.77)
+                        ) * 0.18
+                    )
+                    * (
+                        1.08
+                        - 0.35 * t
+                    )
+
+                FALLEN_HITFX_DRAW_IMAGE(
+                    sparks_img,
+                    px - spark_size * 0.5,
+                    py - spark_size * 0.5,
+                    spark_size,
+                    spark_size,
+                    1,
+                    1,
+                    1,
+                    alpha
+                        * (
+                            0.72
+                            - 0.28 * t
+                        )
+                )
+            end
+        end
+
     else
+        -- Fallen Spark.
         FALLEN_HITFX_DRAW_FALLEN(
             1,
             s.X,
@@ -9827,18 +9930,26 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
             size,
             t,
             alpha,
-            col,
+            { 1, 1, 1, 1 },
             hit.seed
         )
     end
 end
+
 function FALLEN_HITFX_DRAW()
     if type(FALLEN_HITFX.items) ~= "table" then
         FALLEN_HITFX.items = {}
     end
 
     local now = tick()
-    local life = 0.74
+
+    local style =
+        FALLEN_HITFX_STYLE_INDEX()
+
+    local life =
+        style == 2
+        and 0.50
+        or 0.74
 
     for i = #FALLEN_HITFX.items, 1, -1 do
         local hit =
@@ -19378,6 +19489,7 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
     local options = {
         "Fallen Spark",
         "Boom",
+        "Smoke Sparks",
     }
 
     local item_h = 27
