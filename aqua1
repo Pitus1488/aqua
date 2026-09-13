@@ -6165,23 +6165,62 @@ local function draw_visuals_page(
         )
     end
 
-    -- Also mask a small strip INSIDE the top of each card.
-    -- This catches glyphs/swatch edges from the row that is sliding out,
-    -- while preserving the rounded outer corners.
+    -- Final top-seam cap.
+    -- In Glass mode C.content is translucent, so the old mask could still
+    -- let a few pixels of the previous scrolling row show through.
+    -- Use a very narrow fully-opaque strip immediately ABOVE the card.
+    -- It does not touch the first real row or the rounded card corners.
     fill(
-        left_x + 4,
-        base_card_y + 1,
-        col_w - 8,
-        16,
-        C.card
+        left_x + 8,
+        base_card_y - 10,
+        col_w - 16,
+        10,
+        {
+            C.content[1],
+            C.content[2],
+            C.content[3],
+            1
+        }
     )
 
     fill(
-        right_x + 4,
+        right_x + 8,
+        base_card_y - 10,
+        col_w - 16,
+        10,
+        {
+            C.content[1],
+            C.content[2],
+            C.content[3],
+            1
+        }
+    )
+
+    -- Small inner guard, kept below all normal row text/swatch content.
+    fill(
+        left_x + 10,
         base_card_y + 1,
-        col_w - 8,
-        16,
-        C.card
+        col_w - 20,
+        9,
+        {
+            C.card[1],
+            C.card[2],
+            C.card[3],
+            1
+        }
+    )
+
+    fill(
+        right_x + 10,
+        base_card_y + 1,
+        col_w - 20,
+        9,
+        {
+            C.card[1],
+            C.card[2],
+            C.card[3],
+            1
+        }
     )
 
     local clip_bottom_y =
