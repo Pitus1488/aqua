@@ -4283,8 +4283,14 @@ local WORLD_UI_ITEMS = {
         key = "world_stone_node",
         label = "Stone Node",
         color = { 0.55, 0.55, 0.55, 1 },
+        -- Stone icon only.
+        -- M3 worked in the diagnostic: ?format=original is primary.
+        -- M5 also worked, so the known-good revision URL is the fallback.
         direct_urls = {
+            "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest?format=original",
             "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest?cb=20150405123145",
+            "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest/scale-to-width-down/50?cb=20150405123145",
+            "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png",
         },
     },
     {
@@ -7553,7 +7559,9 @@ local function world_icon_ready(handle)
 end
 
 local function world_load_direct_icon(cfg)
-    if not cfg then
+    -- This build intentionally supports image icons ONLY for Stone Node.
+    -- M3 and M5 were confirmed working in the standalone diagnostic.
+    if not cfg or cfg.id ~= "stone_node" then
         return nil
     end
 
@@ -7563,14 +7571,13 @@ local function world_load_direct_icon(cfg)
     end
 
     local name = cfg.id
-
     local st = WORLD_ESP.icons[name]
 
     if not st then
         st = {
             index = 1,
-            handle = Drawing.LoadImage(urls[1]),
-            dead = false
+            handle = nil,
+            dead = false,
         }
         WORLD_ESP.icons[name] = st
     end
@@ -7579,35 +7586,45 @@ local function world_load_direct_icon(cfg)
         return nil
     end
 
-    if st.handle and Drawing.IsImageReady(st.handle) then
+    -- M3/M5 behavior: create the current URL handle once, then wait.
+    if not st.handle and urls[st.index] then
+        local ok, handle = pcall(
+            Drawing.LoadImage,
+            urls[st.index]
+        )
+
+        if ok then
+            st.handle = handle
+        end
+    end
+
+    -- Only return a handle after the image is actually ready.
+    if st.handle
+        and Drawing.IsImageReady
+        and Drawing.IsImageReady(st.handle)
+    then
         return st.handle
     end
 
-    if st.handle and Drawing.IsImageFailed(st.handle) then
+    -- M5 fallback chain: if the current URL failed, advance to the next.
+    if st.handle
+        and Drawing.IsImageFailed
+        and Drawing.IsImageFailed(st.handle)
+    then
         st.index = st.index + 1
+        st.handle = nil
 
-        if urls[st.index] then
-            st.handle = Drawing.LoadImage(urls[st.index])
-            return st.handle
+        if not urls[st.index] then
+            st.dead = true
         end
-
-        st.dead = true
-        return nil
     end
 
-    return st.handle
+    return nil
 end
 
 local function world_resolve_icon(cfg)
-    -- The original user script's get_icon() was a LOCAL helper, therefore
-    -- it cannot be called from this standalone menu script. Use the same
-    -- direct URL approach here instead.
-    return
-        world_load_direct_icon(
-            cfg
-        )
+    return world_load_direct_icon(cfg)
 end
-
 
 local function world_draw_icon(
     cfg,
@@ -7616,10 +7633,23 @@ local function world_draw_icon(
     size,
     a
 )
-    if type(DrawCircleFilled) ~= "function"
-        or type(DrawCircle) ~= "function"
-    then
-        return
+    -- User requested icons above Stone Nodes only.
+    if not cfg or cfg.id ~= "stone_node" then
+        return false
+    end
+
+    if type(DrawImage) ~= "function" then
+        return false
+    end
+
+    local handle =
+        world_resolve_icon(
+            cfg
+        )
+
+    -- Do not draw the old ST fallback/ring while the PNG is loading.
+    if not handle then
+        return false
     end
 
     size =
@@ -7629,76 +7659,61 @@ local function world_draw_icon(
             48
         )
 
-    local radius =
-        size * 0.5
-        + 3
-
-    DrawCircleFilled(
-        x,
-        y,
-        radius,
-        0.02,
-        0.02,
-        0.03,
-        0.90 * a
-    )
-
-    local border =
-        world_color_from_prefix(
-            "world_icon_border"
-        )
-
-    DrawCircle(
-        x,
-        y,
-        radius,
-        border[1],
-        border[2],
-        border[3],
-        0.95
-            * a
-            * (border[4] or 1),
-        1.4
-    )
-
-    local handle =
-        world_resolve_icon(
-            cfg
-        )
-
-    if handle
-        and type(DrawImage) == "function"
+    -- Keep the existing round background/border from the menu,
+    -- but only once the actual stone PNG is ready.
+    if type(DrawCircleFilled) == "function"
+        and type(DrawCircle) == "function"
     then
-        DrawImage(
-            handle,
-            x - size * 0.5,
-            y - size * 0.5,
-            size,
-            size,
-            1,
-            1,
-            1,
-            a,
-            math.max(
-                2,
-                size * 0.16
-            )
-        )
-    elseif type(DrawTextWithOutline) == "function" then
-        DrawTextWithOutline(
+        local radius =
+            size * 0.5
+            + 3
+
+        DrawCircleFilled(
             x,
-            y - 6,
-            cfg.short or "?",
-            1,
-            1,
-            1,
-            0.98 * a,
-            0,
-            0,
-            0,
-            0.98 * a
+            y,
+            radius,
+            0.02,
+            0.02,
+            0.03,
+            0.90 * a
+        )
+
+        local border =
+            world_color_from_prefix(
+                "world_icon_border"
+            )
+
+        DrawCircle(
+            x,
+            y,
+            radius,
+            border[1],
+            border[2],
+            border[3],
+            0.95
+                * a
+                * (border[4] or 1),
+            1.4
         )
     end
+
+    DrawImage(
+        handle,
+        x - size * 0.5,
+        y - size * 0.5,
+        size,
+        size,
+        1,
+        1,
+        1,
+        a,
+        math.max(
+            2,
+            size * 0.16
+        )
+    )
+
+    return true
 end
 
 local function world_resource_color(cfg)
@@ -7806,7 +7821,9 @@ local function world_draw_entry(
     local text_y =
         screen.Y
 
-    if S.world_show_icons == true then
+    if S.world_show_icons == true
+        and cfg.id == "stone_node"
+    then
         local icon_size =
             clamp(
                 tonumber(S.world_icon_size)
@@ -7815,16 +7832,19 @@ local function world_draw_entry(
                 48
             )
 
-        world_draw_icon(
-            cfg,
-            screen.X,
-            screen.Y - 18,
-            icon_size,
-            fade
-        )
+        local icon_drawn =
+            world_draw_icon(
+                cfg,
+                screen.X,
+                screen.Y - 18,
+                icon_size,
+                fade
+            )
 
-        text_y =
-            screen.Y + 2
+        if icon_drawn then
+            text_y =
+                screen.Y + 2
+        end
     end
 
     if S.world_show_names == true
