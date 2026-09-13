@@ -575,13 +575,13 @@ function Fallen_TextHoverColor(id, hovered)
     local value = state[id] or 0
     local target = hovered and 1 or 0
 
-    value = value + (target - value) * 0.06
+    value = value + (target - value) * 0.025
     state[id] = value
 
     return {
-        0.86 + value * 0.12,
-        0.865 + value * 0.11,
-        0.90 + value * 0.09,
+        0.72 + value * 0.25,
+        0.74 + value * 0.24,
+        0.78 + value * 0.20,
         1
     }
 end
@@ -12624,3 +12624,5 @@ print("[Fallen loader] ready | v44 syntax fix")
 hooks.on_render(function()
     pcall(draw_fallen_toasts)
 end)
+
+-- Hover text: darker gray base -> white, slow 2s style transition.
