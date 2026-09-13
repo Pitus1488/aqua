@@ -1,3 +1,6 @@
+-- FALLEN UI BASE SAFE MODE
+-- Feature modules can be disabled later without deleting UI code.
+
 -- Loader/menu transition gate.
 _G.FallenSurvivalLoaded = false
 _G.FallenMenuReady = false
@@ -9,7 +12,7 @@ if _G.FallenLua_Menu.visible == nil then
 end
 
 -- =========================================================
--- Fallen-lua Menu v4
+-- Fallen-lua Menu v4.5
 -- Custom Lua API / Drawing.* implementation
 --
 -- Toggle: RIGHT SHIFT (VK_RSHIFT / 0xA1)
@@ -96,6 +99,19 @@ local defaults = {
     aim_fov_s = 0.00,
     aim_fov_v = 1.00,
     aim_fov_alpha = 100,
+
+    -- Menu appearance.
+    menu_scale_percent = 100,
+    menu_type = "default",
+
+    -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
+    menu_glow_strength = 100,
+
+    -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
+    menu_glow_h = 0.66,
+    menu_glow_s = 0.55,
+    menu_glow_v = 1.00,
+    menu_glow_alpha = 100,
 
     -- Visuals / Resource ESP
     world_esp_enabled = false,
@@ -333,6 +349,19 @@ local A = {
     sidebar_indicator_y = nil,
     sidebar_indicator_last_t = nil,
     sidebar_tab_anim = {},
+
+    -- Menu appearance popup near the profile/avatar.
+    menu_settings_open = false,
+    menu_settings_anim = 0,
+    menu_settings_last_t = nil,
+
+    menu_scale_dropdown_open = false,
+    menu_scale_dropdown_anim = 0,
+    menu_scale_dropdown_last_t = nil,
+
+    menu_type_dropdown_open = false,
+    menu_type_dropdown_anim = 0,
+    menu_type_dropdown_last_t = nil,
 }
 
 -- =========================================================
@@ -542,6 +571,26 @@ end
 -- Multiplies every menu primitive while opening/closing.
 local MENU_RENDER_ALPHA = 1
 
+MENU_UI_TRANSFORM_ACTIVE = false
+MENU_UI_SCALE = 1
+MENU_UI_ORIGIN_X = 0
+MENU_UI_ORIGIN_Y = 0
+
+function FALLEN_UI_X(x)
+    if not MENU_UI_TRANSFORM_ACTIVE then return x end
+    return MENU_UI_ORIGIN_X + (x - MENU_UI_ORIGIN_X) * MENU_UI_SCALE
+end
+
+function FALLEN_UI_Y(y)
+    if not MENU_UI_TRANSFORM_ACTIVE then return y end
+    return MENU_UI_ORIGIN_Y + (y - MENU_UI_ORIGIN_Y) * MENU_UI_SCALE
+end
+
+function FALLEN_UI_LEN(v)
+    if not MENU_UI_TRANSFORM_ACTIVE then return v end
+    return v * MENU_UI_SCALE
+end
+
 local function clamp(v, lo, hi)
     if v < lo then return lo end
     if v > hi then return hi end
@@ -597,8 +646,14 @@ end
 
 local function fill(x, y, w, h, c)
     if w <= 0 or h <= 0 then return end
+
+    local tx = FALLEN_UI_X(x)
+    local ty = FALLEN_UI_Y(y)
+    local tw = FALLEN_UI_LEN(w)
+    local th = FALLEN_UI_LEN(h)
+
     DrawBoxFilled(
-        x, y, x + w, y + h,
+        tx, ty, tx + tw, ty + th,
         c[1], c[2], c[3],
         (c[4] or 1) * MENU_RENDER_ALPHA
     )
@@ -606,16 +661,21 @@ end
 
 local function line(x1, y1, x2, y2, c, thickness)
     DrawLine(
-        x1, y1, x2, y2,
+        FALLEN_UI_X(x1),
+        FALLEN_UI_Y(y1),
+        FALLEN_UI_X(x2),
+        FALLEN_UI_Y(y2),
         c[1], c[2], c[3],
         (c[4] or 1) * MENU_RENDER_ALPHA,
-        thickness or 1
+        FALLEN_UI_LEN(thickness or 1)
     )
 end
 
 local function circle_fill(cx, cy, r, c)
     DrawCircleFilled(
-        cx, cy, r,
+        FALLEN_UI_X(cx),
+        FALLEN_UI_Y(cy),
+        FALLEN_UI_LEN(r),
         c[1], c[2], c[3],
         (c[4] or 1) * MENU_RENDER_ALPHA
     )
@@ -624,10 +684,12 @@ end
 local function circle(cx, cy, r, c, thickness)
     if type(DrawCircle) == "function" then
         DrawCircle(
-            cx, cy, r,
+            FALLEN_UI_X(cx),
+            FALLEN_UI_Y(cy),
+            FALLEN_UI_LEN(r),
             c[1], c[2], c[3],
             (c[4] or 1) * MENU_RENDER_ALPHA,
-            thickness or 1
+            FALLEN_UI_LEN(thickness or 1)
         )
     end
 end
@@ -828,7 +890,9 @@ end
 
 local function text(x, y, s, c)
     DrawText(
-        x, y, tostring(s),
+        FALLEN_UI_X(x),
+        FALLEN_UI_Y(y),
+        tostring(s),
         c[1], c[2], c[3],
         (c[4] or 1) * MENU_RENDER_ALPHA
     )
@@ -837,8 +901,8 @@ end
 local function centered_text(cx, y, s, c)
     if type(DrawTextWithOutline) == "function" then
         DrawTextWithOutline(
-            cx,
-            y,
+            FALLEN_UI_X(cx),
+            FALLEN_UI_Y(y),
             tostring(s),
             c[1], c[2], c[3],
             (c[4] or 1) * MENU_RENDER_ALPHA,
@@ -1130,6 +1194,85 @@ local function numeric_poll()
 end
 
 
+
+-- =========================================================
+-- Fallen toast notifications (config/status)
+-- =========================================================
+local FALLEN_TOASTS = {}
+
+local function fallen_toast(message, level)
+    FALLEN_TOASTS[#FALLEN_TOASTS + 1] = {
+        text = tostring(message),
+        level = level or "normal",
+        born = tick(),
+        alpha = 0,
+        yoff = 25,
+    }
+end
+
+local function draw_fallen_toasts()
+    if #FALLEN_TOASTS == 0 then return end
+
+    local now = tick()
+    local sw, sh = screen_size()
+
+    for i = #FALLEN_TOASTS, 1, -1 do
+        local t = FALLEN_TOASTS[i]
+        local age = now - t.born
+
+        if age > 3.2 then
+            table.remove(FALLEN_TOASTS, i)
+        else
+            local appear = math.min(age / 0.25, 1)
+            local fade = age > 2.6 and (1 - (age - 2.6) / 0.6) or 1
+            local a = clamp(appear * fade, 0, 1)
+
+            t.alpha = a
+
+            local w = 220
+            local h = 42
+            local x = sw - w - 25
+            local y = 35 + (i - 1) * 52 + (1 - appear) * 20
+
+            local toast_glass = tostring(S.menu_type or "default"):lower() == "glass"
+            local toast_bg = toast_glass
+                and {0.055, 0.058, 0.067, 0.22 * a}
+                or {0.055, 0.058, 0.067, 0.96 * a}
+            local toast_border = toast_glass
+                and {0.340, 0.450, 0.760, 0.12 * a}
+                or {0.340, 0.450, 0.760, 0.35 * a}
+
+            rounded_fill(
+                x,
+                y,
+                w,
+                h,
+                10,
+                toast_bg
+            )
+
+            rounded_outline(
+                x,
+                y,
+                w,
+                h,
+                10,
+                toast_border,
+                1,
+                toast_bg
+            )
+
+            local title = t.text
+            text(
+                x + 18,
+                y + 14,
+                title,
+                {0.90, 0.92, 1.00, a}
+            )
+        end
+    end
+end
+
 -- =========================================================
 -- Config system
 -- Named configs stored as flat files in the existing scripts folder.
@@ -1155,6 +1298,7 @@ for key, value in pairs(defaults) do
         key == "sticky_aim"
         or string.find(key, "^aim_")
         or string.find(key, "^world_")
+        or string.find(key, "^menu_")
     )
         and (
             type(value) == "boolean"
@@ -1169,6 +1313,7 @@ end
 table.sort(CONFIG_KEYS)
 
 local function cfg_notify(message, level)
+    fallen_toast(message, level or "normal")
     if type(notify) == "function" then
         pcall(
             notify,
@@ -1550,6 +1695,7 @@ local function cfg_apply_value(
         key == "sticky_aim"
         or string.find(key, "^aim_")
         or string.find(key, "^world_")
+        or string.find(key, "^menu_")
     ) then
         return
     end
@@ -1911,7 +2057,12 @@ local function mouse_pos()
 end
 
 local function hover(mx, my, x, y, w, h)
-    return mx >= x and my >= y and mx <= x + w and my <= y + h
+    local tx = FALLEN_UI_X(x)
+    local ty = FALLEN_UI_Y(y)
+    local tw = FALLEN_UI_LEN(w)
+    local th = FALLEN_UI_LEN(h)
+
+    return mx >= tx and my >= ty and mx <= tx + tw and my <= ty + th
 end
 
 -- =========================================================
@@ -1919,52 +2070,39 @@ end
 -- =========================================================
 
 local function icon_aim(x, y, c)
-    circle(x + 7, y + 7, 5, c, 1)
-    line(x + 7, y, x + 7, y + 3, c, 1)
-    line(x + 7, y + 11, x + 7, y + 14, c, 1)
-    line(x, y + 7, x + 3, y + 7, c, 1)
-    line(x + 11, y + 7, x + 14, y + 7, c, 1)
+    local cx = x + 8
+    local cy = y + 8
+
+    circle(cx, cy, 4.5, c, 1.2)
+    circle_fill(cx, cy, 1.2, c)
+
+    line(cx, y + 0.7, cx, y + 3.2, c, 1.2)
+    line(cx, y + 12.8, cx, y + 15.3, c, 1.2)
+    line(x + 0.7, cy, x + 3.2, cy, c, 1.2)
+    line(x + 12.8, cy, x + 15.3, cy, c, 1.2)
 end
 
-local function icon_eye(x, y, c)
-    circle(x + 7, y + 7, 5, c, 1)
-    circle_fill(x + 7, y + 7, 1.5, c)
-end
-
-local function icon_box(x, y, c)
-    DrawBox(
-        x + 2, y + 2, x + 12, y + 12,
-        c[1], c[2], c[3],
-        (c[4] or 1) * MENU_RENDER_ALPHA,
-        1
+local function icon_world(x, y, c)
+    rounded_outline(
+        x + 1,
+        y + 2,
+        14,
+        11,
+        3.5,
+        c,
+        1.1,
+        nil
     )
-end
 
-local function icon_person(x, y, c)
-    circle(x + 7, y + 4, 3, c, 1)
-    line(x + 2, y + 14, x + 4, y + 9, c, 1)
-    line(x + 4, y + 9, x + 10, y + 9, c, 1)
-    line(x + 10, y + 9, x + 12, y + 14, c, 1)
-end
-
-local function icon_globe(x, y, c)
-    circle(x + 7, y + 7, 6, c, 1)
-    line(x + 1, y + 7, x + 13, y + 7, c, 1)
-    line(x + 7, y + 1, x + 7, y + 13, c, 1)
-end
-
-local function icon_sliders(x, y, c)
-    line(x + 1, y + 3, x + 13, y + 3, c, 1)
-    line(x + 1, y + 7, x + 13, y + 7, c, 1)
-    line(x + 1, y + 11, x + 13, y + 11, c, 1)
-    circle_fill(x + 5, y + 3, 1.5, c)
-    circle_fill(x + 9, y + 7, 1.5, c)
-    circle_fill(x + 4, y + 11, 1.5, c)
+    circle_fill(x + 5, y + 5, 1.2, c)
+    line(x + 3, y + 10.5, x + 6.5, y + 7.5, c, 1.1)
+    line(x + 6.5, y + 7.5, x + 9.5, y + 10, c, 1.1)
+    line(x + 9.5, y + 10, x + 13, y + 6.8, c, 1.1)
 end
 
 local ICONS = {
     icon_aim,
-    icon_eye,
+    icon_world,
 }
 
 -- =========================================================
@@ -1973,7 +2111,7 @@ local ICONS = {
 
 local TABS = {
     { group = "AIMBOT", label = "Aimbot" },
-    { group = "VISUALS", label = "Visuals" },
+    { group = "VISUALS", label = "World" },
 }
 
 local function sidebar_tab(mx, my, clicked, x, y, index)
@@ -2446,6 +2584,15 @@ local function rgb_hex(r, g, b)
     return string.format("#%02X%02X%02X", rr, gg, bb)
 end
 
+function FALLEN_RGBA_HEX(r, g, b, a)
+    local rr = math.floor(clamp(r, 0, 1) * 255 + 0.5)
+    local gg = math.floor(clamp(g, 0, 1) * 255 + 0.5)
+    local bb = math.floor(clamp(b, 0, 1) * 255 + 0.5)
+    local aa = math.floor(clamp(a or 1, 0, 1) * 255 + 0.5)
+
+    return string.format("#%02X%02X%02X%02X", rr, gg, bb, aa)
+end
+
 
 function FALLEN_RGB_TO_HSV(r, g, b)
     r = clamp(tonumber(r) or 0, 0, 1)
@@ -2517,7 +2664,9 @@ function FALLEN_COLOR_INPUT_APPLY()
                 ""
             )
 
-        if #raw ~= 6 then
+        -- New format: RRGGBBAA.
+        -- The final AA byte controls transparency.
+        if #raw ~= 8 then
             return
         end
 
@@ -2539,9 +2688,16 @@ function FALLEN_COLOR_INPUT_APPLY()
                 16
             )
 
+        local aa =
+            tonumber(
+                string.sub(raw, 7, 8),
+                16
+            )
+
         if rr == nil
             or gg == nil
             or bb == nil
+            or aa == nil
         then
             return
         end
@@ -2557,23 +2713,15 @@ function FALLEN_COLOR_INPUT_APPLY()
         S[ci.prefix .. "_s"] = s
         S[ci.prefix .. "_v"] = v
 
-    elseif ci.kind == "alpha" then
-        local value =
-            tonumber(
-                ci.buffer
-            )
-
-        if value ~= nil then
-            S[ci.prefix .. "_alpha"] =
-                math.floor(
-                    clamp(
-                        value,
-                        0,
-                        100
-                    )
-                    + 0.5
+        S[ci.prefix .. "_alpha"] =
+            math.floor(
+                clamp(
+                    (aa / 255) * 100,
+                    0,
+                    100
                 )
-        end
+                + 0.5
+            )
     end
 end
 
@@ -2644,28 +2792,27 @@ function FALLEN_COLOR_INPUT_START(kind, prefix)
         )
         or 100
 
-    if kind == "hex" then
-        local r, g, b =
-            hsv_to_rgb(
-                ci.original_h,
-                ci.original_s,
-                ci.original_v
-            )
+    local r, g, b =
+        hsv_to_rgb(
+            ci.original_h,
+            ci.original_s,
+            ci.original_v
+        )
 
-        ci.buffer =
-            string.sub(
-                rgb_hex(r, g, b),
-                2
-            )
-    else
-        ci.buffer =
-            tostring(
-                math.floor(
-                    ci.original_alpha
-                    + 0.5
+    ci.buffer =
+        string.sub(
+            FALLEN_RGBA_HEX(
+                r,
+                g,
+                b,
+                clamp(
+                    ci.original_alpha / 100,
+                    0,
+                    1
                 )
-            )
-    end
+            ),
+            2
+        )
 
     numeric_stop(true)
 
@@ -2684,7 +2831,6 @@ function FALLEN_COLOR_INPUT_POLL()
         return
     end
 
-    -- Enter accepts, Escape restores original value.
     if FALLEN_COLOR_INPUT_EDGE(0x0D) then
         FALLEN_COLOR_INPUT_STOP(true)
         return
@@ -2695,7 +2841,68 @@ function FALLEN_COLOR_INPUT_POLL()
         return
     end
 
-    -- Backspace.
+    -- Ctrl+V paste for the custom HEX8 field.
+    -- This is a Drawing-based input, not a native Windows textbox,
+    -- so clipboard paste has to be handled explicitly.
+    local ctrl_down =
+        key_down(0x11)
+        or key_down(0xA2)
+        or key_down(0xA3)
+
+    if ci.kind == "hex"
+        and ctrl_down
+        and FALLEN_COLOR_INPUT_EDGE(0x56)
+    then
+        local clip = ""
+
+        if type(get_clipboard) == "function" then
+            local ok, value =
+                pcall(
+                    get_clipboard
+                )
+
+            if ok and value ~= nil then
+                clip =
+                    tostring(value)
+            end
+        end
+
+        local raw =
+            string.upper(
+                clip
+            )
+
+        raw =
+            string.gsub(
+                raw,
+                "[^0-9A-F]",
+                ""
+            )
+
+        -- Accept both ordinary RGB HEX and the new RGBA HEX8 format.
+        -- RGB input gets FF alpha automatically.
+        if #raw == 6 then
+            raw =
+                raw
+                .. "FF"
+        elseif #raw > 8 then
+            raw =
+                string.sub(
+                    raw,
+                    1,
+                    8
+                )
+        end
+
+        if #raw == 8 then
+            ci.buffer = raw
+            ci.replace_on_type = false
+            FALLEN_COLOR_INPUT_APPLY()
+        end
+
+        return
+    end
+
     if FALLEN_COLOR_INPUT_EDGE(0x08) then
         ci.replace_on_type = false
 
@@ -2713,67 +2920,45 @@ function FALLEN_COLOR_INPUT_POLL()
         return
     end
 
-    if ci.kind == "hex" then
-        -- 0-9.
-        for digit = 0, 9 do
-            if FALLEN_COLOR_INPUT_EDGE(0x30 + digit)
-                or FALLEN_COLOR_INPUT_EDGE(0x60 + digit)
-            then
-                if ci.replace_on_type then
-                    ci.buffer = ""
-                    ci.replace_on_type = false
-                end
+    if ci.kind ~= "hex" then
+        return
+    end
 
-                if #ci.buffer < 6 then
-                    ci.buffer =
-                        ci.buffer
-                        .. tostring(digit)
-                end
-
-                FALLEN_COLOR_INPUT_APPLY()
-                return
+    for digit = 0, 9 do
+        if FALLEN_COLOR_INPUT_EDGE(0x30 + digit)
+            or FALLEN_COLOR_INPUT_EDGE(0x60 + digit)
+        then
+            if ci.replace_on_type then
+                ci.buffer = ""
+                ci.replace_on_type = false
             end
+
+            if #ci.buffer < 8 then
+                ci.buffer =
+                    ci.buffer
+                    .. tostring(digit)
+            end
+
+            FALLEN_COLOR_INPUT_APPLY()
+            return
         end
+    end
 
-        -- A-F.
-        for vk = 0x41, 0x46 do
-            if FALLEN_COLOR_INPUT_EDGE(vk) then
-                if ci.replace_on_type then
-                    ci.buffer = ""
-                    ci.replace_on_type = false
-                end
-
-                if #ci.buffer < 6 then
-                    ci.buffer =
-                        ci.buffer
-                        .. string.char(vk)
-                end
-
-                FALLEN_COLOR_INPUT_APPLY()
-                return
+    for vk = 0x41, 0x46 do
+        if FALLEN_COLOR_INPUT_EDGE(vk) then
+            if ci.replace_on_type then
+                ci.buffer = ""
+                ci.replace_on_type = false
             end
-        end
 
-    elseif ci.kind == "alpha" then
-        -- 0-9 only, max three digits.
-        for digit = 0, 9 do
-            if FALLEN_COLOR_INPUT_EDGE(0x30 + digit)
-                or FALLEN_COLOR_INPUT_EDGE(0x60 + digit)
-            then
-                if ci.replace_on_type then
-                    ci.buffer = ""
-                    ci.replace_on_type = false
-                end
-
-                if #ci.buffer < 3 then
-                    ci.buffer =
-                        ci.buffer
-                        .. tostring(digit)
-                end
-
-                FALLEN_COLOR_INPUT_APPLY()
-                return
+            if #ci.buffer < 8 then
+                ci.buffer =
+                    ci.buffer
+                    .. string.char(vk)
             end
+
+            FALLEN_COLOR_INPUT_APPLY()
+            return
         end
     end
 end
@@ -2843,32 +3028,51 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     end
 
     local pw = 264
-    local ph = 324
+    local ph = 342
     local px = anchor_x - pw + 34
     local py = anchor_y + 27
 
-    -- Popup
-    rounded_fill(px - 5, py - 5, pw + 10, ph + 10, 13, { 0, 0, 0, 0.20 })
-    rounded_fill(px, py, pw, ph, 12, { 0.070, 0.073, 0.085, 1 })
-    rounded_outline(
-        px, py, pw, ph, 12,
-        { 0.22, 0.23, 0.27, 0.95 },
-        1,
+    FALLEN_POPUP_GLOW(px, py, pw, ph, 12, 1)
+
+    rounded_fill(
+        px,
+        py,
+        pw,
+        ph,
+        12,
         { 0.070, 0.073, 0.085, 1 }
+    )
+
+    text(
+        px + 14,
+        py + 10,
+        "aqua loh",
+        C.text_dim
     )
 
     local pad = 14
     local sv_x = px + pad
-    local sv_y = py + pad
+    local sv_y = py + pad + 20
     local sv_w = pw - pad * 2
     local sv_h = 188
 
-    local hue = tonumber(S.aim_fov_h) or 0
+    local hue =
+        tonumber(S.aim_fov_h)
+        or 0
 
-    -- Smooth SV gradient without visible square cells.
-    local smooth_w = math.max(1, math.floor(sv_w + 0.5))
-    local smooth_h = math.max(1, math.floor(sv_h + 0.5))
+    local smooth_w =
+        math.max(
+            1,
+            math.floor(sv_w + 0.5)
+        )
 
+    local smooth_h =
+        math.max(
+            1,
+            math.floor(sv_h + 0.5)
+        )
+
+    -- Smooth saturation/value field.
     for xx = 0, smooth_w - 1 do
         local sat =
             smooth_w > 1
@@ -2908,26 +3112,84 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
         end
     end
 
-    local sv_hot = hover(mx, my, sv_x, sv_y, sv_w, sv_h)
+    local sv_hot =
+        hover(
+            mx,
+            my,
+            sv_x,
+            sv_y,
+            sv_w,
+            sv_h
+        )
 
     if clicked and sv_hot then
+        FALLEN_COLOR_INPUT_STOP(true)
         A.fov_picker_drag = "sv"
     end
 
-    if A.fov_picker_drag == "sv" and lmb then
-        S.aim_fov_s = clamp((mx - sv_x) / sv_w, 0, 1)
-        S.aim_fov_v = 1 - clamp((my - sv_y) / sv_h, 0, 1)
+    if A.fov_picker_drag == "sv"
+        and lmb
+    then
+        S.aim_fov_s =
+            clamp(
+                (mx - sv_x) / sv_w,
+                0,
+                1
+            )
+
+        S.aim_fov_v =
+            1
+            - clamp(
+                (my - sv_y) / sv_h,
+                0,
+                1
+            )
     end
 
-    local cursor_x = sv_x + clamp(tonumber(S.aim_fov_s) or 0, 0, 1) * sv_w
-    local cursor_y = sv_y + (1 - clamp(tonumber(S.aim_fov_v) or 1, 0, 1)) * sv_h
+    local cursor_x =
+        sv_x
+        + clamp(
+            tonumber(S.aim_fov_s) or 0,
+            0,
+            1
+        )
+        * sv_w
 
-    circle_fill(cursor_x, cursor_y, 7, { 0.05, 0.05, 0.06, 1 })
-    circle(cursor_x, cursor_y, 7, { 1, 1, 1, 1 }, 2)
+    local cursor_y =
+        sv_y
+        + (
+            1
+            - clamp(
+                tonumber(S.aim_fov_v) or 1,
+                0,
+                1
+            )
+        )
+        * sv_h
 
-    -- Hue strip.
-    local hue_y = sv_y + sv_h + 13
+    circle_fill(
+        cursor_x,
+        cursor_y,
+        7,
+        { 0.05, 0.05, 0.06, 1 }
+    )
+
+    circle(
+        cursor_x,
+        cursor_y,
+        7,
+        { 1, 1, 1, 1 },
+        2
+    )
+
+    -- Hue bar.
+    local hue_y =
+        sv_y
+        + sv_h
+        + 13
+
     local hue_h = 14
+
     local hue_width =
         math.max(
             1,
@@ -2956,24 +3218,66 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
         )
     end
 
-    local hue_hot = hover(mx, my, sv_x, hue_y, sv_w, hue_h)
+    local hue_hot =
+        hover(
+            mx,
+            my,
+            sv_x,
+            hue_y,
+            sv_w,
+            hue_h
+        )
 
     if clicked and hue_hot then
+        FALLEN_COLOR_INPUT_STOP(true)
         A.fov_picker_drag = "hue"
     end
 
-    if A.fov_picker_drag == "hue" and lmb then
-        S.aim_fov_h = clamp((mx - sv_x) / sv_w, 0, 1)
+    if A.fov_picker_drag == "hue"
+        and lmb
+    then
+        S.aim_fov_h =
+            clamp(
+                (mx - sv_x) / sv_w,
+                0,
+                1
+            )
     end
 
-    local hue_x = sv_x + clamp(tonumber(S.aim_fov_h) or 0, 0, 1) * sv_w
+    local hue_x =
+        sv_x
+        + clamp(
+            tonumber(S.aim_fov_h) or 0,
+            0,
+            1
+        )
+        * sv_w
 
-    rounded_fill(hue_x - 3, hue_y - 3, 6, hue_h + 6, 3, { 1, 1, 1, 1 })
-    rounded_fill(hue_x - 1, hue_y - 1, 2, hue_h + 2, 1, { 0.12, 0.12, 0.14, 1 })
+    rounded_fill(
+        hue_x - 3,
+        hue_y - 3,
+        6,
+        hue_h + 6,
+        3,
+        { 1, 1, 1, 1 }
+    )
 
-    -- Alpha strip under hue.
-    local alpha_y = hue_y + 29
+    rounded_fill(
+        hue_x - 1,
+        hue_y - 1,
+        2,
+        hue_h + 2,
+        1,
+        { 0.12, 0.12, 0.14, 1 }
+    )
+
+    -- Transparency slider restored.
+    -- Alpha is ALSO mirrored in the last two HEX8 chars.
+    local alpha_y =
+        hue_y + 29
+
     local alpha_h = 14
+
     checker_strip(
         sv_x,
         alpha_y,
@@ -2981,7 +3285,9 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
         alpha_h
     )
 
-    local col = fov_color()
+    local c =
+        fov_color()
+
     local alpha_width =
         math.max(
             1,
@@ -3000,47 +3306,88 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
             1,
             alpha_h,
             {
-                col[1],
-                col[2],
-                col[3],
+                c[1],
+                c[2],
+                c[3],
                 a,
             }
         )
     end
 
-    local alpha_hot = hover(mx, my, sv_x, alpha_y, sv_w, alpha_h)
+    local alpha_hot =
+        hover(
+            mx,
+            my,
+            sv_x,
+            alpha_y,
+            sv_w,
+            alpha_h
+        )
 
     if clicked and alpha_hot then
+        FALLEN_COLOR_INPUT_STOP(true)
         A.fov_picker_drag = "alpha"
     end
 
-    if A.fov_picker_drag == "alpha" and lmb then
+    if A.fov_picker_drag == "alpha"
+        and lmb
+    then
         S.aim_fov_alpha =
             math.floor(
-                clamp((mx - sv_x) / sv_w, 0, 1) * 100
+                clamp(
+                    (mx - sv_x) / sv_w,
+                    0,
+                    1
+                )
+                * 100
                 + 0.5
             )
     end
 
     local alpha_x =
         sv_x
-        + clamp((tonumber(S.aim_fov_alpha) or 100) / 100, 0, 1)
+        + clamp(
+            (tonumber(S.aim_fov_alpha) or 100) / 100,
+            0,
+            1
+        )
         * sv_w
 
-    circle_fill(alpha_x, alpha_y + alpha_h * 0.5, 9, { 0.08, 0.08, 0.10, 1 })
-    circle(alpha_x, alpha_y + alpha_h * 0.5, 9, { 1, 1, 1, 1 }, 2)
+    circle_fill(
+        alpha_x,
+        alpha_y + alpha_h * 0.5,
+        8,
+        { 0.06, 0.06, 0.075, 1 }
+    )
 
-    -- Bottom fields: HEX + alpha percentage.
-    local field_y = alpha_y + 29
-    local c = fov_color()
-    local hex = rgb_hex(c[1], c[2], c[3])
+    circle(
+        alpha_x,
+        alpha_y + alpha_h * 0.5,
+        8,
+        { 1, 1, 1, 1 },
+        2
+    )
 
-    local aim_prefix = "aim_fov"
+    -- No "100%" text next to HEX anymore.
+    local field_y =
+        alpha_y + 29
+
+    c =
+        fov_color()
+
+    local hex =
+        FALLEN_RGBA_HEX(
+            c[1],
+            c[2],
+            c[3],
+            c[4]
+        )
+
+    local prefix =
+        "aim_fov"
 
     local hex_x = sv_x
-    local hex_w = 154
-    local alpha_field_x = sv_x + 164
-    local alpha_field_w = sv_w - 164
+    local hex_w = sv_w
 
     local hex_hot =
         hover(
@@ -3052,26 +3399,10 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
             31
         )
 
-    local alpha_field_hot =
-        hover(
-            mx,
-            my,
-            alpha_field_x,
-            field_y,
-            alpha_field_w,
-            31
-        )
-
     local hex_focus =
         FALLEN_COLOR_INPUT_IS(
             "hex",
-            aim_prefix
-        )
-
-    local alpha_focus =
-        FALLEN_COLOR_INPUT_IS(
-            "alpha",
-            aim_prefix
+            prefix
         )
 
     rounded_fill(
@@ -3105,11 +3436,11 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     text(
         hex_x + 10,
         field_y + 9,
-        "HEX",
+        "HEX8",
         C.text_dim
     )
 
-    local hex_text =
+    local shown_hex =
         hex_focus
         and (
             "#"
@@ -3126,81 +3457,18 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
         or hex
 
     text(
-        hex_x + 47,
+        hex_x + 56,
         field_y + 9,
-        hex_text,
-        C.text
-    )
-
-    rounded_fill(
-        alpha_field_x,
-        field_y,
-        alpha_field_w,
-        31,
-        7,
-        alpha_focus
-            and { 0.112, 0.118, 0.145, 1 }
-            or (
-                alpha_field_hot
-                and { 0.104, 0.108, 0.128, 1 }
-                or { 0.095, 0.098, 0.112, 1 }
-            )
-    )
-
-    if alpha_focus then
-        rounded_outline(
-            alpha_field_x,
-            field_y,
-            alpha_field_w,
-            31,
-            7,
-            alpha(C.accent, 0.72),
-            1,
-            { 0.112, 0.118, 0.145, 1 }
-        )
-    end
-
-    local alpha_text =
-        alpha_focus
-        and (
-            tostring(
-                A.color_input.buffer
-                or ""
-            )
-            .. "%"
-            .. (
-                math.floor(tick() * 2) % 2 == 0
-                and "|"
-                or ""
-            )
-        )
-        or (
-            tostring(
-                math.floor(
-                    tonumber(S.aim_fov_alpha)
-                    or 100
-                )
-            )
-            .. "%"
-        )
-
-    centered_text(
-        alpha_field_x
-            + alpha_field_w * 0.5,
-        field_y + 9,
-        alpha_text,
+        shown_hex,
         C.text
     )
 
     if clicked and hex_hot then
+        A.fov_picker_drag = nil
+
         FALLEN_COLOR_INPUT_START(
             "hex",
-            aim_prefix
-        )
-    elseif clicked and alpha_field_hot then
-        FALLEN_COLOR_INPUT_START(
-            "alpha",
-            aim_prefix
+            prefix
         )
     end
 
@@ -3208,11 +3476,30 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
         A.fov_picker_drag = nil
     end
 
-    -- Click outside popup and outside the swatch closes it.
-    local popup_hot = hover(mx, my, px, py, pw, ph)
-    local swatch_hot = hover(mx, my, anchor_x, anchor_y, 36, 18)
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            ph
+        )
 
-    if clicked and not popup_hot and not swatch_hot then
+    local swatch_hot =
+        hover(
+            mx,
+            my,
+            anchor_x,
+            anchor_y,
+            36,
+            18
+        )
+
+    if clicked
+        and not popup_hot
+        and not swatch_hot
+    then
         A.fov_picker_open = false
         A.fov_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
@@ -3335,23 +3622,14 @@ local function draw_aim_part_dropdown(
     local panel_y = y
     local panel_h = math.max(2, visible_h)
 
+    FALLEN_POPUP_GLOW(x, panel_y, w, panel_h, 7, 0.9)
+
     rounded_fill(
         x,
         panel_y,
         w,
         panel_h,
         7,
-        { 0.070, 0.074, 0.087, 1 }
-    )
-
-    rounded_outline(
-        x,
-        panel_y,
-        w,
-        panel_h,
-        7,
-        { 0.20, 0.21, 0.25, 0.90 },
-        1,
         { 0.070, 0.074, 0.087, 1 }
     )
 
@@ -3527,14 +3805,7 @@ local function draw_aim_settings_popup(
         clicked
         and interactive
 
-    rounded_fill(
-        px - 5,
-        py - 5,
-        pw + 10,
-        shell_h + 10,
-        12,
-        { 0, 0, 0, 0.20 }
-    )
+    FALLEN_POPUP_GLOW(px, py, pw, shell_h, 11, 1)
 
     rounded_fill(
         px,
@@ -3542,17 +3813,6 @@ local function draw_aim_settings_popup(
         pw,
         shell_h,
         11,
-        { 0.062, 0.066, 0.077, 1 }
-    )
-
-    rounded_outline(
-        px,
-        py,
-        pw,
-        shell_h,
-        11,
-        { 0.23, 0.24, 0.28, 0.75 },
-        1,
         { 0.062, 0.066, 0.077, 1 }
     )
 
@@ -3939,7 +4199,7 @@ local function draw_aimbot_page(
 
     -- RIGHT
     section_title(rx, cy, "Aim FOV")
-    card(rx, cy + 25, right_w, 190, 11)
+    card(rx, cy + 25, right_w, 139, 11)
 
     toggle_row(
         mx, my, base_clicked,
@@ -3984,20 +4244,6 @@ local function draw_aimbot_page(
         A.fov_picker_drag = nil
         numeric_stop(true)
     end
-
-    line(rx + 12, cy + 154, rx + right_w - 12, cy + 154, C.divider, 1)
-
-    local c = fov_color()
-
-    text(
-        rx + 13,
-        cy + 172,
-        rgb_hex(c[1], c[2], c[3])
-        .. "  "
-        .. tostring(math.floor((tonumber(S.aim_fov_alpha) or 100) + 0.5))
-        .. "%",
-        C.text_dim
-    )
 
     if not A.aim_settings_open then
         draw_fov_color_picker(
@@ -4434,13 +4680,15 @@ local function draw_world_color_picker(
         A.world_color_picker_key
 
     local anchor_x =
-        A.world_color_picker_anchor_x or 0
+        A.world_color_picker_anchor_x
+        or 0
 
     local anchor_y =
-        A.world_color_picker_anchor_y or 0
+        A.world_color_picker_anchor_y
+        or 0
 
     local pw = 264
-    local ph = 324
+    local ph = 342
 
     local px =
         snap(
@@ -4455,14 +4703,7 @@ local function draw_world_color_picker(
             + 25
         )
 
-    rounded_fill(
-        px - 5,
-        py - 5,
-        pw + 10,
-        ph + 10,
-        13,
-        { 0, 0, 0, 0.20 }
-    )
+    FALLEN_POPUP_GLOW(px, py, pw, ph, 12, 1)
 
     rounded_fill(
         px,
@@ -4473,20 +4714,16 @@ local function draw_world_color_picker(
         { 0.070, 0.073, 0.085, 1 }
     )
 
-    rounded_outline(
-        px,
-        py,
-        pw,
-        ph,
-        12,
-        { 0.22, 0.23, 0.27, 0.95 },
-        1,
-        { 0.070, 0.073, 0.085, 1 }
+    text(
+        px + 14,
+        py + 10,
+        "aqua loh",
+        C.text_dim
     )
 
     local pad = 14
     local sv_x = px + pad
-    local sv_y = py + pad
+    local sv_y = py + pad + 20
     local sv_w = pw - pad * 2
     local sv_h = 188
 
@@ -4558,6 +4795,7 @@ local function draw_world_color_picker(
         )
 
     if clicked and sv_hot then
+        FALLEN_COLOR_INPUT_STOP(true)
         A.world_color_picker_drag = "sv"
     end
 
@@ -4616,13 +4854,13 @@ local function draw_world_color_picker(
         2
     )
 
-    -- Hue strip.
     local hue_y =
         sv_y
         + sv_h
         + 13
 
     local hue_h = 14
+
     local hue_width =
         math.max(
             1,
@@ -4662,6 +4900,7 @@ local function draw_world_color_picker(
         )
 
     if clicked and hue_hot then
+        FALLEN_COLOR_INPUT_STOP(true)
         A.world_color_picker_drag = "hue"
     end
 
@@ -4703,7 +4942,8 @@ local function draw_world_color_picker(
         { 0.12, 0.12, 0.14, 1 }
     )
 
-    -- Alpha strip.
+    -- Transparency slider restored.
+    -- Alpha is ALSO mirrored in the last two HEX8 chars.
     local alpha_y =
         hue_y + 29
 
@@ -4758,6 +4998,7 @@ local function draw_world_color_picker(
         )
 
     if clicked and alpha_hot then
+        FALLEN_COLOR_INPUT_STOP(true)
         A.world_color_picker_drag = "alpha"
     end
 
@@ -4788,19 +5029,19 @@ local function draw_world_color_picker(
     circle_fill(
         alpha_x,
         alpha_y + alpha_h * 0.5,
-        9,
-        { 0.08, 0.08, 0.10, 1 }
+        8,
+        { 0.06, 0.06, 0.075, 1 }
     )
 
     circle(
         alpha_x,
         alpha_y + alpha_h * 0.5,
-        9,
+        8,
         { 1, 1, 1, 1 },
         2
     )
 
-    -- Bottom values.
+    -- No percentage text field; only HEX8 below the slider.
     local field_y =
         alpha_y + 29
 
@@ -4810,16 +5051,15 @@ local function draw_world_color_picker(
         )
 
     local hex =
-        rgb_hex(
+        FALLEN_RGBA_HEX(
             current[1],
             current[2],
-            current[3]
+            current[3],
+            current[4]
         )
 
     local hex_x = sv_x
-    local hex_w = 154
-    local alpha_field_x = sv_x + 164
-    local alpha_field_w = sv_w - 164
+    local hex_w = sv_w
 
     local hex_hot =
         hover(
@@ -4831,25 +5071,9 @@ local function draw_world_color_picker(
             31
         )
 
-    local alpha_field_hot =
-        hover(
-            mx,
-            my,
-            alpha_field_x,
-            field_y,
-            alpha_field_w,
-            31
-        )
-
     local hex_focus =
         FALLEN_COLOR_INPUT_IS(
             "hex",
-            prefix
-        )
-
-    local alpha_focus =
-        FALLEN_COLOR_INPUT_IS(
-            "alpha",
             prefix
         )
 
@@ -4884,11 +5108,11 @@ local function draw_world_color_picker(
     text(
         hex_x + 10,
         field_y + 9,
-        "HEX",
+        "HEX8",
         C.text_dim
     )
 
-    local hex_text =
+    local shown_hex =
         hex_focus
         and (
             "#"
@@ -4905,82 +5129,17 @@ local function draw_world_color_picker(
         or hex
 
     text(
-        hex_x + 47,
+        hex_x + 56,
         field_y + 9,
-        hex_text,
-        C.text
-    )
-
-    rounded_fill(
-        alpha_field_x,
-        field_y,
-        alpha_field_w,
-        31,
-        7,
-        alpha_focus
-            and { 0.112, 0.118, 0.145, 1 }
-            or (
-                alpha_field_hot
-                and { 0.104, 0.108, 0.128, 1 }
-                or { 0.095, 0.098, 0.112, 1 }
-            )
-    )
-
-    if alpha_focus then
-        rounded_outline(
-            alpha_field_x,
-            field_y,
-            alpha_field_w,
-            31,
-            7,
-            alpha(C.accent, 0.72),
-            1,
-            { 0.112, 0.118, 0.145, 1 }
-        )
-    end
-
-    local alpha_text =
-        alpha_focus
-        and (
-            tostring(
-                A.color_input.buffer
-                or ""
-            )
-            .. "%"
-            .. (
-                math.floor(tick() * 2) % 2 == 0
-                and "|"
-                or ""
-            )
-        )
-        or (
-            tostring(
-                math.floor(
-                    tonumber(
-                        S[prefix .. "_alpha"]
-                    )
-                    or 100
-                )
-            )
-            .. "%"
-        )
-
-    centered_text(
-        alpha_field_x
-            + alpha_field_w * 0.5,
-        field_y + 9,
-        alpha_text,
+        shown_hex,
         C.text
     )
 
     if clicked and hex_hot then
+        A.world_color_picker_drag = nil
+
         FALLEN_COLOR_INPUT_START(
             "hex",
-            prefix
-        )
-    elseif clicked and alpha_field_hot then
-        FALLEN_COLOR_INPUT_START(
-            "alpha",
             prefix
         )
     end
@@ -5018,7 +5177,6 @@ local function draw_world_color_picker(
         FALLEN_COLOR_INPUT_STOP(true)
     end
 end
-
 
 local function draw_world_settings_popup(
     mx,
@@ -5093,14 +5251,7 @@ local function draw_world_settings_popup(
         clicked
         and interactive
 
-    rounded_fill(
-        px - 5,
-        py - 5,
-        pw + 10,
-        shell_h + 10,
-        12,
-        { 0, 0, 0, 0.20 }
-    )
+    FALLEN_POPUP_GLOW(px, py, pw, shell_h, 11, 1)
 
     rounded_fill(
         px,
@@ -5108,17 +5259,6 @@ local function draw_world_settings_popup(
         pw,
         shell_h,
         11,
-        { 0.062, 0.066, 0.077, 1 }
-    )
-
-    rounded_outline(
-        px,
-        py,
-        pw,
-        shell_h,
-        11,
-        { 0.23, 0.24, 0.28, 0.75 },
-        1,
         { 0.062, 0.066, 0.077, 1 }
     )
 
@@ -8159,14 +8299,7 @@ function FALLEN_CONFIGS.draw_popup(
         clicked
         and interactive
 
-    rounded_fill(
-        px - 5,
-        py - 5,
-        pw + 10,
-        ph + 10,
-        12,
-        { 0, 0, 0, 0.20 }
-    )
+    FALLEN_POPUP_GLOW(px, py, pw, ph, 11, 1)
 
     rounded_fill(
         px,
@@ -8174,17 +8307,6 @@ function FALLEN_CONFIGS.draw_popup(
         pw,
         ph,
         11,
-        { 0.062, 0.066, 0.077, 1 }
-    )
-
-    rounded_outline(
-        px,
-        py,
-        pw,
-        ph,
-        11,
-        { 0.23, 0.24, 0.28, 0.75 },
-        1,
         { 0.062, 0.066, 0.077, 1 }
     )
 
@@ -8491,6 +8613,1005 @@ function FALLEN_CONFIGS.draw_popup(
     return popup_hot
 end
 
+
+-- =========================================================
+-- Menu appearance helpers
+-- =========================================================
+
+function FALLEN_POPUP_GLOW(x, y, w, h, radius, strength)
+    local amount = tonumber(strength) or 1
+
+    for i = 1, 14 do
+        local t = (i - 1) / 13
+        local falloff = 1 - t
+        local a = 0.12 * amount * falloff * falloff
+
+        FALLEN_DRAW_ROUNDED_GLOW_FRAME(
+            x - i, y - i,
+            w + i * 2, h + i * 2,
+            radius + i,
+            { 0, 0, 0, a },
+            1
+        )
+    end
+end
+
+function FALLEN_APPLY_STYLE_COLOR()
+    local t =
+        tostring(S.menu_type or "glass")
+        :lower()
+
+    -- Accent stays blue; only the shell material changes.
+    C.accent = { 0.340, 0.450, 0.760, 1.00 }
+    C.accent_dim = { 0.240, 0.320, 0.600, 1.00 }
+    C.accent_soft = { 0.210, 0.260, 0.430, 0.65 }
+
+    if t == "default" then
+        -- Original dark Fallen-lua default theme.
+        C.outer      = { 0.058, 0.063, 0.073, 1.00 }
+        C.sidebar    = { 0.079, 0.082, 0.094, 1.00 }
+        C.content    = { 0.052, 0.055, 0.063, 1.00 }
+
+        C.card       = { 0.055, 0.058, 0.067, 1.00 }
+        C.card_hover = { 0.073, 0.076, 0.087, 1.00 }
+        C.selected   = { 0.125, 0.126, 0.137, 1.00 }
+
+        C.border     = { 0.210, 0.220, 0.250, 0.18 }
+        C.divider    = { 0.220, 0.230, 0.260, 0.15 }
+
+        C.text       = { 0.860, 0.865, 0.900, 1.00 }
+        C.text_dim   = { 0.560, 0.580, 0.650, 1.00 }
+        C.text_faint = { 0.360, 0.390, 0.500, 1.00 }
+    else
+        -- Glass: softer transparency and lighter separation like the reference.
+        S.menu_type = "glass"
+
+        C.outer      = { 0.060, 0.064, 0.075, 0.84 }
+        C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
+        C.content    = { 0.052, 0.055, 0.063, 0.74 }
+
+        C.card       = { 0.065, 0.069, 0.080, 0.66 }
+        C.card_hover = { 0.082, 0.087, 0.100, 0.76 }
+        C.selected   = { 0.130, 0.132, 0.145, 0.84 }
+
+        C.border     = { 0.250, 0.260, 0.300, 0.10 }
+        C.divider    = { 0.260, 0.270, 0.310, 0.09 }
+
+        C.text       = { 0.885, 0.890, 0.920, 1.00 }
+        C.text_dim   = { 0.620, 0.640, 0.710, 1.00 }
+        C.text_faint = { 0.445, 0.470, 0.560, 1.00 }
+    end
+end
+
+function FALLEN_GLOW_COLOR()
+    local r, g, b =
+        hsv_to_rgb(
+            tonumber(S.menu_glow_h) or 0,
+            tonumber(S.menu_glow_s) or 0,
+            tonumber(S.menu_glow_v) or 0
+        )
+
+    return {
+        r,
+        g,
+        b,
+        clamp(
+            (tonumber(S.menu_glow_alpha) or 100) / 100,
+            0,
+            1
+        ),
+    }
+end
+
+function FALLEN_DRAW_ROUNDED_GLOW_FRAME(
+    x,
+    y,
+    w,
+    h,
+    radius,
+    color,
+    thickness
+)
+    radius =
+        math.max(
+            1,
+            math.min(
+                tonumber(radius) or 1,
+                math.min(w, h) * 0.5
+            )
+        )
+
+    thickness =
+        thickness
+        or 1
+
+    -- Straight sides stop before the rounded corners.
+    line(
+        x + radius,
+        y,
+        x + w - radius,
+        y,
+        color,
+        thickness
+    )
+
+    line(
+        x + radius,
+        y + h,
+        x + w - radius,
+        y + h,
+        color,
+        thickness
+    )
+
+    line(
+        x,
+        y + radius,
+        x,
+        y + h - radius,
+        color,
+        thickness
+    )
+
+    line(
+        x + w,
+        y + radius,
+        x + w,
+        y + h - radius,
+        color,
+        thickness
+    )
+
+    -- Rounded corners made from short line segments.
+    -- Six segments per quarter is enough for a soft glow edge.
+    local segments = 6
+
+    local function arc(cx, cy, a0, a1)
+        local px =
+            cx
+            + math.cos(a0)
+            * radius
+
+        local py =
+            cy
+            + math.sin(a0)
+            * radius
+
+        for n = 1, segments do
+            local a =
+                a0
+                + (a1 - a0)
+                * (n / segments)
+
+            local nx =
+                cx
+                + math.cos(a)
+                * radius
+
+            local ny =
+                cy
+                + math.sin(a)
+                * radius
+
+            line(
+                px,
+                py,
+                nx,
+                ny,
+                color,
+                thickness
+            )
+
+            px = nx
+            py = ny
+        end
+    end
+
+    arc(
+        x + radius,
+        y + radius,
+        math.pi,
+        math.pi * 1.5
+    )
+
+    arc(
+        x + w - radius,
+        y + radius,
+        math.pi * 1.5,
+        math.pi * 2
+    )
+
+    arc(
+        x + w - radius,
+        y + h - radius,
+        0,
+        math.pi * 0.5
+    )
+
+    arc(
+        x + radius,
+        y + h - radius,
+        math.pi * 0.5,
+        math.pi
+    )
+end
+
+function FALLEN_DRAW_GEAR(cx, cy, hot)
+    -- Cleaner compact gear icon for the menu settings button.
+    -- Built from overlapping circles so the silhouette stays smooth
+    -- even at the tiny size used by the sidebar profile card.
+    local col =
+        hot
+        and C.text
+        or C.text_dim
+
+    local hole_col =
+        hot
+        and { 0.10, 0.105, 0.125, 1.00 }
+        or C.sidebar
+
+    -- Outer gear body.
+    circle_fill(
+        cx,
+        cy,
+        4.9,
+        col
+    )
+
+    -- Eight smooth teeth around the body.
+    for i = 0, 7 do
+        local a =
+            (i / 8)
+            * math.pi
+            * 2
+
+        circle_fill(
+            cx
+                + math.cos(a)
+                * 6.1,
+            cy
+                + math.sin(a)
+                * 6.1,
+            2.15,
+            col
+        )
+    end
+
+    -- Clean center hole.
+    circle_fill(
+        cx,
+        cy,
+        2.35,
+        hole_col
+    )
+
+    -- Light inner edge so the hole reads sharper.
+    circle(
+        cx,
+        cy,
+        2.85,
+        alpha(col, 0.22),
+        1
+    )
+end
+
+function FALLEN_MENU_SETTINGS_STEP()
+    local now = tick()
+
+    if A.menu_settings_last_t == nil then
+        A.menu_settings_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.menu_settings_last_t,
+            0,
+            0.05
+        )
+
+    A.menu_settings_last_t = now
+
+    local target =
+        A.menu_settings_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.menu_settings_anim or 0)
+        and 10
+        or 8
+
+    A.menu_settings_anim =
+        exp_chase(
+            A.menu_settings_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if target == 0
+        and (A.menu_settings_anim or 0) < 0.018
+    then
+        A.menu_settings_anim = 0
+    elseif target == 1
+        and (A.menu_settings_anim or 0) > 0.992
+    then
+        A.menu_settings_anim = 1
+    end
+
+    return
+        clamp(
+            A.menu_settings_anim or 0,
+            0,
+            1
+        )
+end
+
+
+function FALLEN_MENU_SCALE_DROPDOWN_STEP()
+    local now = tick()
+
+    if A.menu_scale_dropdown_last_t == nil then
+        A.menu_scale_dropdown_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.menu_scale_dropdown_last_t,
+            0,
+            0.05
+        )
+
+    A.menu_scale_dropdown_last_t = now
+
+    local target =
+        A.menu_scale_dropdown_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.menu_scale_dropdown_anim or 0)
+        and 14
+        or 10
+
+    A.menu_scale_dropdown_anim =
+        exp_chase(
+            A.menu_scale_dropdown_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if target == 0
+        and (A.menu_scale_dropdown_anim or 0) < 0.015
+    then
+        A.menu_scale_dropdown_anim = 0
+    elseif target == 1
+        and (A.menu_scale_dropdown_anim or 0) > 0.992
+    then
+        A.menu_scale_dropdown_anim = 1
+    end
+
+    return
+        clamp(
+            A.menu_scale_dropdown_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_MENU_SCALE_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    local raw =
+        FALLEN_MENU_SCALE_DROPDOWN_STEP()
+
+    if raw <= 0.002
+        and not A.menu_scale_dropdown_open
+    then
+        return false
+    end
+
+    local options = {
+        "Auto",
+        100,
+        125,
+        150,
+        175,
+        200,
+    }
+
+    local item_h = 27
+    local full_h =
+        #options
+        * item_h
+
+    local visible_h =
+        full_h
+        * ease_out_cubic(raw)
+
+    local panel_h =
+        math.max(
+            2,
+            visible_h
+        )
+
+    FALLEN_POPUP_GLOW(x, y, w, panel_h, 7, 0.95)
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        { 0.050, 0.053, 0.062, 1 }
+    )
+
+    local panel_hot =
+        hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            panel_h
+        )
+
+    for i, value in ipairs(options) do
+        local iy =
+            y
+            + (i - 1)
+            * item_h
+
+        local reveal =
+            clamp(
+                (
+                    visible_h
+                    - (i - 1) * item_h
+                )
+                / item_h,
+                0,
+                1
+            )
+
+        if reveal > 0.12 then
+            local item_hot =
+                reveal > 0.92
+                and hover(
+                    mx,
+                    my,
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4
+                )
+
+            if item_hot then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4,
+                    5,
+                    { 0.105, 0.111, 0.132, 1 }
+                )
+            end
+
+            local selected =
+                (
+                    value == "Auto"
+                    and tostring(S.menu_scale_percent) == "Auto"
+                )
+                or (
+                    type(value) == "number"
+                    and tonumber(S.menu_scale_percent) == value
+                )
+
+            if selected then
+                rounded_fill(
+                    x + 4,
+                    iy + 3,
+                    3,
+                    item_h - 6,
+                    1,
+                    C.accent
+                )
+            end
+
+            text(
+                x + 12,
+                iy + 8,
+                value == "Auto"
+                    and "Auto"
+                    or (tostring(value) .. "%"),
+                selected
+                    and C.text
+                    or C.text_dim
+            )
+
+            if clicked
+                and item_hot
+                and A.menu_scale_dropdown_open
+            then
+                S.menu_scale_percent = value
+                A.menu_scale_dropdown_open = false
+                return true
+            end
+        end
+    end
+
+    return panel_hot
+end
+
+function FALLEN_MENU_TYPE_DROPDOWN_STEP()
+    local now = tick()
+
+    if A.menu_type_dropdown_last_t == nil then
+        A.menu_type_dropdown_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.menu_type_dropdown_last_t,
+            0,
+            0.05
+        )
+
+    A.menu_type_dropdown_last_t = now
+
+    local target =
+        A.menu_type_dropdown_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.menu_type_dropdown_anim or 0)
+        and 14
+        or 10
+
+    A.menu_type_dropdown_anim =
+        exp_chase(
+            A.menu_type_dropdown_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if target == 0
+        and (A.menu_type_dropdown_anim or 0) < 0.015
+    then
+        A.menu_type_dropdown_anim = 0
+    elseif target == 1
+        and (A.menu_type_dropdown_anim or 0) > 0.992
+    then
+        A.menu_type_dropdown_anim = 1
+    end
+
+    return
+        clamp(
+            A.menu_type_dropdown_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_MENU_TYPE_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    local raw =
+        FALLEN_MENU_TYPE_DROPDOWN_STEP()
+
+    if raw <= 0.002
+        and not A.menu_type_dropdown_open
+    then
+        return false
+    end
+
+    local options = {
+        "Default",
+        "Glass",
+    }
+
+    local item_h = 27
+    local full_h =
+        #options
+        * item_h
+
+    local visible_h =
+        full_h
+        * ease_out_cubic(raw)
+
+    local panel_h =
+        math.max(
+            2,
+            visible_h
+        )
+
+    FALLEN_POPUP_GLOW(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        0.95
+    )
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        { 0.050, 0.053, 0.062, 0.96 }
+    )
+
+    local panel_hot =
+        hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            panel_h
+        )
+
+    for i, value in ipairs(options) do
+        local iy =
+            y
+            + (i - 1)
+            * item_h
+
+        local reveal =
+            clamp(
+                (
+                    visible_h
+                    - (i - 1) * item_h
+                )
+                / item_h,
+                0,
+                1
+            )
+
+        if reveal > 0.12 then
+            local item_hot =
+                reveal > 0.92
+                and hover(
+                    mx,
+                    my,
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4
+                )
+
+            if item_hot then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4,
+                    5,
+                    { 0.105, 0.111, 0.132, 1 }
+                )
+            end
+
+            local selected =
+                tostring(S.menu_type or "glass")
+                :lower()
+                == tostring(value):lower()
+
+            if selected then
+                rounded_fill(
+                    x + 4,
+                    iy + 3,
+                    3,
+                    item_h - 6,
+                    1,
+                    C.accent
+                )
+            end
+
+            text(
+                x + 12,
+                iy + 8,
+                value,
+                selected
+                    and C.text
+                    or C.text_dim
+            )
+
+            if clicked
+                and item_hot
+                and A.menu_type_dropdown_open
+            then
+                S.menu_type =
+                    tostring(value):lower()
+
+                A.menu_type_dropdown_open = false
+                return true
+            end
+        end
+    end
+
+    return panel_hot
+end
+
+function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
+    local raw = FALLEN_MENU_SETTINGS_STEP()
+
+    if raw <= 0.001 and not A.menu_settings_open then
+        A.menu_scale_dropdown_open = false
+        A.menu_scale_dropdown_anim = 0
+        A.menu_type_dropdown_open = false
+        A.menu_type_dropdown_anim = 0
+        return false
+    end
+
+    local parent_alpha = MENU_RENDER_ALPHA
+    MENU_RENDER_ALPHA = parent_alpha * ease_out_cubic(raw)
+
+    local anim =
+        A.menu_settings_open
+        and ease_out_cubic(raw)
+        or ease_in_out_cubic(raw)
+
+    local pw = 278
+    local ph = 210
+    local px = snap(anchor_x + 18)
+    local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
+    local shell_h = math.max(38, ph - (1 - anim) * 46)
+
+    local interactive = raw > 0.96 and A.menu_settings_open
+    local ui_clicked = clicked and interactive
+    local row_clicked =
+        ui_clicked
+        and not A.menu_scale_dropdown_open
+        and not A.menu_type_dropdown_open
+
+    FALLEN_POPUP_GLOW(px, py, pw, shell_h, 12, 1)
+
+    rounded_fill(
+        px, py, pw, shell_h, 12,
+        { 0.050, 0.053, 0.062, 0.96 }
+    )
+
+    text(px + 14, py + 12, "Menu settings", C.text)
+
+    if shell_h > 36 then
+        line(px + 12, py + 35, px + pw - 12, py + 35, C.divider, 1)
+    end
+
+    local box_x = px + pw - 111
+    local box_y = py + 48
+    local box_w = 92
+    local box_h = 25
+
+    if shell_h > 77 then
+        row_hover(mx, my, px + 8, py + 40, pw - 16, 41)
+        text(px + 21, py + 54, "Menu Scale", C.text)
+
+        local hot = hover(mx, my, box_x, box_y, box_w, box_h)
+
+        rounded_fill(
+            box_x, box_y, box_w, box_h, 6,
+            hot
+                and { 0.105, 0.110, 0.130, 1 }
+                or { 0.075, 0.079, 0.093, 1 }
+        )
+
+        local shown =
+            tostring(S.menu_scale_percent) == "Auto"
+            and "Auto"
+            or (
+                tostring(math.floor(tonumber(S.menu_scale_percent) or 100))
+                .. "%"
+            )
+
+        text(box_x + 10, box_y + 7, shown, C.text)
+        text(
+            box_x + box_w - 16,
+            box_y + 7,
+            A.menu_scale_dropdown_open and "^" or "v",
+            C.text_dim
+        )
+
+        if ui_clicked and hot then
+            A.menu_scale_dropdown_open = not A.menu_scale_dropdown_open
+            A.menu_type_dropdown_open = false
+        end
+    end
+
+    if shell_h > 158 then
+        line(px + 12, py + 80, px + pw - 12, py + 80, C.divider, 1)
+
+        slider_row(
+            mx,
+            my,
+            ui_clicked,
+            lmb,
+            px + 8,
+            py + 82,
+            pw - 16,
+            "Glow",
+            "menu_glow_strength",
+            0,
+            200,
+            "int"
+        )
+
+        line(px + 12, py + 121, px + pw - 12, py + 121, C.divider, 1)
+
+        local color_row_x = px + 8
+        local color_row_y = py + 122
+        local color_row_w = pw - 16
+
+        row_hover(mx, my, color_row_x, color_row_y, color_row_w, 41)
+        text(color_row_x + 13, color_row_y + 14, "Glow Color", C.text)
+
+        local swatch_x = color_row_x + color_row_w - 34
+        local swatch_y = color_row_y + 10
+        local swatch_w = 24
+        local swatch_h = 20
+
+        local gr, gg, gb = hsv_to_rgb(
+            tonumber(S.menu_glow_h) or 0,
+            tonumber(S.menu_glow_s) or 0,
+            tonumber(S.menu_glow_v) or 1
+        )
+
+        rounded_fill(
+            swatch_x,
+            swatch_y,
+            swatch_w,
+            swatch_h,
+            5,
+            {gr, gg, gb, (tonumber(S.menu_glow_alpha) or 100) / 100}
+        )
+
+        local swatch_hot = hover(mx, my, swatch_x, swatch_y, swatch_w, swatch_h)
+
+        if ui_clicked and swatch_hot then
+            FALLEN_COLOR_INPUT_STOP(true)
+
+            if A.world_color_picker_open
+                and A.world_color_picker_key == "menu_style"
+            then
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+            else
+                A.world_color_picker_key = "menu_style"
+                A.world_color_picker_open = true
+                A.world_color_picker_drag = nil
+            end
+
+            A.world_color_picker_anchor_x = swatch_x
+            A.world_color_picker_anchor_y = swatch_y
+
+            if numeric_stop then numeric_stop(true) end
+        end
+
+        line(px + 12, py + 162, px + pw - 12, py + 162, C.divider, 1)
+
+        local row_x = px + 8
+        local row_y = py + 163
+        local row_w = pw - 16
+
+        row_hover(mx, my, row_x, row_y, row_w, 41)
+        text(row_x + 13, row_y + 14, "Type", C.text)
+
+        local type_box_x = row_x + row_w - 92 - 12
+        local type_box_y = row_y + 8
+        local type_box_w = 92
+        local type_box_h = 25
+
+        local type_hot =
+            hover(
+                mx,
+                my,
+                type_box_x,
+                type_box_y,
+                type_box_w,
+                type_box_h
+            )
+
+        rounded_fill(
+            type_box_x,
+            type_box_y,
+            type_box_w,
+            type_box_h,
+            6,
+            type_hot
+                and { 0.105, 0.110, 0.130, 1 }
+                or { 0.075, 0.079, 0.093, 1 }
+        )
+
+        local type_text =
+            tostring(S.menu_type or "glass")
+                :gsub("^%l", string.upper)
+
+        text(type_box_x + 10, type_box_y + 7, type_text, C.text)
+        text(
+            type_box_x + type_box_w - 16,
+            type_box_y + 7,
+            A.menu_type_dropdown_open and "^" or "v",
+            C.text_dim
+        )
+
+        if row_clicked and type_hot then
+            A.menu_type_dropdown_open = not A.menu_type_dropdown_open
+            A.menu_scale_dropdown_open = false
+        end
+
+        local type_dropdown_hot =
+            FALLEN_DRAW_MENU_TYPE_DROPDOWN(
+                mx,
+                my,
+                ui_clicked,
+                type_box_x,
+                type_box_y + type_box_h + 4,
+                type_box_w
+            )
+
+        local scale_dropdown_hot =
+            FALLEN_DRAW_MENU_SCALE_DROPDOWN(
+                mx, my, ui_clicked,
+                box_x, box_y + box_h + 4, box_w
+            )
+
+        local popup_hot = hover(mx, my, px, py, pw, shell_h)
+        local anchor_hot = hover(mx, my, anchor_x - 11, anchor_y - 11, 22, 22)
+
+        if interactive
+            and clicked
+            and not popup_hot
+            and not anchor_hot
+            and not type_dropdown_hot
+            and not scale_dropdown_hot
+        then
+            A.menu_settings_open = false
+            A.menu_scale_dropdown_open = false
+            A.menu_type_dropdown_open = false
+            A.menu_type_dropdown_open = false
+        end
+
+        MENU_RENDER_ALPHA = parent_alpha
+        return popup_hot or type_dropdown_hot or scale_dropdown_hot
+    end
+
+    local scale_dropdown_hot =
+        FALLEN_DRAW_MENU_SCALE_DROPDOWN(
+            mx, my, ui_clicked,
+            box_x, box_y + box_h + 4, box_w
+        )
+
+    local popup_hot = hover(mx, my, px, py, pw, shell_h)
+    local anchor_hot = hover(mx, my, anchor_x - 11, anchor_y - 11, 22, 22)
+
+    if interactive
+        and clicked
+        and not popup_hot
+        and not anchor_hot
+        and not scale_dropdown_hot
+    then
+        A.menu_settings_open = false
+        A.menu_scale_dropdown_open = false
+        A.menu_type_dropdown_open = false
+    end
+
+    MENU_RENDER_ALPHA = parent_alpha
+    return popup_hot or scale_dropdown_hot
+end
+
 -- =========================================================
 -- Render
 -- =========================================================
@@ -8529,6 +9650,14 @@ hooks.on_render(function()
             A.config_open = false
             A.config_anim = 0
             FALLEN_CONFIGS.input_focus(false)
+
+            A.menu_settings_open = false
+            A.menu_settings_anim = 0
+            A.menu_scale_dropdown_open = false
+            A.menu_scale_dropdown_anim = 0
+            A.menu_type_dropdown_open = false
+            A.menu_type_dropdown_anim = 0
+
 
             aim_bind_cancel()
         end
@@ -8592,6 +9721,39 @@ hooks.on_render(function()
     local sw, sh = screen_size()
     local mx, my = mouse_pos()
 
+    -- Menu Scale affects the entire UI, with gentler real growth.
+    local label = S.menu_scale_percent
+    local menu_scale = 1.00
+
+    if tostring(label) == "Auto" then
+        menu_scale =
+            math.min(
+                1.00,
+                math.max(
+                    0.82,
+                    math.min((sw - 40) / 875, (sh - 40) / 700)
+                )
+            )
+    else
+        local p = tonumber(label) or 100
+
+        if p == 125 then
+            menu_scale = 1.06
+        elseif p == 150 then
+            menu_scale = 1.12
+        elseif p == 175 then
+            menu_scale = 1.18
+        elseif p == 200 then
+            menu_scale = 1.24
+        else
+            S.menu_scale_percent = 100
+            menu_scale = 1.00
+        end
+    end
+
+    WIN_W = 875
+    WIN_H = 700
+
     if A.menu_cx == nil then
         A.menu_cx = sw * 0.5
         A.menu_cy = sh * 0.5
@@ -8599,8 +9761,13 @@ hooks.on_render(function()
         A.menu_target_cy = A.menu_cy
     end
 
-    local wx = A.menu_cx - WIN_W * 0.5
-    local wy = A.menu_cy - WIN_H * 0.5
+    local wx = A.menu_cx - (WIN_W * menu_scale) * 0.5
+    local wy = A.menu_cy - (WIN_H * menu_scale) * 0.5
+
+    MENU_UI_SCALE = menu_scale
+    MENU_UI_ORIGIN_X = wx
+    MENU_UI_ORIGIN_Y = wy
+    MENU_UI_TRANSFORM_ACTIVE = true
 
     -- Grab only the thin top edge so normal controls remain clickable.
     local drag_hot =
@@ -8619,8 +9786,8 @@ hooks.on_render(function()
     end
 
     if A.menu_dragging and lmb then
-        local half_w = WIN_W * 0.5
-        local half_h = WIN_H * 0.5
+        local half_w = WIN_W * menu_scale * 0.5
+        local half_h = WIN_H * menu_scale * 0.5
 
         A.menu_target_cx =
             clamp(
@@ -8641,8 +9808,11 @@ hooks.on_render(function()
     A.menu_cx = lerp(A.menu_cx, A.menu_target_cx, A.menu_dragging and 0.32 or 0.20)
     A.menu_cy = lerp(A.menu_cy, A.menu_target_cy, A.menu_dragging and 0.32 or 0.20)
 
-    wx = A.menu_cx - WIN_W * 0.5
-    wy = A.menu_cy - WIN_H * 0.5
+    wx = A.menu_cx - (WIN_W * menu_scale) * 0.5
+    wy = A.menu_cy - (WIN_H * menu_scale) * 0.5
+
+    MENU_UI_ORIGIN_X = wx
+    MENU_UI_ORIGIN_Y = wy
 
     -- Whole window rises gently into place on open and drops on close.
     wy =
@@ -8655,7 +9825,46 @@ hooks.on_render(function()
 
     S.anim = clamp(lerp(S.anim or 0, 1, 0.16), 0, 1)
 
+    FALLEN_APPLY_STYLE_COLOR()
+
     local menu_base_alpha = MENU_RENDER_ALPHA
+
+    -- 35 rounded glow frames around the entire menu.
+    -- Radius grows together with every outward frame, so the glow follows
+    -- the rounded menu corners instead of making square wedges.
+    local glow_rgb = { 0, 0, 0, 1 }
+    local glow_strength =
+        clamp((tonumber(S.menu_glow_strength) or 100) / 100, 0, 2)
+
+    for i = 0, 34 do
+        local t =
+            i / 34
+
+        local falloff =
+            1 - t
+
+        local glow_alpha =
+            0.165
+            * glow_strength
+            * falloff
+            * falloff
+            * (glow_rgb[4] or 1)
+
+        FALLEN_DRAW_ROUNDED_GLOW_FRAME(
+            wx - i,
+            wy - i,
+            WIN_W + i * 2,
+            WIN_H + i * 2,
+            OUTER_R + i,
+            {
+                glow_rgb[1],
+                glow_rgb[2],
+                glow_rgb[3],
+                glow_alpha,
+            },
+            1
+        )
+    end
 
     -- Base surfaces are genuinely transparent during the transition, but
     -- sidebar/content are now two DISJOINT rounded shapes. Nothing is drawn
@@ -8678,29 +9887,6 @@ hooks.on_render(function()
         C.content
     )
 
-    -- Shadows are intentionally introduced only when the menu is practically
-    -- opaque. A translucent shadow underneath a translucent window would be
-    -- another source of dark edge buildup.
-    if menu_base_alpha > 0.985 then
-        local saved_alpha = MENU_RENDER_ALPHA
-
-        MENU_RENDER_ALPHA =
-            smooth01(
-                (menu_base_alpha - 0.985) / 0.015
-            )
-
-        rounded_fill(
-            wx - 8,
-            wy - 8,
-            WIN_W + 16,
-            WIN_H + 16,
-            OUTER_R + 7,
-            C.shadow
-        )
-
-        MENU_RENDER_ALPHA = saved_alpha
-    end
-
     -- Let the base become mostly visible before layered controls/cards fade in.
     -- This keeps the transparency animation, while preventing stacked
     -- translucent widgets from creating dark patches all over the menu.
@@ -8712,6 +9898,7 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA = detail_alpha
 
     if detail_alpha <= 0.002 then
+        MENU_UI_TRANSFORM_ACTIVE = false
         return
     end
 
@@ -8814,12 +10001,12 @@ hooks.on_render(function()
             local ok_draw = pcall(
                 DrawImage,
                 PROFILE.avatar,
-                avatar_x,
-                avatar_y,
-                avatar_size,
-                avatar_size,
+                FALLEN_UI_X(avatar_x),
+                FALLEN_UI_Y(avatar_y),
+                FALLEN_UI_LEN(avatar_size),
+                FALLEN_UI_LEN(avatar_size),
                 1, 1, 1, MENU_RENDER_ALPHA,
-                avatar_size * 0.5
+                FALLEN_UI_LEN(avatar_size * 0.5)
             )
 
             avatar_drawn = ok_draw
@@ -8856,7 +10043,67 @@ hooks.on_render(function()
     end
 
     text(wx + 68, wy + WIN_H - 40, username, C.text)
-    text(wx + 148, wy + WIN_H - 39, ">", C.text_faint)
+
+    local gear_x =
+        wx + SIDEBAR_W - 24
+
+    local gear_y =
+        wy + WIN_H - 34
+
+    local gear_hot =
+        hover(
+            mx,
+            my,
+            gear_x - 11,
+            gear_y - 11,
+            22,
+            22
+        )
+
+    if gear_hot then
+        circle_fill(
+            gear_x,
+            gear_y,
+            11,
+            { 0.10, 0.105, 0.125, 1 }
+        )
+    end
+
+    FALLEN_DRAW_GEAR(
+        gear_x,
+        gear_y,
+        gear_hot
+    )
+
+    if clicked
+        and gear_hot
+    then
+        A.menu_settings_open =
+            not A.menu_settings_open
+
+        A.menu_scale_dropdown_open = false
+        A.menu_type_dropdown_open = false
+
+        if A.menu_settings_open then
+            A.config_open = false
+            FALLEN_CONFIGS.input_focus(false)
+
+            A.aim_settings_open = false
+            A.aim_part_dropdown_open = false
+            A.fov_picker_open = false
+
+            A.world_settings_open = false
+
+            if A.world_color_picker_key ~= "menu_style" then
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+            end
+
+            numeric_stop(true)
+            aim_bind_cancel()
+        else
+        end
+    end
 
     -- Top Configs dropdown.
     local content_x = wx + SIDEBAR_W + 15
@@ -8940,6 +10187,10 @@ hooks.on_render(function()
             numeric_stop(true)
             aim_bind_cancel()
 
+            A.menu_settings_open = false
+            A.menu_scale_dropdown_open = false
+            A.menu_type_dropdown_open = false
+
             A.aim_settings_open = false
             A.aim_part_dropdown_open = false
             A.fov_picker_open = false
@@ -8966,13 +10217,21 @@ hooks.on_render(function()
         A.config_open
         or (A.config_anim or 0) > 0.02
 
+    local menu_settings_overlay_open =
+        A.menu_settings_open
+        or (A.menu_settings_anim or 0) > 0.02
+
+    local any_overlay_open =
+        config_overlay_open
+        or menu_settings_overlay_open
+
     local page_clicked =
         clicked
-        and not config_overlay_open
+        and not any_overlay_open
 
     local page_rmb_clicked =
         rmb_clicked
-        and not config_overlay_open
+        and not any_overlay_open
 
     if S.tab == 1 then
         draw_aimbot_page(
@@ -9009,11 +10268,34 @@ hooks.on_render(function()
         cfg_w
     )
 
+    -- Menu appearance popup sits above the footer and page.
+    FALLEN_DRAW_MENU_SETTINGS(
+        mx,
+        my,
+        clicked,
+        lmb,
+        gear_x,
+        gear_y
+    )
+
+    -- Reuse the same full HSV/alpha picker for Glow Color.
+    if A.world_color_picker_open
+        and A.world_color_picker_key == "menu_style"
+    then
+        draw_world_color_picker(
+            mx,
+            my,
+            clicked,
+            lmb
+        )
+    end
+
     -- Keep helper state sane for the next frame.
+    MENU_UI_TRANSFORM_ACTIVE = false
     MENU_RENDER_ALPHA = 1
 end)
 
-print(SYS .. "loaded | v30 | editable HEX + alpha percent in color pickers | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -11353,4 +12635,10 @@ hooks.on_render(function()
 end)
 
 
-print("[Fallen loader] ready | v30 editable color fields")
+print("[Fallen loader] ready | v44 syntax fix")
+
+
+-- Fallen toast renderer
+hooks.on_render(function()
+    pcall(draw_fallen_toasts)
+end)
