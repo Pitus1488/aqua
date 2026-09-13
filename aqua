@@ -107,6 +107,10 @@ local defaults = {
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
     menu_glow_strength = 100,
 
+    -- Animated menu-background weather.
+    menu_snow = false,
+    menu_rain = false,
+
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
     menu_glow_h = 0.00,
     menu_glow_s = 0.00,
@@ -364,6 +368,16 @@ local A = {
     -- Shared 2-second text hover animation state.
     text_hover_anim = {},
     text_hover_time = {},
+
+    -- Menu-background weather particles.
+    weather_snow = {},
+    weather_rain = {},
+    weather_splashes = {},
+    weather_snow_spawn = 0,
+    weather_rain_spawn = 0,
+    weather_last_t = nil,
+    weather_snow_alpha = 0,
+    weather_rain_alpha = 0,
 
     -- Menu appearance popup near the profile/avatar.
     menu_settings_open = false,
@@ -10915,7 +10929,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or ease_in_out_cubic(raw)
 
     local pw = 278
-    local ph = 260
+    local ph = 344
     local px = snap(anchor_x + 18)
     local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
     local shell_h = math.max(38, ph - (1 - anim) * 46)
@@ -11133,6 +11147,54 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             A.menu_scale_dropdown_open = false
         end
 
+        -- Animated background weather.
+        -- Uses the exact same row/toggle style as the rest of Fallen-lua.
+        if shell_h > 246 then
+            line(
+                px + 12,
+                py + 203,
+                px + pw - 12,
+                py + 203,
+                C.divider,
+                1
+            )
+
+            toggle_row(
+                mx,
+                my,
+                row_clicked,
+                px + 8,
+                py + 204,
+                pw - 16,
+                "Snow",
+                "menu_snow",
+                false
+            )
+        end
+
+        if shell_h > 287 then
+            line(
+                px + 12,
+                py + 244,
+                px + pw - 12,
+                py + 244,
+                C.divider,
+                1
+            )
+
+            toggle_row(
+                mx,
+                my,
+                row_clicked,
+                px + 8,
+                py + 245,
+                pw - 16,
+                "Rain",
+                "menu_rain",
+                false
+            )
+        end
+
         local type_dropdown_hot =
             FALLEN_DRAW_MENU_TYPE_DROPDOWN(
                 mx,
@@ -11194,219 +11256,353 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
 end
 
 -- =========================================================
--- Menu focus isolation
--- When the Drawing menu is open, focus Blueberry instead of Roblox so
--- mouse/keyboard input does not also control the game in the background.
--- Globals are intentional: this script is already near Lua's local limit.
+-- Animated menu-background weather
 -- =========================================================
 
-FALLEN_BLUEBERRY_WINDOW = FALLEN_BLUEBERRY_WINDOW or nil
-FALLEN_BLUEBERRY_FOCUS_WARNED = FALLEN_BLUEBERRY_FOCUS_WARNED or false
-FALLEN_BLUEBERRY_LAST_REASSERT = FALLEN_BLUEBERRY_LAST_REASSERT or 0
+function FALLEN_WEATHER_RAND(a, b)
+    a = tonumber(a) or 0
+    b = tonumber(b) or 1
 
-function FALLEN_FIND_BLUEBERRY_WINDOW()
-    if not Windows or type(Windows.FindWindow) ~= "function" then
-        return nil
+    if b < a then
+        a, b = b, a
     end
 
-    if FALLEN_BLUEBERRY_WINDOW then
-        -- Drop a stale cached handle if the host window disappeared.
-        if type(Windows.GetWindowRect) == "function" then
-            local ok_rect, rect =
-                pcall(
-                    Windows.GetWindowRect,
-                    FALLEN_BLUEBERRY_WINDOW
-                )
+    return
+        a
+        + (b - a)
+        * math.random()
+end
 
-            if ok_rect and rect then
-                return FALLEN_BLUEBERRY_WINDOW
-            end
-
-            FALLEN_BLUEBERRY_WINDOW = nil
-        else
-            return FALLEN_BLUEBERRY_WINDOW
-        end
-    end
-
-    local titles = {
-        "Blueberry",
-        "blueberry",
-        "BlueBerry",
-        "Blueberry External",
-        "Blueberry Menu",
-        "Blueberry Loader",
+function FALLEN_WEATHER_SPAWN_SNOW(w)
+    local p = {
+        x = FALLEN_WEATHER_RAND(10, math.max(11, w - 10)),
+        y = FALLEN_WEATHER_RAND(-18, -4),
+        vx = FALLEN_WEATHER_RAND(-8, 8),
+        vy = FALLEN_WEATHER_RAND(22, 46),
+        r = FALLEN_WEATHER_RAND(0.75, 1.75),
+        phase = FALLEN_WEATHER_RAND(0, math.pi * 2),
+        a = FALLEN_WEATHER_RAND(0.28, 0.62),
     }
 
-    for i = 1, #titles do
-        local ok, hwnd =
-            pcall(
-                Windows.FindWindow,
-                titles[i]
-            )
+    A.weather_snow[#A.weather_snow + 1] = p
+end
 
-        if ok and hwnd then
-            FALLEN_BLUEBERRY_WINDOW = hwnd
-            return hwnd
+function FALLEN_WEATHER_SPAWN_RAIN(w)
+    local p = {
+        x = FALLEN_WEATHER_RAND(12, math.max(13, w - 12)),
+        y = FALLEN_WEATHER_RAND(-36, -8),
+        speed = FALLEN_WEATHER_RAND(300, 470),
+        drift = FALLEN_WEATHER_RAND(-52, -28),
+        len = FALLEN_WEATHER_RAND(10, 20),
+        a = FALLEN_WEATHER_RAND(0.20, 0.42),
+    }
+
+    A.weather_rain[#A.weather_rain + 1] = p
+end
+
+function FALLEN_WEATHER_SPLASH(x, y)
+    local amount =
+        math.random(2, 4)
+
+    for i = 1, amount do
+        if #A.weather_splashes >= 90 then
+            break
+        end
+
+        local life =
+            FALLEN_WEATHER_RAND(0.16, 0.32)
+
+        A.weather_splashes[#A.weather_splashes + 1] = {
+            x = x + FALLEN_WEATHER_RAND(-2.5, 2.5),
+            y = y,
+            vx = FALLEN_WEATHER_RAND(-42, 42),
+            vy = FALLEN_WEATHER_RAND(-72, -30),
+            life = life,
+            max_life = life,
+            a = FALLEN_WEATHER_RAND(0.30, 0.58),
+        }
+    end
+end
+
+function FALLEN_DRAW_MENU_WEATHER(wx, wy, w, h)
+    if type(A.weather_snow) ~= "table" then A.weather_snow = {} end
+    if type(A.weather_rain) ~= "table" then A.weather_rain = {} end
+    if type(A.weather_splashes) ~= "table" then A.weather_splashes = {} end
+
+    local now = tick()
+
+    if A.weather_last_t == nil then
+        A.weather_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.weather_last_t,
+            0,
+            0.05
+        )
+
+    A.weather_last_t = now
+
+    A.weather_snow_alpha =
+        exp_chase(
+            A.weather_snow_alpha or 0,
+            S.menu_snow == true and 1 or 0,
+            5.5,
+            dt
+        )
+
+    A.weather_rain_alpha =
+        exp_chase(
+            A.weather_rain_alpha or 0,
+            S.menu_rain == true and 1 or 0,
+            6.5,
+            dt
+        )
+
+    -- ---------------------------------
+    -- SNOW
+    -- ---------------------------------
+    if S.menu_snow == true then
+        A.weather_snow_spawn =
+            (A.weather_snow_spawn or 0)
+            + dt * 20
+
+        while A.weather_snow_spawn >= 1
+            and #A.weather_snow < 72
+        do
+            A.weather_snow_spawn =
+                A.weather_snow_spawn - 1
+
+            FALLEN_WEATHER_SPAWN_SNOW(w)
         end
     end
 
-    return nil
-end
+    for i = #A.weather_snow, 1, -1 do
+        local p =
+            A.weather_snow[i]
 
-function FALLEN_FOCUS_BLUEBERRY()
-    if not Windows
-        or type(Windows.SetForegroundWindow) ~= "function"
-    then
-        return false
-    end
+        p.y =
+            p.y
+            + p.vy * dt
 
-    local hwnd =
-        FALLEN_FIND_BLUEBERRY_WINDOW()
+        p.x =
+            p.x
+            + (
+                p.vx
+                + math.sin(now * 1.45 + p.phase) * 7
+            ) * dt
 
-    if not hwnd then
-        if not FALLEN_BLUEBERRY_FOCUS_WARNED then
-            FALLEN_BLUEBERRY_FOCUS_WARNED = true
+        if p.y > h + 8
+            or p.x < -12
+            or p.x > w + 12
+        then
+            table.remove(
+                A.weather_snow,
+                i
+            )
+        elseif A.weather_snow_alpha > 0.01
+            and p.y - p.r >= 7
+            and p.y + p.r <= h - 7
+            and p.x - p.r >= 7
+            and p.x + p.r <= w - 7
+        then
+            circle_fill(
+                wx + p.x,
+                wy + p.y,
+                p.r,
+                {
+                    0.90,
+                    0.94,
+                    1.00,
+                    p.a
+                    * A.weather_snow_alpha
+                    * 0.82
+                }
+            )
 
-            if type(warn) == "function" then
-                pcall(
-                    warn,
-                    "[Fallen-lua] Blueberry window not found; focus lock unavailable."
+            if p.r > 1.30 then
+                circle_fill(
+                    wx + p.x - 0.45,
+                    wy + p.y - 0.45,
+                    p.r * 0.38,
+                    {
+                        1,
+                        1,
+                        1,
+                        p.a
+                        * A.weather_snow_alpha
+                        * 0.52
+                    }
                 )
             end
         end
-
-        return false
     end
 
-    local ok, result =
-        pcall(
-            Windows.SetForegroundWindow,
-            hwnd
-        )
-
-    if not ok or result == false then
-        -- Cached handle may have become invalid; force a fresh lookup.
-        FALLEN_BLUEBERRY_WINDOW = nil
-        return false
-    end
-
-    return true
-end
-
-function FALLEN_ENSURE_BLUEBERRY_FOCUS(force)
-    if not S.visible then
-        return false
-    end
-
-    local hwnd =
-        FALLEN_FIND_BLUEBERRY_WINDOW()
-
-    if not hwnd then
-        return FALLEN_FOCUS_BLUEBERRY()
-    end
-
-    local blueberry_foreground = false
-    local roblox_foreground = false
-    local checked_blueberry = false
-
-    if Windows
-        and type(Windows.IsWindowForeground) == "function"
+    -- Once disabled, old flakes are allowed to fade out naturally,
+    -- then the table is cleared.
+    if S.menu_snow ~= true
+        and A.weather_snow_alpha < 0.015
     then
-        local ok, value =
-            pcall(
-                Windows.IsWindowForeground,
-                hwnd
-            )
+        A.weather_snow = {}
+        A.weather_snow_spawn = 0
+    end
 
-        if ok then
-            checked_blueberry = true
-            blueberry_foreground =
-                value == true
+    -- ---------------------------------
+    -- RAIN
+    -- ---------------------------------
+    if S.menu_rain == true then
+        A.weather_rain_spawn =
+            (A.weather_rain_spawn or 0)
+            + dt * 47
+
+        while A.weather_rain_spawn >= 1
+            and #A.weather_rain < 85
+        do
+            A.weather_rain_spawn =
+                A.weather_rain_spawn - 1
+
+            FALLEN_WEATHER_SPAWN_RAIN(w)
         end
     end
 
-    if Windows
-        and type(Windows.IsRobloxForeground) == "function"
-    then
-        local ok, value =
-            pcall(
-                Windows.IsRobloxForeground
-            )
+    for i = #A.weather_rain, 1, -1 do
+        local p =
+            A.weather_rain[i]
 
-        if ok then
-            roblox_foreground =
-                value == true
+        local old_y =
+            p.y
+
+        p.y =
+            p.y
+            + p.speed * dt
+
+        p.x =
+            p.x
+            + p.drift * dt
+
+        local hit_y =
+            h - 8
+
+        if p.y + p.len >= hit_y then
+            if old_y + p.len < hit_y
+                and A.weather_rain_alpha > 0.08
+            then
+                FALLEN_WEATHER_SPLASH(
+                    clamp(
+                        p.x,
+                        10,
+                        w - 10
+                    ),
+                    hit_y
+                )
+            end
+
+            table.remove(
+                A.weather_rain,
+                i
+            )
+        elseif p.x < -25
+            or p.x > w + 25
+        then
+            table.remove(
+                A.weather_rain,
+                i
+            )
+        elseif A.weather_rain_alpha > 0.01
+            and p.y >= 9
+            and p.y + p.len <= h - 8
+        then
+            local tail_dx =
+                (p.drift / p.speed)
+                * p.len
+
+            line(
+                wx + p.x - tail_dx,
+                wy + p.y - p.len,
+                wx + p.x,
+                wy + p.y,
+                {
+                    0.56,
+                    0.72,
+                    0.94,
+                    p.a
+                    * A.weather_rain_alpha
+                },
+                0.85
+            )
         end
     end
 
-    local now =
-        type(tick) == "function"
-        and tick()
-        or 0
-
-    -- Even when IsWindowForeground reports true, periodically reassert
-    -- foreground ownership. This handles clicks that momentarily try to
-    -- return focus to Roblox between render frames.
-    local periodic =
-        now
-        - (FALLEN_BLUEBERRY_LAST_REASSERT or 0)
-        >= 0.10
-
-    local should_focus =
-        force == true
-        or roblox_foreground
-        or (checked_blueberry and not blueberry_foreground)
-        or periodic
-
-    if should_focus then
-        FALLEN_BLUEBERRY_LAST_REASSERT = now
-
-        if not FALLEN_FOCUS_BLUEBERRY() then
-            return false
-        end
-    end
-
-    return true
-end
-
-function FALLEN_FOCUS_ROBLOX()
-    if not Windows then
-        return false
-    end
-
-    if type(Windows.FocusRoblox) == "function" then
-        local ok, result =
-            pcall(
-                Windows.FocusRoblox
-            )
-
-        return
-            ok
-            and result ~= false
-    end
-
-    if type(Windows.GetRobloxWindow) == "function"
-        and type(Windows.SetForegroundWindow) == "function"
+    if S.menu_rain ~= true
+        and A.weather_rain_alpha < 0.015
     then
-        local ok_hwnd, hwnd =
-            pcall(
-                Windows.GetRobloxWindow
-            )
+        A.weather_rain = {}
+        A.weather_rain_spawn = 0
+    end
 
-        if ok_hwnd and hwnd then
-            local ok, result =
-                pcall(
-                    Windows.SetForegroundWindow,
-                    hwnd
+    -- ---------------------------------
+    -- IMPACT SPLASHES
+    -- ---------------------------------
+    for i = #A.weather_splashes, 1, -1 do
+        local p =
+            A.weather_splashes[i]
+
+        p.life =
+            p.life - dt
+
+        if p.life <= 0 then
+            table.remove(
+                A.weather_splashes,
+                i
+            )
+        else
+            p.x =
+                p.x
+                + p.vx * dt
+
+            p.y =
+                p.y
+                + p.vy * dt
+
+            p.vy =
+                p.vy
+                + 210 * dt
+
+            local life_a =
+                clamp(
+                    p.life
+                    / math.max(
+                        0.001,
+                        p.max_life
+                    ),
+                    0,
+                    1
                 )
 
-            return
-                ok
-                and result ~= false
+            if p.x >= 7
+                and p.x <= w - 7
+                and p.y >= 7
+                and p.y <= h - 7
+            then
+                line(
+                    wx + p.x,
+                    wy + p.y,
+                    wx + p.x - p.vx * 0.020,
+                    wy + p.y - p.vy * 0.020,
+                    {
+                        0.66,
+                        0.80,
+                        1.00,
+                        p.a
+                        * life_a
+                        * A.weather_rain_alpha
+                    },
+                    0.75
+                )
+            end
         end
     end
-
-    return false
 end
 
 -- =========================================================
@@ -11428,16 +11624,6 @@ hooks.on_render(function()
         and not A.color_input.focus
     then
         S.visible = not S.visible
-
-        if S.visible then
-            -- Focus the Blueberry host window BEFORE the user starts
-            -- interacting with the Drawing menu. Roblox therefore loses
-            -- foreground focus and does not receive subsequent menu clicks.
-            FALLEN_ENSURE_BLUEBERRY_FOCUS(true)
-        else
-            -- Give control back to the game as soon as the menu is closed.
-            FALLEN_FOCUS_ROBLOX()
-        end
 
         if not S.visible then
             numeric_stop(true)
@@ -11476,12 +11662,6 @@ hooks.on_render(function()
 
     prev_rshift = rshift
 
-    -- Keep Roblox unfocused for the entire lifetime of the open menu.
-    -- This runs before menu mouse/keyboard polling.
-    if S.visible then
-        FALLEN_ENSURE_BLUEBERRY_FOCUS(false)
-    end
-
     A.menu_open_target =
         S.visible and 1 or 0
 
@@ -11512,10 +11692,6 @@ hooks.on_render(function()
     aim_bind_poll()
     FALLEN_CONFIGS.input_poll()
     FALLEN_COLOR_INPUT_POLL()
-
-    if S.visible then
-        FALLEN_ENSURE_BLUEBERRY_FOCUS(false)
-    end
 
     local lmb = key_down(VK_LBUTTON)
     local clicked =
@@ -11714,6 +11890,15 @@ hooks.on_render(function()
         WIN_H,
         OUTER_R,
         C.content
+    )
+
+    -- Weather lives on the menu background: above the base surfaces,
+    -- below every card/text/control.
+    FALLEN_DRAW_MENU_WEATHER(
+        wx,
+        wy,
+        WIN_W,
+        WIN_H
     )
 
     -- Let the base become mostly visible before layered controls/cards fade in.
