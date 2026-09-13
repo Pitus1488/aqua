@@ -12696,3 +12696,58 @@ function FallenDrawLoaderImage(x, y, w, h)
 
     return false
 end
+
+
+-- =========================================================
+-- Fallen Loader persistent image cache for all pages
+-- =========================================================
+
+_G.FallenLoaderCachedImage = _G.FallenLoaderCachedImage or nil
+_G.FallenLoaderCachedImageLoaded = _G.FallenLoaderCachedImageLoaded or false
+
+function FallenCacheLoaderImage()
+    if _G.FallenLoaderCachedImageLoaded then
+        return _G.FallenLoaderCachedImage
+    end
+
+    _G.FallenLoaderCachedImageLoaded = true
+
+    if _G.FallenLoaderImage then
+        _G.FallenLoaderCachedImage = _G.FallenLoaderImage
+        return _G.FallenLoaderCachedImage
+    end
+
+    if type(LoadImage) == "function" then
+        local ok, img = pcall(function()
+            return LoadImage("https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&")
+        end)
+
+        if ok then
+            _G.FallenLoaderCachedImage = img
+        end
+    end
+
+    return _G.FallenLoaderCachedImage
+end
+
+function FallenDrawCachedLoaderImage(x,y,w,h)
+    local img = FallenCacheLoaderImage()
+
+    if img and type(DrawImage) == "function" then
+        local ready = true
+
+        if type(IsImageReady) == "function" then
+            local ok, state = pcall(IsImageReady, img)
+            if ok then
+                ready = state
+            end
+        end
+
+        if ready then
+            DrawImage(img,x,y,w,h)
+            return true
+        end
+    end
+
+    return false
+end
