@@ -564,6 +564,26 @@ local function update_profile()
     start_avatar_worker()
 end
 
+
+-- =========================================================
+-- Smooth text hover brightness animation
+-- =========================================================
+local TEXT_HOVER_ANIM = {}
+
+local function fallen_text_color(id, hovered)
+    local now = TEXT_HOVER_ANIM[id] or 0
+    local target = hovered and 1 or 0
+    now = now + (target - now) * 0.08 -- ~1 second smooth fade
+    TEXT_HOVER_ANIM[id] = now
+
+    return {
+        0.86 + 0.12 * now,
+        0.865 + 0.11 * now,
+        0.90 + 0.09 * now,
+        1
+    }
+end
+
 -- =========================================================
 -- Helpers
 -- =========================================================
@@ -2052,24 +2072,28 @@ local function mouse_pos()
     a = tonumber(a) or 0
     b = tonumber(b) or 0
 
-    -- Convert physical mouse coordinates back into menu coordinates.
-    -- The UI is rendered through FALLEN_UI_X/Y when Menu Scale is used,
-    -- but mouse input stayed in screen space, causing picker offset.
-    if MENU_UI_TRANSFORM_ACTIVE and MENU_UI_SCALE and MENU_UI_SCALE ~= 0 then
-        a = MENU_UI_ORIGIN_X + (a - MENU_UI_ORIGIN_X) / MENU_UI_SCALE
-        b = MENU_UI_ORIGIN_Y + (b - MENU_UI_ORIGIN_Y) / MENU_UI_SCALE
-    end
-
     return a, b
 end
 
-local function hover(mx, my, x, y, w, h)
-    local tx = FALLEN_UI_X(x)
-    local ty = FALLEN_UI_Y(y)
-    local tw = FALLEN_UI_LEN(w)
-    local th = FALLEN_UI_LEN(h)
+local function picker_scaled_pos(x, y, w, h)
+    return
+        FALLEN_UI_X(x),
+        FALLEN_UI_Y(y),
+        FALLEN_UI_LEN(w),
+        FALLEN_UI_LEN(h)
+end
 
-    return mx >= tx and my >= ty and mx <= tx + tw and my <= ty + th
+local function hover(mx, my, x, y, w, h)
+    -- Hitboxes use the same scaled screen rectangle as the renderer.
+    local hx = FALLEN_UI_X(x)
+    local hy = FALLEN_UI_Y(y)
+    local hw = FALLEN_UI_LEN(w)
+    local hh = FALLEN_UI_LEN(h)
+
+    return mx >= hx
+        and my >= hy
+        and mx <= hx + hw
+        and my <= hy + hh
 end
 
 -- =========================================================
@@ -3027,6 +3051,7 @@ local function checker_strip(x, y, w, h)
 end
 
 local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
+
     if not A.fov_picker_open then
         A.fov_picker_drag = nil
         return
@@ -3051,7 +3076,7 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     text(
         px + 14,
         py + 10,
-        "aqua loh",
+        "Color",
         C.text_dim
     )
 
@@ -3137,7 +3162,7 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     then
         S.aim_fov_s =
             clamp(
-                (mx - sv_x) / sv_w,
+                (mx - FALLEN_UI_X(sv_x)) / FALLEN_UI_LEN(sv_w),
                 0,
                 1
             )
@@ -3145,7 +3170,7 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
         S.aim_fov_v =
             1
             - clamp(
-                (my - sv_y) / sv_h,
+                (my - FALLEN_UI_Y(sv_y)) / FALLEN_UI_LEN(sv_h),
                 0,
                 1
             )
@@ -3243,7 +3268,7 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
     then
         S.aim_fov_h =
             clamp(
-                (mx - sv_x) / sv_w,
+                (mx - FALLEN_UI_X(sv_x)) / FALLEN_UI_LEN(sv_w),
                 0,
                 1
             )
@@ -3340,7 +3365,7 @@ local function draw_fov_color_picker(mx, my, clicked, lmb, anchor_x, anchor_y)
         S.aim_fov_alpha =
             math.floor(
                 clamp(
-                    (mx - sv_x) / sv_w,
+                    (mx - FALLEN_UI_X(sv_x)) / FALLEN_UI_LEN(sv_w),
                     0,
                     1
                 )
@@ -4408,51 +4433,13 @@ local function world_item_color(item)
 end
 
 local function world_square_swatch(x, y, size, c)
-    local radius =
-        math.floor(
-            math.max(
-                3,
-                size * 0.28
-            )
-        )
-
     rounded_fill(
         x,
         y,
         size,
         size,
-        radius,
-        { 0.22, 0.23, 0.27, 1 }
-    )
-
-    rounded_fill(
-        x,
-        y,
-        size,
-        size,
-        radius,
-        {
-            c[1],
-            c[2],
-            c[3],
-            c[4] or 1,
-        }
-    )
-
-    rounded_outline(
-        x,
-        y,
-        size,
-        size,
-        radius,
-        C.border,
-        1,
-        {
-            c[1],
-            c[2],
-            c[3],
-            math.max(c[4] or 1, 0.01),
-        }
+        4,
+        c
     )
 end
 
@@ -4473,13 +4460,6 @@ local function resource_toggle_row(
         world_item_color(
             item
         )
-
-    circle_fill(
-        x + 16,
-        y + 20,
-        4,
-        c
-    )
 
     text(
         x + 29,
@@ -4523,18 +4503,6 @@ local function resource_toggle_row(
             swatch_s
         )
 
-    if swatch_hot then
-        rounded_outline(
-            swatch_x - 2,
-            swatch_y - 2,
-            swatch_s + 4,
-            swatch_s + 4,
-            6,
-            alpha(C.accent, 0.72),
-            1,
-            { 0.08, 0.08, 0.10, 1 }
-        )
-    end
 
     local bg =
         mix_color(
@@ -4668,12 +4636,8 @@ local function world_settings_step_anim()
         )
 end
 
-local function draw_world_color_picker(
-    mx,
-    my,
-    clicked,
-    lmb
-)
+local function draw_world_color_picker(mx, my, clicked, lmb)
+
     if not A.world_color_picker_open
         or not A.world_color_picker_key
     then
@@ -4722,7 +4686,7 @@ local function draw_world_color_picker(
     text(
         px + 14,
         py + 10,
-        "aqua loh",
+        "Color",
         C.text_dim
     )
 
@@ -4809,7 +4773,7 @@ local function draw_world_color_picker(
     then
         S[prefix .. "_s"] =
             clamp(
-                (mx - sv_x) / sv_w,
+                (mx - FALLEN_UI_X(sv_x)) / FALLEN_UI_LEN(sv_w),
                 0,
                 1
             )
@@ -4817,7 +4781,7 @@ local function draw_world_color_picker(
         S[prefix .. "_v"] =
             1
             - clamp(
-                (my - sv_y) / sv_h,
+                (my - FALLEN_UI_Y(sv_y)) / FALLEN_UI_LEN(sv_h),
                 0,
                 1
             )
@@ -4914,7 +4878,7 @@ local function draw_world_color_picker(
     then
         S[prefix .. "_h"] =
             clamp(
-                (mx - sv_x) / sv_w,
+                (mx - FALLEN_UI_X(sv_x)) / FALLEN_UI_LEN(sv_w),
                 0,
                 1
             )
@@ -5013,7 +4977,7 @@ local function draw_world_color_picker(
         S[prefix .. "_alpha"] =
             math.floor(
                 clamp(
-                    (mx - sv_x) / sv_w,
+                    (mx - FALLEN_UI_X(sv_x)) / FALLEN_UI_LEN(sv_w),
                     0,
                     1
                 )
@@ -12658,3 +12622,8 @@ print("[Fallen loader] ready | v44 syntax fix")
 hooks.on_render(function()
     pcall(draw_fallen_toasts)
 end)
+
+
+-- Hover text animation patch:
+-- Use fallen_text_color("unique_id", is_hovered)
+-- for tabs, buttons, dropdown labels and selectors.
