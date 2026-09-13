@@ -4285,9 +4285,8 @@ local WORLD_UI_ITEMS = {
         color = { 0.55, 0.55, 0.55, 1 },
         -- Local Stone icon. This uses the same loading scheme that worked
         -- for the loader artwork: Drawing.LoadImageFromFile(native path).
-        direct_urls = {
-            "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest/scale-to-width-down/50?cb=20150405123145",
-        },
+        local_icon_path = "C:\\Users\\vmerk\\Downloads\\Stone.png",
+        direct_urls = {},
     },
     {
         id = "metal_node",
@@ -7537,31 +7536,21 @@ local function world_url_encode(s)
 end
 
 local function world_icon_ready(handle)
-    if not handle then
-        return false
-    end
-
-    local checker = nil
-
-    if Drawing
-        and type(Drawing.IsImageReady) == "function"
+    if not handle
+        or type(IsImageReady) ~= "function"
     then
-        checker = Drawing.IsImageReady
-    elseif type(IsImageReady) == "function" then
-        checker = IsImageReady
-    end
-
-    if not checker then
-        return true
+        return false
     end
 
     local ok, ready =
         pcall(
-            checker,
+            IsImageReady,
             handle
         )
 
-    return ok and ready == true
+    return
+        ok
+        and ready == true
 end
 
 local function world_load_direct_icon(cfg)
@@ -7569,186 +7558,45 @@ local function world_load_direct_icon(cfg)
         return nil
     end
 
-    local rec =
-        WORLD_ESP.icons[
-            cfg.id
-        ]
+    local urls = cfg.direct_urls or {}
+    if #urls == 0 then
+        return nil
+    end
 
-    if not rec then
-        rec = {
+    local name = cfg.id
+
+    local st = WORLD_ESP.icons[name]
+
+    if not st then
+        st = {
             index = 1,
-            handle = nil,
-            dead = false,
-            retry = 0,
-            source = nil,
-            reported_ready = false,
-            reported_failed = false,
+            handle = Drawing.LoadImage(urls[1]),
+            dead = false
         }
-
-        WORLD_ESP.icons[cfg.id] =
-            rec
+        WORLD_ESP.icons[name] = st
     end
 
-    if rec.dead then
+    if st.dead then
         return nil
     end
 
-    local now = tick()
+    if st.handle and Drawing.IsImageReady(st.handle) then
+        return st.handle
+    end
 
-    if rec.retry
-        and now < rec.retry
-        and not rec.handle
-    then
+    if st.handle and Drawing.IsImageFailed(st.handle) then
+        st.index = st.index + 1
+
+        if urls[st.index] then
+            st.handle = Drawing.LoadImage(urls[st.index])
+            return st.handle
+        end
+
+        st.dead = true
         return nil
     end
 
-    if not rec.handle then
-        -- Preferred path for locally supplied icons.
-        -- This is identical to the method that worked for noFilter (1).png.
-        if cfg.local_icon_path
-            and type(Drawing.LoadImageFromFile) == "function"
-        then
-            local ok, handle =
-                pcall(
-                    Drawing.LoadImageFromFile,
-                    cfg.local_icon_path
-                )
-
-            if ok and handle then
-                rec.handle = handle
-                rec.source = "local"
-                rec.reported_ready = false
-                rec.reported_failed = false
-                return nil
-            end
-
-            rec.retry = now + 1.0
-            return nil
-        end
-
-        -- Other resources still use their direct URL list for now.
-        local urls =
-            cfg.direct_urls
-            or {}
-
-        local url =
-            urls[
-                rec.index or 1
-            ]
-
-        if not url then
-            rec.dead = true
-            return nil
-        end
-
-        -- Use the same image loading logic as the old API:
-        -- Drawing.LoadImage(url) first, then fallback to LoadImage(url)
-        local loader = nil
-
-        if Drawing
-            and type(Drawing.LoadImage) == "function"
-        then
-            loader = Drawing.LoadImage
-        elseif type(LoadImage) == "function" then
-            loader = LoadImage
-        end
-
-        if not loader then
-            rec.dead = true
-            return nil
-        end
-
-        local ok, handle =
-            pcall(
-                loader,
-                url
-            )
-
-        if ok and handle then
-            rec.handle = handle
-            rec.source = "url"
-            rec.retry = 0
-            rec.reported_ready = false
-            rec.reported_failed = false
-        else
-            rec.index =
-                (rec.index or 1)
-                + 1
-
-            rec.retry =
-                now + 1.0
-        end
-
-        return nil
-    end
-
-    if world_icon_ready(
-        rec.handle
-    ) then
-        if rec.reported_ready ~= true then
-            rec.reported_ready = true
-
-            print(
-                SYS
-                .. "icon READY: "
-                .. tostring(cfg.id)
-                .. " ["
-                .. tostring(rec.source or "?")
-                .. "]"
-            )
-        end
-
-        return rec.handle
-    end
-
-    if type(IsImageFailed) == "function" then
-        local ok, failed =
-            pcall(
-                IsImageFailed,
-                rec.handle
-            )
-
-        if ok and failed then
-            if rec.reported_failed ~= true then
-                rec.reported_failed = true
-
-                warn(
-                    SYS
-                    .. "icon FAILED: "
-                    .. tostring(cfg.id)
-                    .. " ["
-                    .. tostring(rec.source or "?")
-                    .. "]"
-                )
-            end
-
-            rec.handle = nil
-
-            if cfg.local_icon_path then
-                -- Keep retrying the exact local file path rather than
-                -- silently switching Stone back to a web URL.
-                rec.retry =
-                    now + 2.0
-            else
-                rec.index =
-                    (rec.index or 1)
-                    + 1
-
-                local urls =
-                    cfg.direct_urls
-                    or {}
-
-                if not urls[rec.index] then
-                    rec.dead = true
-                else
-                    rec.retry =
-                        now + 0.35
-                end
-            end
-        end
-    end
-
-    return nil
+    return st.handle
 end
 
 local function world_resolve_icon(cfg)
@@ -10288,27 +10136,25 @@ print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA
 -- Fallen Survival loader
 -- Adapted for the user's custom Lua API.
 
--- Product artwork.
--- CONFIRMED WORKING METHOD:
---   Drawing.LoadImageFromFile("C:\Users\vmerk\Downloads\noFilter (1).png")
--- This is the exact method that worked in the standalone test (#3).
-local PRODUCT_IMAGE_URL =
+-- Product artwork (URL loader image)
+-- Same image object is reused by both loader pages.
+
+_G.FALLEN_LOADER_PRODUCT_IMAGE_URL =
     "https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&"
 
-local product_image = nil
+_G.FALLEN_LOADER_PRODUCT_IMAGE =
+    _G.FALLEN_LOADER_PRODUCT_IMAGE or nil
 
-if Drawing and type(Drawing.LoadImage) == "function" then
+if not _G.FALLEN_LOADER_PRODUCT_IMAGE
+    and type(LoadImage) == "function" then
+
     pcall(function()
-        product_image =
-            Drawing.LoadImage(PRODUCT_IMAGE_URL)
-    end)
-elseif type(LoadImage) == "function" then
-    pcall(function()
-        product_image =
-            LoadImage(PRODUCT_IMAGE_URL)
+        _G.FALLEN_LOADER_PRODUCT_IMAGE =
+            LoadImage(_G.FALLEN_LOADER_PRODUCT_IMAGE_URL)
     end)
 end
 
+local product_image = _G.FALLEN_LOADER_PRODUCT_IMAGE
 local logo_image = product_image
 
 local last_time = tick()
