@@ -11,6 +11,34 @@ if _G.FallenLua_Menu.visible == nil then
     _G.FallenLua_Menu.visible = false
 end
 
+K1_LOOT_DIRECT_ICON_STATE = {}
+function k1_resolve_loot_direct_icon(id)
+if not id or not K1_LOOT_DIRECT_ICONS then return nil end
+local urls = K1_LOOT_DIRECT_ICONS[id]
+if not urls then return nil end
+local st = K1_LOOT_DIRECT_ICON_STATE[id]
+if not st then
+st = { index = 1, handle = nil, dead = false }
+K1_LOOT_DIRECT_ICON_STATE[id] = st
+end
+if st.dead then return nil end
+if not st.handle and urls[st.index] then
+st.handle = Drawing.LoadImage(urls[st.index])
+end
+if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
+if st.handle and Drawing.IsImageFailed and Drawing.IsImageFailed(st.handle) then
+st.index = st.index + 1
+st.handle = nil
+if urls[st.index] then
+st.handle = Drawing.LoadImage(urls[st.index])
+else
+st.dead = true
+end
+end
+if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
+return nil
+end
+
 -- =========================================================
 -- Fallen-lua Menu v4.5
 -- Custom Lua API / Drawing.* implementation
@@ -7550,181 +7578,6 @@ local function world_icon_ready(handle)
     return
         ok
         and ready == true
-end
-
-local function world_load_direct_icon(cfg)
-    if not cfg then
-        return nil
-    end
-
-    local rec =
-        WORLD_ESP.icons[
-            cfg.id
-        ]
-
-    if not rec then
-        rec = {
-            index = 1,
-            handle = nil,
-            dead = false,
-            retry = 0,
-            source = nil,
-            reported_ready = false,
-            reported_failed = false,
-        }
-
-        WORLD_ESP.icons[cfg.id] =
-            rec
-    end
-
-    if rec.dead then
-        return nil
-    end
-
-    local now = tick()
-
-    if rec.retry
-        and now < rec.retry
-        and not rec.handle
-    then
-        return nil
-    end
-
-    if not rec.handle then
-        -- Preferred path for locally supplied icons.
-        -- This is identical to the method that worked for noFilter (1).png.
-        if cfg.local_icon_path
-            and type(Drawing.LoadImageFromFile) == "function"
-        then
-            local ok, handle =
-                pcall(
-                    Drawing.LoadImageFromFile,
-                    cfg.local_icon_path
-                )
-
-            if ok and handle then
-                rec.handle = handle
-                rec.source = "local"
-                rec.reported_ready = false
-                rec.reported_failed = false
-                return nil
-            end
-
-            rec.retry = now + 1.0
-            return nil
-        end
-
-        -- Other resources still use their direct URL list for now.
-        local urls =
-            cfg.direct_urls
-            or {}
-
-        local url =
-            urls[
-                rec.index or 1
-            ]
-
-        if not url then
-            rec.dead = true
-            return nil
-        end
-
-        if type(LoadImage) ~= "function" then
-            rec.dead = true
-            return nil
-        end
-
-        local ok, handle =
-            pcall(
-                LoadImage,
-                url
-            )
-
-        if ok and handle then
-            rec.handle = handle
-            rec.source = "url"
-            rec.retry = 0
-            rec.reported_ready = false
-            rec.reported_failed = false
-        else
-            rec.index =
-                (rec.index or 1)
-                + 1
-
-            rec.retry =
-                now + 1.0
-        end
-
-        return nil
-    end
-
-    if world_icon_ready(
-        rec.handle
-    ) then
-        if rec.reported_ready ~= true then
-            rec.reported_ready = true
-
-            print(
-                SYS
-                .. "icon READY: "
-                .. tostring(cfg.id)
-                .. " ["
-                .. tostring(rec.source or "?")
-                .. "]"
-            )
-        end
-
-        return rec.handle
-    end
-
-    if type(IsImageFailed) == "function" then
-        local ok, failed =
-            pcall(
-                IsImageFailed,
-                rec.handle
-            )
-
-        if ok and failed then
-            if rec.reported_failed ~= true then
-                rec.reported_failed = true
-
-                warn(
-                    SYS
-                    .. "icon FAILED: "
-                    .. tostring(cfg.id)
-                    .. " ["
-                    .. tostring(rec.source or "?")
-                    .. "]"
-                )
-            end
-
-            rec.handle = nil
-
-            if cfg.local_icon_path then
-                -- Keep retrying the exact local file path rather than
-                -- silently switching Stone back to a web URL.
-                rec.retry =
-                    now + 2.0
-            else
-                rec.index =
-                    (rec.index or 1)
-                    + 1
-
-                local urls =
-                    cfg.direct_urls
-                    or {}
-
-                if not urls[rec.index] then
-                    rec.dead = true
-                else
-                    rec.retry =
-                        now + 0.35
-                end
-            end
-        end
-    end
-
-    return nil
 end
 
 local function world_resolve_icon(cfg)
