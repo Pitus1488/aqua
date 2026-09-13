@@ -244,9 +244,12 @@ for k, v in pairs(defaults) do
     if S[k] == nil then S[k] = v end
 end
 
--- Current menu exposes Aimbot + Visuals.
+-- Current menu exposes Aimbot + Visuals + Misc.
 -- Clamp stale state from older builds to an available tab.
-if tonumber(S.tab) ~= 1 and tonumber(S.tab) ~= 2 then
+if tonumber(S.tab) ~= 1
+    and tonumber(S.tab) ~= 2
+    and tonumber(S.tab) ~= 3
+then
     S.tab = 1
 end
 
@@ -1417,17 +1420,24 @@ local CONFIG = {
 
 local CONFIG_KEYS = {}
 
+-- These are UI/navigation/runtime-state fields, not actual user settings.
+-- Everything else in defaults that is bool/number/string is config-safe.
+local CONFIG_EXCLUDE = {
+    visible = true,
+    tab = true,
+    visuals_subtab = true,
+    anim = true,
+}
+
 for key, value in pairs(defaults) do
-    if (
-        key == "sticky_aim"
-        or string.find(key, "^aim_")
-        or string.find(key, "^world_")
-        or string.find(key, "^menu_")
-    )
+    local kind =
+        type(value)
+
+    if not CONFIG_EXCLUDE[key]
         and (
-            type(value) == "boolean"
-            or type(value) == "number"
-            or type(value) == "string"
+            kind == "boolean"
+            or kind == "number"
+            or kind == "string"
         )
     then
         CONFIG_KEYS[#CONFIG_KEYS + 1] = key
@@ -1705,7 +1715,7 @@ end
 
 local function cfg_serialize()
     local lines = {
-        "FALLEN_LUA_CONFIG|1",
+        "FALLEN_LUA_CONFIG|2",
     }
 
     for _, key in ipairs(
@@ -1811,25 +1821,28 @@ local function cfg_apply_value(
     kind,
     raw
 )
-    if defaults[key] == nil then
+    local default_value =
+        defaults[key]
+
+    if default_value == nil
+        or CONFIG_EXCLUDE[key]
+    then
         return
     end
 
-    if not (
-        key == "sticky_aim"
-        or string.find(key, "^aim_")
-        or string.find(key, "^world_")
-        or string.find(key, "^menu_")
-    ) then
-        return
-    end
+    local expected =
+        type(default_value)
 
-    if kind == "B" then
+    if kind == "B"
+        and expected == "boolean"
+    then
         S[key] =
             raw == "1"
             or raw == "true"
 
-    elseif kind == "N" then
+    elseif kind == "N"
+        and expected == "number"
+    then
         local number =
             tonumber(raw)
 
@@ -1837,7 +1850,9 @@ local function cfg_apply_value(
             S[key] = number
         end
 
-    elseif kind == "S" then
+    elseif kind == "S"
+        and expected == "string"
+    then
         S[key] =
             cfg_unescape(
                 raw
@@ -1889,6 +1904,15 @@ local function cfg_load(name)
             "warning"
         )
         return false
+    end
+
+    -- Start from defaults for every config-managed field. This keeps older
+    -- configs predictable when new settings are introduced in later builds.
+    for _, config_key in ipairs(
+        CONFIG_KEYS
+    ) do
+        S[config_key] =
+            defaults[config_key]
     end
 
     for line_txt in string.gmatch(
@@ -2272,9 +2296,29 @@ function FALLEN_ICON_ARMOR(x, y, c)
     line(x + 4,  y + 14, x + 12, y + 14, c, 1.8)
 end
 
+function FALLEN_ICON_MISC(x, y, c)
+    -- Small utility/grid icon for Misc.
+    rounded_outline(
+        x + 2,
+        y + 2,
+        12,
+        12,
+        3,
+        c,
+        1.05,
+        nil
+    )
+
+    circle_fill(x + 6,  y + 6,  1.15, c)
+    circle_fill(x + 11, y + 6,  1.15, c)
+    circle_fill(x + 6,  y + 11, 1.15, c)
+    circle_fill(x + 11, y + 11, 1.15, c)
+end
+
 local ICONS = {
     icon_aim,
     icon_world,
+    FALLEN_ICON_MISC,
 }
 
 -- =========================================================
@@ -2284,6 +2328,7 @@ local ICONS = {
 local TABS = {
     { group = "AIMBOT", label = "Aimbot" },
     { group = "VISUALS", label = "Visuals" },
+    { group = "COMMON", label = "Misc" },
 }
 
 local function sidebar_tab(mx, my, clicked, x, y, index)
@@ -17604,10 +17649,18 @@ hooks.on_render(function()
     text(wx + 26, wy + 27, "Fallen-lua", C.text)
 
     -- Sidebar
-    local sidebar_target_y =
-        S.tab == 2
-        and (wy + 179)
-        or (wy + 105)
+    local sidebar_target_y
+
+    if S.tab == 3 then
+        sidebar_target_y =
+            wy + 327
+    elseif S.tab == 2 then
+        sidebar_target_y =
+            wy + 179
+    else
+        sidebar_target_y =
+            wy + 105
+    end
 
     if A.sidebar_indicator_y == nil then
         A.sidebar_indicator_y =
@@ -18000,6 +18053,25 @@ hooks.on_render(function()
             old_sidebar_alpha
     end
 
+    -- Common section.
+    text(
+        wx + 22,
+        wy + 307,
+        "COMMON",
+        C.text_faint
+    )
+
+    sidebar_tab(
+        mx,
+        my,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
+        wx + 10,
+        wy + 327,
+        3
+    )
+
     -- Sidebar footer: live Roblox avatar + username.
     update_profile()
 
@@ -18307,6 +18379,14 @@ hooks.on_render(function()
                 "Visuals"
             )
         end
+
+    elseif S.tab == 3 then
+        -- Standalone Common / Misc page.
+        section_title(
+            page_x,
+            page_y,
+            "Misc"
+        )
     end
 
     -- Config dropdown is rendered last so it always sits above page controls.
