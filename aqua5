@@ -2070,18 +2070,14 @@ end
 -- =========================================================
 
 local function icon_aim(x, y, c)
-    -- Larger, centered aim icon to match sidebar spacing.
-    -- Kept inside the same 16px icon box, just with better visual balance.
-    local cx = x + 6
-    local cy = y + 7
-
-    circle(cx, cy, 5.0, c, 1.35)
-    circle_fill(cx, cy, 1.25, c)
-
-    line(cx, y + 0.8, cx, y + 2.8, c, 1.35)
-    line(cx, y + 13.2, cx, y + 15.2, c, 1.35)
-    line(x + 0.8, cy, x + 2.8, cy, c, 1.35)
-    line(x + 13.2, cy, x + 15.2, cy, c, 1.35)
+    -- Text based Aimbot icon for cleaner sidebar alignment.
+    -- Uses the same accent color as the old icon.
+    text(
+        x + 1,
+        y - 1,
+        "⦻",
+        c
+    )
 end
 
 local function icon_world(x, y, c)
