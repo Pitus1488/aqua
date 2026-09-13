@@ -102,6 +102,7 @@ local defaults = {
 
     -- FOV glow ring.
     aim_fov_glow_enabled = false,
+    aim_fov_filled = false,
     aim_fov_glow_strength = 60,
     aim_fov_glow_spread = 6,
     aim_fov_glow_h = 0.66,
@@ -4350,7 +4351,7 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     end
 
     local pw = 300
-    local ph = 206
+    local ph = 247
 
     local base_px =
         dots_x
@@ -4407,7 +4408,7 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     text(
         px + 13,
         py + 12,
-        "FOV glow settings",
+        "FOV settings",
         C.text
     )
 
@@ -4562,6 +4563,29 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
                     A.world_color_picker_anchor_h = FALLEN_UI_LEN(swatch_s)
                 end
             end
+        end
+
+        if shell_h > 221 then
+            line(
+                px + 12,
+                py + 195,
+                px + pw - 12,
+                py + 195,
+                C.divider,
+                1
+            )
+
+            toggle_row(
+                mx,
+                my,
+                ui_clicked,
+                px + 8,
+                py + 196,
+                pw - 16,
+                "Filled FOV",
+                "aim_fov_filled",
+                false
+            )
         end
     end
 
@@ -7668,9 +7692,11 @@ local function fap_draw_fov()
             )
         )
 
-    -- Filled FOV: same color as the outline, with a constant
-    -- 50% transparency inside the whole circle.
-    if type(DrawCircleFilled) == "function" then
+    -- Optional Filled FOV: same color as the outline,
+    -- fixed at 50% opacity.
+    if S.aim_fov_filled == true
+        and type(DrawCircleFilled) == "function"
+    then
         DrawCircleFilled(
             c.X,
             c.Y,
