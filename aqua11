@@ -358,6 +358,8 @@ local A = {
 
     -- Armor ESP runtime/UI state.
     armor_mode_dropdown_open = false,
+    armor_mode_dropdown_anim = 0,
+    armor_mode_dropdown_last_t = nil,
     armor_target_alpha = 0,
     armor_target_addr = nil,
     armor_item_cache = {},
@@ -8247,7 +8249,7 @@ function FALLEN_ARMOR_NORMALIZE_ID(name)
     local id =
         string.match(
             tostring(name),
-            "Armor[_%%s]%%d+"
+            "Armor[_%s]%d+"
         )
 
     if not id then
@@ -8299,6 +8301,18 @@ function FALLEN_ARMOR_SCAN(root, out_items, seen, depth)
             id
             and FALLEN_ARMOR_MAP[id]
             or nil
+
+        -- Some builds expose the visible armor name instead of Armor_###.
+        if not display
+            and name
+        then
+            for _, mapped_name in pairs(FALLEN_ARMOR_MAP) do
+                if tostring(name) == tostring(mapped_name) then
+                    display = mapped_name
+                    break
+                end
+            end
+        end
 
         if display
             and not seen[display]
@@ -8573,7 +8587,7 @@ function FALLEN_ARMOR_SHORT(name)
     local a, b =
         string.match(
             s,
-            "^(%%S+)%%s+(%%S+)"
+            "^(%S+)%s+(%S+)"
         )
 
     if a and b then
@@ -9077,6 +9091,211 @@ function FALLEN_ARMOR_ESP_TICK()
     end
 end
 
+function FALLEN_ARMOR_MODE_DROPDOWN_STEP()
+    local now = tick()
+
+    if A.armor_mode_dropdown_last_t == nil then
+        A.armor_mode_dropdown_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.armor_mode_dropdown_last_t,
+            0,
+            0.05
+        )
+
+    A.armor_mode_dropdown_last_t = now
+
+    local target =
+        A.armor_mode_dropdown_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.armor_mode_dropdown_anim or 0)
+        and 14
+        or 10
+
+    A.armor_mode_dropdown_anim =
+        exp_chase(
+            A.armor_mode_dropdown_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if target == 0
+        and (A.armor_mode_dropdown_anim or 0) < 0.015
+    then
+        A.armor_mode_dropdown_anim = 0
+    elseif target == 1
+        and (A.armor_mode_dropdown_anim or 0) > 0.992
+    then
+        A.armor_mode_dropdown_anim = 1
+    end
+
+    return
+        clamp(
+            A.armor_mode_dropdown_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_ARMOR_MODE_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    local raw =
+        FALLEN_ARMOR_MODE_DROPDOWN_STEP()
+
+    if raw <= 0.002
+        and not A.armor_mode_dropdown_open
+    then
+        return false
+    end
+
+    local options = {
+        "Normal",
+        "On Player",
+    }
+
+    local item_h = 27
+    local full_h =
+        #options * item_h
+
+    local visible_h =
+        full_h
+        * ease_out_cubic(raw)
+
+    local panel_h =
+        math.max(
+            2,
+            visible_h
+        )
+
+    FALLEN_POPUP_GLOW(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        0.95
+    )
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        { 0.050, 0.053, 0.062, 0.985 }
+    )
+
+    rounded_outline(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        alpha(C.border, 0.95),
+        1
+    )
+
+    local panel_hot =
+        hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            panel_h
+        )
+
+    for i, value in ipairs(options) do
+        local iy =
+            y
+            + (i - 1) * item_h
+
+        local reveal =
+            clamp(
+                (
+                    visible_h
+                    - (i - 1) * item_h
+                )
+                / item_h,
+                0,
+                1
+            )
+
+        if reveal > 0.12 then
+            local item_hot =
+                reveal > 0.92
+                and hover(
+                    mx,
+                    my,
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4
+                )
+
+            if item_hot then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4,
+                    5,
+                    { 0.105, 0.111, 0.132, 1 }
+                )
+            end
+
+            local selected =
+                tostring(S.armor_esp_mode or "Normal")
+                == value
+
+            if selected then
+                rounded_fill(
+                    x + 4,
+                    iy + 3,
+                    3,
+                    item_h - 6,
+                    1,
+                    C.accent
+                )
+            end
+
+            text(
+                x + 12,
+                iy + 8,
+                value,
+                FALLEN_HOVER_TEXT(
+                    "armor_mode_option:" .. tostring(value),
+                    item_hot,
+                    selected and C.text or C.text_dim
+                )
+            )
+
+            if clicked
+                and item_hot
+                and A.armor_mode_dropdown_open
+            then
+                S.armor_esp_mode = value
+                A.armor_mode_dropdown_open = false
+                return true
+            end
+        end
+    end
+
+    return panel_hot
+end
+
 function FALLEN_DRAW_ARMOR_PAGE(
     mx,
     my,
@@ -9121,20 +9340,79 @@ function FALLEN_DRAW_ARMOR_PAGE(
         1
     )
 
-    dropdown_row(
-        mx,
-        my,
-        clicked,
-        x,
-        y + 73,
-        w,
+    local mode_row_y =
+        y + 73
+
+    local mode_box_w = 130
+    local mode_box_x =
+        x + w - mode_box_w - 12
+
+    local mode_box_y =
+        mode_row_y + 8
+
+    local mode_box_hot =
+        hover(
+            mx,
+            my,
+            mode_box_x,
+            mode_box_y,
+            mode_box_w,
+            25
+        )
+
+    text(
+        x + 13,
+        mode_row_y + 14,
         "Mode",
-        "armor_esp_mode",
-        {
-            "Normal",
-            "On Player",
-        }
+        FALLEN_HOVER_TEXT(
+            "armor_mode_label",
+            row_hover(mx, my, x, mode_row_y, w, 41),
+            C.text
+        )
     )
+
+    rounded_fill(
+        mode_box_x,
+        mode_box_y,
+        mode_box_w,
+        25,
+        6,
+        mode_box_hot
+            and { 0.105, 0.111, 0.132, 1 }
+            or C.toggle_off
+    )
+
+    text(
+        mode_box_x + 10,
+        mode_box_y + 7,
+        tostring(S.armor_esp_mode or "Normal"),
+        FALLEN_HOVER_TEXT(
+            "armor_mode_value",
+            mode_box_hot,
+            C.text
+        )
+    )
+
+    text(
+        mode_box_x + mode_box_w - 17,
+        mode_box_y + 7,
+        A.armor_mode_dropdown_open and "^" or "v",
+        C.text_dim
+    )
+
+    if clicked
+        and mode_box_hot
+    then
+        A.armor_mode_dropdown_open =
+            not A.armor_mode_dropdown_open
+
+        numeric_stop(true)
+        A.active_slider = nil
+    end
+
+    local controls_clicked =
+        clicked
+        and not A.armor_mode_dropdown_open
 
     line(
         x + 12,
@@ -9148,7 +9426,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
     slider_row(
         mx,
         my,
-        clicked,
+        controls_clicked,
         lmb,
         x,
         y + 114,
@@ -9172,7 +9450,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
     slider_row(
         mx,
         my,
-        clicked,
+        controls_clicked,
         lmb,
         x,
         y + 155,
@@ -9196,7 +9474,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
     slider_row(
         mx,
         my,
-        clicked,
+        controls_clicked,
         lmb,
         x,
         y + 196,
@@ -9207,6 +9485,24 @@ function FALLEN_DRAW_ARMOR_PAGE(
         50,
         "int"
     )
+
+    local dropdown_hot =
+        FALLEN_DRAW_ARMOR_MODE_DROPDOWN(
+            mx,
+            my,
+            clicked,
+            mode_box_x,
+            mode_box_y + 29,
+            mode_box_w
+        )
+
+    if clicked
+        and A.armor_mode_dropdown_open
+        and not mode_box_hot
+        and not dropdown_hot
+    then
+        A.armor_mode_dropdown_open = false
+    end
 end
 
 hooks.on_render(function()
@@ -9225,6 +9521,12 @@ hooks.on_render(function()
 
             if type(warn) == "function" then
                 warn(
+                    SYS
+                    .. "Armor ESP: "
+                    .. tostring(err)
+                )
+            elseif type(print) == "function" then
+                print(
                     SYS
                     .. "Armor ESP: "
                     .. tostring(err)
