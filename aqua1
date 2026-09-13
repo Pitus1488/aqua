@@ -11,6 +11,41 @@ if _G.FallenLua_Menu.visible == nil then
     _G.FallenLua_Menu.visible = false
 end
 
+
+-- World icon url map (generated from WORLD_UI_ITEMS direct_urls)
+K1_LOOT_DIRECT_ICONS = {
+    ["stone_node"] = {
+        "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest/scale-to-width-down/50?cb=20150405123145",
+    },
+    ["metal_node"] = {
+        "https://static.wikia.nocookie.net/play-rust/images/0/0a/Metal_Ore_icon.png/revision/latest/scale-to-width-down/50?cb=20151106060814",
+    },
+    ["phosphate_node"] = {
+        "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest/scale-to-width-down/50?cb=20151106061904",
+    },
+    ["wool_plant"] = {
+        "https://static.wikia.nocookie.net/play-rust/images/f/f7/Cloth_icon.png/revision/latest/scale-to-width-down/50?cb=20151106071629",
+    },
+    ["corn_plant"] = {
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f8/Corn.png/revision/latest?cb=20250108134637",
+    },
+    ["tomato_plant"] = {
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9d/Tomato.png/revision/latest/scale-to-width-down/55?cb=20250108164012",
+    },
+    ["pumpkin_plant"] = {
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/6/64/Pumpkin.png/revision/latest/scale-to-width-down/55?cb=20250108163605",
+    },
+    ["lemon_plant"] = {
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/3/35/Lemon.png/revision/latest/scale-to-width-down/55?cb=20250108163730",
+    },
+    ["raspberry_plant"] = {
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/55?cb=20250108163842",
+    },
+    ["blueberry_plant"] = {
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/a/af/Blueberries.png/revision/latest/scale-to-width-down/55?cb=20250108163924",
+    },
+}
+
 K1_LOOT_DIRECT_ICON_STATE = {}
 function k1_resolve_loot_direct_icon(id)
 if not id or not K1_LOOT_DIRECT_ICONS then return nil end
@@ -7605,6 +7640,24 @@ local function world_resolve_icon(cfg)
         local handle = k1_resolve_loot_direct_icon(cfg.id)
         if handle then
             return handle
+        end
+    end
+
+    -- Fallback: load the resource's own URL list.
+    if cfg.direct_urls and type(LoadImage) == "function" then
+        local key = "__world_direct_" .. tostring(cfg.id)
+        _G.FallenWorldIconCache = _G.FallenWorldIconCache or {}
+        local cached = _G.FallenWorldIconCache[key]
+        if cached and world_icon_ready(cached) then
+            return cached
+        end
+
+        for _, url in ipairs(cfg.direct_urls) do
+            local ok, img = pcall(LoadImage, url)
+            if ok and img then
+                _G.FallenWorldIconCache[key] = img
+                return img
+            end
         end
     end
 
