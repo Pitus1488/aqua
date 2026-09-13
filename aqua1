@@ -126,8 +126,9 @@ local defaults = {
 
     -- Visual hit effect: fires only when the locked Aimbot target loses HP.
     hit_effect_enabled = false,
-    hit_effect_style = "Fallen Combo",
-    hit_effect_size = 38,
+    -- Temporarily fixed to Fallen Spark while we test hit registration.
+    hit_effect_style = "Fallen Spark",
+    hit_effect_size = 12,
     hit_effect_h = 0.58,
     hit_effect_s = 0.55,
     hit_effect_v = 1.00,
@@ -6916,6 +6917,13 @@ local FAP = {
     current_target_name = nil,
     current_target_pos = nil,
     current_target_health = nil,
+
+    -- Snapshot of the exact Auto Prediction parameters used for this target.
+    current_prediction_time = 0,
+    current_prediction_gravity = 0,
+    current_prediction_speed = 0,
+    current_auto_prediction = false,
+
     current_target_seen = 0,
 
     last_weapon_scan = 0,
@@ -7811,6 +7819,10 @@ local function fap_clear_lock()
     FAP.current_target_name = nil
     FAP.current_target_pos = nil
     FAP.current_target_health = nil
+    FAP.current_prediction_time = 0
+    FAP.current_prediction_gravity = 0
+    FAP.current_prediction_speed = 0
+    FAP.current_auto_prediction = false
     FAP.current_target_seen = 0
 end
 
@@ -8206,6 +8218,21 @@ local function fap_tick()
             or target.Health
         )
 
+    FAP.current_prediction_time =
+        tonumber(predicted.time)
+        or 0
+
+    FAP.current_prediction_gravity =
+        tonumber(FAP.gravity)
+        or 0
+
+    FAP.current_prediction_speed =
+        tonumber(FAP.bullet_speed)
+        or 0
+
+    FAP.current_auto_prediction =
+        S.aim_auto_prediction == true
+
     FAP.current_target_seen = tick()
 
     local mat = nil
@@ -8596,6 +8623,21 @@ function FALLEN_BT_ACTIVE_TARGET()
         X = FAP.current_target_pos.X,
         Y = FAP.current_target_pos.Y,
         Z = FAP.current_target_pos.Z,
+
+        auto_prediction =
+            FAP.current_auto_prediction == true,
+
+        prediction_time =
+            tonumber(FAP.current_prediction_time)
+            or 0,
+
+        gravity =
+            tonumber(FAP.current_prediction_gravity)
+            or 0,
+
+        bullet_speed =
+            tonumber(FAP.current_prediction_speed)
+            or 0,
     }
 end
 
@@ -8612,6 +8654,21 @@ function FALLEN_BT_ADD(origin, target)
         tx = target.X,
         ty = target.Y,
         tz = target.Z,
+
+        auto_prediction =
+            target.auto_prediction == true,
+
+        prediction_time =
+            tonumber(target.prediction_time)
+            or 0,
+
+        gravity =
+            tonumber(target.gravity)
+            or 0,
+
+        bullet_speed =
+            tonumber(target.bullet_speed)
+            or 0,
 
         created = tick(),
         owner = FALLEN_BT_LOCAL_NAME(),
@@ -8708,80 +8765,247 @@ function FALLEN_BT_SHOT_TICK()
     )
 end
 
-function FALLEN_BT_DRAW_ONE(tr, age, life)
-    local target_screen =
-        FALLEN_BT_PROJECT({
-            X = tr.tx,
-            Y = tr.ty,
-            Z = tr.tz,
-        })
-
-    if not target_screen then
+function FALLEN_BT_DRAW_PATH(
+    tr,
+    points,
+    reveal,
+    alpha,
+    thick
+)
+    if type(points) ~= "table"
+        or #points < 2
+        or type(DrawLine) ~= "function"
+    then
         return
     end
 
-    local first_x = nil
-    local first_y = nil
-    local first_u = nil
+    local style =
+        FALLEN_BT_STYLE_INDEX()
 
-    local second_x = nil
-    local second_y = nil
-    local second_u = nil
+    local max_u =
+        clamp(
+            reveal,
+            0,
+            1
+        )
 
-    for k = 1, 12 do
-        local u = k / 12
+    local previous = nil
 
-        local p = {
+    for i = 1, #points do
+        local point =
+            points[i]
+
+        if point
+            and point.x
+            and point.y
+            and point.u
+            and point.u <= max_u + 0.0001
+        then
+            local px = point.x
+            local py = point.y
+
+            if style == 1 then
+                -- Lightning keeps the ballistic curve and only waves around it.
+                local prev_for_normal =
+                    previous
+                    or point
+
+                local dx =
+                    px - (prev_for_normal.x or px)
+
+                local dy =
+                    py - (prev_for_normal.y or py)
+
+                local len =
+                    math.sqrt(
+                        dx * dx
+                        + dy * dy
+                    )
+
+                if len > 0.01 then
+                    local nx = -dy / len
+                    local ny = dx / len
+
+                    local offset =
+                        math.sin(
+                            point.u * 54
+                            + (tr.seed or 1) * 0.017
+                            + tick() * 4
+                        ) * 2.25
+
+                    px = px + nx * offset
+                    py = py + ny * offset
+                end
+            end
+
+            local current = {
+                x = px,
+                y = py,
+                u = point.u,
+            }
+
+            if previous then
+                if style == 2 then
+                    -- Rainbow.
+                    local hue =
+                        (
+                            tick() * 0.20
+                            + point.u * 0.92
+                            + ((tr.seed or 1) % 97) / 97
+                        ) % 1
+
+                    local rr, gg, bb =
+                        hsv_to_rgb(
+                            hue,
+                            0.88,
+                            1
+                        )
+
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        rr, gg, bb, alpha * 0.12, thick + 14)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        rr, gg, bb, alpha * 0.32, thick + 7)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        rr, gg, bb, alpha * 0.96, thick + 1.5)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        1, 1, 1, alpha * 0.24, 1)
+
+                elseif style == 1 then
+                    local col = FALLEN_BT_COLOR()
+
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        col[1], col[2], col[3], alpha * 0.15, thick + 5)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        col[1], col[2], col[3], alpha * 0.36, thick + 2)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        col[1], col[2], col[3], alpha * 0.92, thick)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        1, 1, 1, alpha * 0.44, 1)
+
+                else
+                    -- Neon.
+                    local col = FALLEN_BT_COLOR()
+
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        col[1], col[2], col[3], alpha * 0.10, thick + 12)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        col[1], col[2], col[3], alpha * 0.20, thick + 8)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        col[1], col[2], col[3], alpha * 0.38, thick + 5)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        col[1], col[2], col[3], alpha * 0.78, thick + 2)
+                    DrawLine(previous.x, previous.y, current.x, current.y,
+                        1, 1, 1, alpha * 0.62, math.max(1, thick - 0.35))
+                end
+            end
+
+            previous = current
+        end
+    end
+end
+
+function FALLEN_BT_PREDICTION_PATH(tr)
+    local points = {}
+
+    local total_time =
+        clamp(
+            tonumber(tr.prediction_time) or 0,
+            0,
+            3
+        )
+
+    local gravity =
+        tonumber(tr.gravity)
+        or 0
+
+    if tr.auto_prediction ~= true
+        or total_time <= 0.0001
+    then
+        return points
+    end
+
+    -- fap_predict() adds +0.5*g*T^2 to the aim point.
+    -- Subtract it to recover the future impact position, then rebuild the
+    -- actual projectile parabola with the SAME T and gravity.
+    local drop =
+        0.5
+        * gravity
+        * total_time
+        * total_time
+
+    local impact_x = tr.tx
+    local impact_y = tr.ty - drop
+    local impact_z = tr.tz
+
+    local vx =
+        (impact_x - tr.ox)
+        / total_time
+
+    local vy =
+        (impact_y - tr.oy)
+        / total_time
+        + 0.5
+        * gravity
+        * total_time
+
+    local vz =
+        (impact_z - tr.oz)
+        / total_time
+
+    local steps = 34
+
+    for i = 0, steps do
+        local u = i / steps
+        local t = total_time * u
+
+        local world = {
+            X = tr.ox + vx * t,
+            Y = tr.oy + vy * t - 0.5 * gravity * t * t,
+            Z = tr.oz + vz * t,
+        }
+
+        local s = FALLEN_BT_PROJECT(world)
+
+        if s then
+            points[#points + 1] = {
+                x = s.X,
+                y = s.Y,
+                u = u,
+            }
+        end
+    end
+
+    return points
+end
+
+function FALLEN_BT_STRAIGHT_PATH(tr)
+    local points = {}
+    local steps = 18
+
+    for i = 1, steps do
+        local u = i / steps
+
+        local world = {
             X = tr.ox + (tr.tx - tr.ox) * u,
             Y = tr.oy + (tr.ty - tr.oy) * u,
             Z = tr.oz + (tr.tz - tr.oz) * u,
         }
 
-        local s = FALLEN_BT_PROJECT(p)
+        local s = FALLEN_BT_PROJECT(world)
 
         if s then
-            if not first_x then
-                first_x = s.X
-                first_y = s.Y
-                first_u = u
-
-            elseif not second_x then
-                second_x = s.X
-                second_y = s.Y
-                second_u = u
-                break
-            end
+            points[#points + 1] = {
+                x = s.X,
+                y = s.Y,
+                u = u,
+            }
         end
     end
 
-    if not first_x then
-        return
-    end
+    return points
+end
 
-    local sx = first_x
-    local sy = first_y
-
-    if second_x
-        and first_u
-        and second_u
-        and second_u ~= first_u
-    then
-        local t =
-            first_u
-            / (second_u - first_u)
-
-        sx =
-            first_x
-            - (second_x - first_x) * t
-
-        sy =
-            first_y
-            - (second_y - first_y) * t
-    end
-
-    -- Same stable lower-screen start idea used by the supplied tracer.
-    sy = sy + 42
-
+function FALLEN_BT_DRAW_ONE(tr, age, life)
     local reveal_time =
         clamp(
             tonumber(S.bullet_tracer_reveal) or 0.22,
@@ -8796,14 +9020,6 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
             1
         )
 
-    local ex =
-        sx
-        + (target_screen.X - sx) * reveal
-
-    local ey =
-        sy
-        + (target_screen.Y - sy) * reveal
-
     local fade =
         clamp(
             1 - age / life,
@@ -8812,10 +9028,7 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
         )
 
     local col = FALLEN_BT_COLOR()
-
-    local alpha =
-        fade
-        * (col[4] or 1)
+    local alpha = fade * (col[4] or 1)
 
     local thick =
         clamp(
@@ -8824,228 +9037,28 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
             6
         )
 
-    if type(DrawLine) ~= "function"
-        or alpha <= 0.002
-    then
+    if alpha <= 0.002 then
         return
     end
 
-    local style =
-        FALLEN_BT_STYLE_INDEX()
+    local points
 
-    if style == 2 then
-        -- Rainbow: animated full-spectrum gradient along the tracer.
-        local segs = 36
-
-        for i = 1, segs do
-            local u0 =
-                (i - 1) / segs
-
-            local u1 =
-                i / segs
-
-            local x0 =
-                sx + (ex - sx) * u0
-
-            local y0 =
-                sy + (ey - sy) * u0
-
-            local x1 =
-                sx + (ex - sx) * u1
-
-            local y1 =
-                sy + (ey - sy) * u1
-
-            local hue =
-                (
-                    tick() * 0.20
-                    + u1 * 0.92
-                    + ((tr.seed or 1) % 97) / 97
-                ) % 1
-
-            local rr, gg, bb =
-                hsv_to_rgb(
-                    hue,
-                    0.88,
-                    1
-                )
-
-            DrawLine(
-                x0, y0, x1, y1,
-                rr, gg, bb,
-                alpha * 0.12,
-                thick + 14
-            )
-
-            DrawLine(
-                x0, y0, x1, y1,
-                rr, gg, bb,
-                alpha * 0.32,
-                thick + 7
-            )
-
-            DrawLine(
-                x0, y0, x1, y1,
-                rr, gg, bb,
-                alpha * 0.96,
-                thick + 1.5
-            )
-
-            DrawLine(
-                x0, y0, x1, y1,
-                1, 1, 1,
-                alpha * 0.24,
-                1
-            )
-        end
-
-    elseif style == 1 then
-        -- Lightning = the old Wave Lightning style.
-        local segs = 42
-        local dx = ex - sx
-        local dy = ey - sy
-
-        local len =
-            math.sqrt(
-                dx * dx
-                + dy * dy
-            )
-
-        local nx = 0
-        local ny = 0
-
-        if len > 0.01 then
-            nx = -dy / len
-            ny = dx / len
-        end
-
-        local seed =
-            (tr.seed or 1) * 0.017
-
-        local prev_x = sx
-        local prev_y = sy
-
-        for i = 1, segs do
-            local u =
-                i / segs
-
-            local bx =
-                sx + dx * u
-
-            local by =
-                sy + dy * u
-
-            local offset =
-                math.sin(
-                    u * 54
-                    + seed
-                    + tick() * 4
-                ) * 2.6
-                + math.sin(
-                    u * 117
-                    + seed * 2.3
-                ) * 0.9
-
-            local px =
-                bx + nx * offset
-
-            local py =
-                by + ny * offset
-
-            DrawLine(
-                prev_x,
-                prev_y,
-                px,
-                py,
-                col[1],
-                col[2],
-                col[3],
-                alpha * 0.16,
-                thick + 5
-            )
-
-            DrawLine(
-                prev_x,
-                prev_y,
-                px,
-                py,
-                col[1],
-                col[2],
-                col[3],
-                alpha * 0.34,
-                thick + 2
-            )
-
-            DrawLine(
-                prev_x,
-                prev_y,
-                px,
-                py,
-                col[1],
-                col[2],
-                col[3],
-                alpha * 0.90,
-                thick
-            )
-
-            DrawLine(
-                prev_x,
-                prev_y,
-                px,
-                py,
-                1,
-                1,
-                1,
-                alpha * 0.48,
-                1
-            )
-
-            prev_x = px
-            prev_y = py
-        end
-
+    if tr.auto_prediction == true
+        and (tonumber(tr.prediction_time) or 0) > 0
+    then
+        points = FALLEN_BT_PREDICTION_PATH(tr)
     else
-        -- Neon = the old Real Neon style.
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha * 0.10,
-            thick + 12
-        )
-
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha * 0.20,
-            thick + 8
-        )
-
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha * 0.38,
-            thick + 5
-        )
-
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha * 0.78,
-            thick + 2
-        )
-
-        DrawLine(
-            sx, sy, ex, ey,
-            1, 1, 1,
-            alpha * 0.62,
-            math.max(
-                1,
-                thick - 0.35
-            )
-        )
+        points = FALLEN_BT_STRAIGHT_PATH(tr)
     end
-end
 
+    FALLEN_BT_DRAW_PATH(
+        tr,
+        points,
+        reveal,
+        alpha,
+        thick
+    )
+end
 function FALLEN_BT_DRAW()
     if type(FALLEN_BT.items) ~= "table" then
         FALLEN_BT.items = {}
@@ -9093,6 +9106,9 @@ FALLEN_HITFX = FALLEN_HITFX or {
     last_hp = nil,
     last_seen = 0,
     last_spawn = 0,
+
+    -- TEMP TEST: one Spark on a fresh LMB press while Aimbot is locked.
+    test_lmb_was_down = false,
 }
 
 function FALLEN_HITFX_COLOR()
@@ -9103,22 +9119,11 @@ function FALLEN_HITFX_COLOR()
 end
 
 function FALLEN_HITFX_STYLE_INDEX()
-    local style =
-        tostring(
-            S.hit_effect_style
-            or "Fallen Combo"
-        )
-
-    if style == "Tesla Boom" then return 0 end
-    if style == "Fallen Spark" then return 1 end
-    if style == "Fallen SmokeRing" then return 2 end
-    if style == "Fallen particles.js" then return 3 end
-
-    if style ~= "Fallen Combo" then
-        S.hit_effect_style = "Fallen Combo"
+    if S.hit_effect_style ~= "Fallen Spark" then
+        S.hit_effect_style = "Fallen Spark"
     end
 
-    return 4
+    return 1
 end
 
 function FALLEN_HITFX_DRAW_IMAGE(
@@ -9555,29 +9560,52 @@ function FALLEN_HITFX_SCAN_HP()
     then
         FALLEN_HITFX.target_key = nil
         FALLEN_HITFX.last_hp = nil
+        FALLEN_HITFX.test_lmb_was_down = false
         return
     end
 
-    -- The target must still be actively held by our Aimbot.
     if not FAP.current_target_pos
         or tick() - (FAP.current_target_seen or 0) > 0.18
     then
         FALLEN_HITFX.target_key = nil
         FALLEN_HITFX.last_hp = nil
+        FALLEN_HITFX.test_lmb_was_down = false
         return
     end
 
-    local key =
-        FALLEN_HITFX_TARGET_KEY()
+    local key = FALLEN_HITFX_TARGET_KEY()
 
+    if not key then
+        return
+    end
+
+    -- TEMP TEST BYPASS:
+    -- locked target + fresh LMB click = Spark even without HP loss.
+    local lmb_down =
+        key_down(0x01) == true
+
+    if lmb_down
+        and FALLEN_HITFX.test_lmb_was_down ~= true
+        and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.05
+    then
+        FALLEN_HITFX.last_spawn = tick()
+
+        FALLEN_HITFX_ADD({
+            X = FAP.current_target_pos.X,
+            Y = FAP.current_target_pos.Y,
+            Z = FAP.current_target_pos.Z,
+        })
+    end
+
+    FALLEN_HITFX.test_lmb_was_down = lmb_down
+
+    -- Final/real gate kept in the build: damage must be at least 15 HP.
     local hp =
         tonumber(
             FAP.current_target_health
         )
 
-    if not key
-        or hp == nil
-    then
+    if hp == nil then
         return
     end
 
@@ -9593,9 +9621,13 @@ function FALLEN_HITFX_SCAN_HP()
             FALLEN_HITFX.last_hp
         )
 
-    if old
-        and hp < old - 0.01
-        and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.035
+    local damage =
+        old
+        and (old - hp)
+        or 0
+
+    if damage >= 15
+        and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.05
     then
         FALLEN_HITFX.last_spawn = tick()
 
@@ -9609,7 +9641,6 @@ function FALLEN_HITFX_SCAN_HP()
     FALLEN_HITFX.last_hp = hp
     FALLEN_HITFX.last_seen = tick()
 end
-
 function FALLEN_HITFX_DRAW_ONE(hit, age, life)
     local s =
         FALLEN_BT_PROJECT({
@@ -9629,114 +9660,30 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
             1
         )
 
-    local alpha =
-        1 - t
+    local alpha = 1 - t
+    local col = FALLEN_HITFX_COLOR()
+    alpha = alpha * (col[4] or 1)
 
-    local col =
-        FALLEN_HITFX_COLOR()
-
-    alpha =
-        alpha
-        * (col[4] or 1)
-
+    -- Smaller test effect.
     local size =
         clamp(
-            tonumber(S.hit_effect_size) or 38,
-            18,
-            96
+            tonumber(S.hit_effect_size) or 12,
+            6,
+            32
         )
+        * 0.72
 
-    local style =
-        FALLEN_HITFX_STYLE_INDEX()
-
-    if style == 0 then
-        -- Tesla Boom: jagged electric burst from the original style 3.
-        if type(DrawLine) == "function" then
-            for k = 1, 12 do
-                local ang =
-                    ((k / 12) * math.pi * 2)
-                    + math.sin(tick() * 14 + k) * 0.16
-
-                local len =
-                    size
-                    * (
-                        0.18
-                        + 0.55
-                        * math.abs(
-                            math.sin(
-                                (hit.seed or 1)
-                                + k * 1.33
-                            )
-                        )
-                    )
-
-                local midx =
-                    s.X
-                    + math.cos(ang) * len * 0.55
-                    + math.sin(k * 2.1 + (hit.seed or 1)) * 2
-
-                local midy =
-                    s.Y
-                    + math.sin(ang) * len * 0.55
-                    + math.cos(k * 1.7 + (hit.seed or 1)) * 2
-
-                local ex =
-                    s.X + math.cos(ang) * len
-
-                local ey =
-                    s.Y + math.sin(ang) * len
-
-                DrawLine(
-                    s.X,
-                    s.Y,
-                    midx,
-                    midy,
-                    col[1],
-                    col[2],
-                    col[3],
-                    alpha * 0.50,
-                    2.2
-                )
-
-                DrawLine(
-                    midx,
-                    midy,
-                    ex,
-                    ey,
-                    col[1],
-                    col[2],
-                    col[3],
-                    alpha * 0.78,
-                    1.2
-                )
-            end
-        end
-
-        if type(DrawCircle) == "function" then
-            DrawCircle(
-                s.X,
-                s.Y,
-                2 + size * 0.03,
-                col[1],
-                col[2],
-                col[3],
-                alpha * 0.92,
-                1.4
-            )
-        end
-
-    else
-        FALLEN_HITFX_DRAW_FALLEN(
-            style,
-            s.X,
-            s.Y,
-            size,
-            t,
-            alpha,
-            col,
-            hit.seed
-        )
-    end
+    -- Spark only for now.
+    FALLEN_HITFX_DRAW_FALLEN(
+        1,
+        s.X,
+        s.Y,
+        size,
+        t,
+        alpha,
+        col,
+        hit.seed
+    )
 end
 function FALLEN_HITFX_DRAW()
     if type(FALLEN_HITFX.items) ~= "table" then
@@ -19431,8 +19378,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     local dropdown_open =
         A.bullet_tracer_style_open
         or (A.bullet_tracer_style_anim or 0) > 0.02
-        or A.hit_effect_style_open
-        or (A.hit_effect_style_anim or 0) > 0.02
+
 
     local controls_clicked =
         clicked
@@ -19750,7 +19696,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         right_x,
         y + 25,
         right_w,
-        214,
+        173,
         11
     )
 
@@ -19775,111 +19721,8 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         1
     )
 
-    local hit_style_y =
-        y + 73
-
-    local hit_style_box_w =
-        math.min(
-            168,
-            right_w * 0.60
-        )
-
-    local hit_style_box_x =
-        right_x
-        + right_w
-        - hit_style_box_w
-        - 12
-
-    local hit_style_box_y =
-        hit_style_y + 8
-
-    local hit_style_box_hot =
-        hover(
-            mx,
-            my,
-            hit_style_box_x,
-            hit_style_box_y,
-            hit_style_box_w,
-            25
-        )
-
-    text(
-        right_x + 13,
-        hit_style_y + 14,
-        "Hit Effect Style",
-        FALLEN_HOVER_TEXT(
-            "hitfx_style_label",
-            row_hover(
-                mx,
-                my,
-                right_x,
-                hit_style_y,
-                right_w,
-                41
-            ),
-            C.text
-        )
-    )
-
-    rounded_fill(
-        hit_style_box_x,
-        hit_style_box_y,
-        hit_style_box_w,
-        25,
-        6,
-        hit_style_box_hot
-            and { 0.110, 0.115, 0.135, 1 }
-            or C.toggle_off
-    )
-
-    text(
-        hit_style_box_x + 10,
-        hit_style_box_y + 7,
-        tostring(
-            S.hit_effect_style
-            or "Fallen Combo"
-        ),
-        FALLEN_HOVER_TEXT(
-            "hitfx_style_value",
-            hit_style_box_hot,
-            C.text
-        )
-    )
-
-    text(
-        hit_style_box_x + hit_style_box_w - 18,
-        hit_style_box_y + 7,
-        A.hit_effect_style_open
-            and "^"
-            or "v",
-        C.text_dim
-    )
-
-    if clicked
-        and hit_style_box_hot
-        and not A.world_color_picker_open
-    then
-        A.hit_effect_style_open =
-            not A.hit_effect_style_open
-
-        if A.hit_effect_style_open then
-            A.bullet_tracer_style_open = false
-        end
-
-        numeric_stop(true)
-    end
-
-    line(
-        right_x + 12,
-        y + 113,
-        right_x + right_w - 12,
-        y + 113,
-        C.divider,
-        1
-    )
-
     local hit_color_y =
-        y + 114
+        y + 73
 
     local hit_color_hot =
         row_hover(
@@ -19975,9 +19818,9 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
 
     line(
         right_x + 12,
-        y + 154,
+        y + 113,
         right_x + right_w - 12,
-        y + 154,
+        y + 113,
         C.divider,
         1
     )
@@ -19988,12 +19831,12 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         controls_clicked,
         lmb,
         right_x,
-        y + 155,
+        y + 114,
         right_w,
         "Hit Effect Size",
         "hit_effect_size",
-        18,
-        96,
+        6,
+        32,
         "int"
     )
 
@@ -20017,25 +19860,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         A.bullet_tracer_style_open = false
     end
 
-    local hit_dropdown_hot =
-        FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
-            mx,
-            my,
-            clicked
-                and not A.world_color_picker_open,
-            hit_style_box_x,
-            hit_style_box_y + 30,
-            hit_style_box_w
-        )
 
-    if clicked
-        and A.hit_effect_style_open
-        and not hit_style_box_hot
-        and not hit_dropdown_hot
-        and not A.world_color_picker_open
-    then
-        A.hit_effect_style_open = false
-    end
 end
 
 -- =========================================================
