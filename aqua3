@@ -6913,6 +6913,89 @@ then
     end)
 end
 
+
+
+-- OLD API ICON SYSTEM COPIED FROM WORKING SCRIPT
+K1_LOOT_DIRECT_ICONS = {
+wooden_crate = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/0/00/Wooden_Crate.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/play-rust/images/d/d7/Basic_Crate.png/revision/latest/scale-to-width-down/177?cb=20250128033438"
+},
+metal_crate = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/e/e7/Metal_Crate.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/play-rust/images/d/d7/Military_Crate.png/revision/latest/scale-to-width-down/220?cb=20250128033521"
+},
+steel_crate = {
+"https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339",
+"https://static.wikia.nocookie.net/play-rust/images/a/ad/Elite_Crate.png/revision/latest/scale-to-width-down/220?cb=20250128033555"
+},
+food_crate = {
+"https://static.wikia.nocookie.net/play-rust/images/8/80/Food-crate.png/revision/latest?cb=20180609013614",
+"https://static.wikia.nocookie.net/play-rust/images/1/10/Food_crate.png/revision/latest/scale-to-width-down/220?cb=20160106151034"
+},
+timed_crate = {
+"https://static.wikia.nocookie.net/play-rust/images/9/90/Locked_Crate.jpg/revision/latest/scale-to-width-down/180?cb=20210105201339"
+},
+care_package = {
+"https://static.wikia.nocookie.net/play-rust/images/4/49/Airdrop_Supply_Crate.jpg/revision/latest/scale-to-width-down/300?cb=20140723124718"
+},
+trash_can = {
+"https://static.wikia.nocookie.net/play-rust/images/e/eb/Tech_Trash_icon.png/revision/latest?cb=20161117193341",
+"https://static.wikia.nocookie.net/fallensurvival/images/6/6e/Trash.png/revision/latest?format=original"
+},
+oil_barrel = {
+"https://files.facepunch.com/wiki/files/b67cc/8de6b04b1f5b0bb.png",
+"https://files.facepunch.com/wiki/files/b67cc/8de6b061b27ee29.png",
+"https://static.wikia.nocookie.net/fallensurvival/images/0/06/Oil.png/revision/latest?format=original"
+},
+body_bag = {
+"https://rustlabs.com/img/items180/halloween.lootbag.large.png",
+"https://rustlabs.com/img/items180/halloween.lootbag.medium.png",
+"https://rustlabs.com/img/items180/halloween.lootbag.small.png",
+"https://static.thenounproject.com/png/body-bag-icon-4390423-512.png"
+},
+sleeper = {
+"https://static.wikia.nocookie.net/play-rust/images/b/be/Sleeping_Bag_icon.png/revision/latest?cb=20160211200428"
+},
+wooden_boat = {
+"https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931"
+},
+military_boat = {
+"https://static.wikia.nocookie.net/play-rust/images/c/c9/Screenshot_2-0.png/revision/latest/scale-to-width-down/283?cb=20200416084931"
+},
+flycopter = {
+"https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-transport-minicopter-300x300.png",
+"https://static.wikia.nocookie.net/play-rust/images/4/49/Airdrop_Supply_Crate.jpg/revision/latest/scale-to-width-down/300?cb=20140723124718"
+}
+}
+K1_LOOT_DIRECT_ICON_STATE = {}
+function k1_resolve_loot_direct_icon(id)
+if not id or not K1_LOOT_DIRECT_ICONS then return nil end
+local urls = K1_LOOT_DIRECT_ICONS[id]
+if not urls then return nil end
+local st = K1_LOOT_DIRECT_ICON_STATE[id]
+if not st then
+st = { index = 1, handle = nil, dead = false }
+K1_LOOT_DIRECT_ICON_STATE[id] = st
+end
+if st.dead then return nil end
+if not st.handle and urls[st.index] then
+st.handle = Drawing.LoadImage(urls[st.index])
+end
+if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
+if st.handle and Drawing.IsImageFailed and Drawing.IsImageFailed(st.handle) then
+st.index = st.index + 1
+st.handle = nil
+if urls[st.index] then
+st.handle = Drawing.LoadImage(urls[st.index])
+else
+st.dead = true
+end
+end
+if st.handle and Drawing.IsImageReady(st.handle) then return st.handle end
+return nil
+end
+
 -- =========================================================
 -- Resource ESP runtime
 -- Functional port of the user's supplied World ESP.
@@ -7558,45 +7641,16 @@ local function world_load_direct_icon(cfg)
         return nil
     end
 
-    local urls = cfg.direct_urls or {}
-    if #urls == 0 then
-        return nil
-    end
+    local candidates = cfg.icon_names or {cfg.label}
 
-    local name = cfg.id
-
-    local st = WORLD_ESP.icons[name]
-
-    if not st then
-        st = {
-            index = 1,
-            handle = Drawing.LoadImage(urls[1]),
-            dead = false
-        }
-        WORLD_ESP.icons[name] = st
-    end
-
-    if st.dead then
-        return nil
-    end
-
-    if st.handle and Drawing.IsImageReady(st.handle) then
-        return st.handle
-    end
-
-    if st.handle and Drawing.IsImageFailed(st.handle) then
-        st.index = st.index + 1
-
-        if urls[st.index] then
-            st.handle = Drawing.LoadImage(urls[st.index])
-            return st.handle
+    for _, name in ipairs(candidates) do
+        local handle = k1_resolve_loot_direct_icon(name, cfg.id)
+        if handle then
+            return handle
         end
-
-        st.dead = true
-        return nil
     end
 
-    return st.handle
+    return nil
 end
 
 local function world_resolve_icon(cfg)
