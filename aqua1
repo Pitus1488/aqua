@@ -7668,6 +7668,20 @@ local function fap_draw_fov()
             )
         )
 
+    -- Filled FOV: same color as the outline, with a constant
+    -- 50% transparency inside the whole circle.
+    if type(DrawCircleFilled) == "function" then
+        DrawCircleFilled(
+            c.X,
+            c.Y,
+            fov_radius,
+            col[1],
+            col[2],
+            col[3],
+            0.50
+        )
+    end
+
     if S.aim_fov_glow_enabled == true then
         local gc =
             FALLEN_FOV_GLOW_COLOR()
