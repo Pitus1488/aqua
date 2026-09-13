@@ -4283,6 +4283,7 @@ local WORLD_UI_ITEMS = {
         key = "world_stone_node",
         label = "Stone Node",
         color = { 0.55, 0.55, 0.55, 1 },
+        -- Rust stone icon loaded from URL.
         direct_urls = {
             "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest/scale-to-width-down/50?cb=20150405123145",
         },
@@ -7557,174 +7558,45 @@ local function world_load_direct_icon(cfg)
         return nil
     end
 
-    local rec =
-        WORLD_ESP.icons[
-            cfg.id
-        ]
+    local urls = cfg.direct_urls or {}
+    if #urls == 0 then
+        return nil
+    end
 
-    if not rec then
-        rec = {
+    local name = cfg.id
+
+    local st = WORLD_ESP.icons[name]
+
+    if not st then
+        st = {
             index = 1,
-            handle = nil,
-            dead = false,
-            retry = 0,
-            source = nil,
-            reported_ready = false,
-            reported_failed = false,
+            handle = Drawing.LoadImage(urls[1]),
+            dead = false
         }
-
-        WORLD_ESP.icons[cfg.id] =
-            rec
+        WORLD_ESP.icons[name] = st
     end
 
-    if rec.dead then
+    if st.dead then
         return nil
     end
 
-    local now = tick()
+    if st.handle and Drawing.IsImageReady(st.handle) then
+        return st.handle
+    end
 
-    if rec.retry
-        and now < rec.retry
-        and not rec.handle
-    then
+    if st.handle and Drawing.IsImageFailed(st.handle) then
+        st.index = st.index + 1
+
+        if urls[st.index] then
+            st.handle = Drawing.LoadImage(urls[st.index])
+            return st.handle
+        end
+
+        st.dead = true
         return nil
     end
 
-    if not rec.handle then
-        -- Preferred path for locally supplied icons.
-        -- This is identical to the method that worked for noFilter (1).png.
-        if cfg.local_icon_path
-            and type(Drawing.LoadImageFromFile) == "function"
-        then
-            local ok, handle =
-                pcall(
-                    Drawing.LoadImageFromFile,
-                    cfg.local_icon_path
-                )
-
-            if ok and handle then
-                rec.handle = handle
-                rec.source = "local"
-                rec.reported_ready = false
-                rec.reported_failed = false
-                return nil
-            end
-
-            rec.retry = now + 1.0
-            return nil
-        end
-
-        -- Other resources still use their direct URL list for now.
-        local urls =
-            cfg.direct_urls
-            or {}
-
-        local url =
-            urls[
-                rec.index or 1
-            ]
-
-        if not url then
-            rec.dead = true
-            return nil
-        end
-
-        if type(LoadImage) ~= "function" then
-            rec.dead = true
-            return nil
-        end
-
-        local ok, handle =
-            pcall(
-                LoadImage,
-                url
-            )
-
-        if ok and handle then
-            rec.handle = handle
-            rec.source = "url"
-            rec.retry = 0
-            rec.reported_ready = false
-            rec.reported_failed = false
-        else
-            rec.index =
-                (rec.index or 1)
-                + 1
-
-            rec.retry =
-                now + 1.0
-        end
-
-        return nil
-    end
-
-    if world_icon_ready(
-        rec.handle
-    ) then
-        if rec.reported_ready ~= true then
-            rec.reported_ready = true
-
-            print(
-                SYS
-                .. "icon READY: "
-                .. tostring(cfg.id)
-                .. " ["
-                .. tostring(rec.source or "?")
-                .. "]"
-            )
-        end
-
-        return rec.handle
-    end
-
-    if type(IsImageFailed) == "function" then
-        local ok, failed =
-            pcall(
-                IsImageFailed,
-                rec.handle
-            )
-
-        if ok and failed then
-            if rec.reported_failed ~= true then
-                rec.reported_failed = true
-
-                warn(
-                    SYS
-                    .. "icon FAILED: "
-                    .. tostring(cfg.id)
-                    .. " ["
-                    .. tostring(rec.source or "?")
-                    .. "]"
-                )
-            end
-
-            rec.handle = nil
-
-            if cfg.local_icon_path then
-                -- Keep retrying the exact local file path rather than
-                -- silently switching Stone back to a web URL.
-                rec.retry =
-                    now + 2.0
-            else
-                rec.index =
-                    (rec.index or 1)
-                    + 1
-
-                local urls =
-                    cfg.direct_urls
-                    or {}
-
-                if not urls[rec.index] then
-                    rec.dead = true
-                else
-                    rec.retry =
-                        now + 0.35
-                end
-            end
-        end
-    end
-
-    return nil
+    return st.handle
 end
 
 local function world_resolve_icon(cfg)
@@ -7745,12 +7617,50 @@ local function world_draw_icon(
     size,
     a
 )
+    if type(DrawCircleFilled) ~= "function"
+        or type(DrawCircle) ~= "function"
+    then
+        return
+    end
+
     size =
         clamp(
             tonumber(size) or 18,
             10,
             48
         )
+
+    local radius =
+        size * 0.5
+        + 3
+
+    DrawCircleFilled(
+        x,
+        y,
+        radius,
+        0.02,
+        0.02,
+        0.03,
+        0.90 * a
+    )
+
+    local border =
+        world_color_from_prefix(
+            "world_icon_border"
+        )
+
+    DrawCircle(
+        x,
+        y,
+        radius,
+        border[1],
+        border[2],
+        border[3],
+        0.95
+            * a
+            * (border[4] or 1),
+        1.4
+    )
 
     local handle =
         world_resolve_icon(
@@ -7770,11 +7680,27 @@ local function world_draw_icon(
             1,
             1,
             a,
-            0
+            math.max(
+                2,
+                size * 0.16
+            )
+        )
+    elseif type(DrawTextWithOutline) == "function" then
+        DrawTextWithOutline(
+            x,
+            y - 6,
+            cfg.short or "?",
+            1,
+            1,
+            1,
+            0.98 * a,
+            0,
+            0,
+            0,
+            0.98 * a
         )
     end
 end
-
 
 local function world_resource_color(cfg)
     if not cfg or not cfg.id then
