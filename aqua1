@@ -4283,6 +4283,8 @@ local WORLD_UI_ITEMS = {
         key = "world_stone_node",
         label = "Stone Node",
         color = { 0.55, 0.55, 0.55, 1 },
+        -- Local Stone icon. This uses the same loading scheme that worked
+        -- for the loader artwork: Drawing.LoadImageFromFile(native path).
         direct_urls = {
             "https://static.wikia.nocookie.net/play-rust/images/8/85/Stones_icon.png/revision/latest/scale-to-width-down/50?cb=20150405123145",
         },
@@ -4293,7 +4295,7 @@ local WORLD_UI_ITEMS = {
         label = "Metal Node",
         color = { 0.70, 0.55, 0.35, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/play-rust/images/0/0a/Metal_Ore_icon.png/revision/latest/scale-to-width-down/50?cb=20151106060814",
+            "https://static.wikia.nocookie.net/play-rust/images/0/0a/Metal_Ore_icon.png/revision/latest?cb=20151106060814",
         },
     },
     {
@@ -4302,7 +4304,7 @@ local WORLD_UI_ITEMS = {
         label = "Phosphate Node",
         color = { 0.25, 0.85, 0.25, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest/scale-to-width-down/50?cb=20151106061904",
+            "https://static.wikia.nocookie.net/play-rust/images/2/22/Sulfur_Ore_icon.png/revision/latest?cb=20151106061904",
         },
     },
     {
@@ -4311,7 +4313,7 @@ local WORLD_UI_ITEMS = {
         label = "Wool Plant",
         color = { 0.90, 0.90, 0.90, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/play-rust/images/f/f7/Cloth_icon.png/revision/latest/scale-to-width-down/50?cb=20151106071629",
+            "https://static.wikia.nocookie.net/play-rust/images/c/c9/Hemp_Clone_icon.png/revision/latest?cb=20170122060314",
         },
     },
     {
@@ -4320,7 +4322,7 @@ local WORLD_UI_ITEMS = {
         label = "Corn Plant",
         color = { 1.00, 0.90, 0.25, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f8/Corn.png/revision/latest?cb=20250108134637",
+            "https://static.wikia.nocookie.net/play-rust/images/0/0a/Corn_icon.png/revision/latest?cb=20151106061809",
         },
     },
     {
@@ -4329,7 +4331,7 @@ local WORLD_UI_ITEMS = {
         label = "Tomato Plant",
         color = { 1.00, 0.30, 0.30, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9d/Tomato.png/revision/latest/scale-to-width-down/55?cb=20250108164012",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/9/9d/Tomato.png/revision/latest/scale-to-width-down/100?cb=20250108164012",
         },
     },
     {
@@ -4338,7 +4340,7 @@ local WORLD_UI_ITEMS = {
         label = "Pumpkin Plant",
         color = { 1.00, 0.50, 0.10, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/6/64/Pumpkin.png/revision/latest/scale-to-width-down/55?cb=20250108163605",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/6/64/Pumpkin.png/revision/latest/scale-to-width-down/100?cb=20250108163605",
         },
     },
     {
@@ -4347,7 +4349,7 @@ local WORLD_UI_ITEMS = {
         label = "Lemon Plant",
         color = { 1.00, 1.00, 0.30, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/3/35/Lemon.png/revision/latest/scale-to-width-down/55?cb=20250108163730",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/3/35/Lemon.png/revision/latest/scale-to-width-down/100?cb=20250108163730",
         },
     },
     {
@@ -4356,7 +4358,7 @@ local WORLD_UI_ITEMS = {
         label = "Raspberry Plant",
         color = { 0.90, 0.20, 0.50, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/55?cb=20250108163842",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/100?cb=20250108163842",
         },
     },
     {
@@ -4365,7 +4367,7 @@ local WORLD_UI_ITEMS = {
         label = "Blueberry Plant",
         color = { 0.30, 0.35, 1.00, 1 },
         direct_urls = {
-            "https://static.wikia.nocookie.net/fallen-survival-new/images/a/af/Blueberries.png/revision/latest/scale-to-width-down/55?cb=20250108163924",
+            "https://static.wikia.nocookie.net/fallen-survival-new/images/a/af/Blueberries.png/revision/latest/scale-to-width-down/100?cb=20250108163924",
         },
     },
 }
@@ -7629,14 +7631,26 @@ local function world_load_direct_icon(cfg)
             return nil
         end
 
-        if type(LoadImage) ~= "function" then
+        -- Use the same image loading logic as the old API:
+        -- Drawing.LoadImage(url) first, then fallback to LoadImage(url)
+        local loader = nil
+
+        if Drawing
+            and type(Drawing.LoadImage) == "function"
+        then
+            loader = Drawing.LoadImage
+        elseif type(LoadImage) == "function" then
+            loader = LoadImage
+        end
+
+        if not loader then
             rec.dead = true
             return nil
         end
 
         local ok, handle =
             pcall(
-                LoadImage,
+                loader,
                 url
             )
 
@@ -10264,25 +10278,22 @@ print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA
 -- Fallen Survival loader
 -- Adapted for the user's custom Lua API.
 
--- Product artwork (URL loader image)
--- Same image object is reused by both loader pages.
+-- Product artwork.
+-- CONFIRMED WORKING METHOD:
+--   Drawing.LoadImageFromFile("C:\Users\vmerk\Downloads\noFilter (1).png")
+-- This is the exact method that worked in the standalone test (#3).
+local PRODUCT_IMAGE_PATH =
+    "C:\\Users\\vmerk\\Downloads\\noFilter (1).png"
 
-_G.FALLEN_LOADER_PRODUCT_IMAGE_URL =
-    "https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&"
+local product_image = nil
 
-_G.FALLEN_LOADER_PRODUCT_IMAGE =
-    _G.FALLEN_LOADER_PRODUCT_IMAGE or nil
-
-if not _G.FALLEN_LOADER_PRODUCT_IMAGE
-    and type(LoadImage) == "function" then
-
+if Drawing and type(Drawing.LoadImageFromFile) == "function" then
     pcall(function()
-        _G.FALLEN_LOADER_PRODUCT_IMAGE =
-            LoadImage(_G.FALLEN_LOADER_PRODUCT_IMAGE_URL)
+        product_image =
+            Drawing.LoadImageFromFile(PRODUCT_IMAGE_PATH)
     end)
 end
 
-local product_image = _G.FALLEN_LOADER_PRODUCT_IMAGE
 local logo_image = product_image
 
 local last_time = tick()
