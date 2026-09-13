@@ -111,6 +111,18 @@ local defaults = {
     aim_fov_glow_v = 1.00,
     aim_fov_glow_alpha = 70,
 
+    -- Bullet Tracers / Misc.
+    bullet_tracer_enabled = false,
+    bullet_tracer_life = 1.20,
+    bullet_tracer_reveal = 0.22,
+    bullet_tracer_thickness = 2.0,
+    bullet_tracer_delay = 0.13,
+
+    bullet_tracer_h = 0.58,
+    bullet_tracer_s = 0.55,
+    bullet_tracer_v = 1.00,
+    bullet_tracer_alpha = 100,
+
     -- Armor ESP.
     armor_esp_enabled = false,
     armor_esp_mode = "Normal",
@@ -6880,6 +6892,12 @@ local FAP = {
     gravity = 35.0,
     weapon = nil,
     locked_target_addr = nil,
+
+    current_target_addr = nil,
+    current_target_name = nil,
+    current_target_pos = nil,
+    current_target_seen = 0,
+
     last_weapon_scan = 0,
     last_weapon_name = nil,
 }
@@ -7768,6 +7786,11 @@ end
 
 local function fap_clear_lock()
     FAP.locked_target_addr = nil
+
+    FAP.current_target_addr = nil
+    FAP.current_target_name = nil
+    FAP.current_target_pos = nil
+    FAP.current_target_seen = 0
 end
 
 local function fap_find_target(cross, cam)
@@ -8137,6 +8160,26 @@ local function fap_tick()
         return
     end
 
+    FAP.current_target_addr =
+        target.address
+        or target.player_addr
+        or target.character_addr
+
+    FAP.current_target_name =
+        tostring(
+            target.name
+            or target.display_name
+            or ""
+        )
+
+    FAP.current_target_pos = {
+        X = predicted.X,
+        Y = predicted.Y,
+        Z = predicted.Z,
+    }
+
+    FAP.current_target_seen = tick()
+
     local mat = nil
 
     pcall(function()
@@ -8177,6 +8220,453 @@ hooks.on_render(function()
                 .. "Aimbot: "
                 .. tostring(err)
             )
+        end
+    end
+end)
+
+-- =========================================================
+-- Bullet Tracers
+-- LOCAL Mouse1 + current Aimbot target only.
+-- =========================================================
+
+FALLEN_BT = FALLEN_BT or {
+    items = {},
+    last_shot = 0,
+    local_name = nil,
+    local_name_scan = 0,
+}
+
+function FALLEN_BT_LOCAL_NAME()
+    local now = tick()
+
+    if FALLEN_BT.local_name
+        and now - (FALLEN_BT.local_name_scan or 0) < 2
+    then
+        return FALLEN_BT.local_name
+    end
+
+    FALLEN_BT.local_name_scan = now
+
+    local name = nil
+
+    if players
+        and type(players.get_local) == "function"
+    then
+        local ok, me = pcall(players.get_local)
+
+        if ok and me then
+            name =
+                me.name
+                or me.display_name
+                or me.username
+        end
+    end
+
+    if not name
+        and rbx
+        and type(rbx.local_player) == "function"
+    then
+        local ok, lp = pcall(rbx.local_player)
+
+        if ok and lp then
+            pcall(function()
+                if lp.get_name then
+                    name = lp:get_name()
+                else
+                    name = lp.Name or lp.name
+                end
+            end)
+        end
+    end
+
+    if name then
+        FALLEN_BT.local_name = tostring(name)
+    end
+
+    return FALLEN_BT.local_name
+end
+
+function FALLEN_BT_COLOR()
+    return world_color_from_prefix("bullet_tracer")
+end
+
+function FALLEN_BT_HAS_GUN()
+    local weapon = FAP.weapon
+
+    if not weapon or weapon == "" then
+        pcall(function()
+            weapon = fap_detect_weapon()
+        end)
+    end
+
+    if not weapon or weapon == "" then
+        return false
+    end
+
+    local lower = string.lower(tostring(weapon))
+
+    local bad = {
+        "rock",
+        "stone hatchet",
+        "pickaxe",
+        "hammer",
+        "building",
+        "torch",
+        "bandage",
+        "medkit",
+        "syringe",
+    }
+
+    for _, word in ipairs(bad) do
+        if string.find(lower, word, 1, true) then
+            return false
+        end
+    end
+
+    return true
+end
+
+function FALLEN_BT_ACTIVE_TARGET()
+    if S.aim_enabled ~= true then
+        return nil
+    end
+
+    if not FAP.current_target_pos
+        or tick() - (FAP.current_target_seen or 0) > 0.18
+    then
+        return nil
+    end
+
+    local my_name = FALLEN_BT_LOCAL_NAME()
+
+    if my_name
+        and FAP.current_target_name
+        and FAP.current_target_name ~= ""
+        and string.lower(FAP.current_target_name)
+            == string.lower(my_name)
+    then
+        return nil
+    end
+
+    return {
+        X = FAP.current_target_pos.X,
+        Y = FAP.current_target_pos.Y,
+        Z = FAP.current_target_pos.Z,
+    }
+end
+
+function FALLEN_BT_ADD(origin, target)
+    if not origin or not target then
+        return
+    end
+
+    FALLEN_BT.items[#FALLEN_BT.items + 1] = {
+        ox = origin.X,
+        oy = origin.Y,
+        oz = origin.Z,
+
+        tx = target.X,
+        ty = target.Y,
+        tz = target.Z,
+
+        created = tick(),
+        owner = FALLEN_BT_LOCAL_NAME(),
+    }
+
+    while #FALLEN_BT.items > 40 do
+        table.remove(FALLEN_BT.items, 1)
+    end
+end
+
+function FALLEN_BT_PROJECT(pos)
+    if not aim
+        or type(aim.world_to_screen) ~= "function"
+        or not pos
+    then
+        return nil
+    end
+
+    local s = nil
+
+    pcall(function()
+        s = aim.world_to_screen(pos)
+    end)
+
+    if s and s.visible then
+        return s
+    end
+
+    return nil
+end
+
+function FALLEN_BT_SHOT_TICK()
+    if S.bullet_tracer_enabled ~= true then
+        return
+    end
+
+    -- Mouse1 belongs to the local client.
+    if key_down(0x01) ~= true then
+        return
+    end
+
+    local target = FALLEN_BT_ACTIVE_TARGET()
+
+    if not target then
+        return
+    end
+
+    if FALLEN_BT_HAS_GUN() ~= true then
+        return
+    end
+
+    local now = tick()
+
+    local delay =
+        clamp(
+            tonumber(S.bullet_tracer_delay) or 0.13,
+            0.04,
+            0.50
+        )
+
+    if now - (FALLEN_BT.last_shot or 0) < delay then
+        return
+    end
+
+    local cam = nil
+
+    pcall(function()
+        if aim
+            and type(aim.get_camera_position) == "function"
+        then
+            cam = aim.get_camera_position()
+        end
+    end)
+
+    if not cam then
+        return
+    end
+
+    FALLEN_BT.last_shot = now
+
+    FALLEN_BT_ADD(
+        cam,
+        target
+    )
+end
+
+function FALLEN_BT_DRAW_ONE(tr, age, life)
+    local target_screen =
+        FALLEN_BT_PROJECT({
+            X = tr.tx,
+            Y = tr.ty,
+            Z = tr.tz,
+        })
+
+    if not target_screen then
+        return
+    end
+
+    local first_x = nil
+    local first_y = nil
+    local first_u = nil
+
+    local second_x = nil
+    local second_y = nil
+    local second_u = nil
+
+    for k = 1, 12 do
+        local u = k / 12
+
+        local p = {
+            X = tr.ox + (tr.tx - tr.ox) * u,
+            Y = tr.oy + (tr.ty - tr.oy) * u,
+            Z = tr.oz + (tr.tz - tr.oz) * u,
+        }
+
+        local s = FALLEN_BT_PROJECT(p)
+
+        if s then
+            if not first_x then
+                first_x = s.X
+                first_y = s.Y
+                first_u = u
+
+            elseif not second_x then
+                second_x = s.X
+                second_y = s.Y
+                second_u = u
+                break
+            end
+        end
+    end
+
+    if not first_x then
+        return
+    end
+
+    local sx = first_x
+    local sy = first_y
+
+    if second_x
+        and first_u
+        and second_u
+        and second_u ~= first_u
+    then
+        local t =
+            first_u
+            / (second_u - first_u)
+
+        sx =
+            first_x
+            - (second_x - first_x) * t
+
+        sy =
+            first_y
+            - (second_y - first_y) * t
+    end
+
+    -- Same stable lower-screen start idea used by the supplied tracer.
+    sy = sy + 42
+
+    local reveal_time =
+        clamp(
+            tonumber(S.bullet_tracer_reveal) or 0.22,
+            0.03,
+            1.50
+        )
+
+    local reveal =
+        clamp(
+            age / reveal_time,
+            0,
+            1
+        )
+
+    local ex =
+        sx
+        + (target_screen.X - sx) * reveal
+
+    local ey =
+        sy
+        + (target_screen.Y - sy) * reveal
+
+    local fade =
+        clamp(
+            1 - age / life,
+            0,
+            1
+        )
+
+    local col = FALLEN_BT_COLOR()
+
+    local alpha =
+        fade
+        * (col[4] or 1)
+
+    local thick =
+        clamp(
+            tonumber(S.bullet_tracer_thickness) or 2,
+            1,
+            6
+        )
+
+    if type(DrawLine) ~= "function"
+        or alpha <= 0.002
+    then
+        return
+    end
+
+    DrawLine(
+        sx, sy, ex, ey,
+        col[1], col[2], col[3],
+        alpha * 0.10,
+        thick + 10
+    )
+
+    DrawLine(
+        sx, sy, ex, ey,
+        col[1], col[2], col[3],
+        alpha * 0.24,
+        thick + 5
+    )
+
+    DrawLine(
+        sx, sy, ex, ey,
+        col[1], col[2], col[3],
+        alpha * 0.95,
+        thick
+    )
+
+    DrawLine(
+        sx, sy, ex, ey,
+        1, 1, 1,
+        alpha * 0.36,
+        1
+    )
+end
+
+function FALLEN_BT_DRAW()
+    if type(FALLEN_BT.items) ~= "table" then
+        FALLEN_BT.items = {}
+    end
+
+    local now = tick()
+
+    local life =
+        clamp(
+            tonumber(S.bullet_tracer_life) or 1.2,
+            0.10,
+            8.0
+        )
+
+    for i = #FALLEN_BT.items, 1, -1 do
+        local tr = FALLEN_BT.items[i]
+        local age = now - (tr.created or now)
+
+        if age > life
+            or S.bullet_tracer_enabled ~= true
+        then
+            table.remove(FALLEN_BT.items, i)
+        else
+            FALLEN_BT_DRAW_ONE(
+                tr,
+                age,
+                life
+            )
+        end
+    end
+end
+
+function FALLEN_BT_TICK()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    FALLEN_BT_SHOT_TICK()
+    FALLEN_BT_DRAW()
+end
+
+hooks.on_render(function()
+    local ok, err =
+        pcall(
+            FALLEN_BT_TICK
+        )
+
+    if not ok then
+        FALLEN_BT.last_error =
+            FALLEN_BT.last_error
+            or 0
+
+        if tick() - FALLEN_BT.last_error > 2 then
+            FALLEN_BT.last_error = tick()
+
+            if type(warn) == "function" then
+                warn(
+                    SYS
+                    .. "Bullet Tracer: "
+                    .. tostring(err)
+                )
+            end
         end
     end
 end)
@@ -17389,6 +17879,211 @@ function FALLEN_DRAW_MENU_WEATHER(
         old_transform
 end
 
+function FALLEN_DRAW_MISC_PAGE(
+    mx,
+    my,
+    clicked,
+    lmb,
+    x,
+    y,
+    w
+)
+    local card_w =
+        math.floor(
+            w * 0.48
+        )
+
+    section_title(
+        x,
+        y,
+        "Bullet Tracers"
+    )
+
+    card(
+        x,
+        y + 25,
+        card_w,
+        214,
+        11
+    )
+
+    toggle_row(
+        mx,
+        my,
+        clicked,
+        x,
+        y + 32,
+        card_w,
+        "Bullet Tracers",
+        "bullet_tracer_enabled",
+        false
+    )
+
+    line(
+        x + 12,
+        y + 72,
+        x + card_w - 12,
+        y + 72,
+        C.divider,
+        1
+    )
+
+    local row_y = y + 73
+
+    local color_hot =
+        row_hover(
+            mx,
+            my,
+            x,
+            row_y,
+            card_w,
+            41
+        )
+
+    text(
+        x + 13,
+        row_y + 14,
+        "Tracer Color",
+        FALLEN_HOVER_TEXT(
+            "bullet_tracer_color",
+            color_hot,
+            C.text
+        )
+    )
+
+    local swatch_w = 24
+    local swatch_h = 20
+
+    local swatch_x =
+        x + card_w - 46
+
+    local swatch_y =
+        row_y + 10
+
+    rounded_fill(
+        swatch_x,
+        swatch_y,
+        swatch_w,
+        swatch_h,
+        5,
+        FALLEN_BT_COLOR()
+    )
+
+    local swatch_hot =
+        hover(
+            mx,
+            my,
+            swatch_x,
+            swatch_y,
+            swatch_w,
+            swatch_h
+        )
+
+    if clicked and swatch_hot then
+        FALLEN_COLOR_INPUT_STOP(true)
+
+        if A.world_color_picker_open
+            and A.world_color_picker_key == "bullet_tracer"
+        then
+            A.world_color_picker_open = false
+            A.world_color_picker_drag = nil
+        else
+            A.world_color_picker_key =
+                "bullet_tracer"
+
+            A.world_color_picker_open = true
+            A.world_color_picker_drag = nil
+
+            A.world_color_picker_anchor_x =
+                FALLEN_UI_X(swatch_x)
+
+            A.world_color_picker_anchor_y =
+                FALLEN_UI_Y(swatch_y)
+
+            A.world_color_picker_anchor_w =
+                FALLEN_UI_LEN(swatch_w)
+
+            A.world_color_picker_anchor_h =
+                FALLEN_UI_LEN(swatch_h)
+        end
+
+        numeric_stop(true)
+    end
+
+    local controls_clicked =
+        clicked
+        and not A.world_color_picker_open
+
+    line(
+        x + 12,
+        y + 113,
+        x + card_w - 12,
+        y + 113,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        x,
+        y + 114,
+        card_w,
+        "Tracer Life",
+        "bullet_tracer_life",
+        0.10,
+        8.0
+    )
+
+    line(
+        x + 12,
+        y + 154,
+        x + card_w - 12,
+        y + 154,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        x,
+        y + 155,
+        card_w,
+        "Thickness",
+        "bullet_tracer_thickness",
+        1,
+        6
+    )
+
+    line(
+        x + 12,
+        y + 195,
+        x + card_w - 12,
+        y + 195,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        x,
+        y + 196,
+        card_w,
+        "Reveal",
+        "bullet_tracer_reveal",
+        0.03,
+        1.50
+    )
+end
+
 -- =========================================================
 -- Render
 -- =========================================================
@@ -18494,11 +19189,14 @@ hooks.on_render(function()
         end
 
     elseif S.tab == 3 then
-        -- Standalone Common / Misc page.
-        section_title(
+        FALLEN_DRAW_MISC_PAGE(
+            mx,
+            my,
+            page_clicked,
+            lmb,
             page_x,
             page_y,
-            "Misc"
+            page_w
         )
     end
 
