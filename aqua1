@@ -78,7 +78,7 @@ local S = _G.FallenLua_Menu
 local defaults = {
     visible = true,
     tab = 1,
-    visuals_subtab = 1, -- 1 = World, 2 = Armor
+    visuals_subtab = 0, -- 0 = Visuals, 1 = World, 2 = Armor
     anim = 1,
 
     -- Aimbot page
@@ -110,6 +110,13 @@ local defaults = {
     aim_fov_glow_s = 0.10,
     aim_fov_glow_v = 1.00,
     aim_fov_glow_alpha = 70,
+
+    -- Armor ESP.
+    armor_esp_enabled = false,
+    armor_esp_mode = "Normal",
+    armor_esp_size = 18,
+    armor_esp_range = 1200,
+    armor_esp_smooth = 18,
 
     -- Menu appearance.
     menu_scale_percent = 100,
@@ -348,6 +355,14 @@ local A = {
     aim_bind_listening = false,
     aim_bind_wait_release = false,
     aim_bind_prev = {},
+
+    -- Armor ESP runtime/UI state.
+    armor_mode_dropdown_open = false,
+    armor_target_alpha = 0,
+    armor_target_addr = nil,
+    armor_item_cache = {},
+    armor_icon_cache = {},
+    armor_screen_smooth = {},
 
     -- Resource ESP settings popup.
     world_settings_open = false,
@@ -8007,6 +8022,1218 @@ hooks.on_render(function()
     end
 end)
 
+-- =========================================================
+-- Armor ESP
+-- Ported from the user's supplied working Armor ESP.
+-- Normal = closest-to-crosshair armor panel.
+-- On Player = armor icons directly above every player.
+-- =========================================================
+
+FALLEN_ARMOR_MAP = {
+["Armor_153"] = "Cloth Head Wrap",
+["Armor_115"] = "Cloth Shirt",
+["Armor_116"] = "Cloth Pants",
+["Armor_156"] = "Cloth Handwraps",
+["Armor_117"] = "Cloth Footwraps",
+["Armor_124"] = "Wooden Chestplate",
+["Armor_125"] = "Wooden Leggings",
+["Armor_123"] = "Wooden Helmet",
+["Armor_145"] = "Salvaged Helmet",
+["Armor_146"] = "Salvaged Chestplate",
+["Armor_147"] = "Salvaged Leggings",
+["Armor_155"] = "Salvaged Gloves",
+["Armor_148"] = "Military Helmet",
+["Armor_149"] = "Military Chestplate",
+["Armor_150"] = "Military Leggings",
+["Armor_157"] = "Military Gloves",
+["Armor_271"] = "Altyn Helmet",
+["Armor_272"] = "Boris Chestplate",
+["Armor_141"] = "Steel Helmet",
+["Armor_142"] = "Steel Chestplate",
+["Armor_143"] = "Steel Leggings",
+["Armor_158"] = "Leather Gloves",
+["Armor_113"] = "Shorts",
+["Armor_59"] = "Hoodie",
+["Armor_63"] = "Pants",
+["Armor_60"] = "Hazmat Suit",
+["Armor_111"] = "Boots",
+["Armor_121"] = "Boots",
+["Armor_112"] = "Collared Shirt",
+["Armor_122"] = "Flannel Jacket",
+["Armor_114"] = "Tank Top",
+["Armor_159"] = "Wetsuit",
+["Armor_154"] = "Baseball Cap",
+["Armor_152"] = "Balaclava",
+["Armor_223"] = "Bruno's Helmet",
+["Armor_222"] = "Bruno's Chestplate",
+["Armor_298"] = "Bone Armor",
+["Salvaged_Backpack"] = "Salvaged Backpack"
+}
+
+FALLEN_ARMOR_ICON_URLS = {
+["Bruno's Helmet"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Brunohelmet.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Brunohelmet.png/revision/latest/scale-to-width-down/100?cb=20250108175533"
+},
+["Bruno's Chestplate"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/6/62/Brunochest.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/6/62/Brunochest.png/revision/latest/scale-to-width-down/100?cb=20250108175253"
+},
+["Altyn Helmet"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/7/7f/Borishelmet.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/7/7f/Borishelmet.png/revision/latest/scale-to-width-down/100?cb=20250108175818"
+},
+["Boris Chestplate"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/f/fb/Borischest.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/f/fb/Borischest.png/revision/latest/scale-to-width-down/100?cb=20250108175533"
+},
+["Hoodie"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/9/95/Hoodie.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/9/95/Hoodie.png/revision/latest/scale-to-width-down/100?cb=20250108171940"
+},
+["Pants"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/7/7c/Pants1.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/7/7c/Pants1.png/revision/latest?cb=20250108173612"
+},
+["Boots"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/5/59/Boots.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/5/59/Boots.png/revision/latest/scale-to-width-down/100?cb=20250108173821"
+},
+["Steel Helmet"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Steel_Helmet.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Steel_Helmet.png/revision/latest/scale-to-width-down/100?cb=20250108133300"
+},
+["Steel Chestplate"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/3/3b/Steelchest.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/3/3b/Steelchest.png/revision/latest/scale-to-width-down/100?cb=20250108174335"
+},
+["Steel Leggings"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/d/d6/Steellegs.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/d/d6/Steellegs.png/revision/latest/scale-to-width-down/100?cb=20250108174457"
+},
+["Military Gloves"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/a/a8/Salvagedgloves.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/a/a8/Salvagedgloves.png/revision/latest/scale-to-width-down/100?cb=20250108175140"
+},
+["Military Helmet"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/9/9f/Militaryhelmet.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/9/9f/Militaryhelmet.png/revision/latest/scale-to-width-down/100?cb=20250108174723"
+},
+["Military Chestplate"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/c/c6/Militarychest.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/c/c6/Militarychest.png/revision/latest/scale-to-width-down/100?cb=20250108174935"
+},
+["Military Leggings"] = {
+"https://static.wikia.nocookie.net/fallen-survival-new/images/7/70/Militarylegs.png/revision/latest?format=original",
+"https://static.wikia.nocookie.net/fallen-survival-new/images/7/70/Militarylegs.png/revision/latest/scale-to-width-down/100?cb=20250108174723"
+},
+["Cloth Head Wrap"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Clothhelmet.png/revision/latest?format=original" },
+["Cloth Shirt"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/8/8d/Clothshirt.png/revision/latest?format=original" },
+["Cloth Pants"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/6/61/Clothpants.png/revision/latest?format=original" },
+["Cloth Footwraps"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e8/Clothboots.png/revision/latest?format=original" },
+["Cloth Handwraps"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/9/98/Clothgloves.png/revision/latest?format=original" },
+["Wooden Helmet"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/2/20/Woodhelm.png/revision/latest?format=original" },
+["Wooden Chestplate"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/8/87/Woodchest.png/revision/latest?format=original" },
+["Wooden Leggings"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f8/Woodleg.png/revision/latest?format=original" },
+["Salvaged Helmet"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/4/46/Salvagedhelm.png/revision/latest?format=original" },
+["Salvaged Chestplate"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e2/Salvagedchest.png/revision/latest?format=original" },
+["Salvaged Leggings"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/b/be/Salvagedlegs.png/revision/latest?format=original" },
+["Salvaged Gloves"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a8/Salvagedgloves.png/revision/latest?format=original" },
+["Leather Gloves"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/6/62/Leathergloves.png/revision/latest?format=original" },
+["Shorts"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/4/47/Pants.png/revision/latest?format=original" },
+["Collared Shirt"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/b/ba/Collaredshirt.png/revision/latest?format=original" },
+["Flannel Jacket"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/2/26/Flanneljacket.png/revision/latest?format=original" },
+["Tank Top"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/2/2b/Tanktop.png/revision/latest?format=original" },
+["Baseball Cap"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/9/91/Cap.png/revision/latest?format=original" },
+["Balaclava"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/2/2a/Balaclava.png/revision/latest?format=original" },
+["Wetsuit"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/5/5f/Wetsuit.png/revision/latest?format=original" },
+["Hazmat Suit"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/6/68/Hazmat.png/revision/latest?format=original" },
+["Bone Armor"] = { "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7d/Bonearmour.png/revision/latest?format=original" }
+}
+
+FALLEN_ARMOR_ICON_CACHE = FALLEN_ARMOR_ICON_CACHE or {}
+FALLEN_ARMOR_TARGET_CACHE = FALLEN_ARMOR_TARGET_CACHE or {}
+
+function FALLEN_ARMOR_SAFE_NAME(inst)
+    if not inst then return nil end
+    local ok, name =
+        pcall(function()
+            if inst.get_name then
+                return inst:get_name()
+            end
+            return inst.Name
+        end)
+    if ok then
+        return name
+    end
+    return nil
+end
+
+function FALLEN_ARMOR_CHAR(p)
+    if not p then return nil end
+
+    if p.character_addr
+        and p.character_addr ~= 0
+        and rbx
+        and type(rbx.instance) == "function"
+    then
+        local ok, char =
+            pcall(
+                rbx.instance,
+                p.character_addr
+            )
+        if ok and char then
+            return char
+        end
+    end
+
+    if p.hrp_addr
+        and p.hrp_addr ~= 0
+        and rbx
+        and type(rbx.instance) == "function"
+    then
+        local ok, hrp =
+            pcall(
+                rbx.instance,
+                p.hrp_addr
+            )
+
+        if ok and hrp then
+            local ok_parent, par =
+                pcall(function()
+                    return hrp:parent()
+                end)
+
+            if ok_parent and par then
+                return par
+            end
+        end
+    end
+
+    if rbx
+        and type(rbx.players_service) == "function"
+        and p.name
+    then
+        local ok, ps =
+            pcall(
+                rbx.players_service
+            )
+
+        if ok and ps then
+            local ok_plr, plr =
+                pcall(function()
+                    return ps:find_first_child(p.name)
+                end)
+
+            if ok_plr and plr then
+                local ok_char, char =
+                    pcall(function()
+                        return plr:get_character()
+                    end)
+
+                if ok_char then
+                    return char
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_ARMOR_NORMALIZE_ID(name)
+    if not name then return nil end
+
+    local id =
+        string.match(
+            tostring(name),
+            "Armor[_%%s]%%d+"
+        )
+
+    if not id then
+        return nil
+    end
+
+    id =
+        string.gsub(
+            id,
+            " ",
+            "_"
+        )
+
+    if id == "Armor_308"
+        or id == "Armor_309"
+    then
+        return nil
+    end
+
+    return id
+end
+
+function FALLEN_ARMOR_SCAN(root, out_items, seen, depth)
+    if not root
+        or depth > 12
+    then
+        return
+    end
+
+    local ok, children =
+        pcall(function()
+            return root:get_children()
+        end)
+
+    if not ok
+        or type(children) ~= "table"
+    then
+        return
+    end
+
+    for _, child in ipairs(children) do
+        local name =
+            FALLEN_ARMOR_SAFE_NAME(child)
+
+        local id =
+            FALLEN_ARMOR_NORMALIZE_ID(name)
+
+        local display =
+            id
+            and FALLEN_ARMOR_MAP[id]
+            or nil
+
+        if display
+            and not seen[display]
+        then
+            seen[display] = true
+            out_items[#out_items + 1] = display
+        end
+
+        FALLEN_ARMOR_SCAN(
+            child,
+            out_items,
+            seen,
+            depth + 1
+        )
+    end
+end
+
+function FALLEN_ARMOR_PLAYER_KEY(p)
+    if not p then return "nil" end
+    return tostring(
+        p.address
+        or p.player_addr
+        or p.character_addr
+        or p.name
+        or p.Name
+        or p
+    )
+end
+
+function FALLEN_ARMOR_ITEMS(p)
+    if not p then return {} end
+
+    if type(A.armor_item_cache) ~= "table" then
+        A.armor_item_cache = {}
+    end
+
+    local key =
+        FALLEN_ARMOR_PLAYER_KEY(p)
+
+    local now = tick()
+    local cached =
+        A.armor_item_cache[key]
+
+    if cached
+        and now - (cached.t or 0) < 0.65
+    then
+        return cached.items or {}
+    end
+
+    local items = {}
+    local seen = {}
+
+    local char =
+        FALLEN_ARMOR_CHAR(p)
+
+    if char then
+        FALLEN_ARMOR_SCAN(
+            char,
+            items,
+            seen,
+            0
+        )
+    end
+
+    -- Also scan the Player instance because some armor folders live there.
+    if rbx
+        and type(rbx.players_service) == "function"
+        and p.name
+    then
+        local ok, ps =
+            pcall(
+                rbx.players_service
+            )
+
+        if ok and ps then
+            local ok_plr, plr =
+                pcall(function()
+                    return ps:find_first_child(p.name)
+                end)
+
+            if ok_plr and plr then
+                FALLEN_ARMOR_SCAN(
+                    plr,
+                    items,
+                    seen,
+                    0
+                )
+            end
+        end
+    end
+
+    A.armor_item_cache[key] = {
+        t = now,
+        items = items,
+    }
+
+    return items
+end
+
+function FALLEN_ARMOR_VALID_PLAYER(p)
+    if not p
+        or p.is_self == true
+        or p.is_knocked == true
+        or p.is_dead == true
+    then
+        return false
+    end
+
+    if p.health ~= nil
+        and (tonumber(p.health) or 0) <= 1
+    then
+        return false
+    end
+
+    if p.address ~= nil
+        and p.address == 0
+    then
+        return false
+    end
+
+    local pos =
+        p.head_pos
+        or p.position
+
+    if not pos
+        or pos.X == nil
+        or pos.Y == nil
+        or pos.Z == nil
+    then
+        return false
+    end
+
+    if pos.X == 0
+        and pos.Y == 0
+        and pos.Z == 0
+    then
+        return false
+    end
+
+    local max_dist =
+        tonumber(S.armor_esp_range)
+        or 1200
+
+    if p.distance
+        and tonumber(p.distance)
+        and tonumber(p.distance) > max_dist
+    then
+        return false
+    end
+
+    return true
+end
+
+function FALLEN_ARMOR_HEAD_POS(p)
+    if not p then return nil end
+
+    if p.head_pos
+        and p.head_pos.X
+        and p.head_pos.Y
+        and p.head_pos.Z
+    then
+        return p.head_pos
+    end
+
+    if p.position
+        and p.position.X
+        and p.position.Y
+        and p.position.Z
+    then
+        return {
+            X = p.position.X,
+            Y = p.position.Y + 2.0,
+            Z = p.position.Z,
+        }
+    end
+
+    return nil
+end
+
+function FALLEN_ARMOR_ICON(name)
+    if not name
+        or type(LoadImage) ~= "function"
+    then
+        return nil
+    end
+
+    local urls =
+        FALLEN_ARMOR_ICON_URLS[name]
+
+    if type(urls) ~= "table"
+        or #urls == 0
+    then
+        return nil
+    end
+
+    local st =
+        FALLEN_ARMOR_ICON_CACHE[name]
+
+    if not st then
+        st = {
+            index = 1,
+            handle = nil,
+            dead = false,
+        }
+
+        FALLEN_ARMOR_ICON_CACHE[name] = st
+    end
+
+    if st.dead then
+        return nil
+    end
+
+    if not st.handle then
+        local url =
+            urls[st.index]
+
+        if not url then
+            st.dead = true
+            return nil
+        end
+
+        local ok, handle =
+            pcall(
+                LoadImage,
+                url
+            )
+
+        if ok and handle then
+            st.handle = handle
+        else
+            st.index = st.index + 1
+            return nil
+        end
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                st.handle
+            )
+
+        if ok and ready == true then
+            return st.handle
+        end
+    end
+
+    if type(IsImageFailed) == "function" then
+        local ok, failed =
+            pcall(
+                IsImageFailed,
+                st.handle
+            )
+
+        if ok and failed == true then
+            st.index = st.index + 1
+            st.handle = nil
+
+            if not urls[st.index] then
+                st.dead = true
+            end
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_ARMOR_SHORT(name)
+    local s =
+        tostring(name or "?")
+
+    local a, b =
+        string.match(
+            s,
+            "^(%%S+)%%s+(%%S+)"
+        )
+
+    if a and b then
+        return
+            string.sub(a, 1, 1)
+            .. string.sub(b, 1, 1)
+    end
+
+    return string.sub(s, 1, 2)
+end
+
+function FALLEN_ARMOR_DRAW_ICON(name, x, y, size, alpha, boxed)
+    alpha =
+        clamp(
+            tonumber(alpha) or 1,
+            0,
+            1
+        )
+
+    if boxed == true then
+        if type(DrawBoxFilled) == "function" then
+            DrawBoxFilled(
+                x - 2,
+                y - 2,
+                x + size + 2,
+                y + size + 2,
+                0.025,
+                0.026,
+                0.032,
+                0.80 * alpha
+            )
+        end
+
+        if type(DrawBox) == "function" then
+            DrawBox(
+                x - 2,
+                y - 2,
+                x + size + 2,
+                y + size + 2,
+                0.58,
+                0.68,
+                0.92,
+                0.30 * alpha,
+                1
+            )
+        end
+    end
+
+    local handle =
+        FALLEN_ARMOR_ICON(name)
+
+    if handle
+        and type(DrawImage) == "function"
+    then
+        DrawImage(
+            handle,
+            x,
+            y,
+            size,
+            size,
+            1,
+            1,
+            1,
+            alpha,
+            math.max(
+                2,
+                size * 0.12
+            )
+        )
+    elseif type(DrawTextWithOutline) == "function" then
+        DrawTextWithOutline(
+            x + size * 0.5,
+            y + size * 0.5 - 6,
+            FALLEN_ARMOR_SHORT(name),
+            1,
+            1,
+            1,
+            alpha,
+            0,
+            0,
+            0,
+            alpha
+        )
+    end
+end
+
+function FALLEN_ARMOR_SMOOTH_SCREEN(p, target_x, target_y)
+    if type(A.armor_screen_smooth) ~= "table" then
+        A.armor_screen_smooth = {}
+    end
+
+    local key =
+        FALLEN_ARMOR_PLAYER_KEY(p)
+
+    local now = tick()
+    local rec =
+        A.armor_screen_smooth[key]
+
+    local smooth =
+        clamp(
+            tonumber(S.armor_esp_smooth) or 18,
+            0,
+            50
+        )
+
+    if smooth <= 0
+        or not rec
+    then
+        A.armor_screen_smooth[key] = {
+            x = target_x,
+            y = target_y,
+            t = now,
+            seen = now,
+        }
+
+        return target_x, target_y
+    end
+
+    local dt =
+        clamp(
+            now - (rec.t or now),
+            0,
+            0.08
+        )
+
+    local a =
+        1 / (1 + smooth * 0.16)
+
+    a =
+        clamp(
+            a * math.max(1, dt * 60),
+            0.035,
+            1
+        )
+
+    rec.x =
+        (rec.x or target_x)
+        + (target_x - (rec.x or target_x)) * a
+
+    rec.y =
+        (rec.y or target_y)
+        + (target_y - (rec.y or target_y)) * a
+
+    rec.t = now
+    rec.seen = now
+
+    return rec.x, rec.y
+end
+
+function FALLEN_ARMOR_CLOSEST()
+    if not players
+        or type(players.get_all) ~= "function"
+        or not aim
+        or type(aim.world_to_screen) ~= "function"
+    then
+        return nil
+    end
+
+    local ok, list =
+        pcall(
+            players.get_all
+        )
+
+    if not ok
+        or type(list) ~= "table"
+    then
+        return nil
+    end
+
+    local cross =
+        crosshair_pos()
+
+    if not cross then
+        return nil
+    end
+
+    local best = nil
+    local best_sd = 280
+
+    for _, p in ipairs(list) do
+        if FALLEN_ARMOR_VALID_PLAYER(p) then
+            local pos =
+                FALLEN_ARMOR_HEAD_POS(p)
+
+            if pos then
+                local scr = nil
+
+                pcall(function()
+                    scr =
+                        aim.world_to_screen(pos)
+                end)
+
+                if scr
+                    and scr.visible
+                then
+                    local dx =
+                        (scr.X or 0)
+                        - (cross.X or 0)
+
+                    local dy =
+                        (scr.Y or 0)
+                        - (cross.Y or 0)
+
+                    local sd =
+                        math.sqrt(
+                            dx * dx
+                            + dy * dy
+                        )
+
+                    if sd < best_sd then
+                        best_sd = sd
+                        best = p
+                    end
+                end
+            end
+        end
+    end
+
+    return best
+end
+
+function FALLEN_ARMOR_DRAW_NORMAL()
+    local target =
+        FALLEN_ARMOR_CLOSEST()
+
+    if not target then
+        A.armor_target_alpha =
+            lerp(
+                A.armor_target_alpha or 0,
+                0,
+                0.18
+            )
+        return
+    end
+
+    local items =
+        FALLEN_ARMOR_ITEMS(target)
+
+    if type(items) ~= "table"
+        or #items == 0
+    then
+        A.armor_target_alpha =
+            lerp(
+                A.armor_target_alpha or 0,
+                0,
+                0.15
+            )
+        return
+    end
+
+    A.armor_target_alpha =
+        lerp(
+            A.armor_target_alpha or 0,
+            1,
+            0.14
+        )
+
+    local alpha =
+        A.armor_target_alpha
+
+    local sw, sh =
+        screen_size()
+
+    local base_size =
+        clamp(
+            tonumber(S.armor_esp_size) or 18,
+            10,
+            32
+        )
+
+    local size =
+        clamp(
+            base_size * 1.65,
+            24,
+            56
+        )
+
+    local gap = 6
+    local pad = 10
+    local name_h = 34
+
+    local total_w =
+        #items * size
+        + math.max(0, #items - 1) * gap
+
+    local panel_w =
+        total_w + pad * 2
+
+    local panel_h =
+        size + name_h + 12
+
+    local cx =
+        sw * 0.5
+
+    local panel_x =
+        cx - panel_w * 0.5
+
+    local panel_y =
+        sh * 0.72
+
+    if type(DrawBoxFilled) == "function" then
+        DrawBoxFilled(
+            panel_x,
+            panel_y,
+            panel_x + panel_w,
+            panel_y + panel_h,
+            0.010,
+            0.011,
+            0.016,
+            0.76 * alpha
+        )
+    end
+
+    if type(DrawBox) == "function" then
+        DrawBox(
+            panel_x,
+            panel_y,
+            panel_x + panel_w,
+            panel_y + panel_h,
+            0.42,
+            0.54,
+            0.88,
+            0.38 * alpha,
+            1
+        )
+    end
+
+    local name =
+        tostring(
+            target.name
+            or target.display_name
+            or "Player"
+        )
+
+    if type(DrawTextWithOutline) == "function" then
+        DrawTextWithOutline(
+            cx,
+            panel_y + 8,
+            name,
+            1,
+            1,
+            1,
+            alpha,
+            0,
+            0,
+            0,
+            alpha
+        )
+    end
+
+    local hp =
+        tonumber(target.health)
+        or 0
+
+    local max_hp =
+        tonumber(target.max_health)
+        or 100
+
+    if max_hp <= 0 then
+        max_hp = 100
+    end
+
+    local hp_frac =
+        clamp(
+            hp / max_hp,
+            0,
+            1
+        )
+
+    if type(DrawBoxFilled) == "function" then
+        DrawBoxFilled(
+            panel_x + pad,
+            panel_y + 25,
+            panel_x + pad + (panel_w - pad * 2) * hp_frac,
+            panel_y + 29,
+            1 - hp_frac,
+            hp_frac,
+            0.12,
+            0.90 * alpha
+        )
+    end
+
+    local start_x =
+        cx - total_w * 0.5
+
+    local y =
+        panel_y + name_h
+
+    for i, item in ipairs(items) do
+        FALLEN_ARMOR_DRAW_ICON(
+            item,
+            start_x + (i - 1) * (size + gap),
+            y,
+            size,
+            alpha,
+            true
+        )
+    end
+end
+
+function FALLEN_ARMOR_DRAW_ON_PLAYERS()
+    if not players
+        or type(players.get_all) ~= "function"
+        or not aim
+        or type(aim.world_to_screen) ~= "function"
+    then
+        return
+    end
+
+    local ok, list =
+        pcall(
+            players.get_all
+        )
+
+    if not ok
+        or type(list) ~= "table"
+    then
+        return
+    end
+
+    local icon =
+        math.floor(
+            clamp(
+                tonumber(S.armor_esp_size) or 18,
+                10,
+                32
+            )
+        )
+
+    local gap = 2
+    local y_offset =
+        icon + 10
+
+    for _, p in ipairs(list) do
+        if FALLEN_ARMOR_VALID_PLAYER(p) then
+            local pos =
+                FALLEN_ARMOR_HEAD_POS(p)
+
+            if pos then
+                local scr = nil
+
+                pcall(function()
+                    scr =
+                        aim.world_to_screen(pos)
+                end)
+
+                if scr
+                    and scr.visible
+                then
+                    local sx, sy =
+                        FALLEN_ARMOR_SMOOTH_SCREEN(
+                            p,
+                            scr.X,
+                            scr.Y
+                        )
+
+                    local items =
+                        FALLEN_ARMOR_ITEMS(p)
+
+                    if type(items) == "table"
+                        and #items > 0
+                    then
+                        local total_w =
+                            #items * icon
+                            + math.max(0, #items - 1) * gap
+
+                        local start_x =
+                            sx - total_w * 0.5
+
+                        local y =
+                            sy - y_offset
+
+                        for i, item in ipairs(items) do
+                            FALLEN_ARMOR_DRAW_ICON(
+                                item,
+                                start_x + (i - 1) * (icon + gap),
+                                y,
+                                icon,
+                                1,
+                                false
+                            )
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+function FALLEN_ARMOR_ESP_TICK()
+    if _G.FallenMenuReady ~= true
+        or S.armor_esp_enabled ~= true
+    then
+        return
+    end
+
+    if tostring(S.armor_esp_mode) == "On Player" then
+        FALLEN_ARMOR_DRAW_ON_PLAYERS()
+    else
+        FALLEN_ARMOR_DRAW_NORMAL()
+    end
+end
+
+function FALLEN_DRAW_ARMOR_PAGE(
+    mx,
+    my,
+    clicked,
+    lmb,
+    x,
+    y,
+    w
+)
+    section_title(
+        x,
+        y,
+        "Armor ESP"
+    )
+
+    card(
+        x,
+        y + 25,
+        w,
+        214,
+        11
+    )
+
+    toggle_row(
+        mx,
+        my,
+        clicked,
+        x,
+        y + 32,
+        w,
+        "Armor ESP",
+        "armor_esp_enabled",
+        false
+    )
+
+    line(
+        x + 12,
+        y + 72,
+        x + w - 12,
+        y + 72,
+        C.divider,
+        1
+    )
+
+    dropdown_row(
+        mx,
+        my,
+        clicked,
+        x,
+        y + 73,
+        w,
+        "Mode",
+        "armor_esp_mode",
+        {
+            "Normal",
+            "On Player",
+        }
+    )
+
+    line(
+        x + 12,
+        y + 113,
+        x + w - 12,
+        y + 113,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        clicked,
+        lmb,
+        x,
+        y + 114,
+        w,
+        "Size",
+        "armor_esp_size",
+        10,
+        32,
+        "int"
+    )
+
+    line(
+        x + 12,
+        y + 154,
+        x + w - 12,
+        y + 154,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        clicked,
+        lmb,
+        x,
+        y + 155,
+        w,
+        "Max Distance",
+        "armor_esp_range",
+        100,
+        3000,
+        "int"
+    )
+
+    line(
+        x + 12,
+        y + 195,
+        x + w - 12,
+        y + 195,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        clicked,
+        lmb,
+        x,
+        y + 196,
+        w,
+        "Smooth",
+        "armor_esp_smooth",
+        0,
+        50,
+        "int"
+    )
+end
+
+hooks.on_render(function()
+    local ok, err =
+        pcall(
+            FALLEN_ARMOR_ESP_TICK
+        )
+
+    if not ok then
+        FALLEN_ARMOR_LAST_ERROR =
+            FALLEN_ARMOR_LAST_ERROR
+            or 0
+
+        if tick() - FALLEN_ARMOR_LAST_ERROR > 2 then
+            FALLEN_ARMOR_LAST_ERROR = tick()
+
+            if type(warn) == "function" then
+                warn(
+                    SYS
+                    .. "Armor ESP: "
+                    .. tostring(err)
+                )
+            end
+        end
+    end
+end)
+
 if hooks
     and type(hooks.on_player_leave) == "function"
 then
@@ -13660,6 +14887,17 @@ hooks.on_render(function()
         2
     )
 
+    -- Visuals is a standalone page.
+    if clicked
+        and visuals_parent_hot
+        and not A.world_color_picker_open
+        and (A.world_color_picker_anim or 0) <= 0.02
+    then
+        S.tab = 2
+        S.visuals_subtab = 0
+        S.anim = 0
+    end
+
     -- RMB on Visuals expands/collapses World + Armor.
     if rmb_clicked
         and visuals_parent_hot
@@ -13768,7 +15006,7 @@ hooks.on_render(function()
 
         -- World child.
         if S.tab == 2
-            and (tonumber(S.visuals_subtab) or 1) == 1
+            and (tonumber(S.visuals_subtab) or 0) == 1
         then
             rounded_fill(
                 child_x,
@@ -13795,7 +15033,7 @@ hooks.on_render(function()
                 world_hot,
                 (
                     S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 1) == 1
+                    and (tonumber(S.visuals_subtab) or 0) == 1
                 )
                     and C.text
                     or C.text_dim
@@ -13806,7 +15044,7 @@ hooks.on_render(function()
             world_y + 7,
             (
                 S.tab == 2
-                and (tonumber(S.visuals_subtab) or 1) == 1
+                and (tonumber(S.visuals_subtab) or 0) == 1
             )
                 and C.accent
                 or C.text_dim
@@ -13821,7 +15059,7 @@ hooks.on_render(function()
 
         -- Armor child.
         if S.tab == 2
-            and (tonumber(S.visuals_subtab) or 1) == 2
+            and (tonumber(S.visuals_subtab) or 0) == 2
         then
             rounded_fill(
                 child_x,
@@ -13848,7 +15086,7 @@ hooks.on_render(function()
                 armor_hot,
                 (
                     S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 1) == 2
+                    and (tonumber(S.visuals_subtab) or 0) == 2
                 )
                     and C.text
                     or C.text_dim
@@ -13859,7 +15097,7 @@ hooks.on_render(function()
             armor_y + 7,
             (
                 S.tab == 2
-                and (tonumber(S.visuals_subtab) or 1) == 2
+                and (tonumber(S.visuals_subtab) or 0) == 2
             )
                 and C.accent
                 or C.text_dim
@@ -14173,15 +15411,12 @@ hooks.on_render(function()
             page_w
         )
     elseif S.tab == 2 then
-        if (tonumber(S.visuals_subtab) or 1) == 2 then
-            -- Armor container. Content intentionally left clean for the
-            -- next Armor features.
-            section_title(
-                page_x,
-                page_y,
-                "Armor"
-            )
-        else
+        local visuals_page =
+            tonumber(S.visuals_subtab)
+            or 0
+
+        if visuals_page == 1 then
+            -- World keeps the entire current World page.
             draw_visuals_page(
                 mx,
                 my,
@@ -14191,6 +15426,25 @@ hooks.on_render(function()
                 page_x,
                 page_y,
                 page_w
+            )
+
+        elseif visuals_page == 2 then
+            FALLEN_DRAW_ARMOR_PAGE(
+                mx,
+                my,
+                page_clicked,
+                lmb,
+                page_x,
+                page_y,
+                page_w
+            )
+
+        else
+            -- Visuals is its own standalone page.
+            section_title(
+                page_x,
+                page_y,
+                "Visuals"
             )
         end
     end
