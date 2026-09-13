@@ -8347,6 +8347,7 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     boom_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548823359545016411/nwy9966m3ZxyeZg2yY7qRfyMUHDmG1knvQlNHz9odq2zEWGUtjPVaqiCSKK-mNBmmSMdL6xi12PZs_eIdFviRo8Ir7vv7MvEIzyP_1.png?ex=6aa875a8&is=6aa72428&hm=9b596e1dd0db49ede18049cac09f2701f9ede3166bf14aec9300a7fac0c1d109&",
     user_smoke_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827221538373713/i-_2__1.png?ex=6aa87941&is=6aa727c1&hm=1ee45d81a647ee5169c400f33c1db3f3b0d0c928f9962b478ade3af141cf2e85&",
     user_sparks_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827784342671370/i-_3__1.png?ex=6aa879c7&is=6aa72847&hm=0d8a98fa5a309eb38a94c26ad4fa0d409ac7170689aa935d6754b564eecf0d46&",
+    blur_menu_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548830528659001355/i-_4_.png?ex=6aa87c55&is=6aa72ad5&hm=114ff3145fcbc12d7d35e3a3374de3b6a758a626a9f80f1d35ef16913757c152&",
     spark = nil,
     star = nil,
     flash = nil,
@@ -8355,6 +8356,7 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     boom = nil,
     user_smoke = nil,
     user_sparks = nil,
+    blur_menu = nil,
 }
 
 function FALLEN_BT_STYLE_INDEX()
@@ -9585,6 +9587,7 @@ function FALLEN_HITFX_SCAN_HP()
         return
     end
 
+    -- The target must still be actively held by our Aimbot.
     if not FAP.current_target_pos
         or tick() - (FAP.current_target_seen or 0) > 0.18
     then
@@ -9594,33 +9597,16 @@ function FALLEN_HITFX_SCAN_HP()
         return
     end
 
-    local key = FALLEN_HITFX_TARGET_KEY()
+    local key =
+        FALLEN_HITFX_TARGET_KEY()
 
     if not key then
         return
     end
 
-    -- TEMP TEST BYPASS:
-    -- locked target + fresh LMB click = Spark even without HP loss.
-    local lmb_down =
-        key_down(0x01) == true
-
-    if lmb_down
-        and FALLEN_HITFX.test_lmb_was_down ~= true
-        and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.05
-    then
-        FALLEN_HITFX.last_spawn = tick()
-
-        FALLEN_HITFX_ADD({
-            X = FAP.current_target_pos.X,
-            Y = FAP.current_target_pos.Y,
-            Z = FAP.current_target_pos.Z,
-        })
-    end
-
-    FALLEN_HITFX.test_lmb_was_down = lmb_down
-
-    -- Final/real gate kept in the build: damage must be at least 15 HP.
+    -- FINAL LOGIC:
+    -- effect only fires while this exact target is still locked
+    -- and the same locked target loses at least 15 HP.
     local hp =
         tonumber(
             FAP.current_target_health
@@ -9662,6 +9648,7 @@ function FALLEN_HITFX_SCAN_HP()
     FALLEN_HITFX.last_hp = hp
     FALLEN_HITFX.last_seen = tick()
 end
+
 function FALLEN_HITFX_DRAW_ONE(hit, age, life)
     local s =
         FALLEN_BT_PROJECT({
@@ -16831,6 +16818,26 @@ function FALLEN_APPLY_STYLE_COLOR()
         C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
         C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
 
+    elseif t == "blur" then
+        -- Blur: same shell logic as Glass, but with a semi-transparent
+        -- textured image laid across the full menu background.
+        S.menu_type = "blur"
+
+        C.outer      = { 0.060, 0.064, 0.075, 0.84 }
+        C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
+        C.content    = { 0.052, 0.055, 0.063, 0.74 }
+
+        C.card       = { 0.065, 0.069, 0.080, 0.66 }
+        C.card_hover = { 0.082, 0.087, 0.100, 0.76 }
+        C.selected   = { 0.130, 0.132, 0.145, 0.84 }
+
+        C.border     = { 0.250, 0.260, 0.300, 0.10 }
+        C.divider    = { 0.260, 0.270, 0.310, 0.09 }
+
+        C.text       = { 0.720, 0.730, 0.760, 1.00 }
+        C.text_dim   = { 0.505, 0.520, 0.575, 1.00 }
+        C.text_faint = { 0.335, 0.355, 0.425, 1.00 }
+
     else
         -- Glass: softer transparency and lighter separation like the reference.
         S.menu_type = "glass"
@@ -17391,6 +17398,7 @@ function FALLEN_DRAW_MENU_TYPE_DROPDOWN(
     local options = {
         "Default",
         "Glass",
+        "Blur",
         "Ass",
     }
 
@@ -20428,6 +20436,32 @@ hooks.on_render(function()
     -- Base surfaces are genuinely transparent during the transition, but
     -- sidebar/content are now two DISJOINT rounded shapes. Nothing is drawn
     -- underneath them, so their corners cannot accumulate alpha.
+    if tostring(S.menu_type or "glass"):lower() == "blur" then
+        local blur_img =
+            FALLEN_BT_IMAGE_GET(
+                "blur_menu",
+                FALLEN_BT_IMAGE.blur_menu_url
+            )
+
+        if blur_img
+            and type(DrawImage) == "function"
+        then
+            pcall(
+                DrawImage,
+                blur_img,
+                wx,
+                wy,
+                WIN_W,
+                WIN_H,
+                1,
+                1,
+                1,
+                0.50 * menu_base_alpha,
+                OUTER_R
+            )
+        end
+    end
+
     rounded_left_fill(
         wx,
         wy,
