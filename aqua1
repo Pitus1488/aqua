@@ -113,7 +113,7 @@ local defaults = {
 
     -- Bullet Tracers / Misc.
     bullet_tracer_enabled = false,
-    bullet_tracer_style = "Real Neon",
+    bullet_tracer_style = "Neon",
     bullet_tracer_life = 1.20,
     bullet_tracer_reveal = 0.22,
     bullet_tracer_thickness = 2.0,
@@ -123,6 +123,14 @@ local defaults = {
     bullet_tracer_s = 0.55,
     bullet_tracer_v = 1.00,
     bullet_tracer_alpha = 100,
+
+    -- Visual hit effect: fires only when the locked Aimbot target loses HP.
+    hit_effect_enabled = false,
+    hit_effect_size = 38,
+    hit_effect_h = 0.58,
+    hit_effect_s = 0.55,
+    hit_effect_v = 1.00,
+    hit_effect_alpha = 100,
 
     -- Armor ESP.
     armor_esp_enabled = false,
@@ -6902,6 +6910,7 @@ local FAP = {
     current_target_addr = nil,
     current_target_name = nil,
     current_target_pos = nil,
+    current_target_health = nil,
     current_target_seen = 0,
 
     last_weapon_scan = 0,
@@ -7796,6 +7805,7 @@ local function fap_clear_lock()
     FAP.current_target_addr = nil
     FAP.current_target_name = nil
     FAP.current_target_pos = nil
+    FAP.current_target_health = nil
     FAP.current_target_seen = 0
 end
 
@@ -8184,6 +8194,13 @@ local function fap_tick()
         Z = predicted.Z,
     }
 
+    FAP.current_target_health =
+        tonumber(
+            target.health
+            or target.hp
+            or target.Health
+        )
+
     FAP.current_target_seen = tick()
 
     local mat = nil
@@ -8309,18 +8326,27 @@ function FALLEN_BT_STYLE_INDEX()
     local style =
         tostring(
             S.bullet_tracer_style
-            or "Real Neon"
+            or "Neon"
         )
 
-    if style == "Beam" then return 0 end
-    if style == "Real Neon" then return 1 end
-    if style == "Lightning" then return 2 end
-    if style == "Gradient Laser" then return 3 end
-    if style == "Wave Lightning" then return 4 end
-    if style == "Image Lightning" then return 5 end
-    if style == "Image Spark Trail" then return 6 end
+    -- Backwards compatibility with configs from the previous build.
+    if style == "Real Neon" then
+        S.bullet_tracer_style = "Neon"
+        style = "Neon"
+    elseif style == "Wave Lightning" then
+        S.bullet_tracer_style = "Lightning"
+        style = "Lightning"
+    end
 
-    return 1
+    if style == "Lightning" then
+        return 1
+    end
+
+    if style ~= "Neon" then
+        S.bullet_tracer_style = "Neon"
+    end
+
+    return 0
 end
 
 function FALLEN_BT_IMAGE_GET(key, url)
@@ -8793,155 +8819,9 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
     local style =
         FALLEN_BT_STYLE_INDEX()
 
-    if style == 0 then
-        -- Beam
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha * 0.18,
-            thick + 4
-        )
-
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha,
-            thick
-        )
-
-    elseif style == 1 then
-        -- Real Neon
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha * 0.10,
-            thick + 12
-        )
-
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha * 0.22,
-            thick + 8
-        )
-
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha * 0.48,
-            thick + 4
-        )
-
-        DrawLine(
-            sx, sy, ex, ey,
-            col[1], col[2], col[3],
-            alpha * 0.95,
-            thick
-        )
-
-        DrawLine(
-            sx, sy, ex, ey,
-            1, 1, 1,
-            alpha * 0.50,
-            1
-        )
-
-    elseif style == 3 then
-        -- Gradient Laser
-        local segs = 32
-
-        for i = 1, segs do
-            local u0 =
-                (i - 1) / segs
-
-            local u1 =
-                i / segs
-
-            local x0 =
-                sx + (ex - sx) * u0
-
-            local y0 =
-                sy + (ey - sy) * u0
-
-            local x1 =
-                sx + (ex - sx) * u1
-
-            local y1 =
-                sy + (ey - sy) * u1
-
-            local h1 =
-                (
-                    (tr.hue or 0.58)
-                    + u1 * 0.18
-                ) % 1
-
-            local h2 =
-                (
-                    h1
-                    + 0.20
-                    + 0.05
-                    * math.sin(
-                        (tr.seed or 1)
-                        + u1 * 4
-                    )
-                ) % 1
-
-            local r1, g1, b1 =
-                hsv_to_rgb(
-                    h1,
-                    0.72,
-                    1
-                )
-
-            local r2, g2, b2 =
-                hsv_to_rgb(
-                    h2,
-                    0.72,
-                    1
-                )
-
-            local rr =
-                r1 * (1 - u1)
-                + r2 * u1
-
-            local gg =
-                g1 * (1 - u1)
-                + g2 * u1
-
-            local bb =
-                b1 * (1 - u1)
-                + b2 * u1
-
-            DrawLine(
-                x0, y0, x1, y1,
-                rr, gg, bb,
-                alpha * 0.13,
-                thick + 18
-            )
-
-            DrawLine(
-                x0, y0, x1, y1,
-                rr, gg, bb,
-                alpha * 0.30,
-                thick + 9
-            )
-
-            DrawLine(
-                x0, y0, x1, y1,
-                rr, gg, bb,
-                alpha * 0.95,
-                thick + 2
-            )
-        end
-
-    elseif style == 2
-        or style == 4
-    then
-        local segs =
-            style == 2
-            and 30
-            or 42
-
+    if style == 1 then
+        -- Lightning = the old Wave Lightning style.
+        local segs = 42
         local dx = ex - sx
         local dy = ey - sy
 
@@ -8975,30 +8855,16 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
             local by =
                 sy + dy * u
 
-            local offset
-
-            if style == 2 then
-                offset =
-                    math.sin(
-                        i * 2.77
-                        + seed * 11
-                    ) * 4.6
-                    + math.sin(
-                        i * 5.31
-                        + seed * 7
-                    ) * 1.4
-            else
-                offset =
-                    math.sin(
-                        u * 54
-                        + seed
-                        + tick() * 4
-                    ) * 2.6
-                    + math.sin(
-                        u * 117
-                        + seed * 2.3
-                    ) * 0.9
-            end
+            local offset =
+                math.sin(
+                    u * 54
+                    + seed
+                    + tick() * 4
+                ) * 2.6
+                + math.sin(
+                    u * 117
+                    + seed * 2.3
+                ) * 0.9
 
             local px =
                 bx + nx * offset
@@ -9014,8 +8880,8 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
                 col[1],
                 col[2],
                 col[3],
-                alpha * 0.18,
-                thick + 6
+                alpha * 0.16,
+                thick + 5
             )
 
             DrawLine(
@@ -9026,7 +8892,19 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
                 col[1],
                 col[2],
                 col[3],
-                alpha * 0.92,
+                alpha * 0.34,
+                thick + 2
+            )
+
+            DrawLine(
+                prev_x,
+                prev_y,
+                px,
+                py,
+                col[1],
+                col[2],
+                col[3],
+                alpha * 0.90,
                 thick
             )
 
@@ -9038,115 +8916,53 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
                 1,
                 1,
                 1,
-                alpha * 0.42,
+                alpha * 0.48,
                 1
             )
-
-            if style == 2
-                and i > 2
-                and i < segs - 1
-                and i % 7 == 0
-            then
-                local branch =
-                    10
-                    + 9
-                    * math.abs(
-                        math.sin(
-                            (tr.seed or 1)
-                            + i * 1.77
-                        )
-                    )
-
-                local sign =
-                    math.sin(
-                        i * 3.1
-                        + seed
-                    ) > 0
-                    and 1
-                    or -1
-
-                DrawLine(
-                    px,
-                    py,
-                    px + nx * branch * sign,
-                    py + ny * branch * sign,
-                    col[1],
-                    col[2],
-                    col[3],
-                    alpha * 0.38,
-                    1
-                )
-            end
 
             prev_x = px
             prev_y = py
         end
 
-    elseif style == 5
-        or style == 6
-    then
-        -- Image Lightning / Image Spark Trail
+    else
+        -- Neon = the old Real Neon style.
+        DrawLine(
+            sx, sy, ex, ey,
+            col[1], col[2], col[3],
+            alpha * 0.10,
+            thick + 12
+        )
+
         DrawLine(
             sx, sy, ex, ey,
             col[1], col[2], col[3],
             alpha * 0.20,
-            style == 5
-                and thick + 10
-                or thick + 7
+            thick + 8
         )
 
         DrawLine(
             sx, sy, ex, ey,
             col[1], col[2], col[3],
-            alpha * 0.82,
-            style == 5
-                and thick + 2
-                or thick
+            alpha * 0.38,
+            thick + 5
         )
 
-        local count =
-            style == 5
-            and 6
-            or 10
+        DrawLine(
+            sx, sy, ex, ey,
+            col[1], col[2], col[3],
+            alpha * 0.78,
+            thick + 2
+        )
 
-        for i = 1, count do
-            local u =
-                i / count
-
-            local px =
-                sx + (ex - sx) * u
-
-            local py =
-                sy + (ey - sy) * u
-
-            local size =
-                (
-                    style == 5
-                    and 18
-                    or 12
-                )
-                + (
-                    style == 5
-                    and 10
-                    or 12
-                )
-                * math.abs(
-                    math.sin(
-                        (tr.seed or 1)
-                        + i * 1.73
-                    )
-                )
-
-            FALLEN_BT_DRAW_IMAGE_NODE(
-                style,
-                px,
-                py,
-                size,
-                alpha,
-                col,
-                (tr.seed or 1) + i
+        DrawLine(
+            sx, sy, ex, ey,
+            1, 1, 1,
+            alpha * 0.62,
+            math.max(
+                1,
+                thick - 0.35
             )
-        end
+        )
     end
 end
 
@@ -9191,11 +9007,315 @@ function FALLEN_BT_TICK()
     FALLEN_BT_DRAW()
 end
 
+FALLEN_HITFX = FALLEN_HITFX or {
+    items = {},
+    target_key = nil,
+    last_hp = nil,
+    last_seen = 0,
+    last_spawn = 0,
+}
+
+function FALLEN_HITFX_COLOR()
+    return
+        world_color_from_prefix(
+            "hit_effect"
+        )
+end
+
+function FALLEN_HITFX_TARGET_KEY()
+    return
+        FAP.current_target_addr
+        or FAP.current_target_name
+end
+
+function FALLEN_HITFX_ADD(pos)
+    if not pos then
+        return
+    end
+
+    FALLEN_HITFX.items[#FALLEN_HITFX.items + 1] = {
+        x = pos.X,
+        y = pos.Y,
+        z = pos.Z,
+        created = tick(),
+        seed =
+            (#FALLEN_HITFX.items + 1) * 31
+            + math.floor(tick() * 1000),
+    }
+
+    while #FALLEN_HITFX.items > 25 do
+        table.remove(
+            FALLEN_HITFX.items,
+            1
+        )
+    end
+end
+
+function FALLEN_HITFX_SCAN_HP()
+    if S.hit_effect_enabled ~= true
+        or S.aim_enabled ~= true
+    then
+        FALLEN_HITFX.target_key = nil
+        FALLEN_HITFX.last_hp = nil
+        return
+    end
+
+    -- The target must still be actively held by our Aimbot.
+    if not FAP.current_target_pos
+        or tick() - (FAP.current_target_seen or 0) > 0.18
+    then
+        FALLEN_HITFX.target_key = nil
+        FALLEN_HITFX.last_hp = nil
+        return
+    end
+
+    local key =
+        FALLEN_HITFX_TARGET_KEY()
+
+    local hp =
+        tonumber(
+            FAP.current_target_health
+        )
+
+    if not key
+        or hp == nil
+    then
+        return
+    end
+
+    if FALLEN_HITFX.target_key ~= key then
+        FALLEN_HITFX.target_key = key
+        FALLEN_HITFX.last_hp = hp
+        FALLEN_HITFX.last_seen = tick()
+        return
+    end
+
+    local old =
+        tonumber(
+            FALLEN_HITFX.last_hp
+        )
+
+    if old
+        and hp < old - 0.01
+        and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.035
+    then
+        FALLEN_HITFX.last_spawn = tick()
+
+        FALLEN_HITFX_ADD({
+            X = FAP.current_target_pos.X,
+            Y = FAP.current_target_pos.Y,
+            Z = FAP.current_target_pos.Z,
+        })
+    end
+
+    FALLEN_HITFX.last_hp = hp
+    FALLEN_HITFX.last_seen = tick()
+end
+
+function FALLEN_HITFX_DRAW_ONE(hit, age, life)
+    local s =
+        FALLEN_BT_PROJECT({
+            X = hit.x,
+            Y = hit.y,
+            Z = hit.z,
+        })
+
+    if not s then
+        return
+    end
+
+    local t =
+        clamp(
+            age / life,
+            0,
+            1
+        )
+
+    local alpha =
+        1 - t
+
+    local col =
+        FALLEN_HITFX_COLOR()
+
+    alpha =
+        alpha
+        * (col[4] or 1)
+
+    local size =
+        clamp(
+            tonumber(S.hit_effect_size) or 38,
+            18,
+            96
+        )
+
+    -- Source-style visual hit: white flash + expanding ring + sparks.
+    if type(DrawCircle) == "function" then
+        local flash =
+            math.max(
+                0,
+                1 - t * 2.6
+            )
+
+        DrawCircle(
+            s.X,
+            s.Y,
+            size
+                * (
+                    0.12
+                    + flash * 0.16
+                ),
+            1,
+            1,
+            1,
+            alpha * 0.90,
+            2
+        )
+
+        DrawCircle(
+            s.X,
+            s.Y,
+            size
+                * (
+                    0.22
+                    + t * 0.90
+                ),
+            col[1],
+            col[2],
+            col[3],
+            alpha * 0.42,
+            1.5
+        )
+
+        DrawCircle(
+            s.X,
+            s.Y,
+            size
+                * (
+                    0.10
+                    + t * 0.45
+                ),
+            col[1],
+            col[2],
+            col[3],
+            alpha * 0.22,
+            3.5
+        )
+    end
+
+    if type(DrawLine) == "function" then
+        for k = 1, 16 do
+            local seed =
+                (hit.seed or 1)
+                + k * 12.989
+
+            local ang =
+                (k / 16)
+                * math.pi
+                * 2
+                + math.sin(seed) * 0.22
+
+            local speed =
+                0.42
+                + 0.58
+                * math.abs(
+                    math.sin(
+                        seed * 1.71
+                    )
+                )
+
+            local len =
+                size
+                * (
+                    0.18
+                    + t * 1.05
+                )
+                * speed
+
+            local tail =
+                size
+                * (
+                    0.08
+                    + 0.14 * (1 - t)
+                )
+                * speed
+
+            DrawLine(
+                s.X
+                    + math.cos(ang)
+                    * (len - tail),
+                s.Y
+                    + math.sin(ang)
+                    * (len - tail),
+                s.X
+                    + math.cos(ang)
+                    * len,
+                s.Y
+                    + math.sin(ang)
+                    * len,
+                col[1],
+                col[2],
+                col[3],
+                alpha
+                    * (
+                        0.35
+                        + 0.40 * speed
+                    ),
+                1.2
+            )
+        end
+    end
+end
+
+function FALLEN_HITFX_DRAW()
+    if type(FALLEN_HITFX.items) ~= "table" then
+        FALLEN_HITFX.items = {}
+    end
+
+    local now = tick()
+    local life = 0.74
+
+    for i = #FALLEN_HITFX.items, 1, -1 do
+        local hit =
+            FALLEN_HITFX.items[i]
+
+        local age =
+            now - (hit.created or now)
+
+        if age > life
+            or S.hit_effect_enabled ~= true
+        then
+            table.remove(
+                FALLEN_HITFX.items,
+                i
+            )
+        else
+            FALLEN_HITFX_DRAW_ONE(
+                hit,
+                age,
+                life
+            )
+        end
+    end
+end
+
+function FALLEN_HITFX_TICK()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    FALLEN_HITFX_SCAN_HP()
+    FALLEN_HITFX_DRAW()
+end
+
 hooks.on_render(function()
     local ok, err =
         pcall(
             FALLEN_BT_TICK
         )
+
+    pcall(
+        FALLEN_HITFX_TICK
+    )
 
     if not ok then
         FALLEN_BT.last_error =
@@ -18492,13 +18612,8 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
     end
 
     local options = {
-        "Beam",
-        "Real Neon",
+        "Neon",
         "Lightning",
-        "Gradient Laser",
-        "Wave Lightning",
-        "Image Lightning",
-        "Image Spark Trail",
     }
 
     local item_h = 27
@@ -18584,7 +18699,7 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
             local selected =
                 tostring(
                     S.bullet_tracer_style
-                    or "Real Neon"
+                    or "Neon"
                 ) == option
 
             if selected then
@@ -18740,9 +18855,13 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     text(
         style_box_x + 10,
         style_box_y + 7,
-        tostring(
-            S.bullet_tracer_style
-            or "Real Neon"
+        (
+            (
+                S.bullet_tracer_style == "Lightning"
+                or S.bullet_tracer_style == "Wave Lightning"
+            )
+            and "Lightning"
+            or "Neon"
         ),
         FALLEN_HOVER_TEXT(
             "tracer_style_value",
@@ -18924,6 +19043,169 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         "bullet_tracer_reveal",
         0.03,
         1.50
+    )
+
+    local right_x =
+        x + card_w + 18
+
+    local right_w =
+        math.max(
+            220,
+            w - card_w - 18
+        )
+
+    section_title(
+        right_x,
+        y,
+        "Hit Effects"
+    )
+
+    card(
+        right_x,
+        y + 25,
+        right_w,
+        173,
+        11
+    )
+
+    toggle_row(
+        mx,
+        my,
+        controls_clicked,
+        right_x,
+        y + 32,
+        right_w,
+        "Hit Effects",
+        "hit_effect_enabled",
+        false
+    )
+
+    line(
+        right_x + 12,
+        y + 72,
+        right_x + right_w - 12,
+        y + 72,
+        C.divider,
+        1
+    )
+
+    local hit_color_y =
+        y + 73
+
+    local hit_color_hot =
+        row_hover(
+            mx,
+            my,
+            right_x,
+            hit_color_y,
+            right_w,
+            41
+        )
+
+    text(
+        right_x + 13,
+        hit_color_y + 14,
+        "Hit Effect Color",
+        FALLEN_HOVER_TEXT(
+            "hit_effect_color",
+            hit_color_hot,
+            C.text
+        )
+    )
+
+    local hit_swatch_w = 24
+    local hit_swatch_h = 20
+
+    local hit_swatch_x =
+        right_x
+        + right_w
+        - 46
+
+    local hit_swatch_y =
+        hit_color_y + 10
+
+    rounded_fill(
+        hit_swatch_x,
+        hit_swatch_y,
+        hit_swatch_w,
+        hit_swatch_h,
+        5,
+        FALLEN_HITFX_COLOR()
+    )
+
+    local hit_swatch_hot =
+        hover(
+            mx,
+            my,
+            hit_swatch_x,
+            hit_swatch_y,
+            hit_swatch_w,
+            hit_swatch_h
+        )
+
+    if controls_clicked
+        and hit_swatch_hot
+    then
+        FALLEN_COLOR_INPUT_STOP(true)
+
+        if A.world_color_picker_open
+            and A.world_color_picker_key == "hit_effect"
+        then
+            A.world_color_picker_open = false
+            A.world_color_picker_drag = nil
+        else
+            A.world_color_picker_key =
+                "hit_effect"
+
+            A.world_color_picker_open = true
+            A.world_color_picker_drag = nil
+
+            A.world_color_picker_anchor_x =
+                FALLEN_UI_X(
+                    hit_swatch_x
+                )
+
+            A.world_color_picker_anchor_y =
+                FALLEN_UI_Y(
+                    hit_swatch_y
+                )
+
+            A.world_color_picker_anchor_w =
+                FALLEN_UI_LEN(
+                    hit_swatch_w
+                )
+
+            A.world_color_picker_anchor_h =
+                FALLEN_UI_LEN(
+                    hit_swatch_h
+                )
+        end
+
+        numeric_stop(true)
+    end
+
+    line(
+        right_x + 12,
+        y + 113,
+        right_x + right_w - 12,
+        y + 113,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        right_x,
+        y + 114,
+        right_w,
+        "Hit Effect Size",
+        "hit_effect_size",
+        18,
+        96,
+        "int"
     )
 
     local dropdown_hot =
