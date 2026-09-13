@@ -7680,26 +7680,43 @@ local function fap_draw_fov()
             )
 
         local glow_spread =
-            math.floor(
-                clamp(
-                    tonumber(S.aim_fov_glow_spread) or 6,
-                    1,
-                    12
-                )
+            clamp(
+                tonumber(S.aim_fov_glow_spread) or 6,
+                1,
+                12
             )
 
         if glow_strength > 0.001
             and gc[4] > 0.001
         then
-            for ring = glow_spread, 1, -1 do
+            -- Same idea as the menu glow: many thin lines, strongest right at
+            -- the edge of the FOV circle, then fading outward.
+            local glow_layers = 35
+
+            for layer = 1, glow_layers do
+                local t =
+                    (layer - 1)
+                    / (glow_layers - 1)
+
+                local edge_fade =
+                    1 - t
+
                 local ring_radius =
-                    fov_radius + ring
+                    fov_radius
+                    + t * glow_spread
 
                 local ring_alpha =
                     gc[4]
                     * glow_strength
-                    * (ring / glow_spread)
-                    * 0.42
+                    * (
+                        edge_fade
+                        * edge_fade
+                    )
+                    * 0.80
+
+                local ring_thickness =
+                    1.15
+                    + edge_fade * 0.35
 
                 local ring_prev_x =
                     c.X + ring_radius
@@ -7732,7 +7749,7 @@ local function fap_draw_fov()
                         gc[2],
                         gc[3],
                         ring_alpha,
-                        1.2 + ring * 0.18
+                        ring_thickness
                     )
 
                     ring_prev_x = nx
