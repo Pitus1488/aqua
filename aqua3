@@ -2070,16 +2070,18 @@ end
 -- =========================================================
 
 local function icon_aim(x, y, c)
+    -- Larger, centered aim icon to match sidebar spacing.
+    -- Kept inside the same 16px icon box, just with better visual balance.
     local cx = x + 8
     local cy = y + 8
 
-    circle(cx, cy, 4.5, c, 1.2)
-    circle_fill(cx, cy, 1.2, c)
+    circle(cx, cy, 5.2, c, 1.35)
+    circle_fill(cx, cy, 1.35, c)
 
-    line(cx, y + 0.7, cx, y + 3.2, c, 1.2)
-    line(cx, y + 12.8, cx, y + 15.3, c, 1.2)
-    line(x + 0.7, cy, x + 3.2, cy, c, 1.2)
-    line(x + 12.8, cy, x + 15.3, cy, c, 1.2)
+    line(cx, y + 0.3, cx, y + 2.6, c, 1.35)
+    line(cx, y + 13.4, cx, y + 15.7, c, 1.35)
+    line(x + 0.3, cy, x + 2.6, cy, c, 1.35)
+    line(x + 13.4, cy, x + 15.7, cy, c, 1.35)
 end
 
 local function icon_world(x, y, c)
