@@ -5529,6 +5529,7 @@ local function draw_visuals_page(
         A.world_settings_open
         or (A.world_settings_anim or 0) > 0.02
         or A.base_box_settings_open == true
+        or (A.base_box_settings_anim or 0) > 0.02
 
     local base_clicked =
         clicked
@@ -5707,8 +5708,8 @@ local function draw_visuals_page(
         end
     end
 
-    -- Base / House: individual component switches.
-    -- Click the label / ">" to open per-component 3D box tuning.
+    -- Base / House: same Fallen-lua row style, but scrollable so the
+    -- page does not overflow. Two columns show five logical rows at once.
     local base_section_y =
         cards_y
         + 25
@@ -5721,13 +5722,12 @@ local function draw_visuals_page(
         "Base / House 3D ESP"
     )
 
-    local base_card_y =
-        base_section_y + 25
-
-    local base_row_h = 21
-    local base_rows = 11
-    local base_card_h =
-        base_rows * base_row_h + 8
+    local base_card_y = base_section_y + 25
+    local base_visible_rows = 5
+    local base_row_h = 41
+    local base_card_h = base_visible_rows * base_row_h + 8
+    local base_logical_rows = 11
+    local base_max_scroll = base_logical_rows - base_visible_rows
 
     card(
         left_x,
@@ -5745,40 +5745,78 @@ local function draw_visuals_page(
         11
     )
 
-    for i = 1, #WORLD_BASE_ITEMS do
-        local cfg =
-            WORLD_BASE_ITEMS[i]
+    local base_scroll = world_base_scroll_step(
+        mx,
+        my,
+        base_clicked,
+        lmb,
+        left_x,
+        base_card_y,
+        (right_x + col_w) - left_x,
+        base_card_h,
+        base_max_scroll
+    )
 
-        local column =
-            i <= base_rows
-            and 0
-            or 1
+    for row = 1, base_visible_rows do
+        local logical_row = base_scroll + row
+        local left_index = logical_row
+        local right_index = base_logical_rows + logical_row
+        local by = base_card_y + 4 + (row - 1) * base_row_h
 
-        local row =
-            column == 0
-            and i
-            or (i - base_rows)
+        local left_cfg = WORLD_BASE_ITEMS[left_index]
+        if left_cfg then
+            world_base_compact_row(
+                mx,
+                my,
+                base_clicked,
+                left_x,
+                by,
+                col_w,
+                left_cfg
+            )
+        end
 
-        local bx =
-            column == 0
-            and left_x
-            or right_x
+        local right_cfg = WORLD_BASE_ITEMS[right_index]
+        if right_cfg then
+            world_base_compact_row(
+                mx,
+                my,
+                base_clicked,
+                right_x,
+                by,
+                col_w - 10,
+                right_cfg
+            )
+        end
 
-        local by =
-            base_card_y
-            + 4
-            + (row - 1) * base_row_h
+        if row < base_visible_rows then
+            line(
+                left_x + 12,
+                by + 40,
+                left_x + col_w - 12,
+                by + 40,
+                C.divider,
+                1
+            )
 
-        world_base_compact_row(
-            mx,
-            my,
-            base_clicked,
-            bx,
-            by,
-            col_w,
-            cfg
-        )
+            line(
+                right_x + 12,
+                by + 40,
+                right_x + col_w - 18,
+                by + 40,
+                C.divider,
+                1
+            )
+        end
     end
+
+    -- Small range indicator; scrollbar itself is drawn on the right edge.
+    text(
+        right_x + col_w - 72,
+        base_section_y + 4,
+        tostring(base_scroll + 1) .. "-" .. tostring(math.min(base_scroll + base_visible_rows, base_logical_rows)) .. "/" .. tostring(base_logical_rows),
+        C.text_faint
+    )
 
     -- Render settings first, then the reusable color picker on top.
     draw_world_settings_popup(
@@ -7406,78 +7444,116 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
     if not cfg then return end
     world_base_ensure_state(cfg)
 
-    local h = 21
-    local hot = hover(mx, my, x, y, w, h)
-    local p = "world_base_" .. tostring(cfg.id)
-    local enabled = S[p] == true
+    local h = 41
+    local hot = row_hover(mx, my, x, y, w, h)
+    local key = "world_base_" .. tostring(cfg.id)
+    local enabled = S[key] == true
 
-    if hot then
+    local col = cfg.color or {1, 1, 1, 1}
+
+    -- Same square color preview used by the Resource ESP rows.
+    local swatch_s = 18
+    local swatch_x = x + 12
+    local swatch_y = y + 11
+
+    world_square_swatch(
+        swatch_x,
+        swatch_y,
+        swatch_s,
+        col
+    )
+
+    text(
+        x + 40,
+        y + 14,
+        cfg.label,
+        hot and C.text or alpha(C.text, 0.92)
+    )
+
+    -- Settings button in the same visual language as the menu's "..." button.
+    local dots_w = 27
+    local dots_h = 25
+    local dots_x = x + w - 82
+    local dots_y = y + 8
+    local dots_hot = hover(mx, my, dots_x, dots_y, dots_w, dots_h)
+
+    if dots_hot then
         rounded_fill(
-            x + 2, y + 1,
-            w - 4, h - 2,
-            4,
-            alpha(C.card_hover, 0.72)
+            dots_x,
+            dots_y,
+            dots_w,
+            dots_h,
+            6,
+            { 0.105, 0.110, 0.130, 1 }
         )
     end
 
-    local selected =
-        A.base_box_settings_open
-        and A.base_box_settings_id == cfg.id
-
-    text(
-        x + 8,
-        y + 6,
-        cfg.label,
-        selected
-            and C.accent
-            or (enabled and C.text or C.text_dim)
+    centered_text(
+        dots_x + dots_w * 0.5,
+        y + 13,
+        "...",
+        dots_hot and C.text or C.text_faint
     )
 
-    -- Tiny settings arrow.
-    local gear_x = x + w - 43
-    local gear_hot = hover(mx, my, gear_x, y + 2, 18, 17)
+    -- Same animated rounded toggle used everywhere else in Fallen-lua.
+    if A.toggles[key] == nil then
+        A.toggles[key] = enabled and 1 or 0
+    end
 
-    text(
-        gear_x + 6,
-        y + 5,
-        ">",
-        gear_hot and C.text or C.text_dim
-    )
+    local target = enabled and 1 or 0
+    A.toggles[key] = lerp(A.toggles[key], target, 0.23)
 
-    -- Compact square toggle.
-    local tx = x + w - 20
-    local ty = y + 4
-    local toggle_hot = hover(mx, my, tx, ty, 13, 13)
+    if math.abs(A.toggles[key] - target) < 0.002 then
+        A.toggles[key] = target
+    end
+
+    local tw = 35
+    local th = 19
+    local tx = x + w - tw - 12
+    local ty = y + 11
+    local toggle_hot = hover(mx, my, tx, ty, tw, th)
 
     rounded_fill(
         tx,
         ty,
-        13,
-        13,
-        3,
-        enabled and C.accent_dim or C.toggle_off
+        tw,
+        th,
+        th * 0.5,
+        mix_color(
+            C.toggle_off,
+            C.accent_dim,
+            A.toggles[key]
+        )
     )
 
-    if enabled then
-        rounded_fill(
-            tx + 3,
-            ty + 3,
-            7,
-            7,
-            2,
-            C.white
+    local knob_x = lerp(
+        tx + 9.5,
+        tx + tw - 9.5,
+        A.toggles[key]
+    )
+
+    circle_fill(
+        knob_x,
+        ty + th * 0.5,
+        7,
+        mix_color(
+            C.toggle_knob,
+            C.white,
+            A.toggles[key]
         )
-    end
+    )
 
     if clicked and toggle_hot then
-        S[p] = not enabled
+        S[key] = not enabled
         WORLD_ESP.last_scan = -100
         return
     end
 
-    if clicked and (gear_hot or (hot and not toggle_hot)) then
+    if clicked and (dots_hot or (hot and not toggle_hot)) then
         A.base_box_settings_id = cfg.id
         A.base_box_settings_open = true
+        A.base_box_open_click_guard = true
+        A.base_box_settings_last_t = tick()
 
         A.world_settings_open = false
         A.world_color_picker_open = false
@@ -7489,8 +7565,190 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
     end
 end
 
+function world_base_settings_step_anim()
+    local now = tick()
+
+    if A.base_box_settings_last_t == nil then
+        A.base_box_settings_last_t = now
+    end
+
+    local dt = clamp(
+        now - A.base_box_settings_last_t,
+        0,
+        0.05
+    )
+
+    A.base_box_settings_last_t = now
+
+    local target = A.base_box_settings_open and 1 or 0
+    local speed = target > (A.base_box_settings_anim or 0) and 10.0 or 8.0
+
+    A.base_box_settings_anim = exp_chase(
+        A.base_box_settings_anim or 0,
+        target,
+        speed,
+        dt
+    )
+
+    if target == 0 and (A.base_box_settings_anim or 0) < 0.018 then
+        A.base_box_settings_anim = 0
+        A.base_box_settings_id = nil
+    elseif target == 1 and (A.base_box_settings_anim or 0) > 0.992 then
+        A.base_box_settings_anim = 1
+    end
+
+    return clamp(A.base_box_settings_anim or 0, 0, 1)
+end
+
+function world_base_read_wheel()
+    if not Windows then
+        return 0
+    end
+
+    -- Wheel input is not documented in every API build, so probe the
+    -- common exported names without making the menu depend on one of them.
+    local names = {
+        "GetMouseWheelDelta",
+        "GetWheelDelta",
+        "MouseWheelDelta",
+        "GetMouseWheel",
+    }
+
+    for i = 1, #names do
+        local fn = Windows[names[i]]
+        if type(fn) == "function" then
+            local ok, value = pcall(fn)
+            if ok and type(value) == "number" and value ~= 0 then
+                return value
+            end
+        end
+    end
+
+    return 0
+end
+
+function world_base_scroll_step(mx, my, clicked, lmb, x, y, w, h, max_scroll)
+    max_scroll = math.max(0, tonumber(max_scroll) or 0)
+
+    if A.base_list_scroll_target == nil then
+        A.base_list_scroll_target = 0
+    end
+    if A.base_list_scroll_visual == nil then
+        A.base_list_scroll_visual = A.base_list_scroll_target
+    end
+
+    A.base_list_scroll_target = clamp(
+        tonumber(A.base_list_scroll_target) or 0,
+        0,
+        max_scroll
+    )
+
+    local hot = hover(mx, my, x, y, w, h)
+
+    if hot then
+        local now = tick()
+        local wheel = world_base_read_wheel()
+
+        if wheel ~= 0 and now - (A.base_list_last_wheel_at or 0) > 0.045 then
+            A.base_list_last_wheel_at = now
+
+            if wheel > 0 then
+                A.base_list_scroll_target = A.base_list_scroll_target - 1
+            else
+                A.base_list_scroll_target = A.base_list_scroll_target + 1
+            end
+        end
+
+        -- Guaranteed fallback on API builds that don't expose wheel delta.
+        local up = false
+        local down = false
+        pcall(function()
+            up = Windows.IsKeyPressed(0x26) == true
+            down = Windows.IsKeyPressed(0x28) == true
+        end)
+
+        if up and not A.base_scroll_up_prev then
+            A.base_list_scroll_target = A.base_list_scroll_target - 1
+        end
+        if down and not A.base_scroll_down_prev then
+            A.base_list_scroll_target = A.base_list_scroll_target + 1
+        end
+
+        A.base_scroll_up_prev = up
+        A.base_scroll_down_prev = down
+    else
+        A.base_scroll_up_prev = false
+        A.base_scroll_down_prev = false
+    end
+
+    A.base_list_scroll_target = clamp(
+        A.base_list_scroll_target,
+        0,
+        max_scroll
+    )
+
+    -- Smooth scrollbar motion.
+    A.base_list_scroll_visual = lerp(
+        A.base_list_scroll_visual,
+        A.base_list_scroll_target,
+        A.base_scroll_dragging and 0.42 or 0.20
+    )
+
+    if math.abs(A.base_list_scroll_visual - A.base_list_scroll_target) < 0.002 then
+        A.base_list_scroll_visual = A.base_list_scroll_target
+    end
+
+    -- Styled scrollbar on the far-right side of the Base list.
+    local track_x = x + w - 7
+    local track_y = y + 5
+    local track_h = h - 10
+    local knob_h = max_scroll > 0 and math.max(34, track_h * (5 / (5 + max_scroll))) or track_h
+    local travel = math.max(0, track_h - knob_h)
+    local frac = max_scroll > 0 and (A.base_list_scroll_visual / max_scroll) or 0
+    local knob_y = track_y + travel * frac
+
+    rounded_fill(
+        track_x,
+        track_y,
+        3,
+        track_h,
+        2,
+        alpha(C.toggle_off, 0.58)
+    )
+
+    rounded_fill(
+        track_x - 1,
+        knob_y,
+        5,
+        knob_h,
+        3,
+        A.base_scroll_dragging and C.accent or alpha(C.accent_dim, 0.86)
+    )
+
+    local knob_hot = hover(mx, my, track_x - 5, knob_y - 2, 13, knob_h + 4)
+    local track_hot = hover(mx, my, track_x - 5, track_y, 13, track_h)
+
+    if clicked and (knob_hot or track_hot) and max_scroll > 0 then
+        A.base_scroll_dragging = true
+        A.base_scroll_drag_offset = knob_hot and (my - knob_y) or (knob_h * 0.5)
+    end
+
+    if A.base_scroll_dragging and lmb and max_scroll > 0 then
+        local wanted_y = my - (A.base_scroll_drag_offset or knob_h * 0.5)
+        local t = travel > 0 and clamp((wanted_y - track_y) / travel, 0, 1) or 0
+        A.base_list_scroll_target = math.floor(t * max_scroll + 0.5)
+    elseif A.base_scroll_dragging and not lmb then
+        A.base_scroll_dragging = false
+    end
+
+    return math.floor(A.base_list_scroll_target + 0.5)
+end
+
+
 function draw_base_box_settings_popup(mx, my, clicked, lmb, cx, cy, cw)
-    if not A.base_box_settings_open then
+    local anim = world_base_settings_step_anim()
+
+    if anim <= 0.01 then
         return
     end
 
@@ -7502,15 +7760,21 @@ function draw_base_box_settings_popup(mx, my, clicked, lmb, cx, cy, cw)
 
     world_base_ensure_state(cfg)
 
+    local parent_alpha = MENU_RENDER_ALPHA
+    MENU_RENDER_ALPHA = parent_alpha * anim
+
     local pw = 365
     local ph = 337
     local px = cx + cw - pw
-    local py = cy + 70
+    local py = cy + 70 + (1 - anim) * 14
 
-    FALLEN_POPUP_GLOW(px, py, pw, ph, 11, 1)
+    FALLEN_POPUP_GLOW(px, py, pw, ph, 11, anim)
 
     rounded_fill(
-        px, py, pw, ph,
+        px,
+        py,
+        pw,
+        ph,
         11,
         { 0.062, 0.066, 0.077, 1 }
     )
@@ -7525,18 +7789,23 @@ function draw_base_box_settings_popup(mx, my, clicked, lmb, cx, cy, cw)
     local close_x = px + pw - 30
     local close_hot = hover(mx, my, close_x, py + 7, 20, 20)
 
+    if close_hot then
+        rounded_fill(
+            close_x,
+            py + 6,
+            21,
+            21,
+            5,
+            alpha(C.card_hover, 0.85)
+        )
+    end
+
     text(
         close_x + 7,
         py + 11,
         "x",
         close_hot and C.text or C.text_dim
     )
-
-    if clicked and close_hot then
-        A.base_box_settings_open = false
-        numeric_stop(true)
-        return
-    end
 
     line(
         px + 12,
@@ -7547,24 +7816,45 @@ function draw_base_box_settings_popup(mx, my, clicked, lmb, cx, cy, cw)
         1
     )
 
+    local interactive = A.base_box_settings_open == true and anim > 0.82
+    local ui_clicked = clicked and interactive
     local p = "world_base_" .. tostring(cfg.id)
 
-    slider_row(mx, my, clicked, lmb, px + 8, py + 39,  pw - 16, "Size X / Width",  p .. "_sx", 0.25, 30, "float")
-    slider_row(mx, my, clicked, lmb, px + 8, py + 80,  pw - 16, "Size Y / Height", p .. "_sy", 0.25, 30, "float")
-    slider_row(mx, my, clicked, lmb, px + 8, py + 121, pw - 16, "Size Z / Depth",  p .. "_sz", 0.25, 30, "float")
+    slider_row(mx, my, ui_clicked, lmb, px + 8, py + 39,  pw - 16, "Size X / Width",  p .. "_sx", 0.25, 30, "float")
+    line(px + 12, py + 79,  px + pw - 12, py + 79,  C.divider, 1)
 
-    slider_row(mx, my, clicked, lmb, px + 8, py + 162, pw - 16, "Offset X", p .. "_ox", -15, 15, "float")
-    slider_row(mx, my, clicked, lmb, px + 8, py + 203, pw - 16, "Offset Y", p .. "_oy", -15, 15, "float")
-    slider_row(mx, my, clicked, lmb, px + 8, py + 244, pw - 16, "Offset Z", p .. "_oz", -15, 15, "float")
+    slider_row(mx, my, ui_clicked, lmb, px + 8, py + 80,  pw - 16, "Size Y / Height", p .. "_sy", 0.25, 30, "float")
+    line(px + 12, py + 120, px + pw - 12, py + 120, C.divider, 1)
 
-    slider_row(mx, my, clicked, lmb, px + 8, py + 285, pw - 16, "Line Thickness", p .. "_thick", 0.5, 5.0, "float")
+    slider_row(mx, my, ui_clicked, lmb, px + 8, py + 121, pw - 16, "Size Z / Depth",  p .. "_sz", 0.25, 30, "float")
+    line(px + 12, py + 161, px + pw - 12, py + 161, C.divider, 1)
+
+    slider_row(mx, my, ui_clicked, lmb, px + 8, py + 162, pw - 16, "Offset X", p .. "_ox", -15, 15, "float")
+    line(px + 12, py + 202, px + pw - 12, py + 202, C.divider, 1)
+
+    slider_row(mx, my, ui_clicked, lmb, px + 8, py + 203, pw - 16, "Offset Y", p .. "_oy", -15, 15, "float")
+    line(px + 12, py + 243, px + pw - 12, py + 243, C.divider, 1)
+
+    slider_row(mx, my, ui_clicked, lmb, px + 8, py + 244, pw - 16, "Offset Z", p .. "_oz", -15, 15, "float")
+    line(px + 12, py + 284, px + pw - 12, py + 284, C.divider, 1)
+
+    slider_row(mx, my, ui_clicked, lmb, px + 8, py + 285, pw - 16, "Line Thickness", p .. "_thick", 0.5, 5.0, "float")
 
     local popup_hot = hover(mx, my, px, py, pw, ph)
 
-    if clicked and not popup_hot then
+    -- The click that OPENED this popup is ignored once. Without this guard,
+    -- that same click is seen here as an outside click and closes it instantly.
+    if A.base_box_open_click_guard then
+        A.base_box_open_click_guard = false
+    elseif ui_clicked and close_hot then
+        A.base_box_settings_open = false
+        numeric_stop(true)
+    elseif ui_clicked and not popup_hot then
         A.base_box_settings_open = false
         numeric_stop(true)
     end
+
+    MENU_RENDER_ALPHA = parent_alpha
 end
 
 
@@ -10209,6 +10499,10 @@ hooks.on_render(function()
             A.world_settings_anim = 0
             A.world_color_picker_open = false
             A.world_color_picker_drag = nil
+            A.base_box_settings_open = false
+            A.base_box_settings_anim = 0
+            A.base_box_settings_id = nil
+            A.base_scroll_dragging = false
             FALLEN_COLOR_INPUT_STOP(true)
 
             A.config_open = false
