@@ -18946,7 +18946,6 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         A.bullet_tracer_style_open = false
     end
 end
-end
 
 -- =========================================================
 -- Render
