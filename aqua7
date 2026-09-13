@@ -228,7 +228,7 @@ local C = {
     border      = { 0.210, 0.220, 0.250, 0.18 },
     divider     = { 0.220, 0.230, 0.260, 0.15 },
 
-    text        = { 0.860, 0.865, 0.900, 1.00 },
+    text        = { 0.600, 0.620, 0.680, 1.00 },
     text_dim    = { 0.560, 0.580, 0.650, 1.00 },
     text_faint  = { 0.360, 0.390, 0.500, 1.00 },
 
@@ -575,13 +575,15 @@ function Fallen_TextHoverColor(id, hovered)
     local value = state[id] or 0
     local target = hovered and 1 or 0
 
-    value = value + (target - value) * 0.025
+    -- Slow smooth transition (~2.5 sec)
+    value = value + (target - value) * 0.012
     state[id] = value
 
+    -- Dark gray -> white
     return {
-        0.72 + value * 0.25,
-        0.74 + value * 0.24,
-        0.78 + value * 0.20,
+        0.55 + value * 0.42,
+        0.57 + value * 0.41,
+        0.62 + value * 0.36,
         1
     }
 end
@@ -917,6 +919,17 @@ local function text(x, y, s, c)
         tostring(s),
         c[1], c[2], c[3],
         (c[4] or 1) * MENU_RENDER_ALPHA
+    )
+end
+
+local function text_hover(x, y, s, id, hovered)
+    local c = Fallen_TextHoverColor(id, hovered)
+    DrawText(
+        FALLEN_UI_X(x),
+        FALLEN_UI_Y(y),
+        tostring(s),
+        c[1], c[2], c[3],
+        c[4] * MENU_RENDER_ALPHA
     )
 end
 
