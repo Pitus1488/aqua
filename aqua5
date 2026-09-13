@@ -232,9 +232,9 @@ local C = {
     border      = { 0.210, 0.220, 0.250, 0.18 },
     divider     = { 0.220, 0.230, 0.260, 0.15 },
 
-    text        = { 0.860, 0.865, 0.900, 1.00 },
-    text_dim    = { 0.560, 0.580, 0.650, 1.00 },
-    text_faint  = { 0.360, 0.390, 0.500, 1.00 },
+    text        = { 0.700, 0.710, 0.740, 1.00 },
+    text_dim    = { 0.485, 0.500, 0.555, 1.00 },
+    text_faint  = { 0.320, 0.340, 0.410, 1.00 },
 
     accent      = { 0.340, 0.450, 0.760, 1.00 },
     accent_dim  = { 0.240, 0.320, 0.600, 1.00 },
@@ -360,6 +360,10 @@ local A = {
     sidebar_indicator_y = nil,
     sidebar_indicator_last_t = nil,
     sidebar_tab_anim = {},
+
+    -- Shared 2-second text hover animation state.
+    text_hover_anim = {},
+    text_hover_time = {},
 
     -- Menu appearance popup near the profile/avatar.
     menu_settings_open = false,
@@ -2190,14 +2194,12 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
             a
         )
 
-    if hot and a < 0.5 then
-        col =
-            mix_color(
-                col,
-                C.text,
-                0.42
-            )
-    end
+    col =
+        FALLEN_HOVER_TEXT(
+            "sidebar:" .. tostring(index),
+            hot,
+            col
+        )
 
     local ic =
         mix_color(
@@ -2268,11 +2270,50 @@ local function row_hover(mx, my, x, y, w, h)
     return hot
 end
 
+function FALLEN_HOVER_TEXT(key, hot, base_color)
+    key = tostring(key or "text")
+
+    if type(A.text_hover_anim) ~= "table" then
+        A.text_hover_anim = {}
+    end
+
+    if type(A.text_hover_time) ~= "table" then
+        A.text_hover_time = {}
+    end
+
+    local now = tick()
+    local last = A.text_hover_time[key] or now
+    local dt = clamp(now - last, 0, 0.10)
+    A.text_hover_time[key] = now
+
+    local v = tonumber(A.text_hover_anim[key]) or 0
+    local step = dt / 2.0
+
+    if hot then
+        v = math.min(1, v + step)
+    else
+        v = math.max(0, v - step)
+    end
+
+    A.text_hover_anim[key] = v
+
+    return mix_color(
+        base_color or C.text,
+        C.white,
+        smooth01(v)
+    )
+end
+
 local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
 
-    text(x + 13, y + 14, label, hot and C.text or alpha(C.text, 0.92))
+    text(
+        x + 13,
+        y + 14,
+        label,
+        FALLEN_HOVER_TEXT("toggle:" .. tostring(key), hot, C.text)
+    )
 
     if extra then
         local dots_x = x + w - 79
@@ -2341,8 +2382,15 @@ end
 local function chevron_row(mx, my, clicked, x, y, w, label, key)
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
-    text(x + 13, y + 14, label, hot and C.text or alpha(C.text, 0.92))
-    text(x + w - 22, y + 14, ">", hot and C.text or C.text_dim)
+    local row_col =
+        FALLEN_HOVER_TEXT(
+            "chevron:" .. tostring(key),
+            hot,
+            C.text
+        )
+
+    text(x + 13, y + 14, label, row_col)
+    text(x + w - 22, y + 14, ">", row_col)
     if clicked and hot then
         S[key] = not (S[key] == true)
     end
@@ -2351,7 +2399,14 @@ end
 local function bool_square_row(mx, my, clicked, x, y, w, label, key)
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
-    text(x + 13, y + 14, label, hot and C.text or alpha(C.text, 0.92))
+    local row_col =
+        FALLEN_HOVER_TEXT(
+            "bool:" .. tostring(key),
+            hot,
+            C.text
+        )
+
+    text(x + 13, y + 14, label, row_col)
 
     local value = S[key] == true
     local sx = x + w - 31
@@ -2360,16 +2415,21 @@ local function bool_square_row(mx, my, clicked, x, y, w, label, key)
     if value then
         rounded_fill(sx + 4, sy + 4, 10, 10, 3, C.accent)
     end
-    text(x + w - 12, y + 14, ">", hot and C.text or C.text_dim)
+    text(x + w - 12, y + 14, ">", row_col)
 
     if clicked and hot then S[key] = not value end
 end
 
 local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv, fmt)
     local h = 41
-    row_hover(mx, my, x, y, w, h)
+    local hot = row_hover(mx, my, x, y, w, h)
 
-    text(x + 13, y + 14, label, C.text)
+    text(
+        x + 13,
+        y + 14,
+        label,
+        FALLEN_HOVER_TEXT("slider:" .. tostring(key), hot, C.text)
+    )
 
     local box_w = 52
     local box_x = x + w - box_w - 10
@@ -2522,20 +2582,39 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
         box_x + box_w * 0.5,
         y + 14,
         shown,
-        C.text
+        FALLEN_HOVER_TEXT(
+            "slider_value:" .. tostring(key),
+            value_hot or active or editing,
+            C.text
+        )
     )
 end
 
 local function dropdown_row(mx, my, clicked, x, y, w, label, key, options)
     local h = 41
-    row_hover(mx, my, x, y, w, h)
-    text(x + 13, y + 14, label, C.text)
+    local hot = row_hover(mx, my, x, y, w, h)
+
+    text(
+        x + 13,
+        y + 14,
+        label,
+        FALLEN_HOVER_TEXT("dropdown:" .. tostring(key), hot, C.text)
+    )
 
     local bx = x + w - 142
     local by = y + 8
     local bw = 130
     rounded_fill(bx, by, bw, 25, 6, C.toggle_off)
-    text(bx + 10, by + 7, tostring(S[key]), C.text)
+    text(
+        bx + 10,
+        by + 7,
+        tostring(S[key]),
+        FALLEN_HOVER_TEXT(
+            "dropdown_value:" .. tostring(key),
+            hover(mx, my, bx, by, bw, 25),
+            C.text
+        )
+    )
     text(bx + bw - 17, by + 7, "v", C.text_dim)
 
     if clicked and hover(mx, my, bx, by, bw, 25) then
@@ -3716,9 +3795,11 @@ local function draw_aim_part_dropdown(
                 x + 12,
                 iy + 8,
                 option,
-                option == S.aim_target_part
-                    and C.text
-                    or C.text_dim
+                FALLEN_HOVER_TEXT(
+                    "aim_part_option:" .. tostring(option),
+                    item_hot,
+                    option == S.aim_target_part and C.text or C.text_dim
+                )
             )
 
             if clicked
@@ -4247,8 +4328,22 @@ local function draw_aimbot_page(
     local swatch_y = cy + 123
     local swatch_s = 18
 
-    row_hover(mx, my, rx, cy + 114, right_w, 41)
-    text(rx + 13, cy + 128, "FOV Color", C.text)
+    local fov_color_hot =
+        row_hover(
+            mx,
+            my,
+            rx,
+            cy + 114,
+            right_w,
+            41
+        )
+
+    text(
+        rx + 13,
+        cy + 128,
+        "FOV Color",
+        FALLEN_HOVER_TEXT("aim_fov_color", fov_color_hot, C.text)
+    )
 
     color_preview(
         swatch_x,
@@ -4499,7 +4594,11 @@ local function resource_toggle_row(
         x + 29,
         y + 14,
         item.label,
-        hot and C.text or alpha(C.text, 0.92)
+        FALLEN_HOVER_TEXT(
+            "resource:" .. tostring(item.id),
+            hot,
+            C.text
+        )
     )
 
     local key = item.key
@@ -6070,18 +6169,18 @@ local function draw_visuals_page(
     -- This catches glyphs/swatch edges from the row that is sliding out,
     -- while preserving the rounded outer corners.
     fill(
-        left_x + 3,
+        left_x + 4,
         base_card_y + 1,
-        col_w - 6,
-        9,
+        col_w - 8,
+        16,
         C.card
     )
 
     fill(
-        right_x + 3,
+        right_x + 4,
         base_card_y + 1,
-        col_w - 6,
-        9,
+        col_w - 8,
+        16,
         C.card
     )
 
@@ -7801,7 +7900,11 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
         x + 29,
         y + 14,
         cfg.label,
-        hot and C.text or alpha(C.text, 0.92)
+        FALLEN_HOVER_TEXT(
+            "house:" .. tostring(cfg.id),
+            hot,
+            C.text
+        )
     )
 
     if A.toggles[key] == nil then
@@ -9903,9 +10006,11 @@ function FALLEN_CONFIGS.draw_popup(
                     px + 19,
                     iy + 7,
                     name,
-                    selected
-                        and C.text
-                        or C.text_dim
+                    FALLEN_HOVER_TEXT(
+                        "config_option:" .. tostring(name),
+                        hot,
+                        selected and C.text or C.text_dim
+                    )
                 )
 
                 if ui_clicked
@@ -10077,9 +10182,9 @@ function FALLEN_APPLY_STYLE_COLOR()
         C.border     = { 0.210, 0.220, 0.250, 0.18 }
         C.divider    = { 0.220, 0.230, 0.260, 0.15 }
 
-        C.text       = { 0.860, 0.865, 0.900, 1.00 }
-        C.text_dim   = { 0.560, 0.580, 0.650, 1.00 }
-        C.text_faint = { 0.360, 0.390, 0.500, 1.00 }
+        C.text       = { 0.700, 0.710, 0.740, 1.00 }
+        C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
+        C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
     else
         -- Glass: softer transparency and lighter separation like the reference.
         S.menu_type = "glass"
@@ -10095,9 +10200,9 @@ function FALLEN_APPLY_STYLE_COLOR()
         C.border     = { 0.250, 0.260, 0.300, 0.10 }
         C.divider    = { 0.260, 0.270, 0.310, 0.09 }
 
-        C.text       = { 0.885, 0.890, 0.920, 1.00 }
-        C.text_dim   = { 0.620, 0.640, 0.710, 1.00 }
-        C.text_faint = { 0.445, 0.470, 0.560, 1.00 }
+        C.text       = { 0.720, 0.730, 0.760, 1.00 }
+        C.text_dim   = { 0.505, 0.520, 0.575, 1.00 }
+        C.text_faint = { 0.335, 0.355, 0.425, 1.00 }
     end
 end
 
@@ -10547,9 +10652,11 @@ function FALLEN_DRAW_MENU_SCALE_DROPDOWN(
                 value == "Auto"
                     and "Auto"
                     or (tostring(value) .. "%"),
-                selected
-                    and C.text
-                    or C.text_dim
+                FALLEN_HOVER_TEXT(
+                    "menu_scale_option:" .. tostring(value),
+                    item_hot,
+                    selected and C.text or C.text_dim
+                )
             )
 
             if clicked
@@ -10743,9 +10850,11 @@ function FALLEN_DRAW_MENU_TYPE_DROPDOWN(
                 x + 12,
                 iy + 8,
                 value,
-                selected
-                    and C.text
-                    or C.text_dim
+                FALLEN_HOVER_TEXT(
+                    "menu_type_option:" .. tostring(value),
+                    item_hot,
+                    selected and C.text or C.text_dim
+                )
             )
 
             if clicked
@@ -10822,8 +10931,15 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
     local box_h = 25
 
     if shell_h > 77 then
-        row_hover(mx, my, px + 8, py + 40, pw - 16, 41)
-        text(px + 21, py + 54, "Menu Scale", C.text)
+        local menu_scale_hot =
+            row_hover(mx, my, px + 8, py + 40, pw - 16, 41)
+
+        text(
+            px + 21,
+            py + 54,
+            "Menu Scale",
+            FALLEN_HOVER_TEXT("menu_scale_row", menu_scale_hot, C.text)
+        )
 
         local hot = hover(mx, my, box_x, box_y, box_w, box_h)
 
@@ -10880,8 +10996,15 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         local color_row_y = py + 122
         local color_row_w = pw - 16
 
-        row_hover(mx, my, color_row_x, color_row_y, color_row_w, 41)
-        text(color_row_x + 13, color_row_y + 14, "Glow Color", C.text)
+        local glow_color_hot =
+            row_hover(mx, my, color_row_x, color_row_y, color_row_w, 41)
+
+        text(
+            color_row_x + 13,
+            color_row_y + 14,
+            "Glow Color",
+            FALLEN_HOVER_TEXT("menu_glow_color", glow_color_hot, C.text)
+        )
 
         local swatch_x = color_row_x + color_row_w - 34
         local swatch_y = color_row_y + 10
@@ -10935,8 +11058,15 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         local row_y = py + 163
         local row_w = pw - 16
 
-        row_hover(mx, my, row_x, row_y, row_w, 41)
-        text(row_x + 13, row_y + 14, "Type", C.text)
+        local menu_type_hot =
+            row_hover(mx, my, row_x, row_y, row_w, 41)
+
+        text(
+            row_x + 13,
+            row_y + 14,
+            "Type",
+            FALLEN_HOVER_TEXT("menu_type_row", menu_type_hot, C.text)
+        )
 
         local type_box_x = row_x + row_w - 92 - 12
         local type_box_y = row_y + 8
@@ -11600,9 +11730,7 @@ hooks.on_render(function()
         cfg_x + 14,
         cfg_y + 12,
         "Configs",
-        cfg_hot
-            and C.text
-            or C.text_dim
+        FALLEN_HOVER_TEXT("configs_button", cfg_hot, C.text)
     )
 
     if FALLEN_CONFIGS.CONFIG.loaded_name then
