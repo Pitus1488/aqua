@@ -2722,7 +2722,7 @@ local function fov_color()
     }
 end
 
-local function fov_glow_color()
+function FALLEN_FOV_GLOW_COLOR()
     local r, g, b =
         hsv_to_rgb(
             S.aim_fov_glow_h,
@@ -3720,7 +3720,7 @@ local function aim_settings_step_anim()
     return clamp(A.aim_settings_anim or 0, 0, 1)
 end
 
-local function fov_settings_step_anim()
+function FALLEN_FOV_SETTINGS_STEP_ANIM()
     local now = tick()
 
     if A.fov_settings_last_t == nil then
@@ -4311,7 +4311,7 @@ local function draw_aim_settings_popup(
     MENU_RENDER_ALPHA = parent_menu_alpha
 end
 
-local function draw_fov_settings_popup(
+function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     mx,
     my,
     clicked,
@@ -4320,7 +4320,7 @@ local function draw_fov_settings_popup(
     dots_y
 )
     local raw_anim =
-        fov_settings_step_anim()
+        FALLEN_FOV_SETTINGS_STEP_ANIM()
 
     if raw_anim <= 0.001
         and not A.fov_settings_open
@@ -4815,7 +4815,7 @@ local function draw_aimbot_page(
         dots_y
     )
 
-    draw_fov_settings_popup(
+    FALLEN_DRAW_FOV_SETTINGS_POPUP(
         mx,
         my,
         clicked,
@@ -7670,7 +7670,7 @@ local function fap_draw_fov()
 
     if S.aim_fov_glow_enabled == true then
         local gc =
-            fov_glow_color()
+            FALLEN_FOV_GLOW_COLOR()
 
         local glow_strength =
             clamp(
