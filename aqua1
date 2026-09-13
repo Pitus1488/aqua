@@ -128,7 +128,8 @@ local defaults = {
     world_blueberry_plant = false,
     world_wool_plant = false,
 
-    -- Text-only House/Base ESP. Shows all supported objects inside Workspace/Bases.
+    -- Legacy Base master field (unused now).
+    -- Base/House ESP is controlled per component below.
     world_base_all = false,
 
     world_max_dist = 500,
@@ -5527,6 +5528,7 @@ local function draw_visuals_page(
     local overlay_open =
         A.world_settings_open
         or (A.world_settings_anim or 0) > 0.02
+        or A.base_box_settings_open == true
 
     local base_clicked =
         clicked
@@ -5585,6 +5587,7 @@ local function draw_visuals_page(
             A.fov_picker_open = false
             A.world_color_picker_open = false
             A.world_color_picker_drag = nil
+            A.base_box_settings_open = false
 
             if numeric_stop then
                 numeric_stop(true)
@@ -5704,7 +5707,8 @@ local function draw_visuals_page(
         end
     end
 
-    -- House/Base ESP. For now this is intentionally text-only.
+    -- Base / House: individual component switches.
+    -- Click the label / ">" to open per-component 3D box tuning.
     local base_section_y =
         cards_y
         + 25
@@ -5714,28 +5718,67 @@ local function draw_visuals_page(
     section_title(
         cx,
         base_section_y,
-        "Base / House"
+        "Base / House 3D ESP"
     )
 
+    local base_card_y =
+        base_section_y + 25
+
+    local base_row_h = 21
+    local base_rows = 11
+    local base_card_h =
+        base_rows * base_row_h + 8
+
     card(
-        cx,
-        base_section_y + 25,
-        cw,
-        49,
+        left_x,
+        base_card_y,
+        col_w,
+        base_card_h,
         11
     )
 
-    toggle_row(
-        mx,
-        my,
-        base_clicked,
-        cx,
-        base_section_y + 29,
-        cw,
-        "Show All Base Items (Text)",
-        "world_base_all",
-        false
+    card(
+        right_x,
+        base_card_y,
+        col_w,
+        base_card_h,
+        11
     )
+
+    for i = 1, #WORLD_BASE_ITEMS do
+        local cfg =
+            WORLD_BASE_ITEMS[i]
+
+        local column =
+            i <= base_rows
+            and 0
+            or 1
+
+        local row =
+            column == 0
+            and i
+            or (i - base_rows)
+
+        local bx =
+            column == 0
+            and left_x
+            or right_x
+
+        local by =
+            base_card_y
+            + 4
+            + (row - 1) * base_row_h
+
+        world_base_compact_row(
+            mx,
+            my,
+            base_clicked,
+            bx,
+            by,
+            col_w,
+            cfg
+        )
+    end
 
     -- Render settings first, then the reusable color picker on top.
     draw_world_settings_popup(
@@ -5745,6 +5788,16 @@ local function draw_visuals_page(
         lmb,
         dots_x,
         dots_y
+    )
+
+    draw_base_box_settings_popup(
+        mx,
+        my,
+        clicked,
+        lmb,
+        cx,
+        cy,
+        cw
     )
 
     draw_world_color_picker(
@@ -7138,32 +7191,382 @@ end
 -- House/Base objects from the user's known-working K1_BASE_ITEMS list.
 -- These are intentionally text-only for now.
 WORLD_BASE_ITEMS = {
-    { id = "base_cabinet", label = "Base Cabinet", names = { ["Base Cabinet"] = true, ["Cabinet"] = true }, color = { 1.00, 0.80, 0.05, 1 } },
-    { id = "storage_cabinet", label = "Storage Cabinet", names = { ["Storage Cabinet"] = true, ["Large Cabinet"] = true }, color = { 0.60, 0.40, 0.20, 1 } },
-    { id = "small_box", label = "Small Box", names = { ["Small Storage Box"] = true, ["Small Box"] = true }, color = { 0.50, 0.30, 0.10, 1 } },
-    { id = "large_box", label = "Large Box", names = { ["Large Storage Box"] = true, ["Large Box"] = true }, color = { 0.65, 0.42, 0.20, 1 } },
+    { id = "base_cabinet", label = "Base Cabinet", names = { ["Base Cabinet"] = true, ["Cabinet"] = true }, color = { 1.00, 0.80, 0.05, 1 }, sx = 4, sy = 4, sz = 4 },
+    { id = "storage_cabinet", label = "Storage Cabinet", names = { ["Storage Cabinet"] = true, ["Large Cabinet"] = true }, color = { 0.60, 0.40, 0.20, 1 }, sx = 4, sy = 4, sz = 4 },
+    { id = "small_box", label = "Small Box", names = { ["Small Storage Box"] = true, ["Small Box"] = true }, color = { 0.50, 0.30, 0.10, 1 }, sx = 3, sy = 3, sz = 3 },
+    { id = "large_box", label = "Large Box", names = { ["Large Storage Box"] = true, ["Large Box"] = true }, color = { 0.65, 0.42, 0.20, 1 }, sx = 4, sy = 4, sz = 4 },
 
-    { id = "wooden_door", label = "Wooden Door", names = { ["Wooden Door"] = true }, color = { 0.50, 0.30, 0.10, 1 } },
-    { id = "wooden_double_door", label = "Wooden Double Door", names = { ["Wooden Double Door"] = true }, color = { 0.50, 0.30, 0.10, 1 } },
-    { id = "salvaged_door", label = "Salvaged Door", names = { ["Salvaged Metal Door"] = true }, color = { 0.45, 0.45, 0.55, 1 } },
-    { id = "metal_door", label = "Metal Door", names = { ["Metal Door"] = true }, color = { 0.55, 0.55, 0.65, 1 } },
-    { id = "metal_double_door", label = "Metal Double Door", names = { ["Metal Double Door"] = true }, color = { 0.55, 0.55, 0.65, 1 } },
-    { id = "steel_door", label = "Steel Door", names = { ["Steel Door"] = true }, color = { 0.75, 0.75, 0.85, 1 } },
-    { id = "steel_double_door", label = "Steel Double Door", names = { ["Steel Double Door"] = true }, color = { 0.75, 0.75, 0.85, 1 } },
-    { id = "trap_door", label = "Trap Door", names = { ["Trap Door"] = true }, color = { 0.45, 0.38, 0.30, 1 } },
-    { id = "triangle_trap_door", label = "Triangle Trap Door", names = { ["Triangle Trap Door"] = true }, color = { 0.45, 0.38, 0.30, 1 } },
-    { id = "garage_door", label = "Garage Door", names = { ["Garage Door"] = true }, color = { 0.50, 0.50, 0.58, 1 } },
+    { id = "wooden_door", label = "Wooden Door", names = { ["Wooden Door"] = true }, color = { 0.50, 0.30, 0.10, 1 }, sx = 4, sy = 6, sz = 1 },
+    { id = "wooden_double_door", label = "Wooden Double Door", names = { ["Wooden Double Door"] = true }, color = { 0.50, 0.30, 0.10, 1 }, sx = 6, sy = 6, sz = 1 },
+    { id = "salvaged_door", label = "Salvaged Door", names = { ["Salvaged Metal Door"] = true }, color = { 0.45, 0.45, 0.55, 1 }, sx = 4, sy = 6, sz = 1 },
+    { id = "metal_door", label = "Metal Door", names = { ["Metal Door"] = true }, color = { 0.55, 0.55, 0.65, 1 }, sx = 4, sy = 6, sz = 1 },
+    { id = "metal_double_door", label = "Metal Double Door", names = { ["Metal Double Door"] = true }, color = { 0.55, 0.55, 0.65, 1 }, sx = 6, sy = 6, sz = 1 },
+    { id = "steel_door", label = "Steel Door", names = { ["Steel Door"] = true }, color = { 0.75, 0.75, 0.85, 1 }, sx = 4, sy = 6, sz = 1 },
+    { id = "steel_double_door", label = "Steel Double Door", names = { ["Steel Double Door"] = true }, color = { 0.75, 0.75, 0.85, 1 }, sx = 6, sy = 6, sz = 1 },
+    { id = "trap_door", label = "Trap Door", names = { ["Trap Door"] = true }, color = { 0.45, 0.38, 0.30, 1 }, sx = 4, sy = 1, sz = 4 },
+    { id = "triangle_trap_door", label = "Triangle Trap Door", names = { ["Triangle Trap Door"] = true }, color = { 0.45, 0.38, 0.30, 1 }, sx = 4, sy = 1, sz = 4 },
+    { id = "garage_door", label = "Garage Door", names = { ["Garage Door"] = true }, color = { 0.50, 0.50, 0.58, 1 }, sx = 7, sy = 7, sz = 1 },
 
-    { id = "sleeping_bag", label = "Sleeping Bag", names = { ["Sleeping Bag"] = true }, color = { 0.80, 0.20, 0.20, 1 } },
-    { id = "shotgun_turret", label = "Shotgun Turret", names = { ["Shotgun Turret"] = true }, color = { 1.00, 0.30, 0.30, 1 } },
-    { id = "auto_turret", label = "Auto Turret", names = { ["Auto Turret"] = true }, color = { 1.00, 0.20, 0.20, 1 } },
+    { id = "sleeping_bag", label = "Sleeping Bag", names = { ["Sleeping Bag"] = true }, color = { 0.80, 0.20, 0.20, 1 }, sx = 4, sy = 1, sz = 5 },
+    { id = "shotgun_turret", label = "Shotgun Turret", names = { ["Shotgun Turret"] = true }, color = { 1.00, 0.30, 0.30, 1 }, sx = 4, sy = 4, sz = 4 },
+    { id = "auto_turret", label = "Auto Turret", names = { ["Auto Turret"] = true }, color = { 1.00, 0.20, 0.20, 1 }, sx = 4, sy = 4, sz = 4 },
 
-    { id = "small_battery", label = "Small Battery", names = { ["Small Battery"] = true }, color = { 0.20, 0.60, 0.20, 1 } },
-    { id = "medium_battery", label = "Medium Battery", names = { ["Medium Battery"] = true }, color = { 0.30, 0.70, 0.30, 1 } },
-    { id = "large_battery", label = "Large Battery", names = { ["Large Battery"] = true }, color = { 0.40, 0.80, 0.40, 1 } },
-    { id = "solar_panel", label = "Solar Panel", names = { ["Solar Panel"] = true }, color = { 0.20, 0.40, 0.85, 1 } },
-    { id = "windmill", label = "Windmill", names = { ["Windmill"] = true }, color = { 0.65, 0.65, 0.65, 1 } },
+    { id = "small_battery", label = "Small Battery", names = { ["Small Battery"] = true }, color = { 0.20, 0.60, 0.20, 1 }, sx = 3, sy = 3, sz = 3 },
+    { id = "medium_battery", label = "Medium Battery", names = { ["Medium Battery"] = true }, color = { 0.30, 0.70, 0.30, 1 }, sx = 4, sy = 4, sz = 4 },
+    { id = "large_battery", label = "Large Battery", names = { ["Large Battery"] = true }, color = { 0.40, 0.80, 0.40, 1 }, sx = 4, sy = 4, sz = 4 },
+    { id = "solar_panel", label = "Solar Panel", names = { ["Solar Panel"] = true }, color = { 0.20, 0.40, 0.85, 1 }, sx = 5, sy = 2, sz = 1 },
+    { id = "windmill", label = "Windmill", names = { ["Windmill"] = true }, color = { 0.65, 0.65, 0.65, 1 }, sx = 7, sy = 10, sz = 7 },
 }
+
+-- =========================================================
+-- Base / House 3D tuning helpers
+-- Deliberately global: the host Lua has a 200-local main-chunk limit.
+-- =========================================================
+
+function world_base_state_key(cfg, suffix)
+    if not cfg or not cfg.id then
+        return nil
+    end
+    return "world_base_" .. tostring(cfg.id) .. (suffix or "")
+end
+
+function world_base_ensure_state(cfg)
+    if not cfg or not cfg.id then
+        return
+    end
+
+    local p = "world_base_" .. tostring(cfg.id)
+
+    if S[p] == nil then S[p] = false end
+    if S[p .. "_sx"] == nil then S[p .. "_sx"] = cfg.sx or 4 end
+    if S[p .. "_sy"] == nil then S[p .. "_sy"] = cfg.sy or 4 end
+    if S[p .. "_sz"] == nil then S[p .. "_sz"] = cfg.sz or 4 end
+
+    if S[p .. "_ox"] == nil then S[p .. "_ox"] = 0 end
+    if S[p .. "_oy"] == nil then S[p .. "_oy"] = 0 end
+    if S[p .. "_oz"] == nil then S[p .. "_oz"] = 0 end
+
+    if S[p .. "_thick"] == nil then S[p .. "_thick"] = 1.4 end
+end
+
+function world_base_enabled(cfg)
+    if not cfg then
+        return false
+    end
+    world_base_ensure_state(cfg)
+    return S["world_base_" .. tostring(cfg.id)] == true
+end
+
+function world_any_base_enabled()
+    for i = 1, #WORLD_BASE_ITEMS do
+        if world_base_enabled(WORLD_BASE_ITEMS[i]) then
+            return true
+        end
+    end
+    return false
+end
+
+function world_base_cfg_by_id(id)
+    for i = 1, #WORLD_BASE_ITEMS do
+        local cfg = WORLD_BASE_ITEMS[i]
+        if cfg and cfg.id == id then
+            return cfg
+        end
+    end
+    return nil
+end
+
+-- Fallback edge list: a cuboid has exactly 12 edges.
+WORLD_BASE_BOX_EDGES = {
+    {1,2}, {2,3}, {3,4}, {4,1},
+    {5,6}, {6,7}, {7,8}, {8,5},
+    {1,5}, {2,6}, {3,7}, {4,8},
+}
+
+function world_draw_tunable_box3d(pos, cfg, col, alpha)
+    if not pos or not cfg then
+        return false
+    end
+
+    world_base_ensure_state(cfg)
+
+    local p = "world_base_" .. tostring(cfg.id)
+    local sx = clamp(tonumber(S[p .. "_sx"]) or cfg.sx or 4, 0.25, 30)
+    local sy = clamp(tonumber(S[p .. "_sy"]) or cfg.sy or 4, 0.25, 30)
+    local sz = clamp(tonumber(S[p .. "_sz"]) or cfg.sz or 4, 0.25, 30)
+
+    local ox = clamp(tonumber(S[p .. "_ox"]) or 0, -15, 15)
+    local oy = clamp(tonumber(S[p .. "_oy"]) or 0, -15, 15)
+    local oz = clamp(tonumber(S[p .. "_oz"]) or 0, -15, 15)
+
+    local thick = clamp(tonumber(S[p .. "_thick"]) or 1.4, 0.5, 5.0)
+
+    local center = nil
+    local ok_center, vcenter = pcall(function()
+        return Vector3(
+            (pos.X or 0) + ox,
+            (pos.Y or 0) + oy,
+            (pos.Z or 0) + oz
+        )
+    end)
+
+    if ok_center then
+        center = vcenter
+    end
+
+    if not center then
+        return false
+    end
+
+    local r = col[1] or 1
+    local g = col[2] or 1
+    local b = col[3] or 1
+
+    -- Preferred path: native 12-edge world-space box.
+    if Drawing and type(Drawing.DrawBox3D) == "function" then
+        local ok = pcall(
+            Drawing.DrawBox3D,
+            center,
+            sx,
+            sy,
+            sz,
+            r,
+            g,
+            b,
+            alpha,
+            thick
+        )
+        if ok then
+            return true
+        end
+    end
+
+    -- Fallback: explicitly draw the same 12 edges.
+    local hx = sx * 0.5
+    local hy = sy * 0.5
+    local hz = sz * 0.5
+
+    local corners = {
+        Vector3(center.X - hx, center.Y - hy, center.Z - hz),
+        Vector3(center.X + hx, center.Y - hy, center.Z - hz),
+        Vector3(center.X + hx, center.Y + hy, center.Z - hz),
+        Vector3(center.X - hx, center.Y + hy, center.Z - hz),
+
+        Vector3(center.X - hx, center.Y - hy, center.Z + hz),
+        Vector3(center.X + hx, center.Y - hy, center.Z + hz),
+        Vector3(center.X + hx, center.Y + hy, center.Z + hz),
+        Vector3(center.X - hx, center.Y + hy, center.Z + hz),
+    }
+
+    if Drawing and type(Drawing.DrawLine3D) == "function" then
+        for i = 1, #WORLD_BASE_BOX_EDGES do
+            local e = WORLD_BASE_BOX_EDGES[i]
+            pcall(
+                Drawing.DrawLine3D,
+                corners[e[1]],
+                corners[e[2]],
+                r, g, b, alpha, thick
+            )
+        end
+        return true
+    end
+
+    if Drawing
+        and type(Drawing.WorldToScreen) == "function"
+        and type(Drawing.DrawLine) == "function"
+    then
+        local screens = {}
+        for i = 1, 8 do
+            local ok, s = pcall(Drawing.WorldToScreen, corners[i])
+            if ok and s and s.X and s.Y and s.X ~= -1 and s.Y ~= -1 then
+                screens[i] = s
+            end
+        end
+
+        for i = 1, #WORLD_BASE_BOX_EDGES do
+            local e = WORLD_BASE_BOX_EDGES[i]
+            local a = screens[e[1]]
+            local z = screens[e[2]]
+            if a and z then
+                pcall(
+                    Drawing.DrawLine,
+                    a.X, a.Y,
+                    z.X, z.Y,
+                    r, g, b, alpha, thick
+                )
+            end
+        end
+        return true
+    end
+
+    return false
+end
+
+function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
+    if not cfg then return end
+    world_base_ensure_state(cfg)
+
+    local h = 21
+    local hot = hover(mx, my, x, y, w, h)
+    local p = "world_base_" .. tostring(cfg.id)
+    local enabled = S[p] == true
+
+    if hot then
+        rounded_fill(
+            x + 2, y + 1,
+            w - 4, h - 2,
+            4,
+            alpha(C.card_hover, 0.72)
+        )
+    end
+
+    local selected =
+        A.base_box_settings_open
+        and A.base_box_settings_id == cfg.id
+
+    text(
+        x + 8,
+        y + 6,
+        cfg.label,
+        selected
+            and C.accent
+            or (enabled and C.text or C.text_dim)
+    )
+
+    -- Tiny settings arrow.
+    local gear_x = x + w - 43
+    local gear_hot = hover(mx, my, gear_x, y + 2, 18, 17)
+
+    text(
+        gear_x + 6,
+        y + 5,
+        ">",
+        gear_hot and C.text or C.text_dim
+    )
+
+    -- Compact square toggle.
+    local tx = x + w - 20
+    local ty = y + 4
+    local toggle_hot = hover(mx, my, tx, ty, 13, 13)
+
+    rounded_fill(
+        tx,
+        ty,
+        13,
+        13,
+        3,
+        enabled and C.accent_dim or C.toggle_off
+    )
+
+    if enabled then
+        rounded_fill(
+            tx + 3,
+            ty + 3,
+            7,
+            7,
+            2,
+            C.white
+        )
+    end
+
+    if clicked and toggle_hot then
+        S[p] = not enabled
+        WORLD_ESP.last_scan = -100
+        return
+    end
+
+    if clicked and (gear_hot or (hot and not toggle_hot)) then
+        A.base_box_settings_id = cfg.id
+        A.base_box_settings_open = true
+
+        A.world_settings_open = false
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+
+        if numeric_stop then
+            numeric_stop(true)
+        end
+    end
+end
+
+function draw_base_box_settings_popup(mx, my, clicked, lmb, cx, cy, cw)
+    if not A.base_box_settings_open then
+        return
+    end
+
+    local cfg = world_base_cfg_by_id(A.base_box_settings_id)
+    if not cfg then
+        A.base_box_settings_open = false
+        return
+    end
+
+    world_base_ensure_state(cfg)
+
+    local pw = 365
+    local ph = 337
+    local px = cx + cw - pw
+    local py = cy + 70
+
+    FALLEN_POPUP_GLOW(px, py, pw, ph, 11, 1)
+
+    rounded_fill(
+        px, py, pw, ph,
+        11,
+        { 0.062, 0.066, 0.077, 1 }
+    )
+
+    text(
+        px + 13,
+        py + 12,
+        cfg.label .. " - 3D Box",
+        C.text
+    )
+
+    local close_x = px + pw - 30
+    local close_hot = hover(mx, my, close_x, py + 7, 20, 20)
+
+    text(
+        close_x + 7,
+        py + 11,
+        "x",
+        close_hot and C.text or C.text_dim
+    )
+
+    if clicked and close_hot then
+        A.base_box_settings_open = false
+        numeric_stop(true)
+        return
+    end
+
+    line(
+        px + 12,
+        py + 34,
+        px + pw - 12,
+        py + 34,
+        C.divider,
+        1
+    )
+
+    local p = "world_base_" .. tostring(cfg.id)
+
+    slider_row(mx, my, clicked, lmb, px + 8, py + 39,  pw - 16, "Size X / Width",  p .. "_sx", 0.25, 30, "float")
+    slider_row(mx, my, clicked, lmb, px + 8, py + 80,  pw - 16, "Size Y / Height", p .. "_sy", 0.25, 30, "float")
+    slider_row(mx, my, clicked, lmb, px + 8, py + 121, pw - 16, "Size Z / Depth",  p .. "_sz", 0.25, 30, "float")
+
+    slider_row(mx, my, clicked, lmb, px + 8, py + 162, pw - 16, "Offset X", p .. "_ox", -15, 15, "float")
+    slider_row(mx, my, clicked, lmb, px + 8, py + 203, pw - 16, "Offset Y", p .. "_oy", -15, 15, "float")
+    slider_row(mx, my, clicked, lmb, px + 8, py + 244, pw - 16, "Offset Z", p .. "_oz", -15, 15, "float")
+
+    slider_row(mx, my, clicked, lmb, px + 8, py + 285, pw - 16, "Line Thickness", p .. "_thick", 0.5, 5.0, "float")
+
+    local popup_hot = hover(mx, my, px, py, pw, ph)
+
+    if clicked and not popup_hot then
+        A.base_box_settings_open = false
+        numeric_stop(true)
+    end
+end
+
 
 local WORLD_ESP = {
     folders = {
@@ -7616,7 +8019,7 @@ local function world_refresh_cache(force)
 
     local base_entries = {}
 
-    if S.world_base_all == true then
+    if world_any_base_enabled() then
         local bases =
             WORLD_ESP.folders.Bases
 
@@ -7652,10 +8055,12 @@ local function world_refresh_cache(force)
                             for _, cfg in ipairs(
                                 WORLD_BASE_ITEMS
                             ) do
-                                if world_name_match(
-                                    cfg,
-                                    type_name
-                                ) then
+                                if world_base_enabled(cfg)
+                                    and world_name_match(
+                                        cfg,
+                                        type_name
+                                    )
+                                then
                                     local found_model = false
 
                                     for _, model in ipairs(
@@ -8078,10 +8483,10 @@ function world_draw_base_entry(
     entry,
     my_pos
 )
-    if S.world_base_all ~= true
-        or not entry
+    if not entry
         or not entry.cfg
         or not world_inst_valid(entry.inst)
+        or not world_base_enabled(entry.cfg)
     then
         return
     end
@@ -8118,15 +8523,6 @@ function world_draw_base_entry(
         return
     end
 
-    local screen =
-        world_screen(
-            pos
-        )
-
-    if not screen then
-        return
-    end
-
     local cfg = entry.cfg
     local col = cfg.color or { 1, 1, 1, 1 }
     local alpha = col[4] or 1
@@ -8144,29 +8540,51 @@ function world_draw_base_entry(
             )
     end
 
-    if type(DrawTextWithOutline) ~= "function" then
-        return
-    end
-
-    -- Intentionally text-only for now.
-    DrawTextWithOutline(
-        screen.X,
-        screen.Y,
-        cfg.label,
-        col[1] or 1,
-        col[2] or 1,
-        col[3] or 1,
-        alpha,
-        0,
-        0,
-        0,
+    -- Axis-aligned 3D wireframe. Native DrawBox3D is a 12-edge cuboid;
+    -- fallback path explicitly draws the same 12 lines.
+    world_draw_tunable_box3d(
+        pos,
+        cfg,
+        col,
         alpha
     )
 
-    if S.world_show_distance == true then
+    local screen =
+        world_screen(
+            pos
+        )
+
+    if not screen
+        or type(DrawTextWithOutline) ~= "function"
+    then
+        return
+    end
+
+    if S.world_show_names == true then
         DrawTextWithOutline(
             screen.X,
-            screen.Y + 14,
+            screen.Y,
+            cfg.label,
+            col[1] or 1,
+            col[2] or 1,
+            col[3] or 1,
+            alpha,
+            0,
+            0,
+            0,
+            alpha
+        )
+    end
+
+    if S.world_show_distance == true then
+        local dy =
+            S.world_show_names == true
+            and 14
+            or 0
+
+        DrawTextWithOutline(
+            screen.X,
+            screen.Y + dy,
             string.format(
                 "%.0fm",
                 dist
@@ -8208,15 +8626,13 @@ local function world_esp_tick()
         )
     end
 
-    if S.world_base_all == true then
-        for _, entry in ipairs(
-            WORLD_ESP.base_entries
-        ) do
-            world_draw_base_entry(
-                entry,
-                my_pos
-            )
-        end
+    for _, entry in ipairs(
+        WORLD_ESP.base_entries
+    ) do
+        world_draw_base_entry(
+            entry,
+            my_pos
+        )
     end
 end
 
