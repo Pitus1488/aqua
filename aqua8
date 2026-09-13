@@ -128,6 +128,9 @@ local defaults = {
     world_blueberry_plant = false,
     world_wool_plant = false,
 
+    -- Text-only House/Base ESP. Shows all supported objects inside Workspace/Bases.
+    world_base_all = false,
+
     world_max_dist = 500,
     world_show_names = true,
     world_show_distance = true,
@@ -5701,6 +5704,39 @@ local function draw_visuals_page(
         end
     end
 
+    -- House/Base ESP. For now this is intentionally text-only.
+    local base_section_y =
+        cards_y
+        + 25
+        + 5 * 41
+        + 25
+
+    section_title(
+        cx,
+        base_section_y,
+        "Base / House"
+    )
+
+    card(
+        cx,
+        base_section_y + 25,
+        cw,
+        49,
+        11
+    )
+
+    toggle_row(
+        mx,
+        my,
+        base_clicked,
+        cx,
+        base_section_y + 29,
+        cw,
+        "Show All Base Items (Text)",
+        "world_base_all",
+        false
+    )
+
     -- Render settings first, then the reusable color picker on top.
     draw_world_settings_popup(
         mx,
@@ -7098,13 +7134,46 @@ for _, cfg in ipairs(WORLD_RESOURCES) do
     end
 end
 
+
+-- House/Base objects from the user's known-working K1_BASE_ITEMS list.
+-- These are intentionally text-only for now.
+local WORLD_BASE_ITEMS = {
+    { id = "base_cabinet", label = "Base Cabinet", names = { ["Base Cabinet"] = true, ["Cabinet"] = true }, color = { 1.00, 0.80, 0.05, 1 } },
+    { id = "storage_cabinet", label = "Storage Cabinet", names = { ["Storage Cabinet"] = true, ["Large Cabinet"] = true }, color = { 0.60, 0.40, 0.20, 1 } },
+    { id = "small_box", label = "Small Box", names = { ["Small Storage Box"] = true, ["Small Box"] = true }, color = { 0.50, 0.30, 0.10, 1 } },
+    { id = "large_box", label = "Large Box", names = { ["Large Storage Box"] = true, ["Large Box"] = true }, color = { 0.65, 0.42, 0.20, 1 } },
+
+    { id = "wooden_door", label = "Wooden Door", names = { ["Wooden Door"] = true }, color = { 0.50, 0.30, 0.10, 1 } },
+    { id = "wooden_double_door", label = "Wooden Double Door", names = { ["Wooden Double Door"] = true }, color = { 0.50, 0.30, 0.10, 1 } },
+    { id = "salvaged_door", label = "Salvaged Door", names = { ["Salvaged Metal Door"] = true }, color = { 0.45, 0.45, 0.55, 1 } },
+    { id = "metal_door", label = "Metal Door", names = { ["Metal Door"] = true }, color = { 0.55, 0.55, 0.65, 1 } },
+    { id = "metal_double_door", label = "Metal Double Door", names = { ["Metal Double Door"] = true }, color = { 0.55, 0.55, 0.65, 1 } },
+    { id = "steel_door", label = "Steel Door", names = { ["Steel Door"] = true }, color = { 0.75, 0.75, 0.85, 1 } },
+    { id = "steel_double_door", label = "Steel Double Door", names = { ["Steel Double Door"] = true }, color = { 0.75, 0.75, 0.85, 1 } },
+    { id = "trap_door", label = "Trap Door", names = { ["Trap Door"] = true }, color = { 0.45, 0.38, 0.30, 1 } },
+    { id = "triangle_trap_door", label = "Triangle Trap Door", names = { ["Triangle Trap Door"] = true }, color = { 0.45, 0.38, 0.30, 1 } },
+    { id = "garage_door", label = "Garage Door", names = { ["Garage Door"] = true }, color = { 0.50, 0.50, 0.58, 1 } },
+
+    { id = "sleeping_bag", label = "Sleeping Bag", names = { ["Sleeping Bag"] = true }, color = { 0.80, 0.20, 0.20, 1 } },
+    { id = "shotgun_turret", label = "Shotgun Turret", names = { ["Shotgun Turret"] = true }, color = { 1.00, 0.30, 0.30, 1 } },
+    { id = "auto_turret", label = "Auto Turret", names = { ["Auto Turret"] = true }, color = { 1.00, 0.20, 0.20, 1 } },
+
+    { id = "small_battery", label = "Small Battery", names = { ["Small Battery"] = true }, color = { 0.20, 0.60, 0.20, 1 } },
+    { id = "medium_battery", label = "Medium Battery", names = { ["Medium Battery"] = true }, color = { 0.30, 0.70, 0.30, 1 } },
+    { id = "large_battery", label = "Large Battery", names = { ["Large Battery"] = true }, color = { 0.40, 0.80, 0.40, 1 } },
+    { id = "solar_panel", label = "Solar Panel", names = { ["Solar Panel"] = true }, color = { 0.20, 0.40, 0.85, 1 } },
+    { id = "windmill", label = "Windmill", names = { ["Windmill"] = true }, color = { 0.65, 0.65, 0.65, 1 } },
+}
+
 local WORLD_ESP = {
     folders = {
         Nodes = nil,
         Plants = nil,
+        Bases = nil,
     },
 
     entries = {},
+    base_entries = {},
     last_scan = -100,
 
     icons = {},
@@ -7497,6 +7566,7 @@ local function world_refresh_cache(force)
     for _, folder_name in ipairs({
         "Nodes",
         "Plants",
+        "Bases",
     }) do
         local folder =
             world_find_child(
@@ -7543,6 +7613,91 @@ local function world_refresh_cache(force)
     end
 
     WORLD_ESP.entries = entries
+
+    local base_entries = {}
+
+    if S.world_base_all == true then
+        local bases =
+            WORLD_ESP.folders.Bases
+
+        if bases
+            and world_inst_valid(bases)
+        then
+            for _, base_folder in ipairs(
+                world_children(bases)
+            ) do
+                if #base_entries >= 180 then
+                    break
+                end
+
+                local base_name =
+                    world_inst_name(
+                        base_folder
+                    )
+
+                if base_name ~= "Loners" then
+                    for _, type_folder in ipairs(
+                        world_children(base_folder)
+                    ) do
+                        if #base_entries >= 180 then
+                            break
+                        end
+
+                        local type_name =
+                            world_inst_name(
+                                type_folder
+                            )
+
+                        if type_name then
+                            for _, cfg in ipairs(
+                                WORLD_BASE_ITEMS
+                            ) do
+                                if world_name_match(
+                                    cfg,
+                                    type_name
+                                ) then
+                                    local found_model = false
+
+                                    for _, model in ipairs(
+                                        world_children(type_folder)
+                                    ) do
+                                        if #base_entries >= 180 then
+                                            break
+                                        end
+
+                                        if world_inst_class(model) == "Model" then
+                                            found_model = true
+
+                                            base_entries[#base_entries + 1] = {
+                                                cfg = cfg,
+                                                inst = model,
+                                            }
+                                        end
+                                    end
+
+                                    -- Some API/game builds expose the placed object
+                                    -- directly as the type folder rather than child Models.
+                                    if not found_model
+                                        and world_part_pos(type_folder, 0)
+                                    then
+                                        base_entries[#base_entries + 1] = {
+                                            cfg = cfg,
+                                            inst = type_folder,
+                                        }
+                                    end
+
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    WORLD_ESP.base_entries =
+        base_entries
 end
 
 local function world_url_encode(s)
@@ -7919,6 +8074,115 @@ local function world_draw_entry(
     end
 end
 
+local function world_draw_base_entry(
+    entry,
+    my_pos
+)
+    if S.world_base_all ~= true
+        or not entry
+        or not entry.cfg
+        or not world_inst_valid(entry.inst)
+    then
+        return
+    end
+
+    local pos =
+        world_part_pos(
+            entry.inst,
+            0
+        )
+
+    if not pos then
+        return
+    end
+
+    local dist =
+        world_distance_m(
+            pos,
+            my_pos
+        )
+
+    if not dist then
+        return
+    end
+
+    local max_dist =
+        clamp(
+            tonumber(S.world_max_dist)
+            or 500,
+            25,
+            2000
+        )
+
+    if dist > max_dist then
+        return
+    end
+
+    local screen =
+        world_screen(
+            pos
+        )
+
+    if not screen then
+        return
+    end
+
+    local cfg = entry.cfg
+    local col = cfg.color or { 1, 1, 1, 1 }
+    local alpha = col[4] or 1
+
+    if S.world_fade_distance == true
+        and max_dist > 0
+    then
+        alpha =
+            alpha
+            * clamp(
+                1
+                - (dist / max_dist) * 0.78,
+                0.18,
+                1
+            )
+    end
+
+    if type(DrawTextWithOutline) ~= "function" then
+        return
+    end
+
+    -- Intentionally text-only for now.
+    DrawTextWithOutline(
+        screen.X,
+        screen.Y,
+        cfg.label,
+        col[1] or 1,
+        col[2] or 1,
+        col[3] or 1,
+        alpha,
+        0,
+        0,
+        0,
+        alpha
+    )
+
+    if S.world_show_distance == true then
+        DrawTextWithOutline(
+            screen.X,
+            screen.Y + 14,
+            string.format(
+                "%.0fm",
+                dist
+            ),
+            col[1] or 1,
+            col[2] or 1,
+            col[3] or 1,
+            alpha,
+            0,
+            0,
+            0,
+            alpha
+        )
+    end
+end
+
 local function world_esp_tick()
     if _G.FallenMenuReady ~= true
         or S.world_esp_enabled ~= true
@@ -7942,6 +8206,17 @@ local function world_esp_tick()
             entry,
             my_pos
         )
+    end
+
+    if S.world_base_all == true then
+        for _, entry in ipairs(
+            WORLD_ESP.base_entries
+        ) do
+            world_draw_base_entry(
+                entry,
+                my_pos
+            )
+        end
     end
 end
 
