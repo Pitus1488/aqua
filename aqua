@@ -110,6 +110,8 @@ local defaults = {
     -- Animated menu-background weather.
     menu_snow = false,
     menu_rain = false,
+    menu_lightning = false,
+    menu_lightning_mode = "Normal",
 
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
     menu_glow_h = 0.00,
@@ -389,6 +391,11 @@ local A = {
     weather_last_t = nil,
     weather_snow_alpha = 0,
     weather_rain_alpha = 0,
+    weather_lightning_alpha = 0,
+    weather_lightning_flash = 0,
+    weather_lightning_timer = nil,
+    weather_lightning_life = 0,
+    weather_lightning_points = nil,
 
     -- Menu appearance popup near the profile/avatar.
     menu_settings_open = false,
@@ -402,6 +409,8 @@ local A = {
     menu_type_dropdown_open = false,
     menu_type_dropdown_anim = 0,
     menu_type_dropdown_last_t = nil,
+
+    menu_lightning_dropdown_open = false,
 }
 
 -- =========================================================
@@ -10920,6 +10929,111 @@ function FALLEN_DRAW_MENU_TYPE_DROPDOWN(
     return panel_hot
 end
 
+
+function FALLEN_LIGHTNING_MODE_OPTIONS()
+    return {
+        "Rare",
+        "Normal",
+        "Storm",
+    }
+end
+
+function FALLEN_DRAW_MENU_LIGHTNING_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    if not A.menu_lightning_dropdown_open then
+        return false
+    end
+
+    local options =
+        FALLEN_LIGHTNING_MODE_OPTIONS()
+
+    local item_h = 28
+    local ph =
+        8 + #options * item_h
+
+    FALLEN_POPUP_GLOW(x, y, w, ph, 8, 0.55)
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        ph,
+        8,
+        { 0.060, 0.064, 0.076, 0.98 }
+    )
+
+    rounded_outline(
+        x,
+        y,
+        w,
+        ph,
+        8,
+        alpha(C.border, 1),
+        1
+    )
+
+    local hot =
+        hover(mx, my, x, y, w, ph)
+
+    for i = 1, #options do
+        local value =
+            options[i]
+
+        local iy =
+            y + 4 + (i - 1) * item_h
+
+        local item_hot =
+            hover(
+                mx,
+                my,
+                x + 3,
+                iy,
+                w - 6,
+                item_h
+            )
+
+        if item_hot then
+            rounded_fill(
+                x + 3,
+                iy,
+                w - 6,
+                item_h,
+                6,
+                { 0.105, 0.110, 0.130, 1 }
+            )
+        end
+
+        local selected =
+            tostring(S.menu_lightning_mode or "Normal")
+            == value
+
+        text(
+            x + 10,
+            iy + 8,
+            value,
+            FALLEN_HOVER_TEXT(
+                "menu_lightning_mode:" .. tostring(value),
+                item_hot,
+                selected and C.text or C.text_dim
+            )
+        )
+
+        if clicked and item_hot then
+            S.menu_lightning_mode = value
+            A.menu_lightning_dropdown_open = false
+            return true
+        end
+    end
+
+    return hot
+end
+
 function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
     local raw = FALLEN_MENU_SETTINGS_STEP()
 
@@ -10928,6 +11042,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         A.menu_scale_dropdown_anim = 0
         A.menu_type_dropdown_open = false
         A.menu_type_dropdown_anim = 0
+        A.menu_lightning_dropdown_open = false
         return false
     end
 
@@ -10940,7 +11055,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or ease_in_out_cubic(raw)
 
     local pw = 278
-    local ph = 344
+    local ph = 392
     local px = snap(anchor_x + 18)
     local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
     local shell_h = math.max(38, ph - (1 - anim) * 46)
@@ -10958,6 +11073,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         ui_clicked
         and not A.menu_scale_dropdown_open
         and not A.menu_type_dropdown_open
+        and not A.menu_lightning_dropdown_open
 
     FALLEN_POPUP_GLOW(px, py, pw, shell_h, 12, 1)
 
@@ -11206,6 +11322,133 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
+        local lightning_box_x = nil
+        local lightning_box_y = nil
+        local lightning_box_w = nil
+        local lightning_box_h = 25
+        local lightning_dropdown_hot = false
+
+        if shell_h > 328 then
+            line(
+                px + 12,
+                py + 285,
+                px + pw - 12,
+                py + 285,
+                C.divider,
+                1
+            )
+
+            local row_x = px + 8
+            local row_y = py + 286
+            local row_w = pw - 16
+            local row_h = 41
+            local hot = row_hover(mx, my, row_x, row_y, row_w, row_h)
+
+            text(
+                row_x + 13,
+                row_y + 14,
+                "Lightning",
+                FALLEN_HOVER_TEXT(
+                    "menu_lightning_row",
+                    hot,
+                    C.text
+                )
+            )
+
+            local tx = row_x + row_w - 45
+            local ty = row_y + 12
+            local tw, th = 34, 18
+
+            A.toggles.menu_lightning =
+                exp_chase(
+                    A.toggles.menu_lightning or 0,
+                    S.menu_lightning and 1 or 0,
+                    14,
+                    1/60
+                )
+
+            local anim =
+                A.toggles.menu_lightning
+
+            local track_col =
+                mix_color(C.toggle_off, C.accent_dim, anim)
+
+            local knob_col =
+                mix_color(C.toggle_knob, C.white, anim)
+
+            rounded_fill(tx, ty, tw, th, 9, track_col)
+
+            local knob_x =
+                tx + 9 + (tw - 18) * anim
+
+            circle_fill(knob_x, ty + 9, 7, knob_col)
+
+            lightning_box_w = 88
+            lightning_box_x = tx - 9 - lightning_box_w
+            lightning_box_y = row_y + 8
+
+            local box_hot =
+                hover(
+                    mx,
+                    my,
+                    lightning_box_x,
+                    lightning_box_y,
+                    lightning_box_w,
+                    lightning_box_h
+                )
+
+            rounded_fill(
+                lightning_box_x,
+                lightning_box_y,
+                lightning_box_w,
+                lightning_box_h,
+                6,
+                box_hot
+                    and { 0.105, 0.110, 0.130, 1 }
+                    or { 0.075, 0.079, 0.093, 1 }
+            )
+
+            text(
+                lightning_box_x + 10,
+                lightning_box_y + 7,
+                tostring(S.menu_lightning_mode or "Normal"),
+                FALLEN_HOVER_TEXT(
+                    "menu_lightning_mode_box",
+                    box_hot,
+                    C.text
+                )
+            )
+
+            text(
+                lightning_box_x + lightning_box_w - 16,
+                lightning_box_y + 7,
+                A.menu_lightning_dropdown_open and "^" or "v",
+                C.text_dim
+            )
+
+            if ui_clicked then
+                if box_hot then
+                    A.menu_lightning_dropdown_open =
+                        not A.menu_lightning_dropdown_open
+                    A.menu_scale_dropdown_open = false
+                    A.menu_type_dropdown_open = false
+                elseif hot then
+                    S.menu_lightning =
+                        not S.menu_lightning
+                end
+            end
+
+            lightning_dropdown_hot =
+                FALLEN_DRAW_MENU_LIGHTNING_DROPDOWN(
+                    mx,
+                    my,
+                    ui_clicked,
+                    lightning_box_x,
+                    lightning_box_y + lightning_box_h + 4,
+                    lightning_box_w
+                )
+        end
+
         local type_dropdown_hot =
             FALLEN_DRAW_MENU_TYPE_DROPDOWN(
                 mx,
@@ -11256,14 +11499,21 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         and not popup_hot
         and not anchor_hot
         and not scale_dropdown_hot
+        and not type_dropdown_hot
+        and not lightning_dropdown_hot
     then
         A.menu_settings_open = false
         A.menu_scale_dropdown_open = false
         A.menu_type_dropdown_open = false
+        A.menu_lightning_dropdown_open = false
     end
 
     MENU_RENDER_ALPHA = parent_alpha
-    return popup_hot or scale_dropdown_hot
+    return
+        popup_hot
+        or scale_dropdown_hot
+        or type_dropdown_hot
+        or lightning_dropdown_hot
 end
 
 -- =========================================================
@@ -11870,6 +12120,31 @@ function FALLEN_DRAW_MENU_WEATHER(
             dt
         )
 
+    A.weather_lightning_alpha =
+        exp_chase(
+            A.weather_lightning_alpha or 0,
+            (
+                S.visible == true
+                and S.menu_lightning == true
+            ) and 1 or 0,
+            5.6,
+            dt
+        )
+
+    A.weather_lightning_flash =
+        math.max(
+            0,
+            (A.weather_lightning_flash or 0)
+            - dt * 3.2
+        )
+
+    A.weather_lightning_life =
+        math.max(
+            0,
+            (A.weather_lightning_life or 0)
+            - dt
+        )
+
     -- ---------------------------------
     -- SNOW
     -- ---------------------------------
@@ -12216,6 +12491,185 @@ function FALLEN_DRAW_MENU_WEATHER(
     then
         A.weather_rain = {}
         A.weather_rain_spawn = 0
+    end
+
+    -- ---------------------------------
+    -- LIGHTNING
+    -- ---------------------------------
+    if S.visible == true
+        and S.menu_lightning == true
+        and (A.weather_lightning_alpha or 0) > 0.02
+    then
+        local preset =
+            tostring(S.menu_lightning_mode or "Normal"):lower()
+
+        if A.weather_lightning_timer == nil then
+            if preset == "rare" then
+                A.weather_lightning_timer = FALLEN_WEATHER_RAND(3.6, 6.2)
+            elseif preset == "storm" then
+                A.weather_lightning_timer = FALLEN_WEATHER_RAND(1.0, 2.0)
+            else
+                A.weather_lightning_timer = FALLEN_WEATHER_RAND(2.0, 3.8)
+            end
+        end
+
+        A.weather_lightning_timer =
+            A.weather_lightning_timer - dt
+
+        if A.weather_lightning_timer <= 0 then
+            local function next_time()
+                if preset == "rare" then
+                    return FALLEN_WEATHER_RAND(4.2, 7.0)
+                elseif preset == "storm" then
+                    return FALLEN_WEATHER_RAND(1.1, 2.1)
+                end
+
+                return FALLEN_WEATHER_RAND(2.2, 4.0)
+            end
+
+            A.weather_lightning_timer = next_time()
+            A.weather_lightning_flash = FALLEN_WEATHER_RAND(0.82, 1.00)
+            A.weather_lightning_life = FALLEN_WEATHER_RAND(0.13, 0.22)
+
+            local choose_left =
+                math.random() < 0.5
+
+            local margin = 16
+            local left_max = math.max(margin + 4, menu_x - 34)
+            local right_min = math.min(screen_w - margin - 4, menu_x + menu_w + 34)
+
+            local target_x
+
+            if choose_left and left_max > margin + 4 then
+                target_x =
+                    FALLEN_WEATHER_RAND(margin, left_max)
+            elseif right_min < screen_w - margin - 4 then
+                target_x =
+                    FALLEN_WEATHER_RAND(right_min, screen_w - margin)
+            else
+                -- Fallback for narrow screens: strike above the menu roof.
+                target_x =
+                    FALLEN_WEATHER_RAND(menu_x + 16, menu_x + math.max(18, menu_w - 16))
+            end
+
+            local end_y
+
+            if target_x >= menu_x
+                and target_x <= menu_x + menu_w
+            then
+                end_y = math.max(18, menu_y - 6)
+            else
+                end_y = FALLEN_WEATHER_RAND(screen_h * 0.36, screen_h * 0.72)
+            end
+
+            local x =
+                clamp(
+                    target_x + FALLEN_WEATHER_RAND(-34, 34),
+                    8,
+                    screen_w - 8
+                )
+
+            local y = -10
+
+            local pts = {
+                x, y
+            }
+
+            local segments =
+                math.random(7, 10)
+
+            for s = 1, segments do
+                local t = s / segments
+                local target_y = end_y * t
+                y = target_y + FALLEN_WEATHER_RAND(-6, 8)
+                x = x + FALLEN_WEATHER_RAND(-18, 18)
+
+                if s == segments then
+                    x = target_x
+                    y = end_y
+                end
+
+                pts[#pts + 1] = x
+                pts[#pts + 1] = y
+            end
+
+            A.weather_lightning_points = pts
+        end
+    elseif (A.weather_lightning_alpha or 0) < 0.02 then
+        A.weather_lightning_timer = nil
+        A.weather_lightning_points = nil
+        A.weather_lightning_life = 0
+        A.weather_lightning_flash = 0
+    end
+
+    if (A.weather_lightning_flash or 0) > 0.01 then
+        local flash_a =
+            (A.weather_lightning_flash or 0)
+            * (A.weather_lightning_alpha or 0)
+
+        local c = {
+            0.72,
+            0.82,
+            1.00,
+            0.12 * flash_a
+        }
+
+        -- Flash the whole SCREEN around the menu, but keep the menu itself clean.
+        if menu_y > 0 then
+            fill(0, 0, screen_w, menu_y, c)
+        end
+
+        local bottom_y = menu_y + menu_h
+        if bottom_y < screen_h then
+            fill(0, bottom_y, screen_w, screen_h - bottom_y, c)
+        end
+
+        if menu_x > 0 and menu_h > 0 then
+            fill(0, menu_y, menu_x, menu_h, c)
+        end
+
+        local right_x = menu_x + menu_w
+        if right_x < screen_w and menu_h > 0 then
+            fill(right_x, menu_y, screen_w - right_x, menu_h, c)
+        end
+    end
+
+    if (A.weather_lightning_life or 0) > 0
+        and type(A.weather_lightning_points) == "table"
+    then
+        local pts = A.weather_lightning_points
+        local a =
+            clamp(
+                (A.weather_lightning_life / 0.22),
+                0,
+                1
+            )
+            * (A.weather_lightning_alpha or 0)
+
+        for i = 1, #pts - 3, 2 do
+            local x1 = pts[i]
+            local y1 = pts[i + 1]
+            local x2 = pts[i + 2]
+            local y2 = pts[i + 3]
+
+            line(
+                x1,
+                y1,
+                x2,
+                y2,
+                { 0.55, 0.76, 1.00, 0.30 * a },
+                4
+            )
+
+            line(
+                x1,
+                y1,
+                x2,
+                y2,
+                { 0.88, 0.95, 1.00, 0.85 * a },
+                1.6
+            )
+        end
     end
 
     -- ---------------------------------
@@ -13047,10 +13501,13 @@ hooks.on_render(function()
             and (
                 S.menu_snow == true
                 or S.menu_rain == true
+                or S.menu_lightning == true
             )
         )
         or (A.weather_snow_alpha or 0) > 0.01
         or (A.weather_rain_alpha or 0) > 0.01
+        or (A.weather_lightning_alpha or 0) > 0.01
+        or (A.weather_lightning_flash or 0) > 0.01
         or (
             type(A.weather_snow_bank) == "table"
             and #A.weather_snow_bank > 0
