@@ -115,6 +115,7 @@ local defaults = {
     armor_esp_enabled = false,
     armor_esp_mode = "Normal",
     armor_show_weapon = true,
+    armor_onplayer_background = false,
     armor_esp_size = 18,
     armor_esp_range = 1200,
     armor_esp_smooth = 18,
@@ -370,6 +371,10 @@ local A = {
     armor_mode_dropdown_open = false,
     armor_mode_dropdown_anim = 0,
     armor_mode_dropdown_last_t = nil,
+
+    -- Animated conditional On Player options.
+    armor_onplayer_options_anim = 0,
+    armor_onplayer_options_last_t = nil,
 
     armor_settings_open = false,
     armor_settings_anim = 0,
@@ -10754,6 +10759,23 @@ function FALLEN_ARMOR_DRAW_ON_PLAYERS()
                         local y =
                             sy - y_offset
 
+                        if S.armor_onplayer_background == true
+                            and type(DrawBoxFilled) == "function"
+                        then
+                            local pad = 4
+
+                            DrawBoxFilled(
+                                start_x - pad,
+                                y - pad,
+                                start_x + total_w + pad,
+                                y + icon + pad,
+                                0,
+                                0,
+                                0,
+                                0.72
+                            )
+                        end
+
                         for i, item in ipairs(items) do
                             FALLEN_ARMOR_DRAW_ICON(
                                 item,
@@ -11447,6 +11469,57 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
     return popup_hot
 end
 
+function FALLEN_ARMOR_ONPLAYER_OPTIONS_STEP()
+    local now = tick()
+
+    if A.armor_onplayer_options_last_t == nil then
+        A.armor_onplayer_options_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.armor_onplayer_options_last_t,
+            0,
+            0.05
+        )
+
+    A.armor_onplayer_options_last_t = now
+
+    local target =
+        tostring(S.armor_esp_mode or "Normal")
+            == "On Player"
+        and 1
+        or 0
+
+    local speed =
+        target > (A.armor_onplayer_options_anim or 0)
+        and 12
+        or 10
+
+    A.armor_onplayer_options_anim =
+        exp_chase(
+            A.armor_onplayer_options_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if math.abs(
+        (A.armor_onplayer_options_anim or 0)
+        - target
+    ) < 0.002
+    then
+        A.armor_onplayer_options_anim = target
+    end
+
+    return
+        clamp(
+            A.armor_onplayer_options_anim or 0,
+            0,
+            1
+        )
+end
+
 function FALLEN_DRAW_ARMOR_PAGE(
     mx,
     my,
@@ -11457,7 +11530,6 @@ function FALLEN_DRAW_ARMOR_PAGE(
     y,
     w
 )
-    -- Same width model as the left Aimbot card.
     local settings_w =
         math.floor(
             w * 0.48
@@ -11471,6 +11543,17 @@ function FALLEN_DRAW_ARMOR_PAGE(
         clicked
         and not popup_open
 
+    local onplayer_anim =
+        FALLEN_ARMOR_ONPLAYER_OPTIONS_STEP()
+
+    local onplayer_eased =
+        smooth01(
+            onplayer_anim
+        )
+
+    local extra_h =
+        41 * onplayer_eased
+
     section_title(
         x,
         y,
@@ -11481,7 +11564,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
         x,
         y + 25,
         settings_w,
-        255,
+        255 + extra_h,
         11
     )
 
@@ -11671,11 +11754,56 @@ function FALLEN_DRAW_ARMOR_PAGE(
         A.armor_item_cache = {}
     end
 
+    -- Fixed upper separator; the lower separator and all following rows
+    -- slide downward as Background unfolds.
     line(
         x + 12,
-        y + 236,
+        y + 154,
         x + settings_w - 12,
-        y + 236,
+        y + 154,
+        C.divider,
+        1
+    )
+
+    if onplayer_anim > 0.01 then
+        local old_alpha =
+            MENU_RENDER_ALPHA
+
+        MENU_RENDER_ALPHA =
+            old_alpha
+            * onplayer_eased
+
+        toggle_row(
+            mx,
+            my,
+            controls_clicked
+                and onplayer_anim > 0.92,
+            x,
+            y + 155,
+            settings_w,
+            "Background",
+            "armor_onplayer_background",
+            false
+        )
+
+        MENU_RENDER_ALPHA =
+            old_alpha
+    end
+
+    local size_y =
+        y + 155 + extra_h
+
+    local distance_y =
+        y + 196 + extra_h
+
+    local smooth_y =
+        y + 237 + extra_h
+
+    line(
+        x + 12,
+        size_y - 1,
+        x + settings_w - 12,
+        size_y - 1,
         C.divider,
         1
     )
@@ -11686,7 +11814,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
         controls_clicked,
         lmb,
         x,
-        y + 155,
+        size_y,
         settings_w,
         "Size",
         "armor_esp_size",
@@ -11697,9 +11825,9 @@ function FALLEN_DRAW_ARMOR_PAGE(
 
     line(
         x + 12,
-        y + 154,
+        distance_y - 1,
         x + settings_w - 12,
-        y + 154,
+        distance_y - 1,
         C.divider,
         1
     )
@@ -11710,7 +11838,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
         controls_clicked,
         lmb,
         x,
-        y + 196,
+        distance_y,
         settings_w,
         "Max Distance",
         "armor_esp_range",
@@ -11721,9 +11849,9 @@ function FALLEN_DRAW_ARMOR_PAGE(
 
     line(
         x + 12,
-        y + 195,
+        smooth_y - 1,
         x + settings_w - 12,
-        y + 195,
+        smooth_y - 1,
         C.divider,
         1
     )
@@ -11734,7 +11862,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
         controls_clicked,
         lmb,
         x,
-        y + 237,
+        smooth_y,
         settings_w,
         "Smooth",
         "armor_esp_smooth",
