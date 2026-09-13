@@ -362,6 +362,19 @@ local A = {
     armor_mode_dropdown_last_t = nil,
     armor_target_alpha = 0,
     armor_target_addr = nil,
+
+    -- Draggable Normal Armor ESP panel, matching the supplied working Lua.
+    armor_hotbar_x = nil,
+    armor_hotbar_y = nil,
+    armor_draw_x = nil,
+    armor_draw_y = nil,
+    armor_dragging = false,
+    armor_drag_dx = 0,
+    armor_drag_dy = 0,
+    armor_hotbar_vertical = false,
+    armor_panel_pulse_until = 0,
+    armor_last_target_key = nil,
+
     armor_item_cache = {},
     armor_icon_cache = {},
     armor_screen_smooth = {},
@@ -8809,6 +8822,111 @@ function FALLEN_ARMOR_CLOSEST()
     return best
 end
 
+function FALLEN_ARMOR_DRAW_ANIMATED_FRAME(
+    x,
+    y,
+    w,
+    h,
+    alpha
+)
+    if alpha < 0.04
+        or type(DrawLine) ~= "function"
+    then
+        return
+    end
+
+    local perimeter =
+        (w + h) * 2
+
+    if perimeter <= 0 then
+        return
+    end
+
+    local head =
+        (tick() * 145)
+        % perimeter
+
+    local trail = 95
+    local pieces = 8
+    local step =
+        trail / pieces
+
+    if type(DrawBox) == "function" then
+        DrawBox(
+            x,
+            y,
+            x + w,
+            y + h,
+            0.42,
+            0.54,
+            0.88,
+            0.16 * alpha,
+            1
+        )
+    end
+
+    for piece = 0, pieces - 1 do
+        local p1 =
+            (
+                head
+                - piece * step
+            )
+            % perimeter
+
+        local p2 =
+            (
+                head
+                - (piece + 1) * step
+            )
+            % perimeter
+
+        local fade =
+            1
+            - piece / pieces
+
+        local function point_at(p)
+            if p < w then
+                return x + p, y
+            elseif p < w + h then
+                return x + w, y + (p - w)
+            elseif p < w + h + w then
+                return x + w - (p - w - h), y + h
+            end
+
+            return
+                x,
+                y + h - (p - w - h - w)
+        end
+
+        local x1, y1 =
+            point_at(p1)
+
+        local x2, y2 =
+            point_at(p2)
+
+        -- Only draw a segment if it did not wrap around a corner.
+        if math.abs(x1 - x2) <= 18
+            or math.abs(y1 - y2) <= 18
+        then
+            DrawLine(
+                x1,
+                y1,
+                x2,
+                y2,
+                0.58 + 0.34 * fade,
+                0.68 + 0.25 * fade,
+                1.00,
+                alpha
+                    * (
+                        0.10
+                        + fade * 0.82
+                    ),
+                2.6
+            )
+        end
+    end
+end
+
 function FALLEN_ARMOR_DRAW_NORMAL()
     local target =
         FALLEN_ARMOR_CLOSEST()
@@ -8833,7 +8951,7 @@ function FALLEN_ARMOR_DRAW_NORMAL()
             lerp(
                 A.armor_target_alpha or 0,
                 0,
-                0.15
+                0.12
             )
         return
     end
@@ -8842,51 +8960,298 @@ function FALLEN_ARMOR_DRAW_NORMAL()
         lerp(
             A.armor_target_alpha or 0,
             1,
-            0.14
+            0.12
         )
 
     local alpha =
         A.armor_target_alpha
 
+    local target_key =
+        FALLEN_ARMOR_PLAYER_KEY(target)
+
+    if target_key ~= A.armor_last_target_key then
+        A.armor_last_target_key =
+            target_key
+
+        A.armor_panel_pulse_until =
+            tick() + 0.45
+    end
+
     local sw, sh =
         screen_size()
 
-    local base_size =
-        clamp(
-            tonumber(S.armor_esp_size) or 18,
-            10,
-            32
-        )
-
+    -- Normal panel intentionally uses larger slots than On Player mode,
+    -- matching the supplied target hotbar behavior.
     local size =
         clamp(
-            base_size * 1.65,
+            (tonumber(S.armor_esp_size) or 18) * 2.25,
             24,
-            56
+            72
         )
 
     local gap = 6
-    local pad = 10
-    local name_h = 34
+    local panel_pad = 10
+    local name_h = 36
 
-    local total_w =
+    local horiz_w =
         #items * size
         + math.max(0, #items - 1) * gap
 
+    local horiz_h =
+        size
+
+    local vert_w =
+        size
+
+    local vert_h =
+        #items * size
+        + math.max(0, #items - 1) * gap
+
+    local horiz_panel_w =
+        horiz_w
+        + panel_pad * 2
+
+    local horiz_panel_h =
+        horiz_h
+        + name_h
+        + 12
+
+    local vert_panel_w =
+        vert_w
+        + panel_pad * 2
+
+    local vert_panel_h =
+        vert_h
+        + name_h
+        + 12
+
+    -- Initial position only. After that, the user owns the position.
+    if A.armor_hotbar_x == nil then
+        A.armor_hotbar_x =
+            sw * 0.5
+    end
+
+    if A.armor_hotbar_y == nil then
+        A.armor_hotbar_y =
+            sh * 0.72
+    end
+
+    if A.armor_draw_x == nil then
+        A.armor_draw_x =
+            A.armor_hotbar_x
+    end
+
+    if A.armor_draw_y == nil then
+        A.armor_draw_y =
+            A.armor_hotbar_y
+    end
+
+    local current_panel_w =
+        A.armor_hotbar_vertical
+        and vert_panel_w
+        or horiz_panel_w
+
+    local current_panel_h =
+        A.armor_hotbar_vertical
+        and vert_panel_h
+        or horiz_panel_h
+
+    local current_start_x =
+        A.armor_hotbar_x
+        - current_panel_w * 0.5
+
+    local current_start_y =
+        A.armor_hotbar_y
+        - name_h
+
+    local mx, my =
+        mouse_pos()
+
+    local lmb_down =
+        key_down(0x01)
+
+    local mouse_inside =
+        mx >= current_start_x
+        and my >= current_start_y
+        and mx <= current_start_x + current_panel_w
+        and my <= current_start_y + current_panel_h
+
+    if lmb_down
+        and not A.armor_dragging
+        and mouse_inside
+    then
+        A.armor_dragging = true
+        A.armor_drag_dx =
+            mx - A.armor_hotbar_x
+        A.armor_drag_dy =
+            my - A.armor_hotbar_y
+
+    elseif not lmb_down then
+        A.armor_dragging = false
+    end
+
+    if A.armor_dragging then
+        A.armor_hotbar_x =
+            mx
+            - (A.armor_drag_dx or 0)
+
+        A.armor_hotbar_y =
+            my
+            - (A.armor_drag_dy or 0)
+    end
+
+    -- Same side behavior as the supplied working Armor ESP:
+    -- horizontal in normal space, vertical when pushed to either edge.
+    local horiz_left =
+        A.armor_hotbar_x
+        - horiz_panel_w * 0.5
+
+    local horiz_right =
+        A.armor_hotbar_x
+        + horiz_panel_w * 0.5
+
+    local edge_trigger = 12
+
+    if not A.armor_hotbar_vertical then
+        if horiz_panel_w > sw - 16
+            or horiz_left < edge_trigger
+            or horiz_right > sw - edge_trigger
+        then
+            A.armor_hotbar_vertical = true
+        end
+    else
+        if horiz_panel_w <= sw - 16
+            and A.armor_hotbar_x - horiz_panel_w * 0.5 > 80
+            and A.armor_hotbar_x + horiz_panel_w * 0.5 < sw - 80
+        then
+            A.armor_hotbar_vertical = false
+        end
+    end
+
+    local is_vertical =
+        A.armor_hotbar_vertical == true
+
+    local total_w =
+        is_vertical
+        and vert_w
+        or horiz_w
+
+    local total_h =
+        is_vertical
+        and vert_h
+        or horiz_h
+
     local panel_w =
-        total_w + pad * 2
+        is_vertical
+        and vert_panel_w
+        or horiz_panel_w
 
     local panel_h =
-        size + name_h + 12
+        is_vertical
+        and vert_panel_h
+        or horiz_panel_h
 
-    local cx =
-        sw * 0.5
+    -- Clamp the draggable panel so it cannot disappear off-screen.
+    local min_x =
+        8 + panel_w * 0.5
+
+    local max_x =
+        sw - 8 - panel_w * 0.5
+
+    if min_x > max_x then
+        min_x = sw * 0.5
+        max_x = sw * 0.5
+    end
+
+    local center_y =
+        A.armor_hotbar_y
+        + (
+            panel_h * 0.5
+            - name_h
+        )
+
+    local min_center_y =
+        8 + panel_h * 0.5
+
+    local max_center_y =
+        sh - 8 - panel_h * 0.5
+
+    if min_center_y > max_center_y then
+        min_center_y = sh * 0.5
+        max_center_y = sh * 0.5
+    end
+
+    A.armor_hotbar_x =
+        clamp(
+            A.armor_hotbar_x,
+            min_x,
+            max_x
+        )
+
+    center_y =
+        clamp(
+            center_y,
+            min_center_y,
+            max_center_y
+        )
+
+    A.armor_hotbar_y =
+        center_y
+        - (
+            panel_h * 0.5
+            - name_h
+        )
+
+    -- Smooth movement, but faster while actively dragging.
+    A.armor_draw_x =
+        lerp(
+            A.armor_draw_x,
+            A.armor_hotbar_x,
+            A.armor_dragging
+                and 0.35
+                or 0.16
+        )
+
+    A.armor_draw_y =
+        lerp(
+            A.armor_draw_y,
+            A.armor_hotbar_y,
+            A.armor_dragging
+                and 0.35
+                or 0.16
+        )
+
+    local start_x =
+        A.armor_draw_x
+        - total_w * 0.5
+
+    local start_y =
+        A.armor_draw_y
+
+    if is_vertical then
+        start_x =
+            A.armor_draw_x
+            - size * 0.5
+    end
 
     local panel_x =
-        cx - panel_w * 0.5
+        A.armor_draw_x
+        - panel_w * 0.5
 
     local panel_y =
-        sh * 0.72
+        A.armor_draw_y
+        - name_h
+
+    local pulse = 0
+
+    if tick() < (A.armor_panel_pulse_until or 0) then
+        pulse =
+            (
+                A.armor_panel_pulse_until
+                - tick()
+            )
+            / 0.45
+    end
 
     if type(DrawBoxFilled) == "function" then
         DrawBoxFilled(
@@ -8895,9 +9260,9 @@ function FALLEN_ARMOR_DRAW_NORMAL()
             panel_x + panel_w,
             panel_y + panel_h,
             0.010,
-            0.011,
-            0.016,
-            0.76 * alpha
+            0.010,
+            0.014,
+            0.58 * alpha
         )
     end
 
@@ -8907,15 +9272,26 @@ function FALLEN_ARMOR_DRAW_NORMAL()
             panel_y,
             panel_x + panel_w,
             panel_y + panel_h,
-            0.42,
-            0.54,
-            0.88,
-            0.38 * alpha,
+            0.58,
+            0.68,
+            0.96,
+            (
+                0.16
+                + pulse * 0.22
+            ) * alpha,
             1
         )
     end
 
-    local name =
+    FALLEN_ARMOR_DRAW_ANIMATED_FRAME(
+        panel_x,
+        panel_y,
+        panel_w,
+        panel_h,
+        alpha
+    )
+
+    local display_name =
         tostring(
             target.name
             or target.display_name
@@ -8924,9 +9300,9 @@ function FALLEN_ARMOR_DRAW_NORMAL()
 
     if type(DrawTextWithOutline) == "function" then
         DrawTextWithOutline(
-            cx,
-            panel_y + 8,
-            name,
+            A.armor_draw_x,
+            A.armor_draw_y - 31,
+            display_name,
             1,
             1,
             1,
@@ -8957,30 +9333,67 @@ function FALLEN_ARMOR_DRAW_NORMAL()
             1
         )
 
+    local hp_x =
+        panel_x + panel_pad
+
+    local hp_y =
+        A.armor_draw_y - 13
+
+    local hp_w =
+        panel_w - panel_pad * 2
+
     if type(DrawBoxFilled) == "function" then
         DrawBoxFilled(
-            panel_x + pad,
-            panel_y + 25,
-            panel_x + pad + (panel_w - pad * 2) * hp_frac,
-            panel_y + 29,
+            hp_x,
+            hp_y,
+            hp_x + hp_w * hp_frac,
+            hp_y + 5,
             1 - hp_frac,
             hp_frac,
             0.12,
-            0.90 * alpha
+            0.95 * alpha
         )
     end
 
-    local start_x =
-        cx - total_w * 0.5
-
-    local y =
-        panel_y + name_h
+    if type(DrawBox) == "function" then
+        DrawBox(
+            hp_x,
+            hp_y,
+            hp_x + hp_w,
+            hp_y + 5,
+            1,
+            1,
+            1,
+            0.10 * alpha,
+            1
+        )
+    end
 
     for i, item in ipairs(items) do
+        local ix
+        local iy
+
+        if is_vertical then
+            ix =
+                A.armor_draw_x
+                - size * 0.5
+
+            iy =
+                start_y
+                + (i - 1) * (size + gap)
+        else
+            ix =
+                start_x
+                + (i - 1) * (size + gap)
+
+            iy =
+                start_y
+        end
+
         FALLEN_ARMOR_DRAW_ICON(
             item,
-            start_x + (i - 1) * (size + gap),
-            y,
+            ix,
+            iy,
             size,
             alpha,
             true
@@ -9305,6 +9718,12 @@ function FALLEN_DRAW_ARMOR_PAGE(
     y,
     w
 )
+    local settings_w =
+        math.min(
+            w,
+            430
+        )
+
     section_title(
         x,
         y,
@@ -9314,7 +9733,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
     card(
         x,
         y + 25,
-        w,
+        settings_w,
         214,
         11
     )
@@ -9325,7 +9744,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
         clicked,
         x,
         y + 32,
-        w,
+        settings_w,
         "Armor ESP",
         "armor_esp_enabled",
         false
@@ -9334,7 +9753,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
     line(
         x + 12,
         y + 72,
-        x + w - 12,
+        x + settings_w - 12,
         y + 72,
         C.divider,
         1
@@ -9345,7 +9764,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
 
     local mode_box_w = 130
     local mode_box_x =
-        x + w - mode_box_w - 12
+        x + settings_w - mode_box_w - 12
 
     local mode_box_y =
         mode_row_y + 8
@@ -9366,7 +9785,14 @@ function FALLEN_DRAW_ARMOR_PAGE(
         "Mode",
         FALLEN_HOVER_TEXT(
             "armor_mode_label",
-            row_hover(mx, my, x, mode_row_y, w, 41),
+            row_hover(
+                mx,
+                my,
+                x,
+                mode_row_y,
+                settings_w,
+                41
+            ),
             C.text
         )
     )
@@ -9417,7 +9843,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
     line(
         x + 12,
         y + 113,
-        x + w - 12,
+        x + settings_w - 12,
         y + 113,
         C.divider,
         1
@@ -9430,7 +9856,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
         lmb,
         x,
         y + 114,
-        w,
+        settings_w,
         "Size",
         "armor_esp_size",
         10,
@@ -9441,7 +9867,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
     line(
         x + 12,
         y + 154,
-        x + w - 12,
+        x + settings_w - 12,
         y + 154,
         C.divider,
         1
@@ -9454,7 +9880,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
         lmb,
         x,
         y + 155,
-        w,
+        settings_w,
         "Max Distance",
         "armor_esp_range",
         100,
@@ -9465,7 +9891,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
     line(
         x + 12,
         y + 195,
-        x + w - 12,
+        x + settings_w - 12,
         y + 195,
         C.divider,
         1
@@ -9478,7 +9904,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
         lmb,
         x,
         y + 196,
-        w,
+        settings_w,
         "Smooth",
         "armor_esp_smooth",
         0,
@@ -9503,6 +9929,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
     then
         A.armor_mode_dropdown_open = false
     end
+
 end
 
 hooks.on_render(function()
