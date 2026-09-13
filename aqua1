@@ -149,8 +149,6 @@ local defaults = {
     -- Menu appearance.
     menu_scale_percent = 100,
     menu_type = "default",
-    -- Temporary Blur PNG opacity control (0..100).
-    menu_blur_alpha = 50,
 
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
     menu_glow_strength = 100,
@@ -16820,10 +16818,13 @@ function FALLEN_APPLY_STYLE_COLOR()
         C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
         C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
 
-    elseif t == "blur" then
-        -- Blur: same shell logic as Glass, but with a semi-transparent
+    elseif t == "gradient"
+        or t == "blur"
+    then
+        -- Gradient: same shell logic as Glass, but with a semi-transparent
         -- textured image laid across the full menu background.
-        S.menu_type = "blur"
+        -- Old configs using "blur" are migrated automatically.
+        S.menu_type = "gradient"
 
         C.outer      = { 0.060, 0.064, 0.075, 0.84 }
         C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
@@ -17400,7 +17401,7 @@ function FALLEN_DRAW_MENU_TYPE_DROPDOWN(
     local options = {
         "Default",
         "Glass",
-        "Blur",
+        "Gradient",
         "Ass",
     }
 
@@ -17551,7 +17552,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or ease_in_out_cubic(raw)
 
     local pw = 278
-    local ph = 385
+    local ph = 344
     local px = snap(anchor_x + 18)
     local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
     local shell_h = math.max(38, ph - (1 - anim) * 46)
@@ -17771,8 +17772,8 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             A.menu_scale_dropdown_open = false
         end
 
-        -- Blur PNG opacity.
-        -- Mainly useful while tweaking the temporary Blur menu type.
+        -- Animated background weather.
+        -- Uses the exact same row/toggle style as the rest of Fallen-lua.
         if shell_h > 246 then
             line(
                 px + 12,
@@ -17783,24 +17784,19 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 1
             )
 
-            slider_row(
+            toggle_row(
                 mx,
                 my,
-                ui_clicked,
-                lmb,
+                row_clicked,
                 px + 8,
-                py + 205,
+                py + 204,
                 pw - 16,
-                "Blur Alpha",
-                "menu_blur_alpha",
-                0,
-                100,
-                "int"
+                "Snow",
+                "menu_snow",
+                false
             )
         end
 
-        -- Animated background weather.
-        -- Uses the exact same row/toggle style as the rest of Fallen-lua.
         if shell_h > 287 then
             line(
                 px + 12,
@@ -17818,8 +17814,8 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 px + 8,
                 py + 245,
                 pw - 16,
-                "Snow",
-                "menu_snow",
+                "Rain",
+                "menu_rain",
                 false
             )
         end
@@ -17840,29 +17836,6 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 row_clicked,
                 px + 8,
                 py + 286,
-                pw - 16,
-                "Rain",
-                "menu_rain",
-                false
-            )
-        end
-
-        if shell_h > 369 then
-            line(
-                px + 12,
-                py + 326,
-                px + pw - 12,
-                py + 326,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                row_clicked,
-                px + 8,
-                py + 327,
                 pw - 16,
                 "Lightning",
                 "menu_lightning",
@@ -20466,7 +20439,12 @@ hooks.on_render(function()
     -- Base surfaces are genuinely transparent during the transition, but
     -- sidebar/content are now two DISJOINT rounded shapes. Nothing is drawn
     -- underneath them, so their corners cannot accumulate alpha.
-    if tostring(S.menu_type or "glass"):lower() == "blur" then
+    local menu_texture_type =
+        tostring(S.menu_type or "glass"):lower()
+
+    if menu_texture_type == "gradient"
+        or menu_texture_type == "blur"
+    then
         local blur_img =
             FALLEN_BT_IMAGE_GET(
                 "blur_menu",
@@ -20486,11 +20464,7 @@ hooks.on_render(function()
                 1,
                 1,
                 1,
-                clamp(
-                    (tonumber(S.menu_blur_alpha) or 50) / 100,
-                    0,
-                    1
-                ) * menu_base_alpha,
+                0.50 * menu_base_alpha,
                 OUTER_R
             )
         end
