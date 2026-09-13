@@ -11202,6 +11202,7 @@ end
 
 FALLEN_BLUEBERRY_WINDOW = FALLEN_BLUEBERRY_WINDOW or nil
 FALLEN_BLUEBERRY_FOCUS_WARNED = FALLEN_BLUEBERRY_FOCUS_WARNED or false
+FALLEN_BLUEBERRY_LAST_REASSERT = FALLEN_BLUEBERRY_LAST_REASSERT or 0
 
 function FALLEN_FIND_BLUEBERRY_WINDOW()
     if not Windows or type(Windows.FindWindow) ~= "function" then
@@ -11209,7 +11210,22 @@ function FALLEN_FIND_BLUEBERRY_WINDOW()
     end
 
     if FALLEN_BLUEBERRY_WINDOW then
-        return FALLEN_BLUEBERRY_WINDOW
+        -- Drop a stale cached handle if the host window disappeared.
+        if type(Windows.GetWindowRect) == "function" then
+            local ok_rect, rect =
+                pcall(
+                    Windows.GetWindowRect,
+                    FALLEN_BLUEBERRY_WINDOW
+                )
+
+            if ok_rect and rect then
+                return FALLEN_BLUEBERRY_WINDOW
+            end
+
+            FALLEN_BLUEBERRY_WINDOW = nil
+        else
+            return FALLEN_BLUEBERRY_WINDOW
+        end
     end
 
     local titles = {
@@ -11254,7 +11270,7 @@ function FALLEN_FOCUS_BLUEBERRY()
             if type(warn) == "function" then
                 pcall(
                     warn,
-                    "[Fallen-lua] Blueberry window not found; menu input cannot be isolated from Roblox focus."
+                    "[Fallen-lua] Blueberry window not found; focus lock unavailable."
                 )
             end
         end
@@ -11268,9 +11284,89 @@ function FALLEN_FOCUS_BLUEBERRY()
             hwnd
         )
 
-    return
-        ok
-        and result ~= false
+    if not ok or result == false then
+        -- Cached handle may have become invalid; force a fresh lookup.
+        FALLEN_BLUEBERRY_WINDOW = nil
+        return false
+    end
+
+    return true
+end
+
+function FALLEN_ENSURE_BLUEBERRY_FOCUS(force)
+    if not S.visible then
+        return false
+    end
+
+    local hwnd =
+        FALLEN_FIND_BLUEBERRY_WINDOW()
+
+    if not hwnd then
+        return FALLEN_FOCUS_BLUEBERRY()
+    end
+
+    local blueberry_foreground = false
+    local roblox_foreground = false
+    local checked_blueberry = false
+
+    if Windows
+        and type(Windows.IsWindowForeground) == "function"
+    then
+        local ok, value =
+            pcall(
+                Windows.IsWindowForeground,
+                hwnd
+            )
+
+        if ok then
+            checked_blueberry = true
+            blueberry_foreground =
+                value == true
+        end
+    end
+
+    if Windows
+        and type(Windows.IsRobloxForeground) == "function"
+    then
+        local ok, value =
+            pcall(
+                Windows.IsRobloxForeground
+            )
+
+        if ok then
+            roblox_foreground =
+                value == true
+        end
+    end
+
+    local now =
+        type(tick) == "function"
+        and tick()
+        or 0
+
+    -- Even when IsWindowForeground reports true, periodically reassert
+    -- foreground ownership. This handles clicks that momentarily try to
+    -- return focus to Roblox between render frames.
+    local periodic =
+        now
+        - (FALLEN_BLUEBERRY_LAST_REASSERT or 0)
+        >= 0.10
+
+    local should_focus =
+        force == true
+        or roblox_foreground
+        or (checked_blueberry and not blueberry_foreground)
+        or periodic
+
+    if should_focus then
+        FALLEN_BLUEBERRY_LAST_REASSERT = now
+
+        if not FALLEN_FOCUS_BLUEBERRY() then
+            return false
+        end
+    end
+
+    return true
 end
 
 function FALLEN_FOCUS_ROBLOX()
@@ -11337,7 +11433,7 @@ hooks.on_render(function()
             -- Focus the Blueberry host window BEFORE the user starts
             -- interacting with the Drawing menu. Roblox therefore loses
             -- foreground focus and does not receive subsequent menu clicks.
-            FALLEN_FOCUS_BLUEBERRY()
+            FALLEN_ENSURE_BLUEBERRY_FOCUS(true)
         else
             -- Give control back to the game as soon as the menu is closed.
             FALLEN_FOCUS_ROBLOX()
@@ -11380,6 +11476,12 @@ hooks.on_render(function()
 
     prev_rshift = rshift
 
+    -- Keep Roblox unfocused for the entire lifetime of the open menu.
+    -- This runs before menu mouse/keyboard polling.
+    if S.visible then
+        FALLEN_ENSURE_BLUEBERRY_FOCUS(false)
+    end
+
     A.menu_open_target =
         S.visible and 1 or 0
 
@@ -11410,6 +11512,10 @@ hooks.on_render(function()
     aim_bind_poll()
     FALLEN_CONFIGS.input_poll()
     FALLEN_COLOR_INPUT_POLL()
+
+    if S.visible then
+        FALLEN_ENSURE_BLUEBERRY_FOCUS(false)
+    end
 
     local lmb = key_down(VK_LBUTTON)
     local clicked =
