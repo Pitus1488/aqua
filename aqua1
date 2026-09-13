@@ -10182,6 +10182,30 @@ function FALLEN_APPLY_STYLE_COLOR()
         C.text       = { 0.700, 0.710, 0.740, 1.00 }
         C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
         C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
+
+    elseif t == "ass" then
+        -- Ass = Default theme everywhere, Glass only on the LEFT sidebar.
+        S.menu_type = "ass"
+
+        C.outer      = { 0.058, 0.063, 0.073, 1.00 }
+
+        -- Only this surface is translucent.
+        C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
+
+        -- Everything to the right stays exactly like Default.
+        C.content    = { 0.052, 0.055, 0.063, 1.00 }
+
+        C.card       = { 0.055, 0.058, 0.067, 1.00 }
+        C.card_hover = { 0.073, 0.076, 0.087, 1.00 }
+        C.selected   = { 0.125, 0.126, 0.137, 1.00 }
+
+        C.border     = { 0.210, 0.220, 0.250, 0.18 }
+        C.divider    = { 0.220, 0.230, 0.260, 0.15 }
+
+        C.text       = { 0.700, 0.710, 0.740, 1.00 }
+        C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
+        C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
+
     else
         -- Glass: softer transparency and lighter separation like the reference.
         S.menu_type = "glass"
@@ -10742,6 +10766,7 @@ function FALLEN_DRAW_MENU_TYPE_DROPDOWN(
     local options = {
         "Default",
         "Glass",
+        "Ass",
     }
 
     local item_h = 27
