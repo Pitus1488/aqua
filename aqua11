@@ -248,7 +248,7 @@ local defaults = {
     world_icon_border_alpha = 100,
 
     silent_enabled = false,
-    silent_method = "Raycast",
+    silent_magic_bullet = false,
     trigger_enabled = false,
     visuals_enabled = false,
     world_enabled = false,
@@ -387,11 +387,6 @@ local A = {
     aim_bind_listening = false,
     aim_bind_wait_release = false,
     aim_bind_prev = {},
-
-    -- Silent Aim method dropdown.
-    silent_method_open = false,
-    silent_method_anim = 0,
-    silent_method_last_t = nil,
 
     -- Bullet Tracer style dropdown.
     bullet_tracer_style_open = false,
@@ -4871,203 +4866,6 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
 end
 
 
-function FALLEN_SILENT_METHOD_DROPDOWN_STEP()
-    local now = tick()
-
-    if A.silent_method_last_t == nil then
-        A.silent_method_last_t = now
-    end
-
-    local dt =
-        clamp(
-            now - A.silent_method_last_t,
-            0,
-            0.05
-        )
-
-    A.silent_method_last_t = now
-
-    local target =
-        A.silent_method_open
-        and 1
-        or 0
-
-    local speed =
-        target > (A.silent_method_anim or 0)
-        and 16
-        or 12
-
-    A.silent_method_anim =
-        exp_chase(
-            A.silent_method_anim or 0,
-            target,
-            speed,
-            dt
-        )
-
-    if math.abs(
-        (A.silent_method_anim or 0)
-        - target
-    ) < 0.0015
-    then
-        A.silent_method_anim = target
-    end
-
-    return
-        clamp(
-            A.silent_method_anim or 0,
-            0,
-            1
-        )
-end
-
-function FALLEN_DRAW_SILENT_METHOD_DROPDOWN(
-    mx,
-    my,
-    clicked,
-    x,
-    y,
-    w
-)
-    local anim =
-        FALLEN_SILENT_METHOD_DROPDOWN_STEP()
-
-    if anim <= 0.004
-        and not A.silent_method_open
-    then
-        return false
-    end
-
-    local options = {
-        "Raycast",
-        "Magic Bullet",
-    }
-
-    local item_h = 27
-    local visible_h =
-        #options
-        * item_h
-        * ease_out_cubic(anim)
-
-    local panel_h =
-        math.max(
-            2,
-            visible_h
-        )
-
-    FALLEN_POPUP_GLOW(
-        x,
-        y,
-        w,
-        panel_h,
-        7,
-        0.9
-    )
-
-    rounded_fill(
-        x,
-        y,
-        w,
-        panel_h,
-        7,
-        { 0.070, 0.074, 0.087, 1 }
-    )
-
-    local panel_hot =
-        hover(
-            mx,
-            my,
-            x,
-            y,
-            w,
-            panel_h
-        )
-
-    for i, option in ipairs(options) do
-        local iy =
-            y
-            + (i - 1)
-            * item_h
-
-        local reveal =
-            clamp(
-                (
-                    visible_h
-                    - (i - 1) * item_h
-                )
-                / item_h,
-                0,
-                1
-            )
-
-        if reveal > 0.12 then
-            local item_hot =
-                reveal > 0.92
-                and hover(
-                    mx,
-                    my,
-                    x + 4,
-                    iy + 2,
-                    w - 8,
-                    item_h - 4
-                )
-
-            if item_hot then
-                rounded_fill(
-                    x + 4,
-                    iy + 2,
-                    w - 8,
-                    item_h - 4,
-                    5,
-                    { 0.105, 0.111, 0.132, 1 }
-                )
-            end
-
-            local selected =
-                tostring(
-                    S.silent_method
-                    or "Raycast"
-                ) == option
-
-            if selected then
-                rounded_fill(
-                    x + 4,
-                    iy + 2,
-                    3,
-                    item_h - 4,
-                    1,
-                    C.accent
-                )
-            end
-
-            text(
-                x + 12,
-                iy + 8,
-                option,
-                FALLEN_HOVER_TEXT(
-                    "silent_method:"
-                    .. tostring(option),
-                    item_hot,
-                    selected
-                        and C.text
-                        or C.text_dim
-                )
-            )
-
-            if clicked
-                and item_hot
-                and A.silent_method_open
-            then
-                S.silent_method = option
-                A.silent_method_open = false
-                return true
-            end
-        end
-    end
-
-    return panel_hot
-end
-
 local function draw_aimbot_page(
     mx, my, clicked, lmb, rmb_clicked, cx, cy, cw
 )
@@ -5085,20 +4883,13 @@ local function draw_aimbot_page(
         or (A.fov_settings_anim or 0) > 0.02
         or A.aim_bind_listening
 
-    local silent_dropdown_active =
-        A.silent_method_open
-        or (A.silent_method_anim or 0) > 0.02
-
     local base_clicked =
-        clicked
-        and not overlay_open
-        and not silent_dropdown_active
+        clicked and not overlay_open
 
-    -- LEFT
+    -- LEFT: normal Aimbot block.
     section_title(lx, cy, "Aimbot")
-    card(lx, cy + 25, left_w, 218, 11)
+    card(lx, cy + 25, left_w, 155, 11)
 
-    -- Three dots immediately before the Aimbot toggle.
     local dots_x = lx + left_w - 79
     local dots_y = cy + 40
     local dots_left_hot =
@@ -5123,8 +4914,6 @@ local function draw_aimbot_page(
         true
     )
 
-    -- Right-click anywhere on the Aimbot row to open/close settings.
-    -- The three dots remain only as a visual hint.
     local aimbot_row_hot =
         hover(
             mx,
@@ -5136,9 +4925,10 @@ local function draw_aimbot_page(
         )
 
     if rmb_clicked and aimbot_row_hot then
-        A.aim_settings_open = not A.aim_settings_open
+        A.aim_settings_open =
+            not A.aim_settings_open
+
         A.fov_settings_open = false
-        A.silent_method_open = false
 
         if A.aim_settings_open then
             numeric_stop(true)
@@ -5150,31 +4940,11 @@ local function draw_aimbot_page(
         end
     end
 
-    line(lx + 12, cy + 72, lx + left_w - 12, cy + 72, C.divider, 1)
-
-    toggle_row(
-        mx, my, base_clicked,
-        lx, cy + 73, left_w,
-        "Auto Prediction",
-        "aim_auto_prediction",
-        false
-    )
-
-    line(lx + 12, cy + 113, lx + left_w - 12, cy + 113, C.divider, 1)
-
-    toggle_row(
-        mx, my, base_clicked,
-        lx, cy + 114, left_w,
-        "Sticky Aim",
-        "sticky_aim",
-        false
-    )
-
     line(
         lx + 12,
-        cy + 154,
+        cy + 72,
         lx + left_w - 12,
-        cy + 154,
+        cy + 72,
         C.divider,
         1
     )
@@ -5184,7 +4954,55 @@ local function draw_aimbot_page(
         my,
         base_clicked,
         lx,
-        cy + 155,
+        cy + 73,
+        left_w,
+        "Auto Prediction",
+        "aim_auto_prediction",
+        false
+    )
+
+    line(
+        lx + 12,
+        cy + 113,
+        lx + left_w - 12,
+        cy + 113,
+        C.divider,
+        1
+    )
+
+    toggle_row(
+        mx,
+        my,
+        base_clicked,
+        lx,
+        cy + 114,
+        left_w,
+        "Sticky Aim",
+        "sticky_aim",
+        false
+    )
+
+    -- LEFT: separate Silent Aim block.
+    section_title(
+        lx,
+        cy + 199,
+        "Silent Aim"
+    )
+
+    card(
+        lx,
+        cy + 224,
+        left_w,
+        95,
+        11
+    )
+
+    toggle_row(
+        mx,
+        my,
+        base_clicked,
+        lx,
+        cy + 231,
         left_w,
         "Silent Aim",
         "silent_enabled",
@@ -5193,101 +5011,26 @@ local function draw_aimbot_page(
 
     line(
         lx + 12,
-        cy + 195,
+        cy + 271,
         lx + left_w - 12,
-        cy + 195,
+        cy + 271,
         C.divider,
         1
     )
 
-    local silent_method_y =
-        cy + 196
-
-    local silent_method_box_w =
-        math.min(
-            132,
-            left_w * 0.48
-        )
-
-    local silent_method_box_x =
-        lx
-        + left_w
-        - silent_method_box_w
-        - 12
-
-    local silent_method_box_y =
-        silent_method_y
-        + 8
-
-    local silent_method_box_hot =
-        hover(
-            mx,
-            my,
-            silent_method_box_x,
-            silent_method_box_y,
-            silent_method_box_w,
-            25
-        )
-
-    text(
-        lx + 13,
-        silent_method_y + 14,
-        "Silent Method",
-        FALLEN_HOVER_TEXT(
-            "silent_method_label",
-            row_hover(
-                mx,
-                my,
-                lx,
-                silent_method_y,
-                left_w,
-                41
-            ),
-            C.text
-        )
+    toggle_row(
+        mx,
+        my,
+        base_clicked,
+        lx,
+        cy + 272,
+        left_w,
+        "Magic Bullet",
+        "silent_magic_bullet",
+        false
     )
 
-    rounded_fill(
-        silent_method_box_x,
-        silent_method_box_y,
-        silent_method_box_w,
-        25,
-        6,
-        silent_method_box_hot
-            and { 0.110, 0.115, 0.135, 1 }
-            or C.toggle_off
-    )
-
-    text(
-        silent_method_box_x + 10,
-        silent_method_box_y + 7,
-        tostring(
-            S.silent_method
-            or "Raycast"
-        ),
-        C.text
-    )
-
-    text(
-        silent_method_box_x
-            + silent_method_box_w
-            - 16,
-        silent_method_box_y + 7,
-        A.silent_method_open
-            and "^"
-            or "v",
-        C.text_dim
-    )
-
-    if clicked
-        and not overlay_open
-        and silent_method_box_hot
-    then
-        A.silent_method_open =
-            not A.silent_method_open
-    end
-
-    -- RIGHT
+    -- RIGHT: shared Aim FOV.
     section_title(rx, cy, "Aim FOV")
     card(rx, cy + 25, right_w, 139, 11)
 
@@ -5304,8 +5047,12 @@ local function draw_aimbot_page(
         )
 
     toggle_row(
-        mx, my, base_clicked and not fov_dots_hot,
-        rx, cy + 32, right_w,
+        mx,
+        my,
+        base_clicked and not fov_dots_hot,
+        rx,
+        cy + 32,
+        right_w,
         "Aim FOV",
         "aim_fov_enabled",
         true
@@ -5324,30 +5071,55 @@ local function draw_aimbot_page(
     if (base_clicked and fov_dots_hot)
         or (rmb_clicked and fov_row_hot)
     then
-        A.fov_settings_open = not A.fov_settings_open
+        A.fov_settings_open =
+            not A.fov_settings_open
+
         A.aim_settings_open = false
-        A.silent_method_open = false
 
         if not A.fov_settings_open then
             numeric_stop(true)
         end
     end
 
-    line(rx + 12, cy + 72, rx + right_w - 12, cy + 72, C.divider, 1)
+    line(
+        rx + 12,
+        cy + 72,
+        rx + right_w - 12,
+        cy + 72,
+        C.divider,
+        1
+    )
 
     slider_row(
-        mx, my, base_clicked, lmb,
-        rx, cy + 73, right_w,
+        mx,
+        my,
+        base_clicked,
+        lmb,
+        rx,
+        cy + 73,
+        right_w,
         "FOV Size",
         "aim_fov_size",
-        10, 600,
+        10,
+        600,
         "int"
     )
 
-    line(rx + 12, cy + 113, rx + right_w - 12, cy + 113, C.divider, 1)
+    line(
+        rx + 12,
+        cy + 113,
+        rx + right_w - 12,
+        cy + 113,
+        C.divider,
+        1
+    )
 
-    local swatch_x = rx + right_w - 36
-    local swatch_y = cy + 123
+    local swatch_x =
+        rx + right_w - 36
+
+    local swatch_y =
+        cy + 123
+
     local swatch_s = 18
 
     local fov_color_hot =
@@ -5364,7 +5136,11 @@ local function draw_aimbot_page(
         rx + 13,
         cy + 128,
         "FOV Color",
-        FALLEN_HOVER_TEXT("aim_fov_color", fov_color_hot, C.text)
+        FALLEN_HOVER_TEXT(
+            "aim_fov_color",
+            fov_color_hot,
+            C.text
+        )
     )
 
     color_preview(
@@ -5375,11 +5151,19 @@ local function draw_aimbot_page(
     )
 
     if base_clicked
-        and hover(mx, my, swatch_x, swatch_y, swatch_s, swatch_s)
+        and hover(
+            mx,
+            my,
+            swatch_x,
+            swatch_y,
+            swatch_s,
+            swatch_s
+        )
     then
         FALLEN_COLOR_INPUT_STOP(true)
 
-        local prefix = "aim_fov"
+        local prefix =
+            "aim_fov"
 
         if A.world_color_picker_open
             and A.world_color_picker_key == prefix
@@ -5391,35 +5175,22 @@ local function draw_aimbot_page(
             A.world_color_picker_open = true
             A.world_color_picker_drag = nil
 
-            A.world_color_picker_anchor_x = FALLEN_UI_X(swatch_x)
-            A.world_color_picker_anchor_y = FALLEN_UI_Y(swatch_y)
-            A.world_color_picker_anchor_w = FALLEN_UI_LEN(swatch_s)
-            A.world_color_picker_anchor_h = FALLEN_UI_LEN(swatch_s)
+            A.world_color_picker_anchor_x =
+                FALLEN_UI_X(swatch_x)
+
+            A.world_color_picker_anchor_y =
+                FALLEN_UI_Y(swatch_y)
+
+            A.world_color_picker_anchor_w =
+                FALLEN_UI_LEN(swatch_s)
+
+            A.world_color_picker_anchor_h =
+                FALLEN_UI_LEN(swatch_s)
         end
 
         A.fov_picker_open = false
         A.fov_picker_drag = nil
         numeric_stop(true)
-    end
-
-    local silent_dropdown_hot =
-        FALLEN_DRAW_SILENT_METHOD_DROPDOWN(
-            mx,
-            my,
-            clicked
-                and not overlay_open,
-            silent_method_box_x,
-            silent_method_box_y + 29,
-            silent_method_box_w
-        )
-
-    if clicked
-        and A.silent_method_open
-        and not overlay_open
-        and not silent_method_box_hot
-        and not silent_dropdown_hot
-    then
-        A.silent_method_open = false
     end
 
     draw_aim_settings_popup(
@@ -8275,10 +8046,12 @@ local function fap_find_target(cross, cam)
 end
 
 
-FALLEN_SILENT_STATE =
-    FALLEN_SILENT_STATE
+FALLEN_SILENT_MAGIC_BINDING =
+    FALLEN_SILENT_MAGIC_BINDING
     or {
-        forced_target = false,
+        section = nil,
+        key = nil,
+        last_scan = 0,
     }
 
 function FALLEN_SILENT_TARGET_PART_INDEX()
@@ -8292,8 +8065,8 @@ function FALLEN_SILENT_TARGET_PART_INDEX()
         return 0
     end
 
-    -- Built-in silent aim exposes Head/Torso/Feet indices.
-    -- Our torso/root variants all map to Torso.
+    -- Built-in silent aim exposes Head / Torso / Feet.
+    -- Our torso/root selections map to Torso.
     return 1
 end
 
@@ -8332,276 +8105,157 @@ function FALLEN_SILENT_PRED_CALLBACK(target, pos, cam)
     return predicted or pos
 end
 
-function FALLEN_SILENT_FIND_TARGET()
-    if not players
-        or type(players.get_all) ~= "function"
-        or not aim
-        or type(aim.world_to_screen) ~= "function"
+function FALLEN_SILENT_MAGIC_DISCOVER()
+    if not cheat then
+        return nil, nil
+    end
+
+    local now = tick()
+
+    if FALLEN_SILENT_MAGIC_BINDING.section
+        and FALLEN_SILENT_MAGIC_BINDING.key
     then
-        return nil
+        return
+            FALLEN_SILENT_MAGIC_BINDING.section,
+            FALLEN_SILENT_MAGIC_BINDING.key
     end
 
-    local cross =
-        crosshair_pos()
-
-    if not cross then
-        return nil
+    if now - (FALLEN_SILENT_MAGIC_BINDING.last_scan or 0) < 0.75 then
+        return nil, nil
     end
 
-    local cam = nil
+    FALLEN_SILENT_MAGIC_BINDING.last_scan = now
 
-    if type(aim.get_camera_position) == "function" then
-        pcall(function()
-            cam =
-                aim.get_camera_position()
-        end)
+    local function normalized(v)
+        return
+            tostring(v or "")
+            :lower()
+            :gsub("[^%w]", "")
     end
 
-    local ok, all =
-        pcall(
-            players.get_all
-        )
+    local function is_magic_key(key)
+        local n = normalized(key)
 
-    if not ok
-        or type(all) ~= "table"
-    then
-        return nil
+        return
+            n:find("magic", 1, true) ~= nil
+            and n:find("bullet", 1, true) ~= nil
     end
 
-    local radius =
-        clamp(
-            tonumber(S.aim_fov_size)
-            or 50,
-            10,
-            600
-        )
+    local function try_section(section_name, section)
+        if not section then
+            return nil, nil
+        end
 
-    local best = nil
-    local best_dist = math.huge
+        local preferred = {
+            "magic_bullet",
+            "magicbullet",
+            "magic_bullet_enabled",
+            "magicbullet_enabled",
+        }
 
-    for _, p in ipairs(all) do
-        if fap_valid_target(p) then
-            local pos =
-                fap_target_pos(p)
-
-            if pos then
-                local predicted =
-                    fap_predict(
-                        p,
-                        pos,
-                        cam
-                    )
-                    or pos
-
-                local screen = nil
-
+        for _, key in ipairs(preferred) do
+            local ok, value =
                 pcall(function()
-                    screen =
-                        aim.world_to_screen(
-                            predicted
-                        )
+                    return section[key]
                 end)
 
-                if screen
-                    and screen.visible
-                then
-                    local dx =
-                        (screen.X or 0)
-                        - (cross.X or 0)
+            if ok
+                and value ~= nil
+            then
+                return section_name, key
+            end
+        end
 
-                    local dy =
-                        (screen.Y or 0)
-                        - (cross.Y or 0)
+        local keys = nil
 
-                    local dist =
-                        math.sqrt(
-                            dx * dx
-                            + dy * dy
-                        )
+        pcall(function()
+            keys =
+                section:_keys()
+        end)
 
-                    if dist <= radius
-                        and dist < best_dist
-                    then
-                        best = p
-                        best_dist = dist
-                    end
+        if type(keys) == "table" then
+            for _, key in ipairs(keys) do
+                if is_magic_key(key) then
+                    return section_name, key
                 end
             end
         end
+
+        return nil, nil
     end
 
-    return best
-end
-
-function FALLEN_SILENT_TARGET_INSTANCE(p)
-    if not p
-        or not rbx
-        or type(rbx.instance) ~= "function"
-    then
-        return nil
-    end
-
-    local part =
-        tostring(
-            S.aim_target_part
-            or "Head"
+    -- Most likely location first.
+    local sec_name, key =
+        try_section(
+            "silent_aim",
+            cheat.silent_aim
         )
 
-    if part == "Head"
-        and tonumber(p.head_addr)
-        and tonumber(p.head_addr) ~= 0
-    then
-        local inst = nil
-
-        pcall(function()
-            inst =
-                rbx.instance(
-                    p.head_addr
-                )
-        end)
-
-        if inst then
-            return inst
-        end
+    if sec_name and key then
+        FALLEN_SILENT_MAGIC_BINDING.section = sec_name
+        FALLEN_SILENT_MAGIC_BINDING.key = key
+        return sec_name, key
     end
 
-    if part == "HumanoidRootPart"
-        and tonumber(p.hrp_addr)
-        and tonumber(p.hrp_addr) ~= 0
-    then
-        local inst = nil
+    -- Fallback: inspect every live cheat section so this still works
+    -- if the built-in UI stores Magic Bullet somewhere else.
+    local sections = nil
 
-        pcall(function()
-            inst =
-                rbx.instance(
-                    p.hrp_addr
-                )
-        end)
+    pcall(function()
+        sections =
+            cheat._sections()
+    end)
 
-        if inst then
-            return inst
-        end
-    end
-
-    local character = nil
-
-    if tonumber(p.character_addr)
-        and tonumber(p.character_addr) ~= 0
-    then
-        pcall(function()
-            character =
-                rbx.instance(
-                    p.character_addr
-                )
-        end)
-    end
-
-    if character
-        and character.find_first_child
-    then
-        local names = nil
-
-        if part == "UpperTorso" then
-            names = {
-                "UpperTorso",
-                "Torso",
-            }
-        elseif part == "LowerTorso" then
-            names = {
-                "LowerTorso",
-                "Torso",
-            }
-        elseif part == "Torso" then
-            names = {
-                "UpperTorso",
-                "Torso",
-                "LowerTorso",
-            }
-        elseif part == "HumanoidRootPart" then
-            names = {
-                "HumanoidRootPart",
-                "RootPart",
-            }
-        else
-            names = {
-                "Head",
-            }
-        end
-
-        for _, name in ipairs(names) do
-            local child = nil
+    if type(sections) == "table" then
+        for _, name in ipairs(sections) do
+            local section = nil
 
             pcall(function()
-                child =
-                    character:find_first_child(
-                        name
-                    )
+                section =
+                    cheat[name]
             end)
 
-            if child then
-                return child
+            sec_name, key =
+                try_section(
+                    tostring(name),
+                    section
+                )
+
+            if sec_name and key then
+                FALLEN_SILENT_MAGIC_BINDING.section = sec_name
+                FALLEN_SILENT_MAGIC_BINDING.key = key
+                return sec_name, key
             end
         end
     end
 
-    -- Safe fallbacks.
-    if tonumber(p.head_addr)
-        and tonumber(p.head_addr) ~= 0
-    then
-        local inst = nil
-
-        pcall(function()
-            inst =
-                rbx.instance(
-                    p.head_addr
-                )
-        end)
-
-        if inst then
-            return inst
-        end
-    end
-
-    if tonumber(p.hrp_addr)
-        and tonumber(p.hrp_addr) ~= 0
-    then
-        local inst = nil
-
-        pcall(function()
-            inst =
-                rbx.instance(
-                    p.hrp_addr
-                )
-        end)
-
-        return inst
-    end
-
-    return nil
+    return nil, nil
 end
 
-function FALLEN_SILENT_CLEAR_FORCED_TARGET()
-    if FALLEN_SILENT_STATE.forced_target ~= true then
-        return
-    end
+function FALLEN_SILENT_MAGIC_SET(enabled)
+    local section_name, key =
+        FALLEN_SILENT_MAGIC_DISCOVER()
 
-    FALLEN_SILENT_STATE.forced_target = false
-
-    if aim
-        and type(aim.raycast_target) == "function"
+    if not section_name
+        or not key
+        or not cheat
     then
-        pcall(
-            aim.raycast_target,
-            nil
-        )
+        return false
     end
+
+    local ok =
+        pcall(function()
+            cheat[section_name][key] =
+                enabled == true
+        end)
+
+    return ok
 end
 
 function FALLEN_SILENT_TICK()
     if not cheat
         or not cheat.silent_aim
     then
-        FALLEN_SILENT_CLEAR_FORCED_TARGET()
         return
     end
 
@@ -8611,15 +8265,6 @@ function FALLEN_SILENT_TICK()
     local enabled =
         S.silent_enabled == true
 
-    pcall(function()
-        sa.enabled = enabled
-    end)
-
-    if not enabled then
-        FALLEN_SILENT_CLEAR_FORCED_TARGET()
-        return
-    end
-
     local fov =
         clamp(
             tonumber(S.aim_fov_size)
@@ -8628,20 +8273,18 @@ function FALLEN_SILENT_TICK()
             600
         )
 
-    local method =
-        tostring(
-            S.silent_method
-            or "Raycast"
-        )
+    -- Silent Aim toggle from our menu.
+    pcall(function()
+        sa.enabled = enabled
+    end)
 
-    if method ~= "Raycast"
-        and method ~= "Magic Bullet"
-    then
-        method = "Raycast"
-        S.silent_method = method
-    end
+    -- Always force the cheat's built-in Raycast method.
+    -- No method selector is exposed in our menu.
+    pcall(function()
+        sa.method = 2
+    end)
 
-    -- Sync built-in Silent Aim to our Aimbot settings.
+    -- Use the exact same FOV setting as our Aimbot/FOV panel.
     pcall(function()
         sa.fov_only = true
     end)
@@ -8665,13 +8308,7 @@ function FALLEN_SILENT_TICK()
             S.aim_auto_prediction == true
     end)
 
-    -- Current recipe/API uses method 2 as Raycast.
-    pcall(function()
-        sa.method = 2
-    end)
-
-    -- Reuse our Auto Prediction function where callback-style
-    -- fields are supported by this cheat build.
+    -- Keep our Auto Prediction bridge.
     pcall(function()
         sa.prediction_callback =
             FALLEN_SILENT_PRED_CALLBACK
@@ -8692,35 +8329,18 @@ function FALLEN_SILENT_TICK()
             FALLEN_SILENT_PRED_CALLBACK
     end)
 
-    if method == "Magic Bullet" then
-        if aim
-            and type(aim.raycast_target) == "function"
-        then
-            local target =
-                FALLEN_SILENT_FIND_TARGET()
-
-            local inst =
-                FALLEN_SILENT_TARGET_INSTANCE(
-                    target
-                )
-
-            pcall(
-                aim.raycast_target,
-                inst
-            )
-
-            FALLEN_SILENT_STATE.forced_target =
-                inst ~= nil
-        end
-    else
-        FALLEN_SILENT_CLEAR_FORCED_TARGET()
-    end
+    -- This is the REAL built-in Magic Bullet toggle.
+    -- We discover its live cheat field instead of treating it as a method.
+    FALLEN_SILENT_MAGIC_SET(
+        S.silent_magic_bullet == true
+    )
 end
 
 local function fap_draw_fov()
     if (
             S.aim_enabled ~= true
             and S.silent_enabled ~= true
+            and S.silent_magic_bullet ~= true
         )
         or S.aim_fov_enabled ~= true
         or type(DrawCircle) ~= "function"
