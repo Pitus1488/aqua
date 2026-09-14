@@ -8051,205 +8051,352 @@ FALLEN_SILENT_MAGIC_BINDING =
     or {
         section = nil,
         key = nil,
+        global_table = nil,
+        global_key = nil,
+        ui_id = nil,
         last_scan = 0,
+        last_value = nil,
     }
 
-function FALLEN_SILENT_TARGET_PART_INDEX()
-    local part =
-        tostring(
-            S.aim_target_part
-            or "Head"
-        )
-
-    if part == "Head" then
-        return 0
-    end
-
-    -- Built-in silent aim exposes Head / Torso / Feet.
-    -- Our torso/root selections map to Torso.
-    return 1
+function FALLEN_MAGIC_NORMALIZE(v)
+    return
+        tostring(v or "")
+        :lower()
+        :gsub("[^%w]", "")
 end
 
-function FALLEN_SILENT_PRED_CALLBACK(target, pos, cam)
-    if not pos then
-        return nil
-    end
+function FALLEN_MAGIC_IS_KEY(key)
+    local n =
+        FALLEN_MAGIC_NORMALIZE(key)
 
-    if S.aim_auto_prediction ~= true then
-        return pos
-    end
-
-    local use_cam = cam
-
-    if not use_cam
-        and aim
-        and type(aim.get_camera_position) == "function"
-    then
-        pcall(function()
-            use_cam =
-                aim.get_camera_position()
-        end)
-    end
-
-    local predicted = nil
-
-    pcall(function()
-        predicted =
-            fap_predict(
-                target,
-                pos,
-                use_cam
-            )
-    end)
-
-    return predicted or pos
+    return
+        n:find("magic", 1, true) ~= nil
+        and n:find("bullet", 1, true) ~= nil
 end
 
-function FALLEN_SILENT_MAGIC_DISCOVER()
-    if not cheat then
-        return nil, nil
+function FALLEN_MAGIC_TRY_CHEAT_FIELD(
+    section_name,
+    section,
+    enabled
+)
+    if not section then
+        return false
     end
 
-    local now = tick()
+    local candidates = {
+        "magic_bullet",
+        "magicbullet",
+        "magic_bullet_enabled",
+        "magicbullet_enabled",
+        "enable_magic_bullet",
+        "enable_magicbullet",
+        "magic_bullets",
+    }
 
-    if FALLEN_SILENT_MAGIC_BINDING.section
-        and FALLEN_SILENT_MAGIC_BINDING.key
-    then
-        return
-            FALLEN_SILENT_MAGIC_BINDING.section,
-            FALLEN_SILENT_MAGIC_BINDING.key
-    end
+    for _, key in ipairs(candidates) do
+        local ok_read, value =
+            pcall(function()
+                return section[key]
+            end)
 
-    if now - (FALLEN_SILENT_MAGIC_BINDING.last_scan or 0) < 0.75 then
-        return nil, nil
-    end
-
-    FALLEN_SILENT_MAGIC_BINDING.last_scan = now
-
-    local function normalized(v)
-        return
-            tostring(v or "")
-            :lower()
-            :gsub("[^%w]", "")
-    end
-
-    local function is_magic_key(key)
-        local n = normalized(key)
-
-        return
-            n:find("magic", 1, true) ~= nil
-            and n:find("bullet", 1, true) ~= nil
-    end
-
-    local function try_section(section_name, section)
-        if not section then
-            return nil, nil
-        end
-
-        local preferred = {
-            "magic_bullet",
-            "magicbullet",
-            "magic_bullet_enabled",
-            "magicbullet_enabled",
-        }
-
-        for _, key in ipairs(preferred) do
-            local ok, value =
+        if ok_read
+            and value ~= nil
+        then
+            local ok_write =
                 pcall(function()
-                    return section[key]
+                    section[key] =
+                        enabled == true
                 end)
 
-            if ok
-                and value ~= nil
-            then
-                return section_name, key
+            if ok_write then
+                FALLEN_SILENT_MAGIC_BINDING.section =
+                    section_name
+
+                FALLEN_SILENT_MAGIC_BINDING.key =
+                    key
+
+                return true
             end
         end
+    end
 
-        local keys = nil
+    local keys = nil
 
-        pcall(function()
-            keys =
-                section:_keys()
-        end)
+    pcall(function()
+        keys =
+            section:_keys()
+    end)
 
-        if type(keys) == "table" then
-            for _, key in ipairs(keys) do
-                if is_magic_key(key) then
-                    return section_name, key
+    if type(keys) == "table" then
+        for _, key in ipairs(keys) do
+            if FALLEN_MAGIC_IS_KEY(key) then
+                local ok_write =
+                    pcall(function()
+                        section[key] =
+                            enabled == true
+                    end)
+
+                if ok_write then
+                    FALLEN_SILENT_MAGIC_BINDING.section =
+                        section_name
+
+                    FALLEN_SILENT_MAGIC_BINDING.key =
+                        key
+
+                    return true
                 end
             end
         end
-
-        return nil, nil
     end
 
-    -- Most likely location first.
-    local sec_name, key =
-        try_section(
-            "silent_aim",
-            cheat.silent_aim
-        )
-
-    if sec_name and key then
-        FALLEN_SILENT_MAGIC_BINDING.section = sec_name
-        FALLEN_SILENT_MAGIC_BINDING.key = key
-        return sec_name, key
-    end
-
-    -- Fallback: inspect every live cheat section so this still works
-    -- if the built-in UI stores Magic Bullet somewhere else.
-    local sections = nil
-
-    pcall(function()
-        sections =
-            cheat._sections()
-    end)
-
-    if type(sections) == "table" then
-        for _, name in ipairs(sections) do
-            local section = nil
-
-            pcall(function()
-                section =
-                    cheat[name]
-            end)
-
-            sec_name, key =
-                try_section(
-                    tostring(name),
-                    section
-                )
-
-            if sec_name and key then
-                FALLEN_SILENT_MAGIC_BINDING.section = sec_name
-                FALLEN_SILENT_MAGIC_BINDING.key = key
-                return sec_name, key
-            end
-        end
-    end
-
-    return nil, nil
+    return false
 end
 
-function FALLEN_SILENT_MAGIC_SET(enabled)
-    local section_name, key =
-        FALLEN_SILENT_MAGIC_DISCOVER()
-
-    if not section_name
-        or not key
-        or not cheat
+function FALLEN_MAGIC_TRY_UI(enabled)
+    if not UIManager
+        or type(UIManager.SetCheckboxValue) ~= "function"
     then
         return false
     end
 
-    local ok =
-        pcall(function()
-            cheat[section_name][key] =
+    -- Try common native IDs used by internal cheat menus.
+    local ids = {
+        "magic_bullet",
+        "magicbullet",
+        "magic_bullet_enabled",
+        "magicbullet_enabled",
+        "silent_magic_bullet",
+        "silentaim_magic_bullet",
+        "silent_aim_magic_bullet",
+        "aim_magic_bullet",
+        "aimbot_magic_bullet",
+        "rage_magic_bullet",
+        "Magic Bullet",
+        "MagicBullet",
+    }
+
+    if FALLEN_SILENT_MAGIC_BINDING.ui_id then
+        table.insert(
+            ids,
+            1,
+            FALLEN_SILENT_MAGIC_BINDING.ui_id
+        )
+    end
+
+    for _, id in ipairs(ids) do
+        local ok, result =
+            pcall(
+                UIManager.SetCheckboxValue,
+                id,
                 enabled == true
+            )
+
+        if ok and result ~= false then
+            -- Verify where possible. Invalid native IDs normally either
+            -- return false or won't read back the requested value.
+            local verified = false
+
+            if type(UIManager.GetCheckboxValue) == "function" then
+                local ok_get, value =
+                    pcall(
+                        UIManager.GetCheckboxValue,
+                        id
+                    )
+
+                if ok_get
+                    and value == (enabled == true)
+                then
+                    verified = true
+                end
+            end
+
+            if verified then
+                FALLEN_SILENT_MAGIC_BINDING.ui_id = id
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+function FALLEN_MAGIC_TRY_GLOBAL_TABLE(
+    table_name,
+    tbl,
+    enabled
+)
+    if type(tbl) ~= "table" then
+        return false
+    end
+
+    for key, value in pairs(tbl) do
+        if FALLEN_MAGIC_IS_KEY(key)
+            and (
+                type(value) == "boolean"
+                or type(value) == "number"
+            )
+        then
+            local ok =
+                pcall(function()
+                    if type(value) == "number" then
+                        tbl[key] =
+                            enabled
+                            and 1
+                            or 0
+                    else
+                        tbl[key] =
+                            enabled == true
+                    end
+                end)
+
+            if ok then
+                FALLEN_SILENT_MAGIC_BINDING.global_table =
+                    table_name
+
+                FALLEN_SILENT_MAGIC_BINDING.global_key =
+                    key
+
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+function FALLEN_SILENT_MAGIC_SET(enabled)
+    enabled =
+        enabled == true
+
+    -- 1) Reuse a previously discovered cheat field first.
+    if FALLEN_SILENT_MAGIC_BINDING.section
+        and FALLEN_SILENT_MAGIC_BINDING.key
+        and cheat
+    then
+        local section =
+            cheat[
+                FALLEN_SILENT_MAGIC_BINDING.section
+            ]
+
+        if section then
+            local ok =
+                pcall(function()
+                    section[
+                        FALLEN_SILENT_MAGIC_BINDING.key
+                    ] = enabled
+                end)
+
+            if ok then
+                FALLEN_SILENT_MAGIC_BINDING.last_value = enabled
+                return true
+            end
+        end
+
+        FALLEN_SILENT_MAGIC_BINDING.section = nil
+        FALLEN_SILENT_MAGIC_BINDING.key = nil
+    end
+
+    -- 2) Try known / live cheat sections.
+    if cheat then
+        if FALLEN_MAGIC_TRY_CHEAT_FIELD(
+            "silent_aim",
+            cheat.silent_aim,
+            enabled
+        ) then
+            FALLEN_SILENT_MAGIC_BINDING.last_value = enabled
+            return true
+        end
+
+        if FALLEN_MAGIC_TRY_CHEAT_FIELD(
+            "aimbot",
+            cheat.aimbot,
+            enabled
+        ) then
+            FALLEN_SILENT_MAGIC_BINDING.last_value = enabled
+            return true
+        end
+
+        local sections = nil
+
+        pcall(function()
+            sections =
+                cheat._sections()
         end)
 
-    return ok
+        if type(sections) == "table" then
+            for _, section_name in ipairs(sections) do
+                local section = nil
+
+                pcall(function()
+                    section =
+                        cheat[section_name]
+                end)
+
+                if FALLEN_MAGIC_TRY_CHEAT_FIELD(
+                    tostring(section_name),
+                    section,
+                    enabled
+                ) then
+                    FALLEN_SILENT_MAGIC_BINDING.last_value = enabled
+                    return true
+                end
+            end
+        end
+    end
+
+    -- 3) Try the native menu checkbox registry directly.
+    if FALLEN_MAGIC_TRY_UI(enabled) then
+        FALLEN_SILENT_MAGIC_BINDING.last_value = enabled
+        return true
+    end
+
+    -- 4) Some builds expose game-specific feature flags as globals/tables
+    -- instead of cheat.* fields. Check common containers first.
+    local globals_to_try = {
+        { "settings", _G.settings },
+        { "Settings", _G.Settings },
+        { "config", _G.config },
+        { "Config", _G.Config },
+        { "features", _G.features },
+        { "Features", _G.Features },
+        { "silent_aim", _G.silent_aim },
+        { "SilentAim", _G.SilentAim },
+        { "aimbot", _G.aimbot },
+        { "Aimbot", _G.Aimbot },
+    }
+
+    for _, entry in ipairs(globals_to_try) do
+        if FALLEN_MAGIC_TRY_GLOBAL_TABLE(
+            entry[1],
+            entry[2],
+            enabled
+        ) then
+            FALLEN_SILENT_MAGIC_BINDING.last_value = enabled
+            return true
+        end
+    end
+
+    -- 5) Final shallow scan of _G tables. We only touch a boolean/number
+    -- whose key itself literally contains both "magic" and "bullet".
+    for global_name, value in pairs(_G) do
+        if type(value) == "table"
+            and value ~= _G
+            and value ~= S
+            and value ~= A
+        then
+            if FALLEN_MAGIC_TRY_GLOBAL_TABLE(
+                tostring(global_name),
+                value,
+                enabled
+            ) then
+                FALLEN_SILENT_MAGIC_BINDING.last_value = enabled
+                return true
+            end
+        end
+    end
+
+    FALLEN_SILENT_MAGIC_BINDING.last_value = enabled
+    return false
 end
 
 function FALLEN_SILENT_TICK()
@@ -8329,8 +8476,8 @@ function FALLEN_SILENT_TICK()
             FALLEN_SILENT_PRED_CALLBACK
     end)
 
-    -- This is the REAL built-in Magic Bullet toggle.
-    -- We discover its live cheat field instead of treating it as a method.
+    -- Magic Bullet is a separate built-in feature, not a Silent Aim method.
+    -- Keep the native cheat checkbox/state synchronized with our menu toggle.
     FALLEN_SILENT_MAGIC_SET(
         S.silent_magic_bullet == true
     )
