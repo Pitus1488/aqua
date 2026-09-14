@@ -248,6 +248,7 @@ local defaults = {
     world_icon_border_alpha = 100,
 
     silent_enabled = false,
+    silent_method = "Raycast",
     trigger_enabled = false,
     visuals_enabled = false,
     world_enabled = false,
@@ -386,6 +387,11 @@ local A = {
     aim_bind_listening = false,
     aim_bind_wait_release = false,
     aim_bind_prev = {},
+
+    -- Silent Aim method dropdown.
+    silent_method_open = false,
+    silent_method_anim = 0,
+    silent_method_last_t = nil,
 
     -- Bullet Tracer style dropdown.
     bullet_tracer_style_open = false,
@@ -4864,6 +4870,204 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     MENU_RENDER_ALPHA = parent_menu_alpha
 end
 
+
+function FALLEN_SILENT_METHOD_DROPDOWN_STEP()
+    local now = tick()
+
+    if A.silent_method_last_t == nil then
+        A.silent_method_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.silent_method_last_t,
+            0,
+            0.05
+        )
+
+    A.silent_method_last_t = now
+
+    local target =
+        A.silent_method_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.silent_method_anim or 0)
+        and 16
+        or 12
+
+    A.silent_method_anim =
+        exp_chase(
+            A.silent_method_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if math.abs(
+        (A.silent_method_anim or 0)
+        - target
+    ) < 0.0015
+    then
+        A.silent_method_anim = target
+    end
+
+    return
+        clamp(
+            A.silent_method_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_SILENT_METHOD_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    local anim =
+        FALLEN_SILENT_METHOD_DROPDOWN_STEP()
+
+    if anim <= 0.004
+        and not A.silent_method_open
+    then
+        return false
+    end
+
+    local options = {
+        "Raycast",
+        "Magic Bullet",
+    }
+
+    local item_h = 27
+    local visible_h =
+        #options
+        * item_h
+        * ease_out_cubic(anim)
+
+    local panel_h =
+        math.max(
+            2,
+            visible_h
+        )
+
+    FALLEN_POPUP_GLOW(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        0.9
+    )
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        { 0.070, 0.074, 0.087, 1 }
+    )
+
+    local panel_hot =
+        hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            panel_h
+        )
+
+    for i, option in ipairs(options) do
+        local iy =
+            y
+            + (i - 1)
+            * item_h
+
+        local reveal =
+            clamp(
+                (
+                    visible_h
+                    - (i - 1) * item_h
+                )
+                / item_h,
+                0,
+                1
+            )
+
+        if reveal > 0.12 then
+            local item_hot =
+                reveal > 0.92
+                and hover(
+                    mx,
+                    my,
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4
+                )
+
+            if item_hot then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4,
+                    5,
+                    { 0.105, 0.111, 0.132, 1 }
+                )
+            end
+
+            local selected =
+                tostring(
+                    S.silent_method
+                    or "Raycast"
+                ) == option
+
+            if selected then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    3,
+                    item_h - 4,
+                    1,
+                    C.accent
+                )
+            end
+
+            text(
+                x + 12,
+                iy + 8,
+                option,
+                FALLEN_HOVER_TEXT(
+                    "silent_method:"
+                    .. tostring(option),
+                    item_hot,
+                    selected
+                        and C.text
+                        or C.text_dim
+                )
+            )
+
+            if clicked
+                and item_hot
+                and A.silent_method_open
+            then
+                S.silent_method = option
+                A.silent_method_open = false
+                return true
+            end
+        end
+    end
+
+    return panel_hot
+end
+
 local function draw_aimbot_page(
     mx, my, clicked, lmb, rmb_clicked, cx, cy, cw
 )
@@ -4881,12 +5085,18 @@ local function draw_aimbot_page(
         or (A.fov_settings_anim or 0) > 0.02
         or A.aim_bind_listening
 
+    local silent_dropdown_active =
+        A.silent_method_open
+        or (A.silent_method_anim or 0) > 0.02
+
     local base_clicked =
-        clicked and not overlay_open
+        clicked
+        and not overlay_open
+        and not silent_dropdown_active
 
     -- LEFT
     section_title(lx, cy, "Aimbot")
-    card(lx, cy + 25, left_w, 155, 11)
+    card(lx, cy + 25, left_w, 218, 11)
 
     -- Three dots immediately before the Aimbot toggle.
     local dots_x = lx + left_w - 79
@@ -4928,6 +5138,7 @@ local function draw_aimbot_page(
     if rmb_clicked and aimbot_row_hot then
         A.aim_settings_open = not A.aim_settings_open
         A.fov_settings_open = false
+        A.silent_method_open = false
 
         if A.aim_settings_open then
             numeric_stop(true)
@@ -4958,6 +5169,123 @@ local function draw_aimbot_page(
         "sticky_aim",
         false
     )
+
+    line(
+        lx + 12,
+        cy + 154,
+        lx + left_w - 12,
+        cy + 154,
+        C.divider,
+        1
+    )
+
+    toggle_row(
+        mx,
+        my,
+        base_clicked,
+        lx,
+        cy + 155,
+        left_w,
+        "Silent Aim",
+        "silent_enabled",
+        false
+    )
+
+    line(
+        lx + 12,
+        cy + 195,
+        lx + left_w - 12,
+        cy + 195,
+        C.divider,
+        1
+    )
+
+    local silent_method_y =
+        cy + 196
+
+    local silent_method_box_w =
+        math.min(
+            132,
+            left_w * 0.48
+        )
+
+    local silent_method_box_x =
+        lx
+        + left_w
+        - silent_method_box_w
+        - 12
+
+    local silent_method_box_y =
+        silent_method_y
+        + 8
+
+    local silent_method_box_hot =
+        hover(
+            mx,
+            my,
+            silent_method_box_x,
+            silent_method_box_y,
+            silent_method_box_w,
+            25
+        )
+
+    text(
+        lx + 13,
+        silent_method_y + 14,
+        "Silent Method",
+        FALLEN_HOVER_TEXT(
+            "silent_method_label",
+            row_hover(
+                mx,
+                my,
+                lx,
+                silent_method_y,
+                left_w,
+                41
+            ),
+            C.text
+        )
+    )
+
+    rounded_fill(
+        silent_method_box_x,
+        silent_method_box_y,
+        silent_method_box_w,
+        25,
+        6,
+        silent_method_box_hot
+            and { 0.110, 0.115, 0.135, 1 }
+            or C.toggle_off
+    )
+
+    text(
+        silent_method_box_x + 10,
+        silent_method_box_y + 7,
+        tostring(
+            S.silent_method
+            or "Raycast"
+        ),
+        C.text
+    )
+
+    text(
+        silent_method_box_x
+            + silent_method_box_w
+            - 16,
+        silent_method_box_y + 7,
+        A.silent_method_open
+            and "^"
+            or "v",
+        C.text_dim
+    )
+
+    if clicked
+        and not overlay_open
+        and silent_method_box_hot
+    then
+        A.silent_method_open =
+            not A.silent_method_open
+    end
 
     -- RIGHT
     section_title(rx, cy, "Aim FOV")
@@ -4998,6 +5326,7 @@ local function draw_aimbot_page(
     then
         A.fov_settings_open = not A.fov_settings_open
         A.aim_settings_open = false
+        A.silent_method_open = false
 
         if not A.fov_settings_open then
             numeric_stop(true)
@@ -5071,6 +5400,26 @@ local function draw_aimbot_page(
         A.fov_picker_open = false
         A.fov_picker_drag = nil
         numeric_stop(true)
+    end
+
+    local silent_dropdown_hot =
+        FALLEN_DRAW_SILENT_METHOD_DROPDOWN(
+            mx,
+            my,
+            clicked
+                and not overlay_open,
+            silent_method_box_x,
+            silent_method_box_y + 29,
+            silent_method_box_w
+        )
+
+    if clicked
+        and A.silent_method_open
+        and not overlay_open
+        and not silent_method_box_hot
+        and not silent_dropdown_hot
+    then
+        A.silent_method_open = false
     end
 
     draw_aim_settings_popup(
@@ -7925,8 +8274,454 @@ local function fap_find_target(cross, cam)
     return best
 end
 
+
+FALLEN_SILENT_STATE =
+    FALLEN_SILENT_STATE
+    or {
+        forced_target = false,
+    }
+
+function FALLEN_SILENT_TARGET_PART_INDEX()
+    local part =
+        tostring(
+            S.aim_target_part
+            or "Head"
+        )
+
+    if part == "Head" then
+        return 0
+    end
+
+    -- Built-in silent aim exposes Head/Torso/Feet indices.
+    -- Our torso/root variants all map to Torso.
+    return 1
+end
+
+function FALLEN_SILENT_PRED_CALLBACK(target, pos, cam)
+    if not pos then
+        return nil
+    end
+
+    if S.aim_auto_prediction ~= true then
+        return pos
+    end
+
+    local use_cam = cam
+
+    if not use_cam
+        and aim
+        and type(aim.get_camera_position) == "function"
+    then
+        pcall(function()
+            use_cam =
+                aim.get_camera_position()
+        end)
+    end
+
+    local predicted = nil
+
+    pcall(function()
+        predicted =
+            fap_predict(
+                target,
+                pos,
+                use_cam
+            )
+    end)
+
+    return predicted or pos
+end
+
+function FALLEN_SILENT_FIND_TARGET()
+    if not players
+        or type(players.get_all) ~= "function"
+        or not aim
+        or type(aim.world_to_screen) ~= "function"
+    then
+        return nil
+    end
+
+    local cross =
+        crosshair_pos()
+
+    if not cross then
+        return nil
+    end
+
+    local cam = nil
+
+    if type(aim.get_camera_position) == "function" then
+        pcall(function()
+            cam =
+                aim.get_camera_position()
+        end)
+    end
+
+    local ok, all =
+        pcall(
+            players.get_all
+        )
+
+    if not ok
+        or type(all) ~= "table"
+    then
+        return nil
+    end
+
+    local radius =
+        clamp(
+            tonumber(S.aim_fov_size)
+            or 50,
+            10,
+            600
+        )
+
+    local best = nil
+    local best_dist = math.huge
+
+    for _, p in ipairs(all) do
+        if fap_valid_target(p) then
+            local pos =
+                fap_target_pos(p)
+
+            if pos then
+                local predicted =
+                    fap_predict(
+                        p,
+                        pos,
+                        cam
+                    )
+                    or pos
+
+                local screen = nil
+
+                pcall(function()
+                    screen =
+                        aim.world_to_screen(
+                            predicted
+                        )
+                end)
+
+                if screen
+                    and screen.visible
+                then
+                    local dx =
+                        (screen.X or 0)
+                        - (cross.X or 0)
+
+                    local dy =
+                        (screen.Y or 0)
+                        - (cross.Y or 0)
+
+                    local dist =
+                        math.sqrt(
+                            dx * dx
+                            + dy * dy
+                        )
+
+                    if dist <= radius
+                        and dist < best_dist
+                    then
+                        best = p
+                        best_dist = dist
+                    end
+                end
+            end
+        end
+    end
+
+    return best
+end
+
+function FALLEN_SILENT_TARGET_INSTANCE(p)
+    if not p
+        or not rbx
+        or type(rbx.instance) ~= "function"
+    then
+        return nil
+    end
+
+    local part =
+        tostring(
+            S.aim_target_part
+            or "Head"
+        )
+
+    if part == "Head"
+        and tonumber(p.head_addr)
+        and tonumber(p.head_addr) ~= 0
+    then
+        local inst = nil
+
+        pcall(function()
+            inst =
+                rbx.instance(
+                    p.head_addr
+                )
+        end)
+
+        if inst then
+            return inst
+        end
+    end
+
+    if part == "HumanoidRootPart"
+        and tonumber(p.hrp_addr)
+        and tonumber(p.hrp_addr) ~= 0
+    then
+        local inst = nil
+
+        pcall(function()
+            inst =
+                rbx.instance(
+                    p.hrp_addr
+                )
+        end)
+
+        if inst then
+            return inst
+        end
+    end
+
+    local character = nil
+
+    if tonumber(p.character_addr)
+        and tonumber(p.character_addr) ~= 0
+    then
+        pcall(function()
+            character =
+                rbx.instance(
+                    p.character_addr
+                )
+        end)
+    end
+
+    if character
+        and character.find_first_child
+    then
+        local names = nil
+
+        if part == "UpperTorso" then
+            names = {
+                "UpperTorso",
+                "Torso",
+            }
+        elseif part == "LowerTorso" then
+            names = {
+                "LowerTorso",
+                "Torso",
+            }
+        elseif part == "Torso" then
+            names = {
+                "UpperTorso",
+                "Torso",
+                "LowerTorso",
+            }
+        elseif part == "HumanoidRootPart" then
+            names = {
+                "HumanoidRootPart",
+                "RootPart",
+            }
+        else
+            names = {
+                "Head",
+            }
+        end
+
+        for _, name in ipairs(names) do
+            local child = nil
+
+            pcall(function()
+                child =
+                    character:find_first_child(
+                        name
+                    )
+            end)
+
+            if child then
+                return child
+            end
+        end
+    end
+
+    -- Safe fallbacks.
+    if tonumber(p.head_addr)
+        and tonumber(p.head_addr) ~= 0
+    then
+        local inst = nil
+
+        pcall(function()
+            inst =
+                rbx.instance(
+                    p.head_addr
+                )
+        end)
+
+        if inst then
+            return inst
+        end
+    end
+
+    if tonumber(p.hrp_addr)
+        and tonumber(p.hrp_addr) ~= 0
+    then
+        local inst = nil
+
+        pcall(function()
+            inst =
+                rbx.instance(
+                    p.hrp_addr
+                )
+        end)
+
+        return inst
+    end
+
+    return nil
+end
+
+function FALLEN_SILENT_CLEAR_FORCED_TARGET()
+    if FALLEN_SILENT_STATE.forced_target ~= true then
+        return
+    end
+
+    FALLEN_SILENT_STATE.forced_target = false
+
+    if aim
+        and type(aim.raycast_target) == "function"
+    then
+        pcall(
+            aim.raycast_target,
+            nil
+        )
+    end
+end
+
+function FALLEN_SILENT_TICK()
+    if not cheat
+        or not cheat.silent_aim
+    then
+        FALLEN_SILENT_CLEAR_FORCED_TARGET()
+        return
+    end
+
+    local sa =
+        cheat.silent_aim
+
+    local enabled =
+        S.silent_enabled == true
+
+    pcall(function()
+        sa.enabled = enabled
+    end)
+
+    if not enabled then
+        FALLEN_SILENT_CLEAR_FORCED_TARGET()
+        return
+    end
+
+    local fov =
+        clamp(
+            tonumber(S.aim_fov_size)
+            or 50,
+            10,
+            600
+        )
+
+    local method =
+        tostring(
+            S.silent_method
+            or "Raycast"
+        )
+
+    if method ~= "Raycast"
+        and method ~= "Magic Bullet"
+    then
+        method = "Raycast"
+        S.silent_method = method
+    end
+
+    -- Sync built-in Silent Aim to our Aimbot settings.
+    pcall(function()
+        sa.fov_only = true
+    end)
+
+    pcall(function()
+        sa.fov = fov
+    end)
+
+    pcall(function()
+        sa.sticky_aim =
+            S.sticky_aim == true
+    end)
+
+    pcall(function()
+        sa.target_part =
+            FALLEN_SILENT_TARGET_PART_INDEX()
+    end)
+
+    pcall(function()
+        sa.prediction =
+            S.aim_auto_prediction == true
+    end)
+
+    -- Current recipe/API uses method 2 as Raycast.
+    pcall(function()
+        sa.method = 2
+    end)
+
+    -- Reuse our Auto Prediction function where callback-style
+    -- fields are supported by this cheat build.
+    pcall(function()
+        sa.prediction_callback =
+            FALLEN_SILENT_PRED_CALLBACK
+    end)
+
+    pcall(function()
+        sa.predict_callback =
+            FALLEN_SILENT_PRED_CALLBACK
+    end)
+
+    pcall(function()
+        sa.target_position_callback =
+            FALLEN_SILENT_PRED_CALLBACK
+    end)
+
+    pcall(function()
+        sa.position_callback =
+            FALLEN_SILENT_PRED_CALLBACK
+    end)
+
+    if method == "Magic Bullet" then
+        if aim
+            and type(aim.raycast_target) == "function"
+        then
+            local target =
+                FALLEN_SILENT_FIND_TARGET()
+
+            local inst =
+                FALLEN_SILENT_TARGET_INSTANCE(
+                    target
+                )
+
+            pcall(
+                aim.raycast_target,
+                inst
+            )
+
+            FALLEN_SILENT_STATE.forced_target =
+                inst ~= nil
+        end
+    else
+        FALLEN_SILENT_CLEAR_FORCED_TARGET()
+    end
+end
+
 local function fap_draw_fov()
-    if S.aim_enabled ~= true
+    if (
+            S.aim_enabled ~= true
+            and S.silent_enabled ~= true
+        )
         or S.aim_fov_enabled ~= true
         or type(DrawCircle) ~= "function"
     then
@@ -8270,6 +9065,12 @@ hooks.on_render(function()
             )
         end
     end
+end)
+
+hooks.on_render(function()
+    pcall(
+        FALLEN_SILENT_TICK
+    )
 end)
 
 -- =========================================================
@@ -9634,7 +10435,7 @@ function FALLEN_HITFX_SCAN_HP()
         or 0
 
     if damage >= 15
-        and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.05
+        and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.008
     then
         FALLEN_HITFX.last_spawn = tick()
 
@@ -9817,14 +10618,7 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
 
     elseif style == 2 then
         -- Hit 3:
-        -- large smoke cloud that expands and evaporates smoothly,
-        -- with sparks flying out from the center.
-        local smoke_img =
-            FALLEN_HITFX_IMAGE(
-                "user_smoke",
-                FALLEN_BT_IMAGE.user_smoke_url
-            )
-
+        -- sparks only, no smoke.
         local sparks_img =
             FALLEN_HITFX_IMAGE(
                 "user_sparks",
@@ -9839,29 +10633,6 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
 
         local grow =
             smooth01(t)
-
-        -- Make this effect match the larger distance-scaled feel
-        -- of the previous hit effects.
-        local smoke_size =
-            size
-            * (
-                1.35
-                + 1.35 * grow
-            )
-
-        if smoke_img then
-            FALLEN_HITFX_DRAW_IMAGE(
-                smoke_img,
-                s.X - smoke_size * 0.5,
-                s.Y - smoke_size * 0.5,
-                smoke_size,
-                smoke_size,
-                1,
-                1,
-                1,
-                alpha * 0.98 * fade
-            )
-        end
 
         if sparks_img then
             for k = 1, 8 do
@@ -9921,6 +10692,7 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
                             0.82
                             - 0.32 * t
                         )
+                        * fade
                 )
             end
         end
