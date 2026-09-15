@@ -247,10 +247,16 @@ local defaults = {
     world_icon_border_v = 1.00,
     world_icon_border_alpha = 100,
 
-    silent_enabled = false,
+    -- Resource icon glow.
+    world_icon_glow_enabled = false,
+    world_icon_glow_strength = 60,
+    world_icon_glow_spread = 6,
+    world_icon_glow_h = 0.6250,
+    world_icon_glow_s = 0.55,
+    world_icon_glow_v = 1.00,
+    world_icon_glow_alpha = 70,
 
-    -- Misc.
-    misc_upside_down = false,
+    silent_enabled = false,
 
     trigger_enabled = false,
     visuals_enabled = false,
@@ -3374,9 +3380,16 @@ function FALLEN_COLOR_INPUT_POLL()
     end
 end
 
-local function color_preview(x, y, w, h)
-    local c = fov_color()
-    local radius = math.floor(math.min(w, h) * 0.28)
+local function color_preview(x, y, w, h, override_color)
+    local c =
+        override_color
+        or fov_color()
+
+    local radius =
+        math.floor(
+            math.min(w, h)
+            * 0.28
+        )
 
     -- Dark rounded base so alpha still has a visible background,
     -- but without the hard checker-square look on the tiny swatch.
@@ -4785,7 +4798,8 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
                 swatch_x,
                 swatch_y,
                 swatch_s,
-                swatch_s
+                swatch_s,
+                FALLEN_FOV_GLOW_COLOR()
             )
 
             if ui_clicked
@@ -4866,48 +4880,6 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     end
 
     MENU_RENDER_ALPHA = parent_menu_alpha
-end
-
-
-function FALLEN_DRAW_MISC_PAGE(
-    mx,
-    my,
-    clicked,
-    lmb,
-    cx,
-    cy,
-    cw
-)
-    local left_w =
-        math.floor(
-            cw * 0.48
-        )
-
-    section_title(
-        cx,
-        cy,
-        "Misc"
-    )
-
-    card(
-        cx,
-        cy + 25,
-        left_w,
-        54,
-        11
-    )
-
-    toggle_row(
-        mx,
-        my,
-        clicked,
-        cx,
-        cy + 32,
-        left_w,
-        "Upside Down",
-        "misc_upside_down",
-        false
-    )
 end
 
 
@@ -6312,7 +6284,7 @@ local function draw_world_settings_popup(
         or ease_in_out_cubic(raw)
 
     local pw = 306
-    local ph = 291
+    local ph = 455
 
     local base_px =
         dots_x
@@ -6580,6 +6552,190 @@ local function draw_world_settings_popup(
             48,
             "int"
         )
+    end
+
+    if shell_h > 324 then
+        line(
+            px + 12,
+            py + 284,
+            px + pw - 12,
+            py + 284,
+            C.divider,
+            1
+        )
+
+        toggle_row(
+            mx,
+            my,
+            ui_clicked,
+            px + 8,
+            py + 285,
+            pw - 16,
+            "Icon Glow",
+            "world_icon_glow_enabled",
+            false
+        )
+    end
+
+    if shell_h > 365 then
+        line(
+            px + 12,
+            py + 325,
+            px + pw - 12,
+            py + 325,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx,
+            my,
+            ui_clicked,
+            lmb,
+            px + 8,
+            py + 326,
+            pw - 16,
+            "Glow Strength",
+            "world_icon_glow_strength",
+            0,
+            100,
+            "int"
+        )
+    end
+
+    if shell_h > 406 then
+        line(
+            px + 12,
+            py + 366,
+            px + pw - 12,
+            py + 366,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx,
+            my,
+            ui_clicked,
+            lmb,
+            px + 8,
+            py + 367,
+            pw - 16,
+            "Glow Spread",
+            "world_icon_glow_spread",
+            1,
+            20,
+            "int"
+        )
+    end
+
+    if shell_h > 447 then
+        line(
+            px + 12,
+            py + 407,
+            px + pw - 12,
+            py + 407,
+            C.divider,
+            1
+        )
+
+        local glow_row_x =
+            px + 8
+
+        local glow_row_y =
+            py + 408
+
+        local glow_row_w =
+            pw - 16
+
+        local glow_hot =
+            row_hover(
+                mx,
+                my,
+                glow_row_x,
+                glow_row_y,
+                glow_row_w,
+                41
+            )
+
+        text(
+            glow_row_x + 13,
+            glow_row_y + 14,
+            "Glow Color",
+            FALLEN_HOVER_TEXT(
+                "world_icon_glow_color",
+                glow_hot,
+                C.text
+            )
+        )
+
+        local glow_prefix =
+            "world_icon_glow"
+
+        local glow_swatch_s =
+            18
+
+        local glow_swatch_x =
+            glow_row_x
+            + glow_row_w
+            - glow_swatch_s
+            - 12
+
+        local glow_swatch_y =
+            glow_row_y + 11
+
+        local glow_color =
+            world_color_from_prefix(
+                glow_prefix
+            )
+
+        world_square_swatch(
+            glow_swatch_x,
+            glow_swatch_y,
+            glow_swatch_s,
+            glow_color
+        )
+
+        local glow_swatch_hot =
+            hover(
+                mx,
+                my,
+                glow_swatch_x,
+                glow_swatch_y,
+                glow_swatch_s,
+                glow_swatch_s
+            )
+
+        if ui_clicked
+            and glow_swatch_hot
+        then
+            FALLEN_COLOR_INPUT_STOP(true)
+
+            if A.world_color_picker_open
+                and A.world_color_picker_key == glow_prefix
+            then
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+            else
+                A.world_color_picker_key = glow_prefix
+                A.world_color_picker_open = true
+                A.world_color_picker_drag = nil
+                A.fov_picker_open = false
+                A.fov_picker_drag = nil
+            end
+
+            A.world_color_picker_anchor_x =
+                FALLEN_UI_X(glow_swatch_x)
+
+            A.world_color_picker_anchor_y =
+                FALLEN_UI_Y(glow_swatch_y)
+
+            A.world_color_picker_anchor_w =
+                FALLEN_UI_LEN(glow_swatch_s)
+
+            A.world_color_picker_anchor_h =
+                FALLEN_UI_LEN(glow_swatch_s)
+        end
     end
 
     local popup_hot =
@@ -8122,176 +8278,6 @@ function FALLEN_SILENT_PRED_CALLBACK(target, pos, cam)
 end
 
 
-FALLEN_UPSIDE_STATE =
-    FALLEN_UPSIDE_STATE
-    or {
-        last_applied = nil,
-        last_base = nil,
-        was_enabled = false,
-    }
-
-function FALLEN_UPSIDE_MATRIX_COPY(m)
-    if type(m) ~= "table" then
-        return nil
-    end
-
-    local out = {}
-
-    for i = 1, 9 do
-        out[i] =
-            tonumber(m[i])
-            or 0
-    end
-
-    return out
-end
-
-function FALLEN_UPSIDE_MATRIX_FLIP(m)
-    if type(m) ~= "table" then
-        return nil
-    end
-
-    -- Camera matrix rows are:
-    --   1..3 = right
-    --   4..6 = up
-    --   7..9 = -forward
-    -- A 180 degree roll negates right + up and leaves forward unchanged.
-    return {
-        -(tonumber(m[1]) or 0),
-        -(tonumber(m[2]) or 0),
-        -(tonumber(m[3]) or 0),
-
-        -(tonumber(m[4]) or 0),
-        -(tonumber(m[5]) or 0),
-        -(tonumber(m[6]) or 0),
-
-         (tonumber(m[7]) or 0),
-         (tonumber(m[8]) or 0),
-         (tonumber(m[9]) or 0),
-    }
-end
-
-function FALLEN_UPSIDE_MATRIX_ERROR(a, b)
-    if type(a) ~= "table"
-        or type(b) ~= "table"
-    then
-        return math.huge
-    end
-
-    local err = 0
-
-    for i = 1, 9 do
-        local d =
-            (tonumber(a[i]) or 0)
-            - (tonumber(b[i]) or 0)
-
-        err = err + d * d
-    end
-
-    return err
-end
-
-function FALLEN_UPSIDE_TICK()
-    if not aim
-        or type(aim.get_camera_rotation) ~= "function"
-        or type(aim.set_camera_rotation) ~= "function"
-    then
-        return
-    end
-
-    local current = nil
-
-    pcall(function()
-        current =
-            aim.get_camera_rotation()
-    end)
-
-    if type(current) ~= "table" then
-        return
-    end
-
-    local enabled =
-        S.misc_upside_down == true
-
-    if enabled then
-        -- If the exact matrix we wrote last frame is still present,
-        -- do not flip it a second time. This prevents ON/OFF flickering
-        -- on builds where Roblox doesn't overwrite the camera every frame.
-        if FALLEN_UPSIDE_STATE.last_applied
-            and FALLEN_UPSIDE_MATRIX_ERROR(
-                current,
-                FALLEN_UPSIDE_STATE.last_applied
-            ) < 0.000001
-        then
-            FALLEN_UPSIDE_STATE.was_enabled = true
-            return
-        end
-
-        local base =
-            FALLEN_UPSIDE_MATRIX_COPY(
-                current
-            )
-
-        local flipped =
-            FALLEN_UPSIDE_MATRIX_FLIP(
-                base
-            )
-
-        if flipped then
-            pcall(
-                aim.set_camera_rotation,
-                flipped
-            )
-
-            FALLEN_UPSIDE_STATE.last_base = base
-            FALLEN_UPSIDE_STATE.last_applied = flipped
-            FALLEN_UPSIDE_STATE.was_enabled = true
-        end
-
-        return
-    end
-
-    -- When switching OFF, restore the non-rolled orientation if our
-    -- previously-written upside-down matrix is still active.
-    if FALLEN_UPSIDE_STATE.was_enabled == true then
-        local should_restore = false
-
-        if FALLEN_UPSIDE_STATE.last_applied then
-            local err_applied =
-                FALLEN_UPSIDE_MATRIX_ERROR(
-                    current,
-                    FALLEN_UPSIDE_STATE.last_applied
-                )
-
-            local err_base =
-                FALLEN_UPSIDE_MATRIX_ERROR(
-                    current,
-                    FALLEN_UPSIDE_STATE.last_base
-                )
-
-            should_restore =
-                err_applied < err_base
-        end
-
-        if should_restore then
-            local restored =
-                FALLEN_UPSIDE_MATRIX_FLIP(
-                    current
-                )
-
-            if restored then
-                pcall(
-                    aim.set_camera_rotation,
-                    restored
-                )
-            end
-        end
-    end
-
-    FALLEN_UPSIDE_STATE.last_applied = nil
-    FALLEN_UPSIDE_STATE.last_base = nil
-    FALLEN_UPSIDE_STATE.was_enabled = false
-end
 
 function FALLEN_SILENT_TICK()
     if not cheat
@@ -8725,12 +8711,6 @@ end)
 hooks.on_render(function()
     pcall(
         FALLEN_SILENT_TICK
-    )
-end)
-
-hooks.on_render(function()
-    pcall(
-        FALLEN_UPSIDE_TICK
     )
 end)
 
@@ -16219,6 +16199,87 @@ local function world_resolve_icon(cfg)
     return world_load_direct_icon(cfg)
 end
 
+function FALLEN_WORLD_ICON_GLOW_COLOR()
+    return
+        world_color_from_prefix(
+            "world_icon_glow"
+        )
+end
+
+function FALLEN_WORLD_DRAW_ICON_GLOW(
+    x,
+    y,
+    radius,
+    alpha_mul
+)
+    if S.world_icon_glow_enabled ~= true
+        or type(DrawCircle) ~= "function"
+    then
+        return
+    end
+
+    local c =
+        FALLEN_WORLD_ICON_GLOW_COLOR()
+
+    local strength =
+        clamp(
+            (tonumber(S.world_icon_glow_strength) or 60) / 100,
+            0,
+            1
+        )
+
+    local spread =
+        clamp(
+            tonumber(S.world_icon_glow_spread) or 6,
+            1,
+            20
+        )
+
+    if strength <= 0.001
+        or (c[4] or 0) <= 0.001
+    then
+        return
+    end
+
+    -- Exactly 35 glow lines/layers.
+    -- Strongest at the icon edge, smoothly fading outwards.
+    for layer = 0, 34 do
+        local t =
+            layer / 34
+
+        local falloff =
+            1 - t
+
+        local glow_radius =
+            radius
+            + t * spread
+
+        local glow_alpha =
+            (c[4] or 1)
+            * (alpha_mul or 1)
+            * strength
+            * falloff
+            * falloff
+            * 0.42
+
+        local thickness =
+            1.05
+            + falloff * 0.45
+
+        DrawCircle(
+            x,
+            y,
+            glow_radius,
+            c[1],
+            c[2],
+            c[3],
+            glow_alpha,
+            thickness
+        )
+    end
+end
+
+
 local function world_draw_icon(
     cfg,
     x,
@@ -16252,14 +16313,24 @@ local function world_draw_icon(
             48
         )
 
+    local icon_radius =
+        size * 0.5
+        + 3
+
+    FALLEN_WORLD_DRAW_ICON_GLOW(
+        x,
+        y,
+        icon_radius,
+        a
+    )
+
     -- Keep the existing round background/border from the menu,
-    -- but only once the actual stone PNG is ready.
+    -- but only once the actual PNG is ready.
     if type(DrawCircleFilled) == "function"
         and type(DrawCircle) == "function"
     then
         local radius =
-            size * 0.5
-            + 3
+            icon_radius
 
         DrawCircleFilled(
             x,
@@ -21717,14 +21788,10 @@ hooks.on_render(function()
         end
 
     elseif S.tab == 3 then
-        FALLEN_DRAW_MISC_PAGE(
-            mx,
-            my,
-            page_clicked,
-            lmb,
+        section_title(
             page_x,
             page_y,
-            page_w
+            "Misc"
         )
     end
 
