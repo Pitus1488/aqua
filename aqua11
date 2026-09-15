@@ -25557,7 +25557,6 @@ hooks.on_render(function()
     local sw, sh =
         screen_size()
 
-    -- Integer pixel center to keep the crosshair perfectly even.
     local cx =
         math.floor(sw * 0.5)
 
@@ -25573,85 +25572,74 @@ hooks.on_render(function()
             40
         )
 
-    -- Draw a symmetric ╋ using filled rectangles instead of lines.
-    -- This avoids the uneven / shaky line look.
-    local half =
+    -- Same mirrored construction as the straight test variants 3 / 8 / 9.
+    -- Four independent arms guarantee:
+    -- left == right and up == down.
+    local arm =
         math.max(
             4,
             math.floor(size * 0.5)
         )
 
-    local thick =
-        math.max(
-            2,
-            math.floor(size * 0.16)
-        )
+    -- Fixed 3 px body like test variants 3 / 8.
+    local thick = 3
+    local half_lo = 1
+    local half_hi = 1
 
-    local outline =
-        1
-
-    local function filled_rect(
-        x,
-        y,
-        w,
-        h,
-        r,
-        g,
-        b,
-        a
-    )
-        DrawBoxFilled(
-            x,
-            y,
-            x + w,
-            y + h,
-            r,
-            g,
-            b,
-            a
-        )
-    end
-
-    -- Dark outline / underlay
-    filled_rect(
-        cx - half - outline,
-        cy - math.floor(thick * 0.5) - outline,
-        half * 2 + outline * 2 + 1,
-        thick + outline * 2,
-        0,
-        0,
-        0,
-        0.82
-    )
-
-    filled_rect(
-        cx - math.floor(thick * 0.5) - outline,
-        cy - half - outline,
-        thick + outline * 2,
-        half * 2 + outline * 2 + 1,
-        0,
-        0,
-        0,
-        0.82
-    )
-
-    -- White body
-    filled_rect(
-        cx - half,
-        cy - math.floor(thick * 0.5),
-        half * 2 + 1,
-        thick,
+    -- Left arm
+    DrawBoxFilled(
+        cx - arm,
+        cy - half_lo,
+        cx - 1,
+        cy + half_hi,
         1,
         1,
         1,
         1
     )
 
-    filled_rect(
-        cx - math.floor(thick * 0.5),
-        cy - half,
-        thick,
-        half * 2 + 1,
+    -- Right arm
+    DrawBoxFilled(
+        cx + 1,
+        cy - half_lo,
+        cx + arm,
+        cy + half_hi,
+        1,
+        1,
+        1,
+        1
+    )
+
+    -- Up arm
+    DrawBoxFilled(
+        cx - half_lo,
+        cy - arm,
+        cx + half_hi,
+        cy - 1,
+        1,
+        1,
+        1,
+        1
+    )
+
+    -- Down arm
+    DrawBoxFilled(
+        cx - half_lo,
+        cy + 1,
+        cx + half_hi,
+        cy + arm,
+        1,
+        1,
+        1,
+        1
+    )
+
+    -- Exact centered 3x3 joint.
+    DrawBoxFilled(
+        cx - half_lo,
+        cy - half_lo,
+        cx + half_hi,
+        cy + half_hi,
         1,
         1,
         1,
