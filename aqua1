@@ -177,6 +177,7 @@ local defaults = {
     secret_enabled = false,
     secret_crosshair = false,
     secret_crosshair_size = 16,
+    secret_crosshair_style = "Sharp",
 
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
     menu_glow_h = 0.00,
@@ -22940,7 +22941,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            99,
+            140,
             11
         )
 
@@ -22969,6 +22970,21 @@ hooks.on_render(function()
             8,
             40,
             "int"
+        )
+
+        dropdown_row(
+            mx,
+            my,
+            page_clicked,
+            page_x,
+            page_y + 98,
+            page_w,
+            "Style",
+            "secret_crosshair_style",
+            {
+                "Sharp",
+                "Rounded",
+            }
         )
     end
 
@@ -25554,10 +25570,14 @@ hooks.on_render(function()
         return
     end
 
-    local sw, sh = screen_size()
+    local sw, sh =
+        screen_size()
 
-    local cx = math.floor(sw * 0.5)
-    local cy = math.floor(sh * 0.5)
+    local cx =
+        math.floor(sw * 0.5)
+
+    local cy =
+        math.floor(sh * 0.5)
 
     local size =
         clamp(
@@ -25568,88 +25588,271 @@ hooks.on_render(function()
             40
         )
 
-    -- Rounded version of the same shape.
-    local thick =
-        math.max(
-            2,
-            math.floor(size * 0.18)
+    local style =
+        tostring(
+            S.secret_crosshair_style
+                or "Sharp"
         )
 
-    local half_lo = math.floor((thick - 1) * 0.5)
-    local half_hi = thick - 1 - half_lo
-
+    -- Homunculus-style shape:
+    -- top horizontal:    left  -> center
+    -- center vertical:   top   -> bottom
+    -- middle horizontal: left  -> right
+    -- left vertical:     mid   -> bottom
+    -- right vertical:    top   -> mid
+    -- bottom horizontal: center-> right
     local extent =
         math.max(
             5,
             math.floor(size * 0.50)
         )
 
-    local end_trim =
+    local thick =
+        math.max(
+            3,
+            math.floor(size * 0.18)
+        )
+
+    -- Force odd thickness so center alignment stays stable for all sizes.
+    if thick % 2 == 0 then
+        thick = thick + 1
+    end
+
+    local half_lo =
+        math.floor(
+            (thick - 1) * 0.5
+        )
+
+    local half_hi =
+        thick - 1 - half_lo
+
+    -- Small trim reduces visual overshoot on exposed terminals.
+    local trim =
         math.max(
             0,
             math.floor(thick * 0.34)
         )
 
-    local xL = cx - extent + end_trim
+    local xL = cx - extent + trim
     local xC = cx
-    local xR = cx + extent - end_trim
+    local xR = cx + extent - trim
 
-    local yT = cy - extent + end_trim
+    local yT = cy - extent + trim
     local yM = cy
-    local yB = cy + extent - end_trim
+    local yB = cy + extent - trim
 
-    local function circle(x, y, rad)
+    local function rect(
+        x1,
+        y1,
+        x2,
+        y2
+    )
+        DrawBoxFilled(
+            x1,
+            y1,
+            x2,
+            y2,
+            1,
+            1,
+            1,
+            1
+        )
+    end
+
+    local function cap_circle(
+        x,
+        y,
+        rad
+    )
+        if rad <= 0 then
+            return
+        end
+
         if type(DrawCircleFilled) == "function" then
             DrawCircleFilled(
-                x, y, rad,
-                1, 1, 1, 1
+                x,
+                y,
+                rad,
+                1,
+                1,
+                1,
+                1
             )
         else
             DrawBoxFilled(
-                x - rad, y - rad,
-                x + rad, y + rad,
-                1, 1, 1, 1
+                x - rad,
+                y - rad,
+                x + rad,
+                y + rad,
+                1,
+                1,
+                1,
+                1
             )
         end
     end
 
-    local function rect(x1, y1, x2, y2)
-        DrawBoxFilled(
-            x1, y1, x2, y2,
-            1, 1, 1, 1
+    local cap =
+        math.max(
+            1,
+            math.floor(thick * 0.5)
+        )
+
+    local function hbar(
+        x1,
+        x2,
+        y,
+        cap_left,
+        cap_right
+    )
+        rect(
+            x1,
+            y - half_lo,
+            x2,
+            y + half_hi
+        )
+
+        if cap_left then
+            cap_circle(
+                x1,
+                y,
+                cap
+            )
+        end
+
+        if cap_right then
+            cap_circle(
+                x2,
+                y,
+                cap
+            )
+        end
+    end
+
+    local function vbar(
+        x,
+        y1,
+        y2,
+        cap_top,
+        cap_bottom
+    )
+        rect(
+            x - half_lo,
+            y1,
+            x + half_hi,
+            y2
+        )
+
+        if cap_top then
+            cap_circle(
+                x,
+                y1,
+                cap
+            )
+        end
+
+        if cap_bottom then
+            cap_circle(
+                x,
+                y2,
+                cap
+            )
+        end
+    end
+
+    if style == "Rounded" then
+        -- Rounded only on the EXPOSED outer terminals.
+        -- Internal joints stay square so they don't bulge every few sizes.
+        hbar(
+            xL,
+            xC,
+            yT,
+            true,
+            false
+        )
+
+        vbar(
+            xC,
+            yT,
+            yB,
+            true,
+            true
+        )
+
+        hbar(
+            xL,
+            xR,
+            yM,
+            false,
+            false
+        )
+
+        vbar(
+            xL,
+            yM,
+            yB,
+            false,
+            true
+        )
+
+        vbar(
+            xR,
+            yT,
+            yM,
+            true,
+            false
+        )
+
+        hbar(
+            xC,
+            xR,
+            yB,
+            false,
+            true
+        )
+    else
+        -- Clean sharp version with corrected terminal lengths.
+        rect(
+            xL,
+            yT - half_lo,
+            xC,
+            yT + half_hi
+        )
+
+        rect(
+            xC - half_lo,
+            yT,
+            xC + half_hi,
+            yB
+        )
+
+        rect(
+            xL,
+            yM - half_lo,
+            xR,
+            yM + half_hi
+        )
+
+        rect(
+            xL - half_lo,
+            yM,
+            xL + half_hi,
+            yB
+        )
+
+        rect(
+            xR - half_lo,
+            yT,
+            xR + half_hi,
+            yM
+        )
+
+        rect(
+            xC,
+            yB - half_lo,
+            xR,
+            yB + half_hi
         )
     end
-
-    local cap = math.max(1, math.floor(thick * 0.5))
-
-    local function hbar(x1, x2, y)
-        rect(x1, y - half_lo, x2, y + half_hi)
-        circle(x1, y, cap)
-        circle(x2, y, cap)
-    end
-
-    local function vbar(x, y1, y2)
-        rect(x - half_lo, y1, x + half_hi, y2)
-        circle(x, y1, cap)
-        circle(x, y2, cap)
-    end
-
-    -- Top horizontal: left -> center
-    hbar(xL, xC, yT)
-
-    -- Center vertical: top -> bottom
-    vbar(xC, yT, yB)
-
-    -- Middle horizontal: left -> right
-    hbar(xL, xR, yM)
-
-    -- Left vertical: middle -> bottom
-    vbar(xL, yM, yB)
-
-    -- Right vertical: top -> middle
-    vbar(xR, yT, yM)
-
-    -- Bottom horizontal: center -> right
-    hbar(xC, xR, yB)
 end)
 
