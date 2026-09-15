@@ -171,6 +171,7 @@ local defaults = {
     menu_snow = false,
     menu_rain = false,
     menu_lightning = false,
+    menu_dark_background = false,
 
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
     menu_glow_h = 0.00,
@@ -18781,8 +18782,8 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
 
     local ph =
         gradient_selected
-        and 426
-        or 344
+        and 467
+        or 385
 
     local px = snap(anchor_x + 18)
     local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
@@ -19072,6 +19073,10 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             py + 286
             + weather_offset
 
+        local dark_background_y =
+            py + 327
+            + weather_offset
+
         if shell_h > 246 + weather_offset then
             line(
                 px + 12,
@@ -19137,6 +19142,29 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 pw - 16,
                 "Lightning",
                 "menu_lightning",
+                false
+            )
+        end
+
+        if shell_h > 369 + weather_offset then
+            line(
+                px + 12,
+                dark_background_y - 1,
+                px + pw - 12,
+                dark_background_y - 1,
+                C.divider,
+                1
+            )
+
+            toggle_row(
+                mx,
+                my,
+                row_clicked,
+                px + 8,
+                dark_background_y,
+                pw - 16,
+                "Dark Background",
+                "menu_dark_background",
                 false
             )
         end
@@ -21692,6 +21720,23 @@ hooks.on_render(function()
         h = weather_menu_h,
         open_alpha = MENU_RENDER_ALPHA,
     }
+
+    -- Optional dimmed backdrop behind the menu.
+    -- It darkens the game only; the menu is drawn afterwards at normal opacity.
+    if S.menu_dark_background == true
+        and type(DrawBoxFilled) == "function"
+    then
+        DrawBoxFilled(
+            0,
+            0,
+            sw,
+            sh,
+            0,
+            0,
+            0,
+            0.45 * clamp(menu_base_alpha or 1, 0, 1)
+        )
+    end
 
     -- 35 line based glow frames around the entire menu.
     -- Every line uses the selected Glow Color directly.
