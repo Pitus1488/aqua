@@ -7378,7 +7378,7 @@ local function draw_simple_page(mx, my, clicked, cx, cy, cw, title, state_key)
     card(cx, cy + 25, cw, 150, 11)
     toggle_row(mx, my, clicked, cx, cy + 32, cw, "Enabled", state_key, false)
     line(cx + 12, cy + 72, cx + cw - 12, cy + 72, C.divider, 1)
-    text(cx + 14, cy + 91, "PITUS page is ready for features.", C.text_dim)
+    text(cx + 14, cy + 91, "PITUS-LUA page is ready for features.", C.text_dim)
     text(cx + 14, cy + 112, "The layout and input system are already active.", C.text_dim)
 end
 
@@ -17828,100 +17828,72 @@ function FALLEN_DRAW_PITUS_LOGO(
     local s =
         tonumber(scale) or 1
 
-    local function tx(v)
-        if type(snap) == "function" then
-            return snap(v)
-        end
+    local label =
+        "PITUS-LUA"
 
-        return v
-    end
-
-    -- Tight hand-tuned kerning so PITUS looks like one compact logo,
-    -- not five separated letters.
-    local letters = {
-        { "P",  0.0, 0.0 },
-        { "I",  7.2, 0.0 },
-        { "T", 11.5, 0.0 },
-        { "U", 18.8, 0.0 },
-        { "S", 27.4, 0.0 },
-    }
-
-    local function draw_pass(
-        ox,
-        oy,
-        r,
-        g,
-        b,
-        pass_alpha
+    local function draw_text_pass(
+        px,
+        py,
+        txt,
+        col,
+        size_mul
     )
-        for _, L in ipairs(letters) do
+        local ox = 0
+
+        for i = 1, #txt do
             local ch =
-                L[1]
+                txt:sub(i, i)
 
-            local lx =
-                x + L[2] * s + ox
+            local step =
+                (ch == "I")
+                and (6.0 * s * size_mul)
+                or ((ch == "-")
+                    and (5.8 * s * size_mul)
+                    or (8.1 * s * size_mul))
 
-            local ly =
-                y + L[3] * s + oy
+            text(
+                px + ox,
+                py,
+                ch,
+                col
+            )
 
-            if Drawing
-                and type(Drawing.DrawText) == "function"
-            then
-                Drawing.DrawText(
-                    tx(lx),
-                    tx(ly),
-                    ch,
-                    r, g, b,
-                    a * pass_alpha
-                )
-            else
-                text(
-                    lx,
-                    ly,
-                    ch,
-                    { r, g, b, a * pass_alpha }
-                )
-            end
+            ox = ox + step
         end
     end
 
-    -- Neverlose-like stacked text look:
-    -- dark shadow -> cool gray lower body -> bright white face.
-    draw_pass(
-        1.3 * s,
-        1.9 * s,
-        0.03,
-        0.03,
-        0.04,
-        0.42
-    )
-
-    draw_pass(
-        0,
-        1.0 * s,
-        0.62,
-        0.65,
-        0.71,
-        0.98
-    )
-
-    draw_pass(
-        0,
-        0,
-        0.96,
-        0.97,
-        0.99,
+    -- One compact Neverlose-like logo:
+    -- soft dark shadow, cool gray lower pass, sharp white top pass.
+    draw_text_pass(
+        x + 1.7 * s,
+        y + 2.3 * s,
+        label,
+        { 0.02, 0.02, 0.03, 0.42 * a },
         1.00
     )
 
-    -- Subtle top shine.
-    draw_pass(
-        0,
-        -0.25 * s,
-        1.00,
-        1.00,
-        1.00,
-        0.18
+    draw_text_pass(
+        x,
+        y + 1.10 * s,
+        label,
+        { 0.60, 0.63, 0.69, 0.98 * a },
+        1.00
+    )
+
+    draw_text_pass(
+        x,
+        y,
+        label,
+        { 0.97, 0.98, 1.00, 1.00 * a },
+        1.00
+    )
+
+    draw_text_pass(
+        x,
+        y - 0.28 * s,
+        label,
+        { 1.00, 1.00, 1.00, 0.18 * a },
+        1.00
     )
 end
 
@@ -21906,10 +21878,10 @@ hooks.on_render(function()
 
     -- Brand.
     FALLEN_DRAW_PITUS_LOGO(
-        wx + 16,
-        wy + 17,
+        wx + 14,
+        wy + 18,
         1,
-        3.05
+        2.45
     )
 
     -- Sidebar
@@ -23946,7 +23918,7 @@ hooks.on_render(function()
         x + 10 * scale,
         y + 12 * scale,
         alpha,
-        scale * 1.95
+        scale * 1.55
     )
 
 
