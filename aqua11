@@ -21904,10 +21904,10 @@ hooks.on_render(function()
 
     -- Brand.
     FALLEN_DRAW_PITUS_LOGO(
-        wx + 24,
-        wy + 24,
+        wx + 21,
+        wy + 20,
         1,
-        1
+        2.15
     )
 
     -- Sidebar
@@ -23942,9 +23942,9 @@ hooks.on_render(function()
     -- Clean loader header brand.
     FALLEN_DRAW_PITUS_LOGO(
         x + 12 * scale,
-        y + 18 * scale,
+        y + 14 * scale,
         alpha,
-        scale
+        scale * 1.55
     )
 
 
