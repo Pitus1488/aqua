@@ -21979,186 +21979,267 @@ function FALLEN_AVATAR_EDITOR_LOAD_PATH(path)
     return true
 end
 
-function FALLEN_AVATAR_EDITOR_EXTRACT_PICK_PATH(value)
-    if type(value) == "string" then
-        return
-            FALLEN_AVATAR_EDITOR_CLEAN_PATH(
-                value
-            )
+function FALLEN_AVATAR_EDITOR_FOLDER()
+    FALLEN_CUSTOM_AVATAR_ENSURE_FOLDER()
+
+    return
+        "C:\\blueberry\\scripts\\avatar\\"
+end
+
+function FALLEN_AVATAR_EDITOR_FIND_FOLDER_IMAGE()
+    local base =
+        FALLEN_AVATAR_EDITOR_FOLDER()
+
+    local names = {
+        "avatar.png",
+        "avatar.jpg",
+        "avatar.jpeg",
+        "avatar.bmp",
+        "avatar.gif",
+        "avatar.tga",
+        "profile.png",
+        "profile.jpg",
+        "pfp.png",
+        "pfp.jpg",
+        "image.png",
+        "image.jpg",
+    }
+
+    if type(exists_file) ~= "function" then
+        return nil
     end
 
-    if type(value) == "table" then
+    for _, name in ipairs(names) do
         local path =
-            value.path
-            or value.Path
-            or value.file
-            or value.File
-            or value.filename
-            or value.FileName
-            or value[1]
+            base .. name
 
-        if type(path) == "string" then
-            return
-                FALLEN_AVATAR_EDITOR_CLEAN_PATH(
-                    path
-                )
+        local ok, exists =
+            pcall(
+                exists_file,
+                path
+            )
+
+        if ok
+            and exists == true
+        then
+            return path
         end
     end
 
     return nil
 end
 
-function FALLEN_AVATAR_EDITOR_TRY_NATIVE_PICKER()
-    -- Different Blueberry/API builds expose file dialogs under different
-    -- names. Probe them safely without depending on one exact build.
-    local fns = {}
-
-    if Windows then
-        if type(Windows.OpenFileDialog) == "function" then
-            fns[#fns + 1] = {
-                fn = Windows.OpenFileDialog,
-                owner = Windows,
-            }
-        end
-
-        if type(Windows.SelectFile) == "function" then
-            fns[#fns + 1] = {
-                fn = Windows.SelectFile,
-                owner = Windows,
-            }
-        end
-
-        if type(Windows.ChooseFile) == "function" then
-            fns[#fns + 1] = {
-                fn = Windows.ChooseFile,
-                owner = Windows,
-            }
-        end
-    end
-
-    if type(open_file_dialog) == "function" then
-        fns[#fns + 1] = {
-            fn = open_file_dialog,
-            owner = nil,
-        }
-    end
-
-    if type(select_file) == "function" then
-        fns[#fns + 1] = {
-            fn = select_file,
-            owner = nil,
-        }
-    end
-
-    if type(choose_file) == "function" then
-        fns[#fns + 1] = {
-            fn = choose_file,
-            owner = nil,
-        }
-    end
-
-    for _, entry in ipairs(fns) do
-        local result = nil
-        local ok = false
-
-        if entry.owner then
-            ok, result =
-                pcall(
-                    entry.fn,
-                    entry.owner,
-                    "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tga)"
-                )
-
-            if not ok then
-                ok, result =
-                    pcall(
-                        entry.fn,
-                        entry.owner
-                    )
-            end
-        else
-            ok, result =
-                pcall(
-                    entry.fn,
-                    "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tga)"
-                )
-
-            if not ok then
-                ok, result =
-                    pcall(
-                        entry.fn
-                    )
-            end
-        end
-
-        if ok then
-            local path =
-                FALLEN_AVATAR_EDITOR_EXTRACT_PICK_PATH(
-                    result
-                )
-
-            if path then
-                return path
-            end
-        end
-    end
-
-    return nil
-end
-
-function FALLEN_AVATAR_EDITOR_PICK()
+function FALLEN_AVATAR_EDITOR_RELOAD_PREVIEW()
     local path =
-        FALLEN_AVATAR_EDITOR_TRY_NATIVE_PICKER()
+        FALLEN_AVATAR_EDITOR_FIND_FOLDER_IMAGE()
 
-    if path then
-        return
-            FALLEN_AVATAR_EDITOR_LOAD_PATH(
+    if not path then
+        A.avatar_editor_status =
+            "No avatar.png / avatar.jpg found in folder"
+
+        return false
+    end
+
+    local ok =
+        FALLEN_AVATAR_EDITOR_LOAD_PATH(
+            path
+        )
+
+    if ok then
+        A.avatar_editor_status =
+            "Loaded: "
+            .. FALLEN_AVATAR_EDITOR_FILENAME(
                 path
             )
     end
 
+    return ok
+end
+
+function FALLEN_AVATAR_EDITOR_COPY_FOLDER_PATH()
+    local path =
+        FALLEN_AVATAR_EDITOR_FOLDER()
+
+    if type(set_clipboard) == "function" then
+        local ok =
+            pcall(
+                set_clipboard,
+                path
+            )
+
+        if ok then
+            A.avatar_editor_status =
+                "Folder path copied to clipboard"
+
+            return true
+        end
+    end
+
     A.avatar_editor_status =
-        "Picker unavailable - copy file path and use Paste Path"
+        path
 
     return false
 end
 
-function FALLEN_AVATAR_EDITOR_PASTE_PATH()
-    if type(get_clipboard) ~= "function" then
-        A.avatar_editor_status =
-            "Clipboard API unavailable"
-        return false
+function FALLEN_AVATAR_EDITOR_OPEN_FOLDER()
+    local path =
+        FALLEN_AVATAR_EDITOR_FOLDER()
+
+    local opened = false
+
+    -- Probe common host APIs without depending on one specific Blueberry build.
+    if Windows then
+        if not opened
+            and type(Windows.OpenFolder) == "function"
+        then
+            local ok =
+                pcall(
+                    Windows.OpenFolder,
+                    Windows,
+                    path
+                )
+
+            if not ok then
+                ok =
+                    pcall(
+                        Windows.OpenFolder,
+                        path
+                    )
+            end
+
+            opened = ok == true
+        end
+
+        if not opened
+            and type(Windows.OpenPath) == "function"
+        then
+            local ok =
+                pcall(
+                    Windows.OpenPath,
+                    Windows,
+                    path
+                )
+
+            if not ok then
+                ok =
+                    pcall(
+                        Windows.OpenPath,
+                        path
+                    )
+            end
+
+            opened = ok == true
+        end
+
+        if not opened
+            and type(Windows.ShellExecute) == "function"
+        then
+            local ok =
+                pcall(
+                    Windows.ShellExecute,
+                    Windows,
+                    "open",
+                    path
+                )
+
+            if not ok then
+                ok =
+                    pcall(
+                        Windows.ShellExecute,
+                        Windows,
+                        path
+                    )
+            end
+
+            if not ok then
+                ok =
+                    pcall(
+                        Windows.ShellExecute,
+                        path
+                    )
+            end
+
+            opened = ok == true
+        end
     end
 
-    local ok, clip =
-        pcall(
-            get_clipboard
-        )
-
-    if not ok then
-        A.avatar_editor_status =
-            "Could not read clipboard"
-        return false
+    if not opened
+        and type(open_folder) == "function"
+    then
+        opened =
+            pcall(
+                open_folder,
+                path
+            )
     end
 
-    return
-        FALLEN_AVATAR_EDITOR_LOAD_PATH(
-            clip
-        )
+    if not opened
+        and type(open_path) == "function"
+    then
+        opened =
+            pcall(
+                open_path,
+                path
+            )
+    end
+
+    if not opened
+        and type(shell_execute) == "function"
+    then
+        local ok =
+            pcall(
+                shell_execute,
+                "open",
+                path
+            )
+
+        if not ok then
+            ok =
+                pcall(
+                    shell_execute,
+                    path
+                )
+        end
+
+        opened = ok == true
+    end
+
+    if not opened
+        and os
+        and type(os.execute) == "function"
+    then
+        local command =
+            'explorer.exe "'
+            .. path
+            .. '"'
+
+        local ok =
+            pcall(
+                os.execute,
+                command
+            )
+
+        opened = ok == true
+    end
+
+    if opened then
+        A.avatar_editor_status =
+            "Avatar folder opened"
+
+        return true
+    end
+
+    -- Last fallback: make the exact folder path easy to use.
+    FALLEN_AVATAR_EDITOR_COPY_FOLDER_PATH()
+
+    return false
 end
 
 function FALLEN_AVATAR_EDITOR_OPEN()
     A.avatar_editor_open = true
-    A.avatar_editor_original_size =
-        tonumber(S.avatar_display_size)
-        or 38
 
     A.avatar_editor_status =
-        _G.FALLEN_CUSTOM_AVATAR.path
-        and FALLEN_AVATAR_EDITOR_FILENAME(
-            _G.FALLEN_CUSTOM_AVATAR.path
-        )
-        or "Select an image"
+        "Put avatar.png / avatar.jpg in the avatar folder"
 
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
 
@@ -22174,10 +22255,6 @@ end
 
 function FALLEN_AVATAR_EDITOR_CANCEL()
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
-
-    S.avatar_display_size =
-        A.avatar_editor_original_size
-        or 38
 
     A.avatar_editor_open = false
     A.avatar_editor_status = ""
@@ -22277,8 +22354,8 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         return
     end
 
-    local pw = 414
-    local ph = 330
+    local pw = 430
+    local ph = 294
 
     local px =
         wx
@@ -22288,7 +22365,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         wy
         + (win_h - ph) * 0.5
 
-    -- Modal dim inside menu.
+    -- True modal dim inside the menu.
     rounded_fill(
         wx + 4,
         wy + 4,
@@ -22332,7 +22409,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         1
     )
 
-    local preview_size = 112
+    local preview_size = 116
     local preview_x = px + 18
     local preview_y = py + 58
 
@@ -22405,84 +22482,98 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         )
     end
 
-    local bx = px + 151
-    local bw = pw - 169
-    local bh = 31
+    local bx = px + 154
+    local bw = pw - 172
+    local bh = 33
 
-    local pick_y = py + 58
-    local paste_y = py + 99
+    local open_y = py + 58
+    local reload_y = py + 101
 
-    local pick_hot =
+    local open_hot =
         hover(
             mx,
             my,
             bx,
-            pick_y,
+            open_y,
             bw,
             bh
         )
 
     rounded_fill(
         bx,
-        pick_y,
+        open_y,
         bw,
         bh,
         7,
-        pick_hot
+        open_hot
             and C.card_hover
             or C.card
     )
 
     centered_text(
         bx + bw * 0.5,
-        pick_y + 9,
-        "Select File",
-        pick_hot
+        open_y + 10,
+        "Open Avatar Folder",
+        open_hot
             and C.text
             or C.text_dim
     )
 
     if clicked
-        and pick_hot
+        and open_hot
     then
-        FALLEN_AVATAR_EDITOR_PICK()
+        FALLEN_AVATAR_EDITOR_OPEN_FOLDER()
     end
 
-    local paste_hot =
+    local reload_hot =
         hover(
             mx,
             my,
             bx,
-            paste_y,
+            reload_y,
             bw,
             bh
         )
 
     rounded_fill(
         bx,
-        paste_y,
+        reload_y,
         bw,
         bh,
         7,
-        paste_hot
+        reload_hot
             and C.card_hover
             or C.card
     )
 
     centered_text(
         bx + bw * 0.5,
-        paste_y + 9,
-        "Paste Path",
-        paste_hot
+        reload_y + 10,
+        "Reload Preview",
+        reload_hot
             and C.text
             or C.text_dim
     )
 
     if clicked
-        and paste_hot
+        and reload_hot
     then
-        FALLEN_AVATAR_EDITOR_PASTE_PATH()
+        FALLEN_AVATAR_EDITOR_RELOAD_PREVIEW()
     end
+
+    text(
+        bx,
+        py + 148,
+        "Use: avatar.png / avatar.jpg",
+        C.text_dim
+    )
+
+    text(
+        bx,
+        py + 167,
+        "Folder: C:\\blueberry\\scripts\\avatar\\",
+        C.text_faint
+    )
 
     local status =
         tostring(
@@ -22490,52 +22581,30 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             or ""
         )
 
-    if #status > 36 then
+    if #status > 47 then
         status =
             string.sub(
                 status,
                 1,
-                33
+                44
             )
             .. "..."
     end
 
     text(
-        bx,
-        py + 145,
+        px + 18,
+        py + 203,
         status,
         C.text_faint
     )
 
     line(
         px + 14,
-        py + 187,
+        py + 226,
         px + pw - 14,
-        py + 187,
+        py + 226,
         C.divider,
         1
-    )
-
-    slider_row(
-        mx,
-        my,
-        clicked,
-        lmb,
-        px + 8,
-        py + 194,
-        pw - 16,
-        "Size / Zoom",
-        "avatar_display_size",
-        30,
-        50,
-        "int"
-    )
-
-    text(
-        px + 20,
-        py + 242,
-        "Changes avatar size in the sidebar",
-        C.text_faint
     )
 
     local button_y = py + ph - 48
@@ -23520,18 +23589,10 @@ hooks.on_render(function()
 
     line(wx + 12, wy + WIN_H - 74, wx + SIDEBAR_W - 12, wy + WIN_H - 74, C.divider, 1)
 
-    local avatar_size =
-        clamp(
-            tonumber(S.avatar_display_size) or 38,
-            30,
-            50
-        )
+    local avatar_size = 38
 
-    local avatar_x =
-        wx + 38 - avatar_size * 0.5
-
-    local avatar_y =
-        wy + WIN_H - 37 - avatar_size * 0.5
+    local avatar_x = wx + 19
+    local avatar_y = wy + WIN_H - 56
 
     local avatar_drawn = false
 
