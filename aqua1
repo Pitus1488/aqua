@@ -17831,12 +17831,72 @@ function FALLEN_DRAW_PITUS_LOGO(
     local label =
         "PITUS-LUA"
 
-    local function draw_text_pass(
+    local function glyph_advance(ch)
+        if ch == "I" then
+            return 3.4 * s
+        elseif ch == "-" then
+            return 3.9 * s
+        elseif ch == "L" then
+            return 5.0 * s
+        elseif ch == "T" then
+            return 5.8 * s
+        elseif ch == "P" then
+            return 6.0 * s
+        elseif ch == "U" then
+            return 6.1 * s
+        elseif ch == "S" then
+            return 5.9 * s
+        elseif ch == "A" then
+            return 6.0 * s
+        end
+
+        return 6.0 * s
+    end
+
+    local function draw_char_block(
+        px,
+        py,
+        ch,
+        col,
+        grow
+    )
+        local g =
+            tonumber(grow) or 0
+
+        -- Draw the same glyph several times with tiny offsets.
+        -- This makes the logo larger both downward and sideways,
+        -- instead of just increasing the spacing between letters.
+        local offsets = {
+            { 0.00, 0.00 },
+            { 0.48 * g, 0.00 },
+            { 0.00, 0.48 * g },
+            { 0.48 * g, 0.48 * g },
+
+            { 0.92 * g, 0.00 },
+            { 0.92 * g, 0.48 * g },
+
+            { 0.00, 0.92 * g },
+            { 0.48 * g, 0.92 * g },
+
+            { 0.18 * g, -0.18 * g },
+        }
+
+        for _, off in ipairs(offsets) do
+            text(
+                px + off[1],
+                py + off[2],
+                ch,
+                col
+            )
+        end
+    end
+
+    local function draw_label_pass(
         px,
         py,
         txt,
         col,
-        size_mul
+        grow
     )
         local ox = 0
 
@@ -17844,56 +17904,55 @@ function FALLEN_DRAW_PITUS_LOGO(
             local ch =
                 txt:sub(i, i)
 
-            local step =
-                (ch == "I")
-                and (6.0 * s * size_mul)
-                or ((ch == "-")
-                    and (5.8 * s * size_mul)
-                    or (8.1 * s * size_mul))
-
-            text(
+            draw_char_block(
                 px + ox,
                 py,
                 ch,
-                col
+                col,
+                grow
             )
 
-            ox = ox + step
+            ox =
+                ox
+                + glyph_advance(ch)
         end
     end
 
-    -- One compact Neverlose-like logo:
-    -- soft dark shadow, cool gray lower pass, sharp white top pass.
-    draw_text_pass(
-        x + 1.7 * s,
-        y + 2.3 * s,
+    local grow =
+        1.55 * s
+
+    -- Neverlose-like layered logo:
+    -- dark shadow -> cool gray lower pass -> bright white face.
+    draw_label_pass(
+        x + 1.8 * s,
+        y + 2.2 * s,
         label,
-        { 0.02, 0.02, 0.03, 0.42 * a },
-        1.00
+        { 0.03, 0.03, 0.04, 0.38 * a },
+        grow
     )
 
-    draw_text_pass(
+    draw_label_pass(
         x,
-        y + 1.10 * s,
+        y + 1.05 * s,
         label,
-        { 0.60, 0.63, 0.69, 0.98 * a },
-        1.00
+        { 0.62, 0.66, 0.72, 0.98 * a },
+        grow
     )
 
-    draw_text_pass(
+    draw_label_pass(
         x,
         y,
         label,
         { 0.97, 0.98, 1.00, 1.00 * a },
-        1.00
+        grow
     )
 
-    draw_text_pass(
+    draw_label_pass(
         x,
-        y - 0.28 * s,
+        y - 0.22 * s,
         label,
-        { 1.00, 1.00, 1.00, 0.18 * a },
-        1.00
+        { 1.00, 1.00, 1.00, 0.15 * a },
+        grow
     )
 end
 
@@ -21878,10 +21937,10 @@ hooks.on_render(function()
 
     -- Brand.
     FALLEN_DRAW_PITUS_LOGO(
-        wx + 14,
-        wy + 18,
+        wx + 13,
+        wy + 14,
         1,
-        2.45
+        1.55
     )
 
     -- Sidebar
@@ -23918,7 +23977,7 @@ hooks.on_render(function()
         x + 10 * scale,
         y + 12 * scale,
         alpha,
-        scale * 1.55
+        scale * 1.20
     )
 
 
