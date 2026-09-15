@@ -21925,24 +21925,119 @@ print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA
 
 -- Product artwork (URL loader image)
 -- Same image object is reused by both loader pages.
+--
+-- fotovssylku /i/... is usually an image PAGE, not raw PNG bytes.
+-- Resolve its og:image/twitter:image first, then feed the direct URL
+-- to Drawing.LoadImage.
+
+_G.FALLEN_LOADER_PRODUCT_PAGE_URL =
+    "https://fotovssylku.ru/i/noFilter-%281%29.cla3G"
 
 _G.FALLEN_LOADER_PRODUCT_IMAGE_URL =
-    "https://cdn.discordapp.com/attachments/1385345366584725687/1548657164372021399/noFilter.png?ex=6aa7dae0&is=6aa68960&hm=ab3c8b7e8fb4dcd33d747e754ca9ba9f4f1c65f6fb68839df9b312eb2790756d&"
+    _G.FALLEN_LOADER_PRODUCT_PAGE_URL
 
-_G.FALLEN_LOADER_PRODUCT_IMAGE =
-    _G.FALLEN_LOADER_PRODUCT_IMAGE or nil
+function FALLEN_LOADER_RESOLVE_IMAGE_URL(url)
+    if type(url) ~= "string"
+        or url == ""
+    then
+        return nil
+    end
 
-if not _G.FALLEN_LOADER_PRODUCT_IMAGE
-    and type(LoadImage) == "function" then
+    if not Http
+        or type(Http.get) ~= "function"
+    then
+        return url
+    end
+
+    local resolved = url
 
     pcall(function()
+        local http_ok, status, body =
+            Http.get(
+                url,
+                { timeout_ms = 7000 }
+            )
+
+        if not http_ok
+            or status ~= 200
+            or type(body) ~= "string"
+            or body == ""
+        then
+            return
+        end
+
+        local direct =
+            body:match(
+                '<meta[^>]-property%s*=%s*["\']og:image["\'][^>]-content%s*=%s*["\']([^"\']+)'
+            )
+            or body:match(
+                '<meta[^>]-content%s*=%s*["\']([^"\']+)["\'][^>]-property%s*=%s*["\']og:image["\']'
+            )
+            or body:match(
+                '<meta[^>]-name%s*=%s*["\']twitter:image["\'][^>]-content%s*=%s*["\']([^"\']+)'
+            )
+            or body:match(
+                '<meta[^>]-content%s*=%s*["\']([^"\']+)["\'][^>]-name%s*=%s*["\']twitter:image["\']'
+            )
+
+        if type(direct) == "string"
+            and direct ~= ""
+        then
+            direct =
+                direct:gsub("&amp;", "&")
+
+            if direct:sub(1, 2) == "//" then
+                direct =
+                    "https:"
+                    .. direct
+            elseif direct:sub(1, 1) == "/" then
+                direct =
+                    "https://fotovssylku.ru"
+                    .. direct
+            end
+
+            resolved = direct
+        end
+    end)
+
+    return resolved
+end
+
+local loader_source_url =
+    _G.FALLEN_LOADER_PRODUCT_PAGE_URL
+
+-- If the loader artwork URL changed between script reloads, discard the
+-- previous cached image handle so the new picture is actually requested.
+if _G.FALLEN_LOADER_PRODUCT_IMAGE_SOURCE
+    ~= loader_source_url
+then
+    _G.FALLEN_LOADER_PRODUCT_IMAGE = nil
+    _G.FALLEN_LOADER_PRODUCT_IMAGE_SOURCE =
+        loader_source_url
+end
+
+_G.FALLEN_LOADER_PRODUCT_IMAGE_URL =
+    FALLEN_LOADER_RESOLVE_IMAGE_URL(
+        loader_source_url
+    )
+    or loader_source_url
+
+if not _G.FALLEN_LOADER_PRODUCT_IMAGE
+    and type(LoadImage) == "function"
+then
+    pcall(function()
         _G.FALLEN_LOADER_PRODUCT_IMAGE =
-            LoadImage(_G.FALLEN_LOADER_PRODUCT_IMAGE_URL)
+            LoadImage(
+                _G.FALLEN_LOADER_PRODUCT_IMAGE_URL
+            )
     end)
 end
 
-local product_image = _G.FALLEN_LOADER_PRODUCT_IMAGE
-local logo_image = product_image
+local product_image =
+    _G.FALLEN_LOADER_PRODUCT_IMAGE
+
+local logo_image =
+    product_image
 
 local last_time = tick()
 
