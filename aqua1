@@ -176,6 +176,7 @@ local defaults = {
     -- Hidden option revealed only after triple-clicking the brand.
     secret_enabled = false,
     secret_crosshair = false,
+    secret_crosshair_size = 16,
 
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
     menu_glow_h = 0.00,
@@ -22939,7 +22940,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            58,
+            99,
             11
         )
 
@@ -22953,6 +22954,21 @@ hooks.on_render(function()
             "Crosshair",
             "secret_crosshair",
             false
+        )
+
+        slider_row(
+            mx,
+            my,
+            page_clicked,
+            lmb,
+            page_x,
+            page_y + 65,
+            page_w,
+            "Size",
+            "secret_crosshair_size",
+            8,
+            40,
+            "int"
         )
     end
 
@@ -25541,69 +25557,104 @@ hooks.on_render(function()
     local sw, sh =
         screen_size()
 
+    -- Integer pixel center to keep the crosshair perfectly even.
     local cx =
-        math.floor(
-            sw * 0.5
-            + 0.5
-        )
+        math.floor(sw * 0.5)
 
     local cy =
-        math.floor(
-            sh * 0.5
-            + 0.5
+        math.floor(sh * 0.5)
+
+    local size =
+        clamp(
+            math.floor(
+                tonumber(S.secret_crosshair_size) or 16
+            ),
+            8,
+            40
         )
 
-    -- Simple ╋ crosshair: compact solid horizontal + vertical bars.
-    -- A tiny dark underlay keeps it readable on bright scenes.
-    local arm = 7
-    local thick = 2
+    -- Draw a symmetric ╋ using filled rectangles instead of lines.
+    -- This avoids the uneven / shaky line look.
+    local half =
+        math.max(
+            4,
+            math.floor(size * 0.5)
+        )
 
-    DrawLine(
-        cx - arm - 1,
-        cy,
-        cx + arm + 1,
-        cy,
+    local thick =
+        math.max(
+            2,
+            math.floor(size * 0.16)
+        )
+
+    local outline =
+        1
+
+    local function filled_rect(
+        x,
+        y,
+        w,
+        h,
+        r,
+        g,
+        b,
+        a
+    )
+        DrawBoxFilled(
+            x,
+            y,
+            x + w,
+            y + h,
+            r,
+            g,
+            b,
+            a
+        )
+    end
+
+    -- Dark outline / underlay
+    filled_rect(
+        cx - half - outline,
+        cy - math.floor(thick * 0.5) - outline,
+        half * 2 + outline * 2 + 1,
+        thick + outline * 2,
         0,
         0,
         0,
-        0.78,
-        thick + 2
+        0.82
     )
 
-    DrawLine(
-        cx,
-        cy - arm - 1,
-        cx,
-        cy + arm + 1,
+    filled_rect(
+        cx - math.floor(thick * 0.5) - outline,
+        cy - half - outline,
+        thick + outline * 2,
+        half * 2 + outline * 2 + 1,
         0,
         0,
         0,
-        0.78,
-        thick + 2
+        0.82
     )
 
-    DrawLine(
-        cx - arm,
-        cy,
-        cx + arm,
-        cy,
+    -- White body
+    filled_rect(
+        cx - half,
+        cy - math.floor(thick * 0.5),
+        half * 2 + 1,
+        thick,
         1,
         1,
         1,
-        1,
-        thick
+        1
     )
 
-    DrawLine(
-        cx,
-        cy - arm,
-        cx,
-        cy + arm,
+    filled_rect(
+        cx - math.floor(thick * 0.5),
+        cy - half,
+        thick,
+        half * 2 + 1,
         1,
         1,
         1,
-        1,
-        thick
+        1
     )
 end)
-
