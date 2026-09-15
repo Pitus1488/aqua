@@ -2503,16 +2503,27 @@ local function icon_aim(x, y, c)
 end
 
 local function icon_world(x, y, c)
-    rounded_outline(
-        x + 1,
-        y + 2,
-        14,
-        11,
-        3.5,
-        c,
-        1.1,
-        nil
-    )
+    -- IMPORTANT: sidebar icons must be pure line geometry.
+    -- rounded_outline() intentionally turns into a filled surface while the
+    -- menu is translucent, which made this icon become a gray square in
+    -- Gradient mode (50% shell opacity).
+    local x1 = x + 1
+    local y1 = y + 2
+    local x2 = x + 15
+    local y2 = y + 13
+    local r = 3
+
+    -- Rounded-ish frame made only from lines. No fill / C.content involved.
+    line(x1 + r, y1, x2 - r, y1, c, 1.1)
+    line(x1 + r, y2, x2 - r, y2, c, 1.1)
+    line(x1, y1 + r, x1, y2 - r, c, 1.1)
+    line(x2, y1 + r, x2, y2 - r, c, 1.1)
+
+    -- Small diagonal corner segments approximate the rounding cleanly.
+    line(x1, y1 + r, x1 + r, y1, c, 1.1)
+    line(x2 - r, y1, x2, y1 + r, c, 1.1)
+    line(x2, y2 - r, x2 - r, y2, c, 1.1)
+    line(x1 + r, y2, x1, y2 - r, c, 1.1)
 
     circle_fill(x + 5, y + 5, 1.2, c)
     line(x + 3, y + 10.5, x + 6.5, y + 7.5, c, 1.1)
@@ -2561,16 +2572,23 @@ end
 
 function FALLEN_ICON_MISC(x, y, c)
     -- Small utility/grid icon for Misc.
-    rounded_outline(
-        x + 2,
-        y + 2,
-        12,
-        12,
-        3,
-        c,
-        1.05,
-        nil
-    )
+    -- Pure lines only so translucent Gradient mode cannot turn the outline
+    -- into a filled square.
+    local x1 = x + 2
+    local y1 = y + 2
+    local x2 = x + 14
+    local y2 = y + 14
+    local r = 2.5
+
+    line(x1 + r, y1, x2 - r, y1, c, 1.05)
+    line(x1 + r, y2, x2 - r, y2, c, 1.05)
+    line(x1, y1 + r, x1, y2 - r, c, 1.05)
+    line(x2, y1 + r, x2, y2 - r, c, 1.05)
+
+    line(x1, y1 + r, x1 + r, y1, c, 1.05)
+    line(x2 - r, y1, x2, y1 + r, c, 1.05)
+    line(x2, y2 - r, x2 - r, y2, c, 1.05)
+    line(x1 + r, y2, x1, y2 - r, c, 1.05)
 
     circle_fill(x + 6,  y + 6,  1.15, c)
     circle_fill(x + 11, y + 6,  1.15, c)
@@ -2663,6 +2681,11 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
             C.accent,
             a
         )
+
+    -- Sidebar icons should stay crisp even when the Gradient shell itself is
+    -- 50% transparent. Their own alpha remains 1; only menu open/close alpha
+    -- is applied by the primitive wrappers.
+    ic[4] = 1
 
     local icon = ICONS[index]
 
