@@ -25645,4 +25645,43 @@ hooks.on_render(function()
         1,
         1
     )
+
+    -- Two symmetric green vertical bars, like the reference.
+    local green_offset =
+        math.max(
+            7,
+            math.floor(size * 0.34)
+        )
+
+    local green_half =
+        math.max(
+            6,
+            math.floor(size * 0.48)
+        )
+
+    local green_thick = 2
+
+    -- Left green bar
+    DrawBoxFilled(
+        cx - green_offset - 1,
+        cy - green_half,
+        cx - green_offset,
+        cy + green_half,
+        0.10,
+        1.00,
+        0.22,
+        1.00
+    )
+
+    -- Right green bar
+    DrawBoxFilled(
+        cx + green_offset,
+        cy - green_half,
+        cx + green_offset + 1,
+        cy + green_half,
+        0.10,
+        1.00,
+        0.22,
+        1.00
+    )
 end)
