@@ -248,10 +248,14 @@ local defaults = {
     world_icon_border_alpha = 100,
 
     silent_enabled = false,
-    silent_magic_bullet = false,
-    -- Learned once from the native cheat menu and then saved in config.
-    silent_magic_section = "",
-    silent_magic_key = "",
+
+    -- Misc.
+    misc_upside_down = false,
+    -- If the native cheat exposes this under a hidden live key,
+    -- remember the exact section/key after discovery.
+    misc_upside_section = "",
+    misc_upside_key = "",
+
     trigger_enabled = false,
     visuals_enabled = false,
     world_enabled = false,
@@ -4869,6 +4873,48 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
 end
 
 
+function FALLEN_DRAW_MISC_PAGE(
+    mx,
+    my,
+    clicked,
+    lmb,
+    cx,
+    cy,
+    cw
+)
+    local left_w =
+        math.floor(
+            cw * 0.48
+        )
+
+    section_title(
+        cx,
+        cy,
+        "Misc"
+    )
+
+    card(
+        cx,
+        cy + 25,
+        left_w,
+        54,
+        11
+    )
+
+    toggle_row(
+        mx,
+        my,
+        clicked,
+        cx,
+        cy + 32,
+        left_w,
+        "Upside Down",
+        "misc_upside_down",
+        false
+    )
+end
+
+
 local function draw_aimbot_page(
     mx, my, clicked, lmb, rmb_clicked, cx, cy, cw
 )
@@ -4996,7 +5042,7 @@ local function draw_aimbot_page(
         lx,
         cy + 224,
         left_w,
-        95,
+        54,
         11
     )
 
@@ -5009,27 +5055,6 @@ local function draw_aimbot_page(
         left_w,
         "Silent Aim",
         "silent_enabled",
-        false
-    )
-
-    line(
-        lx + 12,
-        cy + 271,
-        lx + left_w - 12,
-        cy + 271,
-        C.divider,
-        1
-    )
-
-    toggle_row(
-        mx,
-        my,
-        base_clicked,
-        lx,
-        cy + 272,
-        left_w,
-        "Magic Bullet",
-        "silent_magic_bullet",
         false
     )
 
@@ -8049,309 +8074,113 @@ local function fap_find_target(cross, cam)
 end
 
 
-FALLEN_SILENT_MAGIC_BINDING =
-    FALLEN_SILENT_MAGIC_BINDING
+function FALLEN_SILENT_TARGET_PART_INDEX()
+    local part =
+        tostring(
+            S.aim_target_part
+            or "Head"
+        )
+
+    if part == "Head" then
+        return 0
+    end
+
+    -- Built-in silent aim exposes Head / Torso / Feet.
+    -- Our torso/root variants map to Torso.
+    return 1
+end
+
+function FALLEN_SILENT_PRED_CALLBACK(target, pos, cam)
+    if not pos then
+        return nil
+    end
+
+    if S.aim_auto_prediction ~= true then
+        return pos
+    end
+
+    local use_cam = cam
+
+    if not use_cam
+        and aim
+        and type(aim.get_camera_position) == "function"
+    then
+        pcall(function()
+            use_cam =
+                aim.get_camera_position()
+        end)
+    end
+
+    local predicted = nil
+
+    pcall(function()
+        predicted =
+            fap_predict(
+                target,
+                pos,
+                use_cam
+            )
+    end)
+
+    return predicted or pos
+end
+
+
+FALLEN_UPSIDE_BINDING =
+    FALLEN_UPSIDE_BINDING
     or {
         section = nil,
         key = nil,
-        value_type = nil,
-        capture = false,
-        capture_until = 0,
-        snapshot = nil,
-        last_requested = false,
-        notified_wait = false,
+        last_scan = 0,
+        last_error_notice = 0,
     }
 
-function FALLEN_MAGIC_IGNORE_FIELD(section_name, key)
-    local s =
-        tostring(section_name or '')
+function FALLEN_UPSIDE_NORMALIZE(v)
+    return
+        tostring(v or "")
         :lower()
-
-    local k =
-        tostring(key or '')
-        :lower()
-
-    -- These are fields our Lua itself updates every frame, so they must
-    -- never be mistaken for the native Magic Bullet toggle during capture.
-    if s == 'silent_aim' then
-        if k == 'enabled'
-            or k == 'fov_only'
-            or k == 'prediction'
-            or k == 'team_check'
-            or k == 'sticky_aim'
-            or k == 'target_part'
-            or k == 'fov'
-            or k == 'pred_x'
-            or k == 'pred_y'
-            or k == 'method'
-        then
-            return true
-        end
-    end
-
-    return false
+        :gsub("[^%w]", "")
 end
 
-function FALLEN_MAGIC_SNAPSHOT()
-    local snap = {}
+function FALLEN_UPSIDE_KEY_MATCH(key)
+    local n =
+        FALLEN_UPSIDE_NORMALIZE(key)
 
-    if not cheat
-        or type(cheat._sections) ~= 'function'
+    if n == "upsidedown"
+        or n == "upsidedownenabled"
+        or n == "enableupsidedown"
+        or n == "cameraupsidedown"
+        or n == "upsidedowncamera"
     then
-        return snap
-    end
-
-    local ok_sections, sections =
-        pcall(cheat._sections)
-
-    if not ok_sections
-        or type(sections) ~= 'table'
-    then
-        return snap
-    end
-
-    for _, section_name in ipairs(sections) do
-        local section = nil
-
-        pcall(function()
-            section = cheat[section_name]
-        end)
-
-        if section then
-            local keys = nil
-
-            pcall(function()
-                keys = section:_keys()
-            end)
-
-            if type(keys) == 'table' then
-                for _, key in ipairs(keys) do
-                    if not FALLEN_MAGIC_IGNORE_FIELD(
-                        section_name,
-                        key
-                    ) then
-                        local value = nil
-                        local ok_value =
-                            pcall(function()
-                                value = section[key]
-                            end)
-
-                        local vt = type(value)
-
-                        if ok_value
-                            and (
-                                vt == 'boolean'
-                                or vt == 'number'
-                                or vt == 'string'
-                            )
-                        then
-                            local id =
-                                tostring(section_name)
-                                .. '\31'
-                                .. tostring(key)
-
-                            snap[id] = {
-                                section = tostring(section_name),
-                                key = tostring(key),
-                                value = value,
-                                value_type = vt,
-                            }
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    return snap
-end
-
-function FALLEN_MAGIC_SCORE_CANDIDATE(item)
-    if not item then
-        return -9999
-    end
-
-    local section =
-        tostring(item.section or '')
-        :lower()
-
-    local key =
-        tostring(item.key or '')
-        :lower()
-
-    local compact =
-        key:gsub('[^%w]', '')
-
-    local score = 0
-
-    if item.value_type == 'boolean' then
-        score = score + 40
-    elseif item.value_type == 'number' then
-        score = score + 10
-    end
-
-    if compact:find('magicbullet', 1, true) then
-        score = score + 300
-    else
-        if compact:find('magic', 1, true) then
-            score = score + 100
-        end
-
-        if compact:find('bullet', 1, true) then
-            score = score + 100
-        end
-    end
-
-    if section:find('silent', 1, true)
-        or section:find('aim', 1, true)
-        or section:find('weapon', 1, true)
-        or section:find('combat', 1, true)
-    then
-        score = score + 25
-    end
-
-    return score
-end
-
-function FALLEN_MAGIC_CAPTURE_START()
-    FALLEN_SILENT_MAGIC_BINDING.snapshot =
-        FALLEN_MAGIC_SNAPSHOT()
-
-    FALLEN_SILENT_MAGIC_BINDING.capture = true
-    FALLEN_SILENT_MAGIC_BINDING.capture_until = tick() + 10.0
-    FALLEN_SILENT_MAGIC_BINDING.notified_wait = true
-
-    if type(notify) == 'function' then
-        pcall(
-            notify,
-            'Magic Bullet bind: toggle the NATIVE Magic Bullet once within 10 seconds',
-            'warning'
-        )
-    end
-end
-
-function FALLEN_MAGIC_BIND(section_name, key, value_type)
-    FALLEN_SILENT_MAGIC_BINDING.section =
-        tostring(section_name or '')
-
-    FALLEN_SILENT_MAGIC_BINDING.key =
-        tostring(key or '')
-
-    FALLEN_SILENT_MAGIC_BINDING.value_type =
-        tostring(value_type or '')
-
-    FALLEN_SILENT_MAGIC_BINDING.capture = false
-    FALLEN_SILENT_MAGIC_BINDING.snapshot = nil
-
-    S.silent_magic_section =
-        FALLEN_SILENT_MAGIC_BINDING.section
-
-    S.silent_magic_key =
-        FALLEN_SILENT_MAGIC_BINDING.key
-
-    if type(notify) == 'function' then
-        pcall(
-            notify,
-            'Magic Bullet bound: '
-                .. FALLEN_SILENT_MAGIC_BINDING.section
-                .. '.'
-                .. FALLEN_SILENT_MAGIC_BINDING.key,
-            'success'
-        )
-    end
-end
-
-function FALLEN_MAGIC_CAPTURE_STEP()
-    if FALLEN_SILENT_MAGIC_BINDING.capture ~= true then
-        return false
-    end
-
-    if tick() > (FALLEN_SILENT_MAGIC_BINDING.capture_until or 0) then
-        FALLEN_SILENT_MAGIC_BINDING.capture = false
-        FALLEN_SILENT_MAGIC_BINDING.snapshot = nil
-
-        if type(notify) == 'function' then
-            pcall(
-                notify,
-                'Magic Bullet bind timed out - toggle our Magic Bullet again to retry',
-                'warning'
-            )
-        end
-
-        return false
-    end
-
-    local before =
-        FALLEN_SILENT_MAGIC_BINDING.snapshot
-        or {}
-
-    local now =
-        FALLEN_MAGIC_SNAPSHOT()
-
-    local best = nil
-    local best_score = -9999
-    local changed_count = 0
-
-    for id, item in pairs(now) do
-        local old = before[id]
-
-        if old
-            and old.value ~= item.value
-        then
-            changed_count = changed_count + 1
-
-            local score =
-                FALLEN_MAGIC_SCORE_CANDIDATE(item)
-
-            if score > best_score then
-                best = item
-                best_score = score
-            end
-        end
-    end
-
-    -- A native checkbox normally changes a single bool. If several fields
-    -- change together, only bind automatically when one candidate clearly
-    -- looks like a Magic Bullet field.
-    if best
-        and (
-            changed_count == 1
-            or best_score >= 100
-        )
-    then
-        FALLEN_MAGIC_BIND(
-            best.section,
-            best.key,
-            best.value_type
-        )
-
         return true
     end
 
-    return false
+    return
+        n:find("upside", 1, true) ~= nil
+        and n:find("down", 1, true) ~= nil
 end
 
-function FALLEN_MAGIC_LOAD_SAVED_BINDING()
-    if FALLEN_SILENT_MAGIC_BINDING.section
-        and FALLEN_SILENT_MAGIC_BINDING.key
+function FALLEN_UPSIDE_LOAD_SAVED()
+    if FALLEN_UPSIDE_BINDING.section
+        and FALLEN_UPSIDE_BINDING.key
     then
         return true
     end
 
     local section_name =
         tostring(
-            S.silent_magic_section
-            or ''
+            S.misc_upside_section
+            or ""
         )
 
     local key =
         tostring(
-            S.silent_magic_key
-            or ''
+            S.misc_upside_key
+            or ""
         )
 
-    if section_name == ''
-        or key == ''
+    if section_name == ""
+        or key == ""
         or not cheat
     then
         return false
@@ -8360,7 +8189,8 @@ function FALLEN_MAGIC_LOAD_SAVED_BINDING()
     local section = nil
 
     pcall(function()
-        section = cheat[section_name]
+        section =
+            cheat[section_name]
     end)
 
     if not section then
@@ -8376,22 +8206,169 @@ function FALLEN_MAGIC_LOAD_SAVED_BINDING()
     if not ok
         or value == nil
     then
-        S.silent_magic_section = ''
-        S.silent_magic_key = ''
+        S.misc_upside_section = ""
+        S.misc_upside_key = ""
         return false
     end
 
-    FALLEN_SILENT_MAGIC_BINDING.section = section_name
-    FALLEN_SILENT_MAGIC_BINDING.key = key
-    FALLEN_SILENT_MAGIC_BINDING.value_type = type(value)
+    FALLEN_UPSIDE_BINDING.section =
+        section_name
+
+    FALLEN_UPSIDE_BINDING.key =
+        key
 
     return true
 end
 
-function FALLEN_SILENT_MAGIC_SET(enabled)
-    enabled = enabled == true
+function FALLEN_UPSIDE_DISCOVER()
+    if FALLEN_UPSIDE_LOAD_SAVED() then
+        return true
+    end
 
-    if not FALLEN_MAGIC_LOAD_SAVED_BINDING() then
+    if not cheat
+        or type(cheat._sections) ~= "function"
+    then
+        return false
+    end
+
+    local now = tick()
+
+    if now - (FALLEN_UPSIDE_BINDING.last_scan or 0) < 0.75 then
+        return false
+    end
+
+    FALLEN_UPSIDE_BINDING.last_scan = now
+
+    local preferred = {
+        "upside_down",
+        "upsidedown",
+        "upside_down_enabled",
+        "upsidedown_enabled",
+        "enable_upside_down",
+        "camera_upside_down",
+        "upside_down_camera",
+    }
+
+    local function bind(section_name, key)
+        FALLEN_UPSIDE_BINDING.section =
+            tostring(section_name)
+
+        FALLEN_UPSIDE_BINDING.key =
+            tostring(key)
+
+        S.misc_upside_section =
+            FALLEN_UPSIDE_BINDING.section
+
+        S.misc_upside_key =
+            FALLEN_UPSIDE_BINDING.key
+
+        return true
+    end
+
+    local function inspect(section_name, section)
+        if not section then
+            return false
+        end
+
+        for _, key in ipairs(preferred) do
+            local value = nil
+            local ok =
+                pcall(function()
+                    value = section[key]
+                end)
+
+            if ok
+                and value ~= nil
+                and (
+                    type(value) == "boolean"
+                    or type(value) == "number"
+                )
+            then
+                return bind(
+                    section_name,
+                    key
+                )
+            end
+        end
+
+        local keys = nil
+
+        pcall(function()
+            keys =
+                section:_keys()
+        end)
+
+        if type(keys) == "table" then
+            for _, key in ipairs(keys) do
+                if FALLEN_UPSIDE_KEY_MATCH(key) then
+                    local value = nil
+                    local ok =
+                        pcall(function()
+                            value = section[key]
+                        end)
+
+                    if ok
+                        and value ~= nil
+                        and (
+                            type(value) == "boolean"
+                            or type(value) == "number"
+                        )
+                    then
+                        return bind(
+                            section_name,
+                            key
+                        )
+                    end
+                end
+            end
+        end
+
+        return false
+    end
+
+    -- Most likely camera-related location first.
+    if inspect(
+        "camera",
+        cheat.camera
+    ) then
+        return true
+    end
+
+    local sections = nil
+
+    pcall(function()
+        sections =
+            cheat._sections()
+    end)
+
+    if type(sections) == "table" then
+        for _, section_name in ipairs(sections) do
+            if tostring(section_name) ~= "camera" then
+                local section = nil
+
+                pcall(function()
+                    section =
+                        cheat[section_name]
+                end)
+
+                if inspect(
+                    tostring(section_name),
+                    section
+                ) then
+                    return true
+                end
+            end
+        end
+    end
+
+    return false
+end
+
+function FALLEN_UPSIDE_SET(enabled)
+    enabled =
+        enabled == true
+
+    if not FALLEN_UPSIDE_DISCOVER() then
         return false
     end
 
@@ -8400,7 +8377,7 @@ function FALLEN_SILENT_MAGIC_SET(enabled)
     pcall(function()
         section =
             cheat[
-                FALLEN_SILENT_MAGIC_BINDING.section
+                FALLEN_UPSIDE_BINDING.section
             ]
     end)
 
@@ -8409,7 +8386,7 @@ function FALLEN_SILENT_MAGIC_SET(enabled)
     end
 
     local key =
-        FALLEN_SILENT_MAGIC_BINDING.key
+        FALLEN_UPSIDE_BINDING.key
 
     local current = nil
 
@@ -8417,35 +8394,50 @@ function FALLEN_SILENT_MAGIC_SET(enabled)
         current = section[key]
     end)
 
-    local value_type = type(current)
-    local wanted = enabled
+    local wanted =
+        enabled
 
-    if value_type == 'number' then
-        wanted = enabled and 1 or 0
+    if type(current) == "number" then
+        wanted =
+            enabled
+            and 1
+            or 0
     end
 
-    local ok_write =
+    local ok =
         pcall(function()
             section[key] = wanted
         end)
 
-    if not ok_write then
+    if not ok then
         return false
     end
 
-    local verify = nil
-
-    pcall(function()
-        verify = section[key]
-    end)
-
-    if value_type == 'boolean' then
-        return verify == enabled
-    elseif value_type == 'number' then
-        return tonumber(verify) == (enabled and 1 or 0)
-    end
-
     return true
+end
+
+function FALLEN_UPSIDE_TICK()
+    local wanted =
+        S.misc_upside_down == true
+
+    local ok =
+        FALLEN_UPSIDE_SET(
+            wanted
+        )
+
+    if wanted
+        and not ok
+        and type(notify) == "function"
+        and tick() - (FALLEN_UPSIDE_BINDING.last_error_notice or 0) > 4
+    then
+        FALLEN_UPSIDE_BINDING.last_error_notice = tick()
+
+        pcall(
+            notify,
+            "Upside Down: native field is not exposed in this cheat build",
+            "warning"
+        )
+    end
 end
 
 function FALLEN_SILENT_TICK()
@@ -8525,38 +8517,12 @@ function FALLEN_SILENT_TICK()
             FALLEN_SILENT_PRED_CALLBACK
     end)
 
-    -- Magic Bullet is a separate native feature.
-    -- If its hidden live field has not been mapped yet, changing our toggle
-    -- starts a 10-second one-time capture. Toggle the native checkbox once
-    -- and the exact section/key will be learned and saved automatically.
-    local requested_magic =
-        S.silent_magic_bullet == true
-
-    if requested_magic
-        ~= (FALLEN_SILENT_MAGIC_BINDING.last_requested == true)
-    then
-        FALLEN_SILENT_MAGIC_BINDING.last_requested =
-            requested_magic
-
-        if not FALLEN_MAGIC_LOAD_SAVED_BINDING() then
-            FALLEN_MAGIC_CAPTURE_START()
-        end
-    end
-
-    if FALLEN_SILENT_MAGIC_BINDING.capture == true then
-        FALLEN_MAGIC_CAPTURE_STEP()
-    end
-
-    FALLEN_SILENT_MAGIC_SET(
-        requested_magic
-    )
 end
 
 local function fap_draw_fov()
     if (
             S.aim_enabled ~= true
             and S.silent_enabled ~= true
-            and S.silent_magic_bullet ~= true
         )
         or S.aim_fov_enabled ~= true
         or type(DrawCircle) ~= "function"
@@ -8906,6 +8872,12 @@ end)
 hooks.on_render(function()
     pcall(
         FALLEN_SILENT_TICK
+    )
+end)
+
+hooks.on_render(function()
+    pcall(
+        FALLEN_UPSIDE_TICK
     )
 end)
 
@@ -21892,10 +21864,14 @@ hooks.on_render(function()
         end
 
     elseif S.tab == 3 then
-        section_title(
+        FALLEN_DRAW_MISC_PAGE(
+            mx,
+            my,
+            page_clicked,
+            lmb,
             page_x,
             page_y,
-            "Misc"
+            page_w
         )
     end
 
