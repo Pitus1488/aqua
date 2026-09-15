@@ -175,6 +175,9 @@ local defaults = {
 
     -- Custom profile avatar editor.
     avatar_display_size = 38,
+    avatar_crop_zoom = 1.00,
+    avatar_crop_x = 0,
+    avatar_crop_y = 0,
 
     -- Hidden option revealed only after triple-clicking the brand.
     secret_enabled = false,
@@ -564,6 +567,16 @@ local A = {
     avatar_editor_original_size = 38,
     avatar_editor_frame_clicked = false,
 
+    avatar_crop_request_id = 0,
+    avatar_crop_pending_id = nil,
+    avatar_crop_pending_slot = nil,
+    avatar_crop_active_slot = 0,
+    avatar_crop_dirty = false,
+    avatar_crop_dirty_at = 0,
+    avatar_crop_last_signature = nil,
+    avatar_crop_source_path = nil,
+    avatar_crop_worker_ready = false,
+
     -- Invisible Fallen-lua triple-click gesture.
     secret_unlocked = false,
     secret_brand_clicks = 0,
@@ -639,9 +652,9 @@ function FALLEN_CUSTOM_AVATAR_ENSURE_FOLDER()
             pcall(
                 write_file,
                 marker,
-                "Put your image in this folder. Recommended name: avatar.png\n"
+                "Put any image in this folder. The filename does NOT matter.\n"
                 .. "Supported: PNG, JPG/JPEG, BMP, GIF, TGA.\n"
-                .. "Reload the Lua after replacing the file.\n"
+                .. "The avatar editor uses the newest image in this folder.\n"
             )
         end
     end
@@ -21986,74 +21999,558 @@ function FALLEN_AVATAR_EDITOR_FOLDER()
         "C:\\blueberry\\scripts\\avatar\\"
 end
 
-function FALLEN_AVATAR_EDITOR_FIND_FOLDER_IMAGE()
-    local base =
+function FALLEN_AVATAR_CROP_WORKER_PATH()
+    return
         FALLEN_AVATAR_EDITOR_FOLDER()
-
-    local names = {
-        "avatar.png",
-        "avatar.jpg",
-        "avatar.jpeg",
-        "avatar.bmp",
-        "avatar.gif",
-        "avatar.tga",
-        "profile.png",
-        "profile.jpg",
-        "pfp.png",
-        "pfp.jpg",
-        "image.png",
-        "image.jpg",
-    }
-
-    if type(exists_file) ~= "function" then
-        return nil
-    end
-
-    for _, name in ipairs(names) do
-        local path =
-            base .. name
-
-        local ok, exists =
-            pcall(
-                exists_file,
-                path
-            )
-
-        if ok
-            and exists == true
-        then
-            return path
-        end
-    end
-
-    return nil
+        .. "avatar_crop_worker.ps1"
 end
 
-function FALLEN_AVATAR_EDITOR_RELOAD_PREVIEW()
-    local path =
-        FALLEN_AVATAR_EDITOR_FIND_FOLDER_IMAGE()
+function FALLEN_AVATAR_CROP_DONE_PATH()
+    return
+        FALLEN_AVATAR_EDITOR_FOLDER()
+        .. "avatar_crop_done.txt"
+end
 
-    if not path then
+function FALLEN_AVATAR_CROP_OUTPUT_PATH(slot)
+    return
+        FALLEN_AVATAR_EDITOR_FOLDER()
+        .. "avatar_crop_preview_"
+        .. tostring(slot)
+        .. ".bmp"
+end
+
+function FALLEN_AVATAR_CROP_WRITE_WORKER()
+    if A.avatar_crop_worker_ready then
+        return true
+    end
+
+    if type(write_file) ~= "function" then
         A.avatar_editor_status =
-            "No avatar.png / avatar.jpg found in folder"
+            "write_file unavailable - crop editor cannot start"
+        return false
+    end
+
+    local worker = [=[
+param(
+    [double]$Zoom = 1.0,
+    [double]$PanX = 0.0,
+    [double]$PanY = 0.0,
+    [int]$Request = 0,
+    [string]$Slot = "a"
+)
+
+$ErrorActionPreference = "Stop"
+$folder = Split-Path -Parent $MyInvocation.MyCommand.Path
+$done = Join-Path $folder "avatar_crop_done.txt"
+
+try {
+    Add-Type -AssemblyName System.Drawing
+
+    $supported = @(".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tga")
+
+    $files = Get-ChildItem -LiteralPath $folder -File |
+        Where-Object {
+            $ext = $_.Extension.ToLowerInvariant()
+            $name = $_.Name.ToLowerInvariant()
+
+            ($supported -contains $ext) -and
+            ($name -notlike "avatar_crop_preview_*.bmp") -and
+            ($name -ne "avatar_saved.bmp")
+        } |
+        Sort-Object LastWriteTime -Descending
+
+    if (-not $files -or $files.Count -lt 1) {
+        throw "No supported image found in avatar folder"
+    }
+
+    $source = $files[0].FullName
+
+    $loaded = [System.Drawing.Image]::FromFile($source)
+    $image = New-Object System.Drawing.Bitmap($loaded)
+    $loaded.Dispose()
+
+    $w = [double]$image.Width
+    $h = [double]$image.Height
+
+    if ($w -le 0 -or $h -le 0) {
+        throw "Invalid image size"
+    }
+
+    $zoom = [Math]::Max(1.0, [Math]::Min(5.0, $Zoom))
+    $panX = [Math]::Max(-1.0, [Math]::Min(1.0, $PanX))
+    $panY = [Math]::Max(-1.0, [Math]::Min(1.0, $PanY))
+
+    $base = [Math]::Min($w, $h)
+    $crop = $base / $zoom
+
+    $travelX = [Math]::Max(0.0, ($w - $crop) * 0.5)
+    $travelY = [Math]::Max(0.0, ($h - $crop) * 0.5)
+
+    $centerX = ($w * 0.5) + ($panX * $travelX)
+    $centerY = ($h * 0.5) + ($panY * $travelY)
+
+    $srcX = $centerX - ($crop * 0.5)
+    $srcY = $centerY - ($crop * 0.5)
+
+    $srcX = [Math]::Max(0.0, [Math]::Min($w - $crop, $srcX))
+    $srcY = [Math]::Max(0.0, [Math]::Min($h - $crop, $srcY))
+
+    $output = Join-Path $folder ("avatar_crop_preview_" + $Slot + ".bmp")
+
+    $bitmap = New-Object System.Drawing.Bitmap 320, 320
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+
+    $graphics.CompositingMode =
+        [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+
+    $graphics.CompositingQuality =
+        [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+
+    $graphics.InterpolationMode =
+        [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+
+    $graphics.SmoothingMode =
+        [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+
+    $graphics.PixelOffsetMode =
+        [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+
+    $destRect =
+        New-Object System.Drawing.RectangleF(
+            0,
+            0,
+            320,
+            320
+        )
+
+    $srcRect =
+        New-Object System.Drawing.RectangleF(
+            [single]$srcX,
+            [single]$srcY,
+            [single]$crop,
+            [single]$crop
+        )
+
+    $graphics.DrawImage(
+        $image,
+        $destRect,
+        $srcRect,
+        [System.Drawing.GraphicsUnit]::Pixel
+    )
+
+    $graphics.Dispose()
+    $image.Dispose()
+
+    $bitmap.Save(
+        $output,
+        [System.Drawing.Imaging.ImageFormat]::Bmp
+    )
+
+    $bitmap.Dispose()
+
+    [System.IO.File]::WriteAllText(
+        $done,
+        (
+            $Request.ToString()
+            + "|"
+            + $Slot
+            + "|OK|"
+            + $source
+        )
+    )
+}
+catch {
+    [System.IO.File]::WriteAllText(
+        $done,
+        (
+            $Request.ToString()
+            + "|"
+            + $Slot
+            + "|ERR|"
+            + $_.Exception.Message
+        )
+    )
+}
+]=]
+
+    local ok =
+        pcall(
+            write_file,
+            FALLEN_AVATAR_CROP_WORKER_PATH(),
+            worker
+        )
+
+    if ok then
+        A.avatar_crop_worker_ready = true
+        return true
+    end
+
+    A.avatar_editor_status =
+        "Could not create crop worker"
+
+    return false
+end
+
+function FALLEN_AVATAR_CROP_LAUNCH_CMD(cmd_path)
+    local launched = false
+
+    if os
+        and type(os.execute) == "function"
+    then
+        local command =
+            'start "" /b cmd.exe /c "'
+            .. cmd_path
+            .. '"'
+
+        local ok =
+            pcall(
+                os.execute,
+                command
+            )
+
+        launched = ok == true
+    end
+
+    if not launched
+        and Windows
+        and type(Windows.ShellExecute) == "function"
+    then
+        local ok =
+            pcall(
+                Windows.ShellExecute,
+                Windows,
+                "open",
+                cmd_path
+            )
+
+        if not ok then
+            ok =
+                pcall(
+                    Windows.ShellExecute,
+                    Windows,
+                    cmd_path
+                )
+        end
+
+        if not ok then
+            ok =
+                pcall(
+                    Windows.ShellExecute,
+                    cmd_path
+                )
+        end
+
+        launched = ok == true
+    end
+
+    if not launched
+        and type(shell_execute) == "function"
+    then
+        local ok =
+            pcall(
+                shell_execute,
+                "open",
+                cmd_path
+            )
+
+        if not ok then
+            ok =
+                pcall(
+                    shell_execute,
+                    cmd_path
+                )
+        end
+
+        launched = ok == true
+    end
+
+    return launched
+end
+
+function FALLEN_AVATAR_CROP_START()
+    if A.avatar_crop_pending_id ~= nil then
+        A.avatar_crop_dirty = true
+        return false
+    end
+
+    if not FALLEN_AVATAR_CROP_WRITE_WORKER() then
+        return false
+    end
+
+    if type(write_file) ~= "function" then
+        return false
+    end
+
+    A.avatar_crop_request_id =
+        (tonumber(A.avatar_crop_request_id) or 0)
+        + 1
+
+    local request =
+        A.avatar_crop_request_id
+
+    local slot =
+        A.avatar_crop_active_slot == 1
+        and "b"
+        or "a"
+
+    local zoom =
+        clamp(
+            tonumber(S.avatar_crop_zoom) or 1,
+            1,
+            5
+        )
+
+    local pan_x =
+        clamp(
+            (tonumber(S.avatar_crop_x) or 0) / 100,
+            -1,
+            1
+        )
+
+    local pan_y =
+        clamp(
+            (tonumber(S.avatar_crop_y) or 0) / 100,
+            -1,
+            1
+        )
+
+    local folder =
+        FALLEN_AVATAR_EDITOR_FOLDER()
+
+    local cmd_path =
+        folder
+        .. "avatar_crop_run.cmd"
+
+    local command =
+        "@echo off\r\n"
+        .. "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden "
+        .. "-File \""
+        .. FALLEN_AVATAR_CROP_WORKER_PATH()
+        .. "\" "
+        .. "-Zoom "
+        .. string.format("%.4f", zoom)
+        .. " -PanX "
+        .. string.format("%.4f", pan_x)
+        .. " -PanY "
+        .. string.format("%.4f", pan_y)
+        .. " -Request "
+        .. tostring(request)
+        .. " -Slot "
+        .. tostring(slot)
+        .. "\r\n"
+
+    local ok_write =
+        pcall(
+            write_file,
+            cmd_path,
+            command
+        )
+
+    if not ok_write then
+        A.avatar_editor_status =
+            "Could not prepare crop request"
+        return false
+    end
+
+    A.avatar_crop_pending_id =
+        request
+
+    A.avatar_crop_pending_slot =
+        slot
+
+    A.avatar_crop_dirty =
+        false
+
+    A.avatar_editor_status =
+        "Rendering crop preview..."
+
+    if not FALLEN_AVATAR_CROP_LAUNCH_CMD(
+        cmd_path
+    ) then
+        A.avatar_crop_pending_id = nil
+        A.avatar_crop_pending_slot = nil
+
+        A.avatar_editor_status =
+            "Could not launch crop engine"
 
         return false
     end
 
-    local ok =
-        FALLEN_AVATAR_EDITOR_LOAD_PATH(
-            path
-        )
+    return true
+end
 
-    if ok then
-        A.avatar_editor_status =
-            "Loaded: "
-            .. FALLEN_AVATAR_EDITOR_FILENAME(
-                path
-            )
+function FALLEN_AVATAR_CROP_POLL()
+    if A.avatar_crop_pending_id == nil then
+        return
     end
 
-    return ok
+    if type(read_file) ~= "function" then
+        return
+    end
+
+    local done_path =
+        FALLEN_AVATAR_CROP_DONE_PATH()
+
+    if type(exists_file) == "function" then
+        local ok_exists, exists =
+            pcall(
+                exists_file,
+                done_path
+            )
+
+        if not ok_exists
+            or exists ~= true
+        then
+            return
+        end
+    end
+
+    local ok_read, raw =
+        pcall(
+            read_file,
+            done_path
+        )
+
+    if not ok_read
+        or type(raw) ~= "string"
+    then
+        return
+    end
+
+    raw =
+        string.gsub(
+            raw,
+            "[\r\n]+",
+            ""
+        )
+
+    local rid, slot, state, info =
+        string.match(
+            raw,
+            "^(%d+)|([^|]+)|([^|]+)|(.*)$"
+        )
+
+    rid =
+        tonumber(rid)
+
+    if rid ~= A.avatar_crop_pending_id then
+        return
+    end
+
+    A.avatar_crop_pending_id = nil
+    A.avatar_crop_pending_slot = nil
+
+    if state ~= "OK" then
+        A.avatar_editor_status =
+            "Crop error: "
+            .. tostring(info or "unknown")
+
+        return
+    end
+
+    local output_path =
+        FALLEN_AVATAR_CROP_OUTPUT_PATH(
+            slot
+        )
+
+    local old_handle =
+        A.avatar_editor_candidate_handle
+
+    A.avatar_editor_candidate_handle = nil
+    A.avatar_editor_candidate_path = nil
+
+    local loaded =
+        FALLEN_AVATAR_EDITOR_LOAD_PATH(
+            output_path
+        )
+
+    if loaded then
+        A.avatar_crop_active_slot =
+            slot == "a"
+            and 1
+            or 2
+
+        A.avatar_crop_source_path =
+            info
+
+        A.avatar_editor_status =
+            "Source: "
+            .. FALLEN_AVATAR_EDITOR_FILENAME(
+                info
+            )
+
+        if old_handle
+            and old_handle ~= A.avatar_editor_candidate_handle
+            and Drawing
+            and type(Drawing.UnloadImage) == "function"
+        then
+            pcall(
+                Drawing.UnloadImage,
+                old_handle
+            )
+        end
+    else
+        A.avatar_editor_candidate_handle =
+            old_handle
+    end
+
+    if A.avatar_crop_dirty then
+        A.avatar_crop_dirty_at =
+            tick()
+    end
+end
+
+function FALLEN_AVATAR_CROP_SIGNATURE()
+    return
+        string.format(
+            "%.3f|%d|%d",
+            clamp(
+                tonumber(S.avatar_crop_zoom) or 1,
+                1,
+                5
+            ),
+            math.floor(
+                tonumber(S.avatar_crop_x) or 0
+            ),
+            math.floor(
+                tonumber(S.avatar_crop_y) or 0
+            )
+        )
+end
+
+function FALLEN_AVATAR_CROP_UPDATE(lmb)
+    FALLEN_AVATAR_CROP_POLL()
+
+    local signature =
+        FALLEN_AVATAR_CROP_SIGNATURE()
+
+    if signature ~= A.avatar_crop_last_signature then
+        A.avatar_crop_last_signature =
+            signature
+
+        A.avatar_crop_dirty =
+            true
+
+        A.avatar_crop_dirty_at =
+            tick()
+    end
+
+    if A.avatar_crop_dirty
+        and A.avatar_crop_pending_id == nil
+        and not lmb
+        and tick() - (A.avatar_crop_dirty_at or 0) > 0.08
+    then
+        FALLEN_AVATAR_CROP_START()
+    end
+end
+
+function FALLEN_AVATAR_EDITOR_RELOAD_PREVIEW()
+    A.avatar_crop_last_signature = nil
+    A.avatar_crop_dirty = true
+    A.avatar_crop_dirty_at = 0
+
+    return
+        FALLEN_AVATAR_CROP_START()
 end
 
 function FALLEN_AVATAR_EDITOR_COPY_FOLDER_PATH()
@@ -22239,9 +22736,15 @@ function FALLEN_AVATAR_EDITOR_OPEN()
     A.avatar_editor_open = true
 
     A.avatar_editor_status =
-        "Put avatar.png / avatar.jpg in the avatar folder"
+        "Scanning newest image in avatar folder..."
 
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+
+    A.avatar_crop_pending_id = nil
+    A.avatar_crop_pending_slot = nil
+    A.avatar_crop_last_signature = nil
+    A.avatar_crop_dirty = true
+    A.avatar_crop_dirty_at = 0
 
     A.active_slider = nil
     numeric_stop(true)
@@ -22251,6 +22754,8 @@ function FALLEN_AVATAR_EDITOR_OPEN()
     A.menu_settings_open = false
     A.world_color_picker_open = false
     A.world_color_picker_drag = nil
+
+    FALLEN_AVATAR_CROP_START()
 end
 
 function FALLEN_AVATAR_EDITOR_CANCEL()
@@ -22271,6 +22776,37 @@ function FALLEN_AVATAR_EDITOR_SAVE()
     if candidate
         and path
     then
+        -- Persist the crop to a stable file. Preview slots remain temporary.
+        local stable_path =
+            FALLEN_AVATAR_EDITOR_FOLDER()
+            .. "avatar_saved.bmp"
+
+        if type(read_file) == "function"
+            and type(write_file) == "function"
+        then
+            local ok_bytes, bytes =
+                pcall(
+                    read_file,
+                    path
+                )
+
+            if ok_bytes
+                and type(bytes) == "string"
+            then
+                local ok_save =
+                    pcall(
+                        write_file,
+                        stable_path,
+                        bytes
+                    )
+
+                if ok_save then
+                    path =
+                        stable_path
+                end
+            end
+        end
+
         _G.FALLEN_CUSTOM_AVATAR.handle =
             candidate
 
@@ -22354,8 +22890,12 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         return
     end
 
-    local pw = 430
-    local ph = 294
+    FALLEN_AVATAR_CROP_UPDATE(
+        lmb
+    )
+
+    local pw = 452
+    local ph = 426
 
     local px =
         wx
@@ -22365,14 +22905,13 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         wy
         + (win_h - ph) * 0.5
 
-    -- True modal dim inside the menu.
     rounded_fill(
         wx + 4,
         wy + 4,
         win_w - 8,
         win_h - 8,
         14,
-        { 0, 0, 0, 0.54 }
+        { 0, 0, 0, 0.56 }
     )
 
     FALLEN_POPUP_GLOW(
@@ -22409,16 +22948,14 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         1
     )
 
-    local preview_size = 116
+    local preview_size = 152
     local preview_x = px + 18
     local preview_y = py + 58
 
-    rounded_fill(
-        preview_x - 2,
-        preview_y - 2,
-        preview_size + 4,
-        preview_size + 4,
-        12,
+    circle_fill(
+        preview_x + preview_size * 0.5,
+        preview_y + preview_size * 0.5,
+        preview_size * 0.5 + 3,
         { 0.11, 0.12, 0.15, 0.72 }
     )
 
@@ -22456,7 +22993,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
                     FALLEN_UI_LEN(preview_size),
                     1, 1, 1,
                     MENU_RENDER_ALPHA,
-                    FALLEN_UI_LEN(12)
+                    FALLEN_UI_LEN(preview_size * 0.5)
                 )
 
             preview_drawn =
@@ -22465,12 +23002,10 @@ function FALLEN_DRAW_AVATAR_EDITOR(
     end
 
     if not preview_drawn then
-        rounded_fill(
-            preview_x,
-            preview_y,
-            preview_size,
-            preview_size,
-            10,
+        circle_fill(
+            preview_x + preview_size * 0.5,
+            preview_y + preview_size * 0.5,
+            preview_size * 0.5,
             { 0.09, 0.10, 0.12, 1 }
         )
 
@@ -22482,12 +23017,13 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         )
     end
 
-    local bx = px + 154
-    local bw = pw - 172
+    local bx = px + 192
+    local bw = pw - 210
     local bh = 33
 
     local open_y = py + 58
     local reload_y = py + 101
+    local reset_y = py + 144
 
     local open_hot =
         hover(
@@ -22549,7 +23085,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
     centered_text(
         bx + bw * 0.5,
         reload_y + 10,
-        "Reload Preview",
+        "Reload Newest Image",
         reload_hot
             and C.text
             or C.text_dim
@@ -22561,18 +23097,114 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         FALLEN_AVATAR_EDITOR_RELOAD_PREVIEW()
     end
 
+    local reset_hot =
+        hover(
+            mx,
+            my,
+            bx,
+            reset_y,
+            bw,
+            bh
+        )
+
+    rounded_fill(
+        bx,
+        reset_y,
+        bw,
+        bh,
+        7,
+        reset_hot
+            and C.card_hover
+            or C.card
+    )
+
+    centered_text(
+        bx + bw * 0.5,
+        reset_y + 10,
+        "Reset Crop",
+        reset_hot
+            and C.text
+            or C.text_dim
+    )
+
+    if clicked
+        and reset_hot
+    then
+        S.avatar_crop_zoom = 1
+        S.avatar_crop_x = 0
+        S.avatar_crop_y = 0
+
+        A.avatar_crop_last_signature = nil
+        A.avatar_crop_dirty = true
+        A.avatar_crop_dirty_at = 0
+    end
+
     text(
         bx,
-        py + 148,
-        "Use: avatar.png / avatar.jpg",
+        py + 188,
+        "Any filename works",
         C.text_dim
     )
 
     text(
         bx,
-        py + 167,
-        "Folder: C:\\blueberry\\scripts\\avatar\\",
+        py + 207,
+        "Newest image is selected",
         C.text_faint
+    )
+
+    line(
+        px + 14,
+        py + 229,
+        px + pw - 14,
+        py + 229,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        clicked,
+        lmb,
+        px + 8,
+        py + 235,
+        pw - 16,
+        "Zoom",
+        "avatar_crop_zoom",
+        1.00,
+        5.00,
+        "float"
+    )
+
+    slider_row(
+        mx,
+        my,
+        clicked,
+        lmb,
+        px + 8,
+        py + 276,
+        pw - 16,
+        "Position X",
+        "avatar_crop_x",
+        -100,
+        100,
+        "int"
+    )
+
+    slider_row(
+        mx,
+        my,
+        clicked,
+        lmb,
+        px + 8,
+        py + 317,
+        pw - 16,
+        "Position Y",
+        "avatar_crop_y",
+        -100,
+        100,
+        "int"
     )
 
     local status =
@@ -22581,33 +23213,24 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             or ""
         )
 
-    if #status > 47 then
+    if #status > 56 then
         status =
             string.sub(
                 status,
                 1,
-                44
+                53
             )
             .. "..."
     end
 
     text(
         px + 18,
-        py + 203,
+        py + 365,
         status,
         C.text_faint
     )
 
-    line(
-        px + 14,
-        py + 226,
-        px + pw - 14,
-        py + 226,
-        C.divider,
-        1
-    )
-
-    local button_y = py + ph - 48
+    local button_y = py + ph - 45
     local button_w = 92
     local gap = 10
 
