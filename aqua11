@@ -17988,7 +17988,7 @@ function FALLEN_DRAW_GLASS_FROST(
             1
         )
 
-    -- Soft translucent fog underneath the texture.
+    -- Stronger frosted fog so Glass is visibly different.
     rounded_fill(
         x,
         y,
@@ -17996,28 +17996,46 @@ function FALLEN_DRAW_GLASS_FROST(
         h,
         OUTER_R,
         {
-            0.13,
-            0.15,
-            0.19,
-            0.16 * a,
+            0.33,
+            0.36,
+            0.42,
+            0.18 * a,
         }
     )
 
-    -- Slight highlight from top-right, imitating reflected glass.
+    -- Large soft highlight from the upper-right.
     rounded_fill(
-        x + w * 0.46,
-        y + 6,
-        w * 0.50 - 6,
-        h * 0.34,
+        x + w * 0.38,
+        y + 5,
+        w * 0.58 - 5,
+        h * 0.42,
         math.max(
-            4,
-            OUTER_R - 3
+            5,
+            OUTER_R - 2
         ),
         {
+            0.62,
+            0.68,
+            0.78,
+            0.075 * a,
+        }
+    )
+
+    -- Secondary haze in the lower-left to fake depth in the glass.
+    rounded_fill(
+        x + 5,
+        y + h * 0.48,
+        w * 0.52,
+        h * 0.47 - 5,
+        math.max(
+            5,
+            OUTER_R - 2
+        ),
+        {
+            0.18,
+            0.22,
             0.30,
-            0.34,
-            0.42,
-            0.045 * a,
+            0.085 * a,
         }
     )
 
@@ -18037,7 +18055,7 @@ function FALLEN_DRAW_GLASS_FROST(
             1,
             1,
             1,
-            0.075 * a,
+            0.16 * a,
             OUTER_R
         )
     end
@@ -18121,13 +18139,13 @@ function FALLEN_APPLY_STYLE_COLOR()
         -- Glass: translucent shell + simulated frosted blur layer.
         S.menu_type = "glass"
 
-        C.outer      = { 0.060, 0.064, 0.075, 0.78 }
-        C.sidebar    = { 0.078, 0.082, 0.094, 0.72 }
-        C.content    = { 0.052, 0.055, 0.063, 0.68 }
+        C.outer      = { 0.060, 0.064, 0.075, 0.70 }
+        C.sidebar    = { 0.078, 0.082, 0.094, 0.58 }
+        C.content    = { 0.052, 0.055, 0.063, 0.55 }
 
-        C.card       = { 0.065, 0.069, 0.080, 0.62 }
-        C.card_hover = { 0.082, 0.087, 0.100, 0.73 }
-        C.selected   = { 0.130, 0.132, 0.145, 0.82 }
+        C.card       = { 0.065, 0.069, 0.080, 0.68 }
+        C.card_hover = { 0.082, 0.087, 0.100, 0.78 }
+        C.selected   = { 0.130, 0.132, 0.145, 0.86 }
 
         C.border     = { 0.300, 0.320, 0.370, 0.13 }
         C.divider    = { 0.300, 0.315, 0.360, 0.10 }
@@ -21985,16 +22003,6 @@ hooks.on_render(function()
             menu_base_alpha
         )
     else
-        if menu_texture_type == "glass" then
-            FALLEN_DRAW_GLASS_FROST(
-                wx,
-                wy,
-                WIN_W,
-                WIN_H,
-                menu_base_alpha
-            )
-        end
-
         rounded_left_fill(
             wx,
             wy,
@@ -22012,6 +22020,18 @@ hooks.on_render(function()
             OUTER_R,
             C.content
         )
+
+        -- Draw frosted haze AFTER the base shell so it remains visible,
+        -- but still before cards/text/icons are rendered.
+        if menu_texture_type == "glass" then
+            FALLEN_DRAW_GLASS_FROST(
+                wx,
+                wy,
+                WIN_W,
+                WIN_H,
+                menu_base_alpha
+            )
+        end
     end
 
     -- Let the base become mostly visible before layered controls/cards fade in.
