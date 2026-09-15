@@ -178,6 +178,11 @@ local defaults = {
     secret_crosshair = false,
     secret_crosshair_size = 16,
     secret_crosshair_style = "Sharp",
+    secret_crosshair_rotate = false,
+    secret_crosshair_h = 0,
+    secret_crosshair_s = 0,
+    secret_crosshair_v = 1,
+    secret_crosshair_alpha = 100,
 
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
     menu_glow_h = 0.00,
@@ -422,6 +427,13 @@ local A = {
     bullet_tracer_style_open = false,
     bullet_tracer_style_anim = 0,
     bullet_tracer_style_last_t = nil,
+
+    -- Secret crosshair style dropdown / runtime.
+    secret_crosshair_style_open = false,
+    secret_crosshair_style_anim = 0,
+    secret_crosshair_style_last_t = nil,
+    secret_crosshair_angle = 0,
+    secret_crosshair_render_last_t = nil,
 
     hit_effect_style_open = false,
     hit_effect_style_anim = 0,
@@ -22941,7 +22953,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            140,
+            181,
             11
         )
 
@@ -22972,19 +22984,201 @@ hooks.on_render(function()
             "int"
         )
 
-        dropdown_row(
+        local style_row_x = page_x
+        local style_row_y = page_y + 98
+        local style_row_w = page_w
+        local style_hot =
+            row_hover(
+                mx,
+                my,
+                style_row_x,
+                style_row_y,
+                style_row_w,
+                41
+            )
+
+        text(
+            style_row_x + 13,
+            style_row_y + 14,
+            "Style",
+            FALLEN_HOVER_TEXT(
+                "secret_crosshair_style_label",
+                style_hot,
+                C.text
+            )
+        )
+
+        local style_box_x = style_row_x + style_row_w - 142
+        local style_box_y = style_row_y + 8
+        local style_box_w = 130
+        local style_box_h = 25
+
+        rounded_fill(
+            style_box_x,
+            style_box_y,
+            style_box_w,
+            style_box_h,
+            6,
+            C.toggle_off
+        )
+
+        local style_box_hot =
+            hover(
+                mx,
+                my,
+                style_box_x,
+                style_box_y,
+                style_box_w,
+                style_box_h
+            )
+
+        text(
+            style_box_x + 10,
+            style_box_y + 7,
+            tostring(
+                S.secret_crosshair_style
+                    or "Sharp"
+            ),
+            FALLEN_HOVER_TEXT(
+                "secret_crosshair_style_value",
+                style_box_hot,
+                C.text
+            )
+        )
+
+        text(
+            style_box_x + style_box_w - 17,
+            style_box_y + 7,
+            A.secret_crosshair_style_open
+                and "^"
+                or "v",
+            C.text_dim
+        )
+
+        if page_clicked
+            and style_box_hot
+            and not A.world_color_picker_open
+        then
+            A.secret_crosshair_style_open =
+                not A.secret_crosshair_style_open
+
+            numeric_stop(true)
+        end
+
+        local secret_dropdown_hot =
+            FALLEN_DRAW_SECRET_CROSSHAIR_STYLE_DROPDOWN(
+                mx,
+                my,
+                clicked
+                    and not A.world_color_picker_open,
+                style_box_x,
+                style_box_y + 30,
+                style_box_w
+            )
+
+        if clicked
+            and A.secret_crosshair_style_open
+            and not style_box_hot
+            and not secret_dropdown_hot
+            and not A.world_color_picker_open
+        then
+            A.secret_crosshair_style_open = false
+        end
+
+        line(
+            page_x + 12,
+            page_y + 138,
+            page_x + page_w - 12,
+            page_y + 138,
+            C.divider,
+            1
+        )
+
+        local color_row_y = page_y + 139
+        local color_hot =
+            row_hover(
+                mx,
+                my,
+                page_x,
+                color_row_y,
+                page_w,
+                41
+            )
+
+        text(
+            page_x + 13,
+            color_row_y + 14,
+            "Color",
+            FALLEN_HOVER_TEXT(
+                "secret_crosshair_color",
+                color_hot,
+                C.text
+            )
+        )
+
+        local sc_swatch_w = 24
+        local sc_swatch_h = 20
+        local sc_swatch_x = page_x + page_w - 46
+        local sc_swatch_y = color_row_y + 10
+
+        rounded_fill(
+            sc_swatch_x,
+            sc_swatch_y,
+            sc_swatch_w,
+            sc_swatch_h,
+            5,
+            FALLEN_SECRET_CROSSHAIR_COLOR()
+        )
+
+        local sc_swatch_hot =
+            hover(
+                mx,
+                my,
+                sc_swatch_x,
+                sc_swatch_y,
+                sc_swatch_w,
+                sc_swatch_h
+            )
+
+        if page_clicked
+            and sc_swatch_hot
+        then
+            FALLEN_COLOR_INPUT_STOP(true)
+
+            if A.world_color_picker_open
+                and A.world_color_picker_key == "secret_crosshair"
+            then
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+            else
+                A.world_color_picker_key = "secret_crosshair"
+                A.world_color_picker_open = true
+                A.world_color_picker_drag = nil
+
+                A.world_color_picker_anchor_x =
+                    FALLEN_UI_X(sc_swatch_x)
+
+                A.world_color_picker_anchor_y =
+                    FALLEN_UI_Y(sc_swatch_y)
+
+                A.world_color_picker_anchor_w =
+                    FALLEN_UI_LEN(sc_swatch_w)
+
+                A.world_color_picker_anchor_h =
+                    FALLEN_UI_LEN(sc_swatch_h)
+            end
+        end
+
+        toggle_row(
             mx,
             my,
             page_clicked,
             page_x,
-            page_y + 98,
+            page_y + 172,
             page_w,
-            "Style",
-            "secret_crosshair_style",
-            {
-                "Sharp",
-                "Rounded",
-            }
+            "Rotate Animation",
+            "secret_crosshair_rotate",
+            false
         )
     end
 
@@ -25565,19 +25759,230 @@ end)
 -- =========================================================
 -- Secret crosshair
 -- =========================================================
+function FALLEN_SECRET_CROSSHAIR_COLOR()
+    local r, g, b =
+        hsv_to_rgb(
+            tonumber(S.secret_crosshair_h) or 0,
+            tonumber(S.secret_crosshair_s) or 0,
+            tonumber(S.secret_crosshair_v) or 1
+        )
+
+    return {
+        r,
+        g,
+        b,
+        clamp(
+            (tonumber(S.secret_crosshair_alpha) or 100) / 100,
+            0,
+            1
+        ),
+    }
+end
+
+function FALLEN_SECRET_CROSSHAIR_STYLE_STEP()
+    local now = tick()
+
+    if A.secret_crosshair_style_last_t == nil then
+        A.secret_crosshair_style_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.secret_crosshair_style_last_t,
+            0,
+            0.05
+        )
+
+    A.secret_crosshair_style_last_t = now
+
+    local target =
+        A.secret_crosshair_style_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.secret_crosshair_style_anim or 0)
+        and 16
+        or 12
+
+    A.secret_crosshair_style_anim =
+        exp_chase(
+            A.secret_crosshair_style_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if math.abs(
+        (A.secret_crosshair_style_anim or 0)
+        - target
+    ) < 0.0015
+    then
+        A.secret_crosshair_style_anim = target
+    end
+
+    return
+        clamp(
+            A.secret_crosshair_style_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_SECRET_CROSSHAIR_STYLE_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    local anim =
+        FALLEN_SECRET_CROSSHAIR_STYLE_STEP()
+
+    if anim <= 0.004
+        and not A.secret_crosshair_style_open
+    then
+        return false
+    end
+
+    local options = {
+        "Sharp",
+        "Rounded",
+    }
+
+    local item_h = 27
+    local full_h = #options * item_h
+    local visible_h = full_h * ease_out_cubic(anim)
+    local panel_h = math.max(2, visible_h)
+
+    FALLEN_POPUP_GLOW(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        0.9
+    )
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        { 0.070, 0.074, 0.087, 1 }
+    )
+
+    local panel_hot =
+        hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            panel_h
+        )
+
+    for i, option in ipairs(options) do
+        local iy = y + (i - 1) * item_h
+
+        local reveal =
+            clamp(
+                (visible_h - (i - 1) * item_h) / item_h,
+                0,
+                1
+            )
+
+        if reveal > 0.12 then
+            local item_hot =
+                reveal > 0.92
+                and hover(
+                    mx,
+                    my,
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4
+                )
+
+            if item_hot then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4,
+                    5,
+                    { 0.105, 0.111, 0.132, 1 }
+                )
+            end
+
+            local selected =
+                tostring(
+                    S.secret_crosshair_style
+                        or "Sharp"
+                ) == option
+
+            if selected then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    3,
+                    item_h - 4,
+                    1,
+                    C.accent
+                )
+            end
+
+            text(
+                x + 12,
+                iy + 8,
+                option,
+                FALLEN_HOVER_TEXT(
+                    "secret_crosshair_style:" .. tostring(option),
+                    item_hot,
+                    selected
+                        and C.text
+                        or C.text_dim
+                )
+            )
+
+            if clicked
+                and item_hot
+                and A.secret_crosshair_style_open
+            then
+                S.secret_crosshair_style = option
+                A.secret_crosshair_style_open = false
+                return true
+            end
+        end
+    end
+
+    return panel_hot
+end
+
 hooks.on_render(function()
     if S.secret_crosshair ~= true then
         return
     end
 
-    local sw, sh =
-        screen_size()
+    local dims = nil
+    pcall(function()
+        dims = ScreenSize()
+    end)
 
-    local cx =
-        math.floor(sw * 0.5)
+    local sw =
+        dims
+        and tonumber(dims.Width or dims.X)
+        or 1920
 
-    local cy =
-        math.floor(sh * 0.5)
+    local sh =
+        dims
+        and tonumber(dims.Height or dims.Y)
+        or 1080
+
+    local cx = math.floor(sw * 0.5)
+    local cy = math.floor(sh * 0.5)
 
     local size =
         clamp(
@@ -25594,265 +25999,134 @@ hooks.on_render(function()
                 or "Sharp"
         )
 
-    -- Homunculus-style shape:
-    -- top horizontal:    left  -> center
-    -- center vertical:   top   -> bottom
-    -- middle horizontal: left  -> right
-    -- left vertical:     mid   -> bottom
-    -- right vertical:    top   -> mid
-    -- bottom horizontal: center-> right
-    local extent =
-        math.max(
-            5,
-            math.floor(size * 0.50)
-        )
+    local col =
+        FALLEN_SECRET_CROSSHAIR_COLOR()
 
-    local thick =
-        math.max(
-            3,
-            math.floor(size * 0.18)
-        )
-
-    -- Force odd thickness so center alignment stays stable for all sizes.
-    if thick % 2 == 0 then
-        thick = thick + 1
+    local now = tick()
+    if A.secret_crosshair_render_last_t == nil then
+        A.secret_crosshair_render_last_t = now
     end
 
-    local half_lo =
-        math.floor(
-            (thick - 1) * 0.5
-        )
-
-    local half_hi =
-        thick - 1 - half_lo
-
-    -- Small trim reduces visual overshoot on exposed terminals.
-    local trim =
-        math.max(
+    local dt =
+        clamp(
+            now - A.secret_crosshair_render_last_t,
             0,
-            math.floor(thick * 0.34)
+            0.05
         )
 
-    local xL = cx - extent + trim
-    local xC = cx
-    local xR = cx + extent - trim
+    A.secret_crosshair_render_last_t = now
 
-    local yT = cy - extent + trim
-    local yM = cy
-    local yB = cy + extent - trim
+    local ang =
+        tonumber(A.secret_crosshair_angle) or 0
 
-    local function rect(
-        x1,
-        y1,
-        x2,
-        y2
-    )
-        DrawBoxFilled(
-            x1,
-            y1,
-            x2,
-            y2,
-            1,
-            1,
-            1,
-            1
+    local rot_speed = math.rad(95)
+
+    if S.secret_crosshair_rotate == true then
+        ang = ang + rot_speed * dt
+        if ang > math.pi * 2 then
+            ang = ang - math.pi * 2
+        end
+    else
+        while ang > math.pi do
+            ang = ang - math.pi * 2
+        end
+        while ang < -math.pi do
+            ang = ang + math.pi * 2
+        end
+
+        ang =
+            exp_chase(
+                ang,
+                0,
+                12,
+                dt
+            )
+
+        if math.abs(ang) < 0.0008 then
+            ang = 0
+        end
+    end
+
+    A.secret_crosshair_angle = ang
+
+    local extent = size
+    local thick = 3
+    local cap_r = 2
+
+    local ca = math.cos(ang)
+    local sa = math.sin(ang)
+
+    local function rot(x, y)
+        return
+            cx + x * ca - y * sa,
+            cy + x * sa + y * ca
+    end
+
+    local function draw_seg(x1, y1, x2, y2)
+        local ax, ay = rot(x1, y1)
+        local bx, by = rot(x2, y2)
+
+        DrawLine(
+            ax,
+            ay,
+            bx,
+            by,
+            col[1],
+            col[2],
+            col[3],
+            col[4] or 1,
+            thick
         )
     end
 
-    local function cap_circle(
-        x,
-        y,
-        rad
-    )
-        if rad <= 0 then
-            return
-        end
+    local function draw_cap(x, y)
+        local px, py = rot(x, y)
 
         if type(DrawCircleFilled) == "function" then
             DrawCircleFilled(
-                x,
-                y,
-                rad,
-                1,
-                1,
-                1,
-                1
+                px,
+                py,
+                cap_r,
+                col[1],
+                col[2],
+                col[3],
+                col[4] or 1
             )
         else
             DrawBoxFilled(
-                x - rad,
-                y - rad,
-                x + rad,
-                y + rad,
-                1,
-                1,
-                1,
-                1
+                px - cap_r,
+                py - cap_r,
+                px + cap_r,
+                py + cap_r,
+                col[1],
+                col[2],
+                col[3],
+                col[4] or 1
             )
         end
     end
 
-    local cap =
-        math.max(
-            1,
-            math.floor(thick * 0.5)
-        )
-
-    local function hbar(
-        x1,
-        x2,
-        y,
-        cap_left,
-        cap_right
-    )
-        rect(
-            x1,
-            y - half_lo,
-            x2,
-            y + half_hi
-        )
-
-        if cap_left then
-            cap_circle(
-                x1,
-                y,
-                cap
-            )
-        end
-
-        if cap_right then
-            cap_circle(
-                x2,
-                y,
-                cap
-            )
-        end
-    end
-
-    local function vbar(
-        x,
-        y1,
-        y2,
-        cap_top,
-        cap_bottom
-    )
-        rect(
-            x - half_lo,
-            y1,
-            x + half_hi,
-            y2
-        )
-
-        if cap_top then
-            cap_circle(
-                x,
-                y1,
-                cap
-            )
-        end
-
-        if cap_bottom then
-            cap_circle(
-                x,
-                y2,
-                cap
-            )
-        end
-    end
+    -- Shared homunculus geometry.
+    -- top horizontal:    (-extent,-extent) -> (0,-extent)
+    -- center vertical:   (0,-extent)       -> (0, extent)
+    -- middle horizontal: (-extent,0)       -> (extent,0)
+    -- left vertical:     (-extent,0)       -> (-extent, extent)
+    -- right vertical:    (extent,-extent)  -> (extent,0)
+    -- bottom horizontal: (0, extent)       -> (extent, extent)
+    draw_seg(-extent, -extent, 0, -extent)
+    draw_seg(0, -extent, 0, extent)
+    draw_seg(-extent, 0, extent, 0)
+    draw_seg(-extent, 0, -extent, extent)
+    draw_seg(extent, -extent, extent, 0)
+    draw_seg(0, extent, extent, extent)
 
     if style == "Rounded" then
-        -- Rounded only on the EXPOSED outer terminals.
-        -- Internal joints stay square so they don't bulge every few sizes.
-        hbar(
-            xL,
-            xC,
-            yT,
-            true,
-            false
-        )
-
-        vbar(
-            xC,
-            yT,
-            yB,
-            true,
-            true
-        )
-
-        hbar(
-            xL,
-            xR,
-            yM,
-            false,
-            false
-        )
-
-        vbar(
-            xL,
-            yM,
-            yB,
-            false,
-            true
-        )
-
-        vbar(
-            xR,
-            yT,
-            yM,
-            true,
-            false
-        )
-
-        hbar(
-            xC,
-            xR,
-            yB,
-            false,
-            true
-        )
-    else
-        -- Clean sharp version with corrected terminal lengths.
-        rect(
-            xL,
-            yT - half_lo,
-            xC,
-            yT + half_hi
-        )
-
-        rect(
-            xC - half_lo,
-            yT,
-            xC + half_hi,
-            yB
-        )
-
-        rect(
-            xL,
-            yM - half_lo,
-            xR,
-            yM + half_hi
-        )
-
-        rect(
-            xL - half_lo,
-            yM,
-            xL + half_hi,
-            yB
-        )
-
-        rect(
-            xR - half_lo,
-            yT,
-            xR + half_hi,
-            yM
-        )
-
-        rect(
-            xC,
-            yB - half_lo,
-            xR,
-            yB + half_hi
-        )
+        -- Only exposed outer terminals get rounded caps.
+        draw_cap(-extent, -extent) -- top-left
+        draw_cap(0, -extent)       -- top-center
+        draw_cap(extent, -extent)  -- top-right
+        draw_cap(-extent, extent)  -- bottom-left
+        draw_cap(0, extent)        -- bottom-center
+        draw_cap(extent, extent)   -- bottom-right
     end
 end)
-
