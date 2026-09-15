@@ -251,10 +251,6 @@ local defaults = {
 
     -- Misc.
     misc_upside_down = false,
-    -- If the native cheat exposes this under a hidden live key,
-    -- remember the exact section/key after discovery.
-    misc_upside_section = "",
-    misc_upside_key = "",
 
     trigger_enabled = false,
     visuals_enabled = false,
@@ -8126,318 +8122,175 @@ function FALLEN_SILENT_PRED_CALLBACK(target, pos, cam)
 end
 
 
-FALLEN_UPSIDE_BINDING =
-    FALLEN_UPSIDE_BINDING
+FALLEN_UPSIDE_STATE =
+    FALLEN_UPSIDE_STATE
     or {
-        section = nil,
-        key = nil,
-        last_scan = 0,
-        last_error_notice = 0,
+        last_applied = nil,
+        last_base = nil,
+        was_enabled = false,
     }
 
-function FALLEN_UPSIDE_NORMALIZE(v)
-    return
-        tostring(v or "")
-        :lower()
-        :gsub("[^%w]", "")
+function FALLEN_UPSIDE_MATRIX_COPY(m)
+    if type(m) ~= "table" then
+        return nil
+    end
+
+    local out = {}
+
+    for i = 1, 9 do
+        out[i] =
+            tonumber(m[i])
+            or 0
+    end
+
+    return out
 end
 
-function FALLEN_UPSIDE_KEY_MATCH(key)
-    local n =
-        FALLEN_UPSIDE_NORMALIZE(key)
-
-    if n == "upsidedown"
-        or n == "upsidedownenabled"
-        or n == "enableupsidedown"
-        or n == "cameraupsidedown"
-        or n == "upsidedowncamera"
-    then
-        return true
+function FALLEN_UPSIDE_MATRIX_FLIP(m)
+    if type(m) ~= "table" then
+        return nil
     end
 
-    return
-        n:find("upside", 1, true) ~= nil
-        and n:find("down", 1, true) ~= nil
-end
+    -- Camera matrix rows are:
+    --   1..3 = right
+    --   4..6 = up
+    --   7..9 = -forward
+    -- A 180 degree roll negates right + up and leaves forward unchanged.
+    return {
+        -(tonumber(m[1]) or 0),
+        -(tonumber(m[2]) or 0),
+        -(tonumber(m[3]) or 0),
 
-function FALLEN_UPSIDE_LOAD_SAVED()
-    if FALLEN_UPSIDE_BINDING.section
-        and FALLEN_UPSIDE_BINDING.key
-    then
-        return true
-    end
+        -(tonumber(m[4]) or 0),
+        -(tonumber(m[5]) or 0),
+        -(tonumber(m[6]) or 0),
 
-    local section_name =
-        tostring(
-            S.misc_upside_section
-            or ""
-        )
-
-    local key =
-        tostring(
-            S.misc_upside_key
-            or ""
-        )
-
-    if section_name == ""
-        or key == ""
-        or not cheat
-    then
-        return false
-    end
-
-    local section = nil
-
-    pcall(function()
-        section =
-            cheat[section_name]
-    end)
-
-    if not section then
-        return false
-    end
-
-    local value = nil
-    local ok =
-        pcall(function()
-            value = section[key]
-        end)
-
-    if not ok
-        or value == nil
-    then
-        S.misc_upside_section = ""
-        S.misc_upside_key = ""
-        return false
-    end
-
-    FALLEN_UPSIDE_BINDING.section =
-        section_name
-
-    FALLEN_UPSIDE_BINDING.key =
-        key
-
-    return true
-end
-
-function FALLEN_UPSIDE_DISCOVER()
-    if FALLEN_UPSIDE_LOAD_SAVED() then
-        return true
-    end
-
-    if not cheat
-        or type(cheat._sections) ~= "function"
-    then
-        return false
-    end
-
-    local now = tick()
-
-    if now - (FALLEN_UPSIDE_BINDING.last_scan or 0) < 0.75 then
-        return false
-    end
-
-    FALLEN_UPSIDE_BINDING.last_scan = now
-
-    local preferred = {
-        "upside_down",
-        "upsidedown",
-        "upside_down_enabled",
-        "upsidedown_enabled",
-        "enable_upside_down",
-        "camera_upside_down",
-        "upside_down_camera",
+         (tonumber(m[7]) or 0),
+         (tonumber(m[8]) or 0),
+         (tonumber(m[9]) or 0),
     }
-
-    local function bind(section_name, key)
-        FALLEN_UPSIDE_BINDING.section =
-            tostring(section_name)
-
-        FALLEN_UPSIDE_BINDING.key =
-            tostring(key)
-
-        S.misc_upside_section =
-            FALLEN_UPSIDE_BINDING.section
-
-        S.misc_upside_key =
-            FALLEN_UPSIDE_BINDING.key
-
-        return true
-    end
-
-    local function inspect(section_name, section)
-        if not section then
-            return false
-        end
-
-        for _, key in ipairs(preferred) do
-            local value = nil
-            local ok =
-                pcall(function()
-                    value = section[key]
-                end)
-
-            if ok
-                and value ~= nil
-                and (
-                    type(value) == "boolean"
-                    or type(value) == "number"
-                )
-            then
-                return bind(
-                    section_name,
-                    key
-                )
-            end
-        end
-
-        local keys = nil
-
-        pcall(function()
-            keys =
-                section:_keys()
-        end)
-
-        if type(keys) == "table" then
-            for _, key in ipairs(keys) do
-                if FALLEN_UPSIDE_KEY_MATCH(key) then
-                    local value = nil
-                    local ok =
-                        pcall(function()
-                            value = section[key]
-                        end)
-
-                    if ok
-                        and value ~= nil
-                        and (
-                            type(value) == "boolean"
-                            or type(value) == "number"
-                        )
-                    then
-                        return bind(
-                            section_name,
-                            key
-                        )
-                    end
-                end
-            end
-        end
-
-        return false
-    end
-
-    -- Most likely camera-related location first.
-    if inspect(
-        "camera",
-        cheat.camera
-    ) then
-        return true
-    end
-
-    local sections = nil
-
-    pcall(function()
-        sections =
-            cheat._sections()
-    end)
-
-    if type(sections) == "table" then
-        for _, section_name in ipairs(sections) do
-            if tostring(section_name) ~= "camera" then
-                local section = nil
-
-                pcall(function()
-                    section =
-                        cheat[section_name]
-                end)
-
-                if inspect(
-                    tostring(section_name),
-                    section
-                ) then
-                    return true
-                end
-            end
-        end
-    end
-
-    return false
 end
 
-function FALLEN_UPSIDE_SET(enabled)
-    enabled =
-        enabled == true
-
-    if not FALLEN_UPSIDE_DISCOVER() then
-        return false
+function FALLEN_UPSIDE_MATRIX_ERROR(a, b)
+    if type(a) ~= "table"
+        or type(b) ~= "table"
+    then
+        return math.huge
     end
 
-    local section = nil
+    local err = 0
 
-    pcall(function()
-        section =
-            cheat[
-                FALLEN_UPSIDE_BINDING.section
-            ]
-    end)
+    for i = 1, 9 do
+        local d =
+            (tonumber(a[i]) or 0)
+            - (tonumber(b[i]) or 0)
 
-    if not section then
-        return false
+        err = err + d * d
     end
 
-    local key =
-        FALLEN_UPSIDE_BINDING.key
+    return err
+end
+
+function FALLEN_UPSIDE_TICK()
+    if not aim
+        or type(aim.get_camera_rotation) ~= "function"
+        or type(aim.set_camera_rotation) ~= "function"
+    then
+        return
+    end
 
     local current = nil
 
     pcall(function()
-        current = section[key]
+        current =
+            aim.get_camera_rotation()
     end)
 
-    local wanted =
-        enabled
-
-    if type(current) == "number" then
-        wanted =
-            enabled
-            and 1
-            or 0
+    if type(current) ~= "table" then
+        return
     end
 
-    local ok =
-        pcall(function()
-            section[key] = wanted
-        end)
-
-    if not ok then
-        return false
-    end
-
-    return true
-end
-
-function FALLEN_UPSIDE_TICK()
-    local wanted =
+    local enabled =
         S.misc_upside_down == true
 
-    local ok =
-        FALLEN_UPSIDE_SET(
-            wanted
-        )
+    if enabled then
+        -- If the exact matrix we wrote last frame is still present,
+        -- do not flip it a second time. This prevents ON/OFF flickering
+        -- on builds where Roblox doesn't overwrite the camera every frame.
+        if FALLEN_UPSIDE_STATE.last_applied
+            and FALLEN_UPSIDE_MATRIX_ERROR(
+                current,
+                FALLEN_UPSIDE_STATE.last_applied
+            ) < 0.000001
+        then
+            FALLEN_UPSIDE_STATE.was_enabled = true
+            return
+        end
 
-    if wanted
-        and not ok
-        and type(notify) == "function"
-        and tick() - (FALLEN_UPSIDE_BINDING.last_error_notice or 0) > 4
-    then
-        FALLEN_UPSIDE_BINDING.last_error_notice = tick()
+        local base =
+            FALLEN_UPSIDE_MATRIX_COPY(
+                current
+            )
 
-        pcall(
-            notify,
-            "Upside Down: native field is not exposed in this cheat build",
-            "warning"
-        )
+        local flipped =
+            FALLEN_UPSIDE_MATRIX_FLIP(
+                base
+            )
+
+        if flipped then
+            pcall(
+                aim.set_camera_rotation,
+                flipped
+            )
+
+            FALLEN_UPSIDE_STATE.last_base = base
+            FALLEN_UPSIDE_STATE.last_applied = flipped
+            FALLEN_UPSIDE_STATE.was_enabled = true
+        end
+
+        return
     end
+
+    -- When switching OFF, restore the non-rolled orientation if our
+    -- previously-written upside-down matrix is still active.
+    if FALLEN_UPSIDE_STATE.was_enabled == true then
+        local should_restore = false
+
+        if FALLEN_UPSIDE_STATE.last_applied then
+            local err_applied =
+                FALLEN_UPSIDE_MATRIX_ERROR(
+                    current,
+                    FALLEN_UPSIDE_STATE.last_applied
+                )
+
+            local err_base =
+                FALLEN_UPSIDE_MATRIX_ERROR(
+                    current,
+                    FALLEN_UPSIDE_STATE.last_base
+                )
+
+            should_restore =
+                err_applied < err_base
+        end
+
+        if should_restore then
+            local restored =
+                FALLEN_UPSIDE_MATRIX_FLIP(
+                    current
+                )
+
+            if restored then
+                pcall(
+                    aim.set_camera_rotation,
+                    restored
+                )
+            end
+        end
+    end
+
+    FALLEN_UPSIDE_STATE.last_applied = nil
+    FALLEN_UPSIDE_STATE.last_base = nil
+    FALLEN_UPSIDE_STATE.was_enabled = false
 end
 
 function FALLEN_SILENT_TICK()
