@@ -173,6 +173,9 @@ local defaults = {
     menu_lightning = false,
     menu_dark_background = false,
 
+    -- Hidden option revealed only after triple-clicking the brand.
+    secret_enabled = false,
+
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
     menu_glow_h = 0.00,
     menu_glow_s = 0.00,
@@ -534,6 +537,11 @@ local A = {
 
     gear_hover_anim = 0,
     gear_hover_last_t = nil,
+
+    -- Invisible Fallen-lua triple-click gesture.
+    secret_unlocked = false,
+    secret_brand_clicks = 0,
+    secret_brand_last_click = 0,
 
     menu_scale_dropdown_open = false,
     menu_scale_dropdown_anim = 0,
@@ -2571,6 +2579,27 @@ function FALLEN_ICON_ARMOR(x, y, c)
     line(x + 4,  y + 14, x + 12, y + 14, c, 1.8)
 end
 
+function FALLEN_ICON_SECRET(x, y, c)
+    -- Small lock/keyhole icon. Pure line geometry keeps Gradient mode clean.
+    local cx = x + 8
+    local top = y + 2
+
+    -- Shackle.
+    line(cx - 4, top + 5, cx - 4, top + 3, c, 1.1)
+    line(cx - 4, top + 3, cx - 2, top + 1, c, 1.1)
+    line(cx - 2, top + 1, cx + 2, top + 1, c, 1.1)
+    line(cx + 2, top + 1, cx + 4, top + 3, c, 1.1)
+    line(cx + 4, top + 3, cx + 4, top + 5, c, 1.1)
+
+    -- Lock body.
+    line(cx - 5, top + 5, cx + 5, top + 5, c, 1.1)
+    line(cx - 5, top + 5, cx - 5, top + 13, c, 1.1)
+    line(cx + 5, top + 5, cx + 5, top + 13, c, 1.1)
+    line(cx - 5, top + 13, cx + 5, top + 13, c, 1.1)
+
+    circle_fill(cx, top + 9, 1.15, c)
+end
+
 function FALLEN_ICON_MISC(x, y, c)
     -- Small utility/grid icon for Misc.
     -- Pure lines only so translucent Gradient mode cannot turn the outline
@@ -2601,16 +2630,40 @@ local ICONS = {
     icon_aim,
     icon_world,
     FALLEN_ICON_MISC,
+    FALLEN_ICON_SECRET,
 }
 
 -- =========================================================
 -- Sidebar
 -- =========================================================
 
+function FALLEN_SECRET_BRAND_CLICK()
+    if A.secret_unlocked then
+        return
+    end
+
+    local now = tick()
+    local elapsed = now - (A.secret_brand_last_click or 0)
+
+    if elapsed <= 1.05 then
+        A.secret_brand_clicks = (A.secret_brand_clicks or 0) + 1
+    else
+        A.secret_brand_clicks = 1
+    end
+
+    A.secret_brand_last_click = now
+
+    if (A.secret_brand_clicks or 0) >= 3 then
+        A.secret_unlocked = true
+        A.secret_brand_clicks = 0
+    end
+end
+
 local TABS = {
     { group = "AIMBOT", label = "Aimbot" },
     { group = "VISUALS", label = "Visuals" },
     { group = "COMMON", label = "Misc" },
+    { group = "SECRET", label = "Secret" },
 }
 
 local function sidebar_tab(mx, my, clicked, x, y, index)
@@ -17462,11 +17515,20 @@ end
 FALLEN_MENU_GRADIENT_TEXTURE =
     FALLEN_MENU_GRADIENT_TEXTURE
     or {
+        -- Front texture is always kept alive while a new color texture loads.
+        -- This prevents the Gradient menu from disappearing for a frame.
         handle = nil,
         key = nil,
+
+        pending_handle = nil,
         pending_key = nil,
+        pending_slot = nil,
+
+        active_slot = 1,
         last_build = 0,
-        path = "C:\\blueberry\\scripts\\fallen_menu_gradient.bmp",
+
+        path_a = "C:\\blueberry\\scripts\\fallen_menu_gradient_a.bmp",
+        path_b = "C:\\blueberry\\scripts\\fallen_menu_gradient_b.bmp",
     }
 
 function FALLEN_MENU_GRADIENT_COLOR(prefix)
@@ -17621,11 +17683,130 @@ function FALLEN_GRADIENT_COLOR_KEY(a, b)
     )
 end
 
-function FALLEN_GRADIENT_ENSURE_TEXTURE(a, b)
-    if type(write_file) ~= "function" then
-        return FALLEN_MENU_GRADIENT_TEXTURE.handle
+function FALLEN_GRADIENT_IMAGE_READY(handle)
+    if not handle then
+        return false
     end
 
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if ok then
+            return ready == true
+        end
+    end
+
+    -- File-backed Drawing images are often immediately usable.
+    -- If this build has no readiness API, keep the old texture for one
+    -- complete build interval before allowing a swap.
+    return true
+end
+
+function FALLEN_GRADIENT_IMAGE_FAILED(handle)
+    if not handle
+        or type(IsImageFailed) ~= "function"
+    then
+        return false
+    end
+
+    local ok, failed =
+        pcall(
+            IsImageFailed,
+            handle
+        )
+
+    return ok
+        and failed == true
+end
+
+function FALLEN_GRADIENT_UNLOAD(handle)
+    if not handle then
+        return
+    end
+
+    if Drawing
+        and type(Drawing.UnloadImage) == "function"
+    then
+        pcall(
+            Drawing.UnloadImage,
+            handle
+        )
+    end
+end
+
+function FALLEN_GRADIENT_TRY_SWAP(state, wanted_key)
+    if not state.pending_handle then
+        return false
+    end
+
+    if FALLEN_GRADIENT_IMAGE_FAILED(
+        state.pending_handle
+    ) then
+        FALLEN_GRADIENT_UNLOAD(
+            state.pending_handle
+        )
+
+        state.pending_handle = nil
+        state.pending_key = nil
+        state.pending_slot = nil
+
+        return false
+    end
+
+    if not FALLEN_GRADIENT_IMAGE_READY(
+        state.pending_handle
+    ) then
+        return false
+    end
+
+    -- If the user moved the picker again while this image was loading,
+    -- discard the stale candidate and keep the current front texture.
+    if state.pending_key ~= wanted_key then
+        FALLEN_GRADIENT_UNLOAD(
+            state.pending_handle
+        )
+
+        state.pending_handle = nil
+        state.pending_key = nil
+        state.pending_slot = nil
+
+        return false
+    end
+
+    local old_front =
+        state.handle
+
+    state.handle =
+        state.pending_handle
+
+    state.key =
+        state.pending_key
+
+    state.active_slot =
+        state.pending_slot
+        or state.active_slot
+
+    state.pending_handle = nil
+    state.pending_key = nil
+    state.pending_slot = nil
+
+    -- Only now is it safe to release the previous image.
+    if old_front
+        and old_front ~= state.handle
+    then
+        FALLEN_GRADIENT_UNLOAD(
+            old_front
+        )
+    end
+
+    return true
+end
+
+function FALLEN_GRADIENT_ENSURE_TEXTURE(a, b)
     local state =
         FALLEN_MENU_GRADIENT_TEXTURE
 
@@ -17635,22 +17816,44 @@ function FALLEN_GRADIENT_ENSURE_TEXTURE(a, b)
             b
         )
 
+    -- Finish a pending load first. The existing front texture stays visible.
+    FALLEN_GRADIENT_TRY_SWAP(
+        state,
+        key
+    )
+
     if state.key == key
         and state.handle
     then
         return state.handle
     end
 
-    -- Avoid rebuilding a texture every single frame while the user is
-    -- actively dragging a color picker. About 12 updates/sec stays smooth.
-    local now = tick()
-
-    if state.handle
-        and now - (state.last_build or 0) < 0.08
-    then
-        state.pending_key = key
+    if type(write_file) ~= "function" then
         return state.handle
     end
+
+    local now = tick()
+
+    -- While dragging, cap texture regeneration to ~20 Hz.
+    -- The currently displayed image never gets unloaded during this wait.
+    if now - (state.last_build or 0) < 0.05 then
+        return state.handle
+    end
+
+    -- If a previous candidate is still loading, keep drawing the old front.
+    if state.pending_handle then
+        return state.handle
+    end
+
+    local next_slot =
+        state.active_slot == 1
+        and 2
+        or 1
+
+    local next_path =
+        next_slot == 1
+        and state.path_a
+        or state.path_b
 
     local bmp =
         FALLEN_GRADIENT_BUILD_BMP(
@@ -17661,7 +17864,7 @@ function FALLEN_GRADIENT_ENSURE_TEXTURE(a, b)
     local ok_write =
         pcall(
             write_file,
-            state.path,
+            next_path,
             bmp
         )
 
@@ -17669,39 +17872,44 @@ function FALLEN_GRADIENT_ENSURE_TEXTURE(a, b)
         return state.handle
     end
 
-    if state.handle
-        and Drawing
-        and type(Drawing.UnloadImage) == "function"
-    then
-        pcall(
-            Drawing.UnloadImage,
-            state.handle
-        )
-    end
-
-    state.handle = nil
+    local candidate = nil
 
     pcall(function()
         if Drawing
             and type(Drawing.LoadImageFromFile) == "function"
         then
-            state.handle =
+            candidate =
                 Drawing.LoadImageFromFile(
-                    state.path
+                    next_path
                 )
         elseif type(LoadImage) == "function" then
-            state.handle =
+            candidate =
                 LoadImage(
-                    state.path
+                    next_path
                 )
         end
     end)
 
-    state.key = key
-    state.pending_key = nil
     state.last_build = now
 
-    return state.handle
+    if not candidate then
+        return state.handle
+    end
+
+    state.pending_handle = candidate
+    state.pending_key = key
+    state.pending_slot = next_slot
+
+    -- If the backend made it ready synchronously, swap immediately.
+    -- Otherwise the old front remains visible until a later frame.
+    FALLEN_GRADIENT_TRY_SWAP(
+        state,
+        key
+    )
+
+    return
+        state.handle
+        or state.pending_handle
 end
 
 function FALLEN_GRADIENT_MIGRATE_OLD_DEFAULTS()
@@ -18781,9 +18989,16 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         ):lower() == "blur"
 
     local ph =
-        gradient_selected
-        and 467
-        or 385
+        (
+            gradient_selected
+            and 467
+            or 385
+        )
+        + (
+            A.secret_unlocked
+            and 41
+            or 0
+        )
 
     local px = snap(anchor_x + 18)
     local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
@@ -19165,6 +19380,32 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 pw - 16,
                 "Dark Background",
                 "menu_dark_background",
+                false
+            )
+        end
+
+        -- Secret setting is completely absent until the hidden brand gesture.
+        if A.secret_unlocked
+            and shell_h > 410 + weather_offset
+        then
+            line(
+                px + 12,
+                py + 367 + weather_offset,
+                px + pw - 12,
+                py + 367 + weather_offset,
+                C.divider,
+                1
+            )
+
+            toggle_row(
+                mx,
+                my,
+                row_clicked,
+                px + 8,
+                py + 368 + weather_offset,
+                pw - 16,
+                "???",
+                "secret_enabled",
                 false
             )
         end
@@ -21838,6 +22079,32 @@ hooks.on_render(function()
     -- Brand. PRO badge intentionally removed.
     text(wx + 26, wy + 27, "Fallen-lua", C.text)
 
+    -- Hidden gesture: three quick clicks on the brand reveal the ??? setting.
+    -- The hitbox has no hover color, cursor effect, glow, tooltip, or other hint.
+    if clicked
+        and hover(
+            mx,
+            my,
+            wx + 16,
+            wy + 14,
+            122,
+            38
+        )
+    then
+        FALLEN_SECRET_BRAND_CLICK()
+    end
+
+    -- If the secret tab gets disabled while selected, fall back to Misc.
+    if S.tab == 4
+        and not (
+            A.secret_unlocked
+            and S.secret_enabled == true
+        )
+    then
+        S.tab = 3
+        S.anim = 0
+    end
+
     -- Sidebar
     -- COMMON/Misc is physically pushed down by the Visuals child expansion.
     -- 0 => close under Visuals, 1 => below World + Armor.
@@ -21861,7 +22128,13 @@ hooks.on_render(function()
 
     local sidebar_target_y
 
-    if S.tab == 3 then
+    if S.tab == 4
+        and A.secret_unlocked
+        and S.secret_enabled == true
+    then
+        sidebar_target_y =
+            wy + WIN_H - 118
+    elseif S.tab == 3 then
         sidebar_target_y =
             misc_tab_y
     elseif S.tab == 2 then
@@ -22301,6 +22574,22 @@ hooks.on_render(function()
         3
     )
 
+    -- Secret lives at the very bottom of the navigation, right above profile.
+    if A.secret_unlocked
+        and S.secret_enabled == true
+    then
+        sidebar_tab(
+            mx,
+            my,
+            clicked
+                and not A.world_color_picker_open
+                and (A.world_color_picker_anim or 0) <= 0.02,
+            wx + 10,
+            wy + WIN_H - 118,
+            4
+        )
+    end
+
     -- Sidebar footer: live Roblox avatar + username.
     update_profile()
 
@@ -22634,6 +22923,15 @@ hooks.on_render(function()
             page_x,
             page_y,
             "Misc"
+        )
+    elseif S.tab == 4
+        and A.secret_unlocked
+        and S.secret_enabled == true
+    then
+        section_title(
+            page_x,
+            page_y,
+            "Secret"
         )
     end
 
