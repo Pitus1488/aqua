@@ -22953,14 +22953,25 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            181,
+            190,
             11
         )
+
+        -- The style dropdown behaves as a modal overlay inside Secret.
+        -- While it is open (or still animating closed), controls underneath
+        -- are rendered normally but receive NO click input.
+        local secret_style_overlay_active =
+            A.secret_crosshair_style_open == true
+            or (A.secret_crosshair_style_anim or 0) > 0.02
+
+        local secret_controls_clicked =
+            page_clicked
+            and not secret_style_overlay_active
 
         toggle_row(
             mx,
             my,
-            page_clicked,
+            secret_controls_clicked,
             page_x,
             page_y + 32,
             page_w,
@@ -22972,7 +22983,7 @@ hooks.on_render(function()
         slider_row(
             mx,
             my,
-            page_clicked,
+            secret_controls_clicked,
             lmb,
             page_x,
             page_y + 65,
@@ -23055,34 +23066,21 @@ hooks.on_render(function()
             C.text_dim
         )
 
-        if page_clicked
+        -- The selector itself can always close an already-open popup,
+        -- but opening it is only allowed when no other modal is active.
+        if clicked
             and style_box_hot
             and not A.world_color_picker_open
+            and (
+                A.secret_crosshair_style_open
+                or not secret_style_overlay_active
+            )
         then
             A.secret_crosshair_style_open =
                 not A.secret_crosshair_style_open
 
             numeric_stop(true)
-        end
-
-        local secret_dropdown_hot =
-            FALLEN_DRAW_SECRET_CROSSHAIR_STYLE_DROPDOWN(
-                mx,
-                my,
-                clicked
-                    and not A.world_color_picker_open,
-                style_box_x,
-                style_box_y + 30,
-                style_box_w
-            )
-
-        if clicked
-            and A.secret_crosshair_style_open
-            and not style_box_hot
-            and not secret_dropdown_hot
-            and not A.world_color_picker_open
-        then
-            A.secret_crosshair_style_open = false
+            A.active_slider = nil
         end
 
         line(
@@ -23140,7 +23138,7 @@ hooks.on_render(function()
                 sc_swatch_h
             )
 
-        if page_clicked
+        if secret_controls_clicked
             and sc_swatch_hot
         then
             FALLEN_COLOR_INPUT_STOP(true)
@@ -23172,7 +23170,7 @@ hooks.on_render(function()
         toggle_row(
             mx,
             my,
-            page_clicked,
+            secret_controls_clicked,
             page_x,
             page_y + 172,
             page_w,
@@ -23180,6 +23178,31 @@ hooks.on_render(function()
             "secret_crosshair_rotate",
             false
         )
+
+        -- IMPORTANT: render the popup LAST so Color / Rotate can never
+        -- visually draw over it.
+        local secret_dropdown_hot =
+            FALLEN_DRAW_SECRET_CROSSHAIR_STYLE_DROPDOWN(
+                mx,
+                my,
+                clicked
+                    and not A.world_color_picker_open,
+                style_box_x,
+                style_box_y + 30,
+                style_box_w
+            )
+
+        -- Outside click only closes the dropdown. Because the controls above
+        -- used secret_controls_clicked=false for this frame, that same click
+        -- cannot activate anything underneath the popup.
+        if clicked
+            and A.secret_crosshair_style_open
+            and not style_box_hot
+            and not secret_dropdown_hot
+            and not A.world_color_picker_open
+        then
+            A.secret_crosshair_style_open = false
+        end
     end
 
     -- Config dropdown is rendered last so it always sits above page controls.
