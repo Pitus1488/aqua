@@ -25572,12 +25572,13 @@ hooks.on_render(function()
             40
         )
 
-    -- Shape based directly on the user's white reference:
-    -- one connected figure:
-    --   center vertical full,
-    --   middle horizontal,
-    --   left side vertical goes only DOWN,
-    --   right side vertical goes only UP.
+    -- Shape based on the latest user reference:
+    -- 1) center horizontal bridge,
+    -- 2) left upper short horizontal,
+    -- 3) left vertical goes down from the center,
+    -- 4) right vertical goes up from the center,
+    -- 5) center vertical goes down from the center,
+    -- 6) right lower short horizontal.
     local arm =
         math.max(
             5,
@@ -25588,6 +25589,12 @@ hooks.on_render(function()
         math.max(
             5,
             math.floor(size * 0.42)
+        )
+
+    local stub =
+        math.max(
+            4,
+            math.floor(size * 0.30)
         )
 
     local thick = 3
@@ -25605,19 +25612,7 @@ hooks.on_render(function()
     local white_b = 1
     local white_a = 1
 
-    -- Center vertical: top to bottom.
-    DrawBoxFilled(
-        cx - half_lo,
-        cy - arm,
-        cx + half_hi,
-        cy + arm,
-        white_r,
-        white_g,
-        white_b,
-        white_a
-    )
-
-    -- Middle horizontal: connects left and right parts into one figure.
+    -- Middle horizontal bridge.
     DrawBoxFilled(
         left_x,
         cy - half_lo,
@@ -25629,10 +25624,34 @@ hooks.on_render(function()
         white_a
     )
 
-    -- Left side vertical: ONLY downward from the middle.
+    -- Left upper short horizontal.
+    DrawBoxFilled(
+        left_x - stub,
+        cy - arm - half_lo,
+        left_x,
+        cy - arm + half_hi,
+        white_r,
+        white_g,
+        white_b,
+        white_a
+    )
+
+    -- Left upper vertical (connects upper-left short line down to center).
     DrawBoxFilled(
         left_x - half_lo,
-        cy - half_lo,
+        cy - arm,
+        left_x + half_hi,
+        cy,
+        white_r,
+        white_g,
+        white_b,
+        white_a
+    )
+
+    -- Left lower vertical: ONLY downward from the center.
+    DrawBoxFilled(
+        left_x - half_lo,
+        cy,
         left_x + half_hi,
         cy + arm,
         white_r,
@@ -25641,12 +25660,36 @@ hooks.on_render(function()
         white_a
     )
 
-    -- Right side vertical: ONLY upward from the middle.
+    -- Right vertical: ONLY upward from the center.
     DrawBoxFilled(
         right_x - half_lo,
         cy - arm,
         right_x + half_hi,
-        cy + half_hi,
+        cy,
+        white_r,
+        white_g,
+        white_b,
+        white_a
+    )
+
+    -- Center vertical: ONLY downward from the center.
+    DrawBoxFilled(
+        cx - half_lo,
+        cy,
+        cx + half_hi,
+        cy + arm,
+        white_r,
+        white_g,
+        white_b,
+        white_a
+    )
+
+    -- Right lower short horizontal.
+    DrawBoxFilled(
+        cx,
+        cy + arm - half_lo,
+        cx + stub,
+        cy + arm + half_hi,
         white_r,
         white_g,
         white_b,
