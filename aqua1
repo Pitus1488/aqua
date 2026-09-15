@@ -175,6 +175,7 @@ local defaults = {
 
     -- Hidden option revealed only after triple-clicking the brand.
     secret_enabled = false,
+    secret_crosshair = false,
 
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
     menu_glow_h = 0.00,
@@ -22933,6 +22934,26 @@ hooks.on_render(function()
             page_y,
             "Secret"
         )
+
+        card(
+            page_x,
+            page_y + 25,
+            page_w,
+            58,
+            11
+        )
+
+        toggle_row(
+            mx,
+            my,
+            page_clicked,
+            page_x,
+            page_y + 32,
+            page_w,
+            "Crosshair",
+            "secret_crosshair",
+            false
+        )
     end
 
     -- Config dropdown is rendered last so it always sits above page controls.
@@ -25508,3 +25529,81 @@ print("[Fallen loader] ready | v44 syntax fix")
 hooks.on_render(function()
     pcall(draw_fallen_toasts)
 end)
+
+-- =========================================================
+-- Secret crosshair
+-- =========================================================
+hooks.on_render(function()
+    if S.secret_crosshair ~= true then
+        return
+    end
+
+    local sw, sh =
+        screen_size()
+
+    local cx =
+        math.floor(
+            sw * 0.5
+            + 0.5
+        )
+
+    local cy =
+        math.floor(
+            sh * 0.5
+            + 0.5
+        )
+
+    -- Simple ╋ crosshair: compact solid horizontal + vertical bars.
+    -- A tiny dark underlay keeps it readable on bright scenes.
+    local arm = 7
+    local thick = 2
+
+    DrawLine(
+        cx - arm - 1,
+        cy,
+        cx + arm + 1,
+        cy,
+        0,
+        0,
+        0,
+        0.78,
+        thick + 2
+    )
+
+    DrawLine(
+        cx,
+        cy - arm - 1,
+        cx,
+        cy + arm + 1,
+        0,
+        0,
+        0,
+        0.78,
+        thick + 2
+    )
+
+    DrawLine(
+        cx - arm,
+        cy,
+        cx + arm,
+        cy,
+        1,
+        1,
+        1,
+        1,
+        thick
+    )
+
+    DrawLine(
+        cx,
+        cy - arm,
+        cx,
+        cy + arm,
+        1,
+        1,
+        1,
+        1,
+        thick
+    )
+end)
+
