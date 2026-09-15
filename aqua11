@@ -25646,42 +25646,88 @@ hooks.on_render(function()
         1
     )
 
-    -- Two symmetric green vertical bars, like the reference.
-    local green_offset =
+    -- Two short attached side hooks / brackets, based on the reference.
+    -- They are black, compact, and attached to the white crosshair.
+    local hook_gap =
         math.max(
-            7,
+            2,
+            math.floor(size * 0.10)
+        )
+
+    local hook_len =
+        math.max(
+            5,
             math.floor(size * 0.34)
         )
 
-    local green_half =
+    local hook_height =
         math.max(
-            6,
-            math.floor(size * 0.48)
+            8,
+            math.floor(size * 0.62)
         )
 
-    local green_thick = 2
+    local hook_thick =
+        math.max(
+            2,
+            math.floor(size * 0.18)
+        )
 
-    -- Left green bar
+    local hh_lo =
+        math.floor(
+            (hook_thick - 1) * 0.5
+        )
+
+    local hh_hi =
+        hook_thick - 1 - hh_lo
+
+    local hv_half =
+        math.floor(
+            hook_height * 0.5
+        )
+
+    -- Left hook: short horizontal connector + outer vertical.
     DrawBoxFilled(
-        cx - green_offset - 1,
-        cy - green_half,
-        cx - green_offset,
-        cy + green_half,
-        0.10,
-        1.00,
-        0.22,
-        1.00
+        cx - hook_gap - hook_len,
+        cy - hh_lo,
+        cx - hook_gap,
+        cy + hh_hi,
+        0,
+        0,
+        0,
+        1
     )
 
-    -- Right green bar
     DrawBoxFilled(
-        cx + green_offset,
-        cy - green_half,
-        cx + green_offset + 1,
-        cy + green_half,
-        0.10,
-        1.00,
-        0.22,
-        1.00
+        cx - hook_gap - hook_len - hh_lo,
+        cy - hv_half,
+        cx - hook_gap - hook_len + hh_hi,
+        cy + hv_half,
+        0,
+        0,
+        0,
+        1
+    )
+
+    -- Right hook: mirrored copy.
+    DrawBoxFilled(
+        cx + hook_gap,
+        cy - hh_lo,
+        cx + hook_gap + hook_len,
+        cy + hh_hi,
+        0,
+        0,
+        0,
+        1
+    )
+
+    DrawBoxFilled(
+        cx + hook_gap + hook_len - hh_lo,
+        cy - hv_half,
+        cx + hook_gap + hook_len + hh_hi,
+        cy + hv_half,
+        0,
+        0,
+        0,
+        1
     )
 end)
