@@ -17812,6 +17812,238 @@ function FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
     )
 end
 
+FALLEN_GLASS_FROST_TEXTURE =
+    FALLEN_GLASS_FROST_TEXTURE
+    or {
+        handle = nil,
+        built = false,
+        path = "C:\\blueberry\\scripts\\fallen_glass_frost.bmp",
+    }
+
+function FALLEN_GLASS_FROST_BUILD_BMP()
+    -- Small deterministic texture that scales over the menu.
+    -- It contains only very soft luminance variation, so it looks like
+    -- frosted glass instead of a visible pattern.
+    local w = 128
+    local h = 128
+    local row_bytes = w * 3
+    local row_pad = (4 - (row_bytes % 4)) % 4
+    local image_size = (row_bytes + row_pad) * h
+    local file_size = 54 + image_size
+
+    local chunks = {}
+
+    chunks[#chunks + 1] = "BM"
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(file_size)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(54)
+
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(40)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(w)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(h)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(1)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(24)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(image_size)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+
+    local pad =
+        row_pad > 0
+        and string.rep("\0", row_pad)
+        or ""
+
+    for py = h - 1, 0, -1 do
+        local row = {}
+
+        for px = 0, w - 1 do
+            -- Several low-frequency waves + a tiny deterministic grain.
+            local n =
+                0.50
+                + 0.16 * math.sin(px * 0.115 + py * 0.071)
+                + 0.11 * math.sin(px * 0.041 - py * 0.093)
+                + 0.07 * math.sin((px + py) * 0.157)
+
+            local grain =
+                (
+                    (
+                        px * 37
+                        + py * 57
+                        + px * py * 3
+                    ) % 17
+                ) / 16
+
+            n =
+                clamp(
+                    n
+                    + (grain - 0.5) * 0.055,
+                    0,
+                    1
+                )
+
+            -- Keep the texture light and neutral/cool.
+            local base =
+                210
+                + math.floor(n * 34)
+
+            local r =
+                math.min(
+                    255,
+                    base
+                )
+
+            local g =
+                math.min(
+                    255,
+                    base + 3
+                )
+
+            local b =
+                math.min(
+                    255,
+                    base + 8
+                )
+
+            row[#row + 1] =
+                string.char(
+                    b,
+                    g,
+                    r
+                )
+        end
+
+        chunks[#chunks + 1] =
+            table.concat(row)
+            .. pad
+    end
+
+    return table.concat(chunks)
+end
+
+function FALLEN_GLASS_FROST_TEXTURE_GET()
+    local state =
+        FALLEN_GLASS_FROST_TEXTURE
+
+    if state.handle then
+        return state.handle
+    end
+
+    if state.built then
+        return nil
+    end
+
+    state.built = true
+
+    if type(write_file) ~= "function" then
+        return nil
+    end
+
+    local bmp =
+        FALLEN_GLASS_FROST_BUILD_BMP()
+
+    local ok =
+        pcall(
+            write_file,
+            state.path,
+            bmp
+        )
+
+    if not ok then
+        return nil
+    end
+
+    pcall(function()
+        if Drawing
+            and type(Drawing.LoadImageFromFile) == "function"
+        then
+            state.handle =
+                Drawing.LoadImageFromFile(
+                    state.path
+                )
+        elseif type(LoadImage) == "function" then
+            state.handle =
+                LoadImage(
+                    state.path
+                )
+        end
+    end)
+
+    return state.handle
+end
+
+function FALLEN_DRAW_GLASS_FROST(
+    x,
+    y,
+    w,
+    h,
+    alpha_mul
+)
+    local a =
+        clamp(
+            alpha_mul or 1,
+            0,
+            1
+        )
+
+    -- Soft translucent fog underneath the texture.
+    rounded_fill(
+        x,
+        y,
+        w,
+        h,
+        OUTER_R,
+        {
+            0.13,
+            0.15,
+            0.19,
+            0.16 * a,
+        }
+    )
+
+    -- Slight highlight from top-right, imitating reflected glass.
+    rounded_fill(
+        x + w * 0.46,
+        y + 6,
+        w * 0.50 - 6,
+        h * 0.34,
+        math.max(
+            4,
+            OUTER_R - 3
+        ),
+        {
+            0.30,
+            0.34,
+            0.42,
+            0.045 * a,
+        }
+    )
+
+    local tex =
+        FALLEN_GLASS_FROST_TEXTURE_GET()
+
+    if tex
+        and type(DrawImage) == "function"
+    then
+        pcall(
+            DrawImage,
+            tex,
+            x,
+            y,
+            w,
+            h,
+            1,
+            1,
+            1,
+            0.075 * a,
+            OUTER_R
+        )
+    end
+end
+
+
 function FALLEN_APPLY_STYLE_COLOR()
     local t =
         tostring(S.menu_type or "glass")
@@ -17886,23 +18118,23 @@ function FALLEN_APPLY_STYLE_COLOR()
         C.text_faint = { 0.355, 0.375, 0.445, 1.00 }
 
     else
-        -- Glass: softer transparency and lighter separation like the reference.
+        -- Glass: translucent shell + simulated frosted blur layer.
         S.menu_type = "glass"
 
-        C.outer      = { 0.060, 0.064, 0.075, 0.84 }
-        C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
-        C.content    = { 0.052, 0.055, 0.063, 0.74 }
+        C.outer      = { 0.060, 0.064, 0.075, 0.78 }
+        C.sidebar    = { 0.078, 0.082, 0.094, 0.72 }
+        C.content    = { 0.052, 0.055, 0.063, 0.68 }
 
-        C.card       = { 0.065, 0.069, 0.080, 0.66 }
-        C.card_hover = { 0.082, 0.087, 0.100, 0.76 }
-        C.selected   = { 0.130, 0.132, 0.145, 0.84 }
+        C.card       = { 0.065, 0.069, 0.080, 0.62 }
+        C.card_hover = { 0.082, 0.087, 0.100, 0.73 }
+        C.selected   = { 0.130, 0.132, 0.145, 0.82 }
 
-        C.border     = { 0.250, 0.260, 0.300, 0.10 }
-        C.divider    = { 0.260, 0.270, 0.310, 0.09 }
+        C.border     = { 0.300, 0.320, 0.370, 0.13 }
+        C.divider    = { 0.300, 0.315, 0.360, 0.10 }
 
-        C.text       = { 0.720, 0.730, 0.760, 1.00 }
-        C.text_dim   = { 0.505, 0.520, 0.575, 1.00 }
-        C.text_faint = { 0.335, 0.355, 0.425, 1.00 }
+        C.text       = { 0.760, 0.770, 0.800, 1.00 }
+        C.text_dim   = { 0.535, 0.550, 0.610, 1.00 }
+        C.text_faint = { 0.360, 0.380, 0.450, 1.00 }
     end
 end
 
@@ -21753,6 +21985,16 @@ hooks.on_render(function()
             menu_base_alpha
         )
     else
+        if menu_texture_type == "glass" then
+            FALLEN_DRAW_GLASS_FROST(
+                wx,
+                wy,
+                WIN_W,
+                WIN_H,
+                menu_base_alpha
+            )
+        end
+
         rounded_left_fill(
             wx,
             wy,
