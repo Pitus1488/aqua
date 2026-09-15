@@ -7378,7 +7378,7 @@ local function draw_simple_page(mx, my, clicked, cx, cy, cw, title, state_key)
     card(cx, cy + 25, cw, 150, 11)
     toggle_row(mx, my, clicked, cx, cy + 32, cw, "Enabled", state_key, false)
     line(cx + 12, cy + 72, cx + cw - 12, cy + 72, C.divider, 1)
-    text(cx + 14, cy + 91, "Fallen-lua page is ready for features.", C.text_dim)
+    text(cx + 14, cy + 91, "PITUS page is ready for features.", C.text_dim)
     text(cx + 14, cy + 112, "The layout and input system are already active.", C.text_dim)
 end
 
@@ -17812,253 +17812,115 @@ function FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
     )
 end
 
-FALLEN_GLASS_FROST_TEXTURE =
-    FALLEN_GLASS_FROST_TEXTURE
-    or {
-        handle = nil,
-        built = false,
-        path = "C:\\blueberry\\scripts\\fallen_glass_frost.bmp",
-    }
-
-function FALLEN_GLASS_FROST_BUILD_BMP()
-    -- Small deterministic texture that scales over the menu.
-    -- It contains only very soft luminance variation, so it looks like
-    -- frosted glass instead of a visible pattern.
-    local w = 128
-    local h = 128
-    local row_bytes = w * 3
-    local row_pad = (4 - (row_bytes % 4)) % 4
-    local image_size = (row_bytes + row_pad) * h
-    local file_size = 54 + image_size
-
-    local chunks = {}
-
-    chunks[#chunks + 1] = "BM"
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(file_size)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(0)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(0)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(54)
-
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(40)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(w)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(h)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(1)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(24)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(image_size)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
-    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
-
-    local pad =
-        row_pad > 0
-        and string.rep("\0", row_pad)
-        or ""
-
-    for py = h - 1, 0, -1 do
-        local row = {}
-
-        for px = 0, w - 1 do
-            -- Several low-frequency waves + a tiny deterministic grain.
-            local n =
-                0.50
-                + 0.16 * math.sin(px * 0.115 + py * 0.071)
-                + 0.11 * math.sin(px * 0.041 - py * 0.093)
-                + 0.07 * math.sin((px + py) * 0.157)
-
-            local grain =
-                (
-                    (
-                        px * 37
-                        + py * 57
-                        + px * py * 3
-                    ) % 17
-                ) / 16
-
-            n =
-                clamp(
-                    n
-                    + (grain - 0.5) * 0.055,
-                    0,
-                    1
-                )
-
-            -- Keep the texture light and neutral/cool.
-            local base =
-                210
-                + math.floor(n * 34)
-
-            local r =
-                math.min(
-                    255,
-                    base
-                )
-
-            local g =
-                math.min(
-                    255,
-                    base + 3
-                )
-
-            local b =
-                math.min(
-                    255,
-                    base + 8
-                )
-
-            row[#row + 1] =
-                string.char(
-                    b,
-                    g,
-                    r
-                )
-        end
-
-        chunks[#chunks + 1] =
-            table.concat(row)
-            .. pad
-    end
-
-    return table.concat(chunks)
-end
-
-function FALLEN_GLASS_FROST_TEXTURE_GET()
-    local state =
-        FALLEN_GLASS_FROST_TEXTURE
-
-    if state.handle then
-        return state.handle
-    end
-
-    if state.built then
-        return nil
-    end
-
-    state.built = true
-
-    if type(write_file) ~= "function" then
-        return nil
-    end
-
-    local bmp =
-        FALLEN_GLASS_FROST_BUILD_BMP()
-
-    local ok =
-        pcall(
-            write_file,
-            state.path,
-            bmp
-        )
-
-    if not ok then
-        return nil
-    end
-
-    pcall(function()
-        if Drawing
-            and type(Drawing.LoadImageFromFile) == "function"
-        then
-            state.handle =
-                Drawing.LoadImageFromFile(
-                    state.path
-                )
-        elseif type(LoadImage) == "function" then
-            state.handle =
-                LoadImage(
-                    state.path
-                )
-        end
-    end)
-
-    return state.handle
-end
-
-function FALLEN_DRAW_GLASS_FROST(
+function FALLEN_DRAW_PITUS_LOGO(
     x,
     y,
-    w,
-    h,
-    alpha_mul
+    alpha_value,
+    scale
 )
     local a =
         clamp(
-            alpha_mul or 1,
+            tonumber(alpha_value) or 1,
             0,
             1
         )
 
-    -- Stronger frosted fog so Glass is visibly different.
-    rounded_fill(
-        x,
-        y,
-        w,
-        h,
-        OUTER_R,
-        {
-            0.33,
-            0.36,
-            0.42,
-            0.18 * a,
-        }
-    )
+    local s =
+        tonumber(scale) or 1
 
-    -- Large soft highlight from the upper-right.
-    rounded_fill(
-        x + w * 0.38,
-        y + 5,
-        w * 0.58 - 5,
-        h * 0.42,
-        math.max(
-            5,
-            OUTER_R - 2
-        ),
-        {
-            0.62,
-            0.68,
-            0.78,
-            0.075 * a,
-        }
-    )
+    local function tx(v)
+        if type(snap) == "function" then
+            return snap(v)
+        end
 
-    -- Secondary haze in the lower-left to fake depth in the glass.
-    rounded_fill(
-        x + 5,
-        y + h * 0.48,
-        w * 0.52,
-        h * 0.47 - 5,
-        math.max(
-            5,
-            OUTER_R - 2
-        ),
-        {
-            0.18,
-            0.22,
-            0.30,
-            0.085 * a,
-        }
-    )
-
-    local tex =
-        FALLEN_GLASS_FROST_TEXTURE_GET()
-
-    if tex
-        and type(DrawImage) == "function"
-    then
-        pcall(
-            DrawImage,
-            tex,
-            x,
-            y,
-            w,
-            h,
-            1,
-            1,
-            1,
-            0.16 * a,
-            OUTER_R
-        )
+        return v
     end
+
+    local letters = {
+        { "P",  0.0, 0.0 },
+        { "I", 12.0, 0.0 },
+        { "T", 18.2, 0.0 },
+        { "U", 29.0, 0.0 },
+        { "S", 42.3, 0.0 },
+    }
+
+    local function draw_pass(
+        ox,
+        oy,
+        r,
+        g,
+        b,
+        pass_alpha
+    )
+        for _, L in ipairs(letters) do
+            local ch =
+                L[1]
+
+            local lx =
+                x + L[2] * s + ox
+
+            local ly =
+                y + L[3] * s + oy
+
+            if Drawing
+                and type(Drawing.DrawText) == "function"
+            then
+                Drawing.DrawText(
+                    tx(lx),
+                    tx(ly),
+                    ch,
+                    r, g, b,
+                    a * pass_alpha
+                )
+            else
+                text(
+                    lx,
+                    ly,
+                    ch,
+                    { r, g, b, a * pass_alpha }
+                )
+            end
+        end
+    end
+
+    -- Neverlose-like stacked text look:
+    -- dark shadow -> cool gray lower body -> bright white face.
+    draw_pass(
+        1.3 * s,
+        1.9 * s,
+        0.03,
+        0.03,
+        0.04,
+        0.42
+    )
+
+    draw_pass(
+        0,
+        1.0 * s,
+        0.62,
+        0.65,
+        0.71,
+        0.98
+    )
+
+    draw_pass(
+        0,
+        0,
+        0.96,
+        0.97,
+        0.99,
+        1.00
+    )
+
+    -- Subtle top shine.
+    draw_pass(
+        0,
+        -0.25 * s,
+        1.00,
+        1.00,
+        1.00,
+        0.18
+    )
 end
 
 
@@ -18136,23 +17998,23 @@ function FALLEN_APPLY_STYLE_COLOR()
         C.text_faint = { 0.355, 0.375, 0.445, 1.00 }
 
     else
-        -- Glass: translucent shell + simulated frosted blur layer.
+        -- Glass: softer transparency and lighter separation like the reference.
         S.menu_type = "glass"
 
-        C.outer      = { 0.060, 0.064, 0.075, 0.70 }
-        C.sidebar    = { 0.078, 0.082, 0.094, 0.58 }
-        C.content    = { 0.052, 0.055, 0.063, 0.55 }
+        C.outer      = { 0.060, 0.064, 0.075, 0.84 }
+        C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
+        C.content    = { 0.052, 0.055, 0.063, 0.74 }
 
-        C.card       = { 0.065, 0.069, 0.080, 0.68 }
-        C.card_hover = { 0.082, 0.087, 0.100, 0.78 }
-        C.selected   = { 0.130, 0.132, 0.145, 0.86 }
+        C.card       = { 0.065, 0.069, 0.080, 0.66 }
+        C.card_hover = { 0.082, 0.087, 0.100, 0.76 }
+        C.selected   = { 0.130, 0.132, 0.145, 0.84 }
 
-        C.border     = { 0.300, 0.320, 0.370, 0.13 }
-        C.divider    = { 0.300, 0.315, 0.360, 0.10 }
+        C.border     = { 0.250, 0.260, 0.300, 0.10 }
+        C.divider    = { 0.260, 0.270, 0.310, 0.09 }
 
-        C.text       = { 0.760, 0.770, 0.800, 1.00 }
-        C.text_dim   = { 0.535, 0.550, 0.610, 1.00 }
-        C.text_faint = { 0.360, 0.380, 0.450, 1.00 }
+        C.text       = { 0.720, 0.730, 0.760, 1.00 }
+        C.text_dim   = { 0.505, 0.520, 0.575, 1.00 }
+        C.text_faint = { 0.335, 0.355, 0.425, 1.00 }
     end
 end
 
@@ -22020,18 +21882,6 @@ hooks.on_render(function()
             OUTER_R,
             C.content
         )
-
-        -- Draw frosted haze AFTER the base shell so it remains visible,
-        -- but still before cards/text/icons are rendered.
-        if menu_texture_type == "glass" then
-            FALLEN_DRAW_GLASS_FROST(
-                wx,
-                wy,
-                WIN_W,
-                WIN_H,
-                menu_base_alpha
-            )
-        end
     end
 
     -- Let the base become mostly visible before layered controls/cards fade in.
@@ -22052,8 +21902,13 @@ hooks.on_render(function()
     -- Vertical divider.
     line(wx + SIDEBAR_W, wy + 12, wx + SIDEBAR_W, wy + WIN_H - 12, C.divider, 1)
 
-    -- Brand. PRO badge intentionally removed.
-    text(wx + 26, wy + 27, "Fallen-lua", C.text)
+    -- Brand.
+    FALLEN_DRAW_PITUS_LOGO(
+        wx + 24,
+        wy + 24,
+        1,
+        1
+    )
 
     -- Sidebar
     -- COMMON/Misc is physically pushed down by the Visuals child expansion.
@@ -24084,12 +23939,12 @@ hooks.on_render(function()
         1
     )
 
-    -- Clean loader header: no image here.
-    Drawing.DrawText(
-        snap(x + 12 * scale),
-        snap(y + 18 * scale),
-        "Fallen-lua",
-        0.90, 0.90, 0.93, alpha
+    -- Clean loader header brand.
+    FALLEN_DRAW_PITUS_LOGO(
+        x + 12 * scale,
+        y + 18 * scale,
+        alpha,
+        scale
     )
 
 
