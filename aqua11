@@ -150,6 +150,18 @@ local defaults = {
     menu_scale_percent = 100,
     menu_type = "default",
 
+    -- Real two-color diagonal Gradient menu style.
+    -- Color 1 = top-right, Color 2 = bottom-left.
+    menu_gradient_a_h = 0.62,
+    menu_gradient_a_s = 0.68,
+    menu_gradient_a_v = 0.92,
+    menu_gradient_a_alpha = 100,
+
+    menu_gradient_b_h = 0.82,
+    menu_gradient_b_s = 0.62,
+    menu_gradient_b_v = 0.80,
+    menu_gradient_b_alpha = 100,
+
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
     menu_glow_strength = 100,
 
@@ -517,6 +529,9 @@ local A = {
     menu_settings_anim = 0,
     menu_settings_last_t = nil,
 
+    gear_hover_anim = 0,
+    gear_hover_last_t = nil,
+
     menu_scale_dropdown_open = false,
     menu_scale_dropdown_anim = 0,
     menu_scale_dropdown_last_t = nil,
@@ -546,6 +561,145 @@ local PROFILE = {
     worker_id = nil,
     last_scan = -100,
 }
+
+_G.FALLEN_CUSTOM_AVATAR =
+    _G.FALLEN_CUSTOM_AVATAR
+    or {
+        handle = nil,
+        path = nil,
+        tried = false,
+        folder_ready = false,
+    }
+
+function FALLEN_CUSTOM_AVATAR_ENSURE_FOLDER()
+    if _G.FALLEN_CUSTOM_AVATAR.folder_ready then
+        return
+    end
+
+    _G.FALLEN_CUSTOM_AVATAR.folder_ready = true
+
+    -- write_file creates missing parent folders, so this also creates:
+    -- C:\blueberry\scripts\avatar\
+    if type(write_file) == "function" then
+        local marker =
+            "C:\\blueberry\\scripts\\avatar\\PUT_AVATAR_HERE.txt"
+
+        local should_write = true
+
+        if type(exists_file) == "function" then
+            local ok, exists =
+                pcall(
+                    exists_file,
+                    marker
+                )
+
+            if ok and exists then
+                should_write = false
+            end
+        end
+
+        if should_write then
+            pcall(
+                write_file,
+                marker,
+                "Put your image in this folder. Recommended name: avatar.png\n"
+                .. "Supported: PNG, JPG/JPEG, BMP, GIF, TGA.\n"
+                .. "Reload the Lua after replacing the file.\n"
+            )
+        end
+    end
+end
+
+function FALLEN_CUSTOM_AVATAR_FIND_PATH()
+    FALLEN_CUSTOM_AVATAR_ENSURE_FOLDER()
+
+    if type(exists_file) ~= "function" then
+        return nil
+    end
+
+    local base =
+        "C:\\blueberry\\scripts\\avatar\\"
+
+    local names = {
+        "avatar.png",
+        "avatar.jpg",
+        "avatar.jpeg",
+        "avatar.bmp",
+        "avatar.gif",
+        "avatar.tga",
+        "profile.png",
+        "profile.jpg",
+        "pfp.png",
+        "pfp.jpg",
+        "image.png",
+        "image.jpg",
+    }
+
+    for _, name in ipairs(names) do
+        local path =
+            base .. name
+
+        local ok, exists =
+            pcall(
+                exists_file,
+                path
+            )
+
+        if ok and exists then
+            return path
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_CUSTOM_AVATAR_LOAD()
+    FALLEN_CUSTOM_AVATAR_ENSURE_FOLDER()
+
+    if _G.FALLEN_CUSTOM_AVATAR.handle then
+        return _G.FALLEN_CUSTOM_AVATAR.handle
+    end
+
+    if _G.FALLEN_CUSTOM_AVATAR.tried then
+        return nil
+    end
+
+    _G.FALLEN_CUSTOM_AVATAR.tried = true
+
+    local path =
+        FALLEN_CUSTOM_AVATAR_FIND_PATH()
+
+    if not path then
+        return nil
+    end
+
+    local handle = nil
+
+    pcall(function()
+        if Drawing
+            and type(Drawing.LoadImageFromFile) == "function"
+        then
+            handle =
+                Drawing.LoadImageFromFile(
+                    path
+                )
+        elseif type(LoadImage) == "function" then
+            handle =
+                LoadImage(
+                    path
+                )
+        end
+    end)
+
+    if handle then
+        _G.FALLEN_CUSTOM_AVATAR.handle = handle
+        _G.FALLEN_CUSTOM_AVATAR.path = path
+    end
+
+    return handle
+end
+
+FALLEN_CUSTOM_AVATAR_ENSURE_FOLDER()
 
 local function local_profile()
     local username = nil
@@ -587,6 +741,16 @@ end
 
 local function fetch_avatar_once()
     if PROFILE.avatar_done or PROFILE.avatar_failed then
+        return
+    end
+
+    -- Local custom avatar always wins over the Roblox thumbnail.
+    local custom =
+        FALLEN_CUSTOM_AVATAR_LOAD()
+
+    if custom then
+        PROFILE.avatar = custom
+        PROFILE.avatar_done = true
         return
     end
 
@@ -661,7 +825,6 @@ local function start_avatar_worker()
     if PROFILE.avatar_started
         or PROFILE.avatar_done
         or PROFILE.avatar_failed
-        or not PROFILE.user_id
     then
         return
     end
@@ -8789,7 +8952,6 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     boom_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548823359545016411/nwy9966m3ZxyeZg2yY7qRfyMUHDmG1knvQlNHz9odq2zEWGUtjPVaqiCSKK-mNBmmSMdL6xi12PZs_eIdFviRo8Ir7vv7MvEIzyP_1.png?ex=6aa875a8&is=6aa72428&hm=9b596e1dd0db49ede18049cac09f2701f9ede3166bf14aec9300a7fac0c1d109&",
     user_smoke_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827221538373713/i-_2__1.png?ex=6aa87941&is=6aa727c1&hm=1ee45d81a647ee5169c400f33c1db3f3b0d0c928f9962b478ade3af141cf2e85&",
     user_sparks_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827784342671370/i-_3__1.png?ex=6aa879c7&is=6aa72847&hm=0d8a98fa5a309eb38a94c26ad4fa0d409ac7170689aa935d6754b564eecf0d46&",
-    blur_menu_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548830528659001355/i-_4_.png?ex=6aa87c55&is=6aa72ad5&hm=114ff3145fcbc12d7d35e3a3374de3b6a758a626a9f80f1d35ef16913757c152&",
     spark = nil,
     star = nil,
     flash = nil,
@@ -8798,7 +8960,6 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     boom = nil,
     user_smoke = nil,
     user_sparks = nil,
-    blur_menu = nil,
 }
 
 function FALLEN_BT_STYLE_INDEX()
@@ -17272,6 +17433,138 @@ function FALLEN_POPUP_GLOW(x, y, w, h, radius, strength)
     end
 end
 
+function FALLEN_MENU_GRADIENT_COLOR(prefix)
+    local r, g, b =
+        hsv_to_rgb(
+            tonumber(S[prefix .. "_h"]) or 0,
+            tonumber(S[prefix .. "_s"]) or 0,
+            tonumber(S[prefix .. "_v"]) or 1
+        )
+
+    return {
+        r,
+        g,
+        b,
+        1,
+    }
+end
+
+function FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
+    x,
+    y,
+    w,
+    h,
+    alpha_mul
+)
+    if type(DrawLine) ~= "function"
+        or w <= 1
+        or h <= 1
+    then
+        return
+    end
+
+    -- A = top-right, B = bottom-left.
+    local a =
+        FALLEN_MENU_GRADIENT_COLOR(
+            "menu_gradient_a"
+        )
+
+    local b =
+        FALLEN_MENU_GRADIENT_COLOR(
+            "menu_gradient_b"
+        )
+
+    -- Fixed 50% shell transparency requested for Gradient.
+    local shell_alpha =
+        0.50
+        * clamp(
+            alpha_mul or 1,
+            0,
+            1
+        )
+
+    -- Iso-color bands run top-left -> bottom-right.
+    -- 160 thin bands makes the result visually smooth while remaining
+    -- far cheaper than painting thousands of tiny rectangles.
+    local count = 160
+
+    local norm =
+        math.sqrt(
+            1 / (w * w)
+            + 1 / (h * h)
+        )
+
+    local q_step =
+        2 / (count - 1)
+
+    local thickness =
+        (q_step / norm)
+        * 1.05
+
+    for i = 0, count - 1 do
+        local q =
+            -1
+            + 2
+            * i
+            / (count - 1)
+
+        local t =
+            (q + 1) * 0.5
+
+        local r =
+            lerp(
+                b[1],
+                a[1],
+                t
+            )
+
+        local g =
+            lerp(
+                b[2],
+                a[2],
+                t
+            )
+
+        local bb =
+            lerp(
+                b[3],
+                a[3],
+                t
+            )
+
+        local x1, y1, x2, y2
+
+        if q <= 0 then
+            -- left edge -> bottom edge
+            x1 = x
+            y1 = y + (-q) * h
+
+            x2 = x + (q + 1) * w
+            y2 = y + h
+        else
+            -- top edge -> right edge
+            x1 = x + q * w
+            y1 = y
+
+            x2 = x + w
+            y2 = y + (1 - q) * h
+        end
+
+        DrawLine(
+            x1,
+            y1,
+            x2,
+            y2,
+            r,
+            g,
+            bb,
+            shell_alpha,
+            thickness
+        )
+    end
+end
+
+
 function FALLEN_APPLY_STYLE_COLOR()
     local t =
         tostring(S.menu_type or "glass")
@@ -17325,25 +17618,25 @@ function FALLEN_APPLY_STYLE_COLOR()
     elseif t == "gradient"
         or t == "blur"
     then
-        -- Gradient: same shell logic as Glass, but with a semi-transparent
-        -- textured image laid across the full menu background.
-        -- Old configs using "blur" are migrated automatically.
+        -- Real two-color diagonal gradient.
+        -- Legacy "blur" configs migrate to Gradient.
         S.menu_type = "gradient"
 
-        C.outer      = { 0.060, 0.064, 0.075, 0.84 }
-        C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
-        C.content    = { 0.052, 0.055, 0.063, 0.74 }
+        -- The shell itself is drawn separately at fixed 50% opacity.
+        C.outer      = { 0.000, 0.000, 0.000, 0.00 }
+        C.sidebar    = { 0.000, 0.000, 0.000, 0.00 }
+        C.content    = { 0.000, 0.000, 0.000, 0.00 }
 
-        C.card       = { 0.065, 0.069, 0.080, 0.66 }
-        C.card_hover = { 0.082, 0.087, 0.100, 0.76 }
-        C.selected   = { 0.130, 0.132, 0.145, 0.84 }
+        C.card       = { 0.055, 0.058, 0.067, 0.72 }
+        C.card_hover = { 0.073, 0.076, 0.087, 0.80 }
+        C.selected   = { 0.125, 0.126, 0.137, 0.86 }
 
-        C.border     = { 0.250, 0.260, 0.300, 0.10 }
-        C.divider    = { 0.260, 0.270, 0.310, 0.09 }
+        C.border     = { 0.250, 0.260, 0.300, 0.16 }
+        C.divider    = { 0.260, 0.270, 0.310, 0.14 }
 
-        C.text       = { 0.720, 0.730, 0.760, 1.00 }
-        C.text_dim   = { 0.505, 0.520, 0.575, 1.00 }
-        C.text_faint = { 0.335, 0.355, 0.425, 1.00 }
+        C.text       = { 0.760, 0.770, 0.800, 1.00 }
+        C.text_dim   = { 0.530, 0.545, 0.600, 1.00 }
+        C.text_faint = { 0.355, 0.375, 0.445, 1.00 }
 
     else
         -- Glass: softer transparency and lighter separation like the reference.
@@ -17519,25 +17812,86 @@ function FALLEN_DRAW_ROUNDED_GLOW_FRAME(
     )
 end
 
-function FALLEN_DRAW_GEAR(cx, cy, hot)
-    -- Cleaner compact gear icon for the menu settings button.
-    -- Built from overlapping circles so the silhouette stays smooth
-    -- even at the tiny size used by the sidebar profile card.
-    local col =
-        hot
-        and C.text
-        or C.text_dim
+function FALLEN_GEAR_HOVER_STEP(hot)
+    local now = tick()
 
-    local hole_col =
-        hot
-        and { 0.10, 0.105, 0.125, 1.00 }
-        or C.sidebar
+    if A.gear_hover_last_t == nil then
+        A.gear_hover_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.gear_hover_last_t,
+            0,
+            0.05
+        )
+
+    A.gear_hover_last_t = now
+
+    local p =
+        clamp(
+            tonumber(A.gear_hover_anim) or 0,
+            0,
+            1
+        )
+
+    if hot then
+        -- Full white / full scale after roughly one second.
+        p =
+            math.min(
+                1,
+                p + dt / 1.0
+            )
+    else
+        -- Return a little faster so the control stays responsive.
+        p =
+            math.max(
+                0,
+                p - dt / 0.35
+            )
+    end
+
+    A.gear_hover_anim = p
+    return smooth01(p)
+end
+
+function FALLEN_DRAW_GEAR(cx, cy, hot, hover_anim)
+    local p =
+        clamp(
+            tonumber(hover_anim) or 0,
+            0,
+            1
+        )
+
+    local scale =
+        1
+        + 0.14 * p
+
+    local base =
+        C.text_dim
+
+    local col = {
+        lerp(base[1] or 0.5, 1.0, p),
+        lerp(base[2] or 0.5, 1.0, p),
+        lerp(base[3] or 0.5, 1.0, p),
+        1.0,
+    }
+
+    local hole_base =
+        C.sidebar
+
+    local hole_col = {
+        lerp(hole_base[1] or 0.08, 0.10, p),
+        lerp(hole_base[2] or 0.08, 0.105, p),
+        lerp(hole_base[3] or 0.09, 0.125, p),
+        1.0,
+    }
 
     -- Outer gear body.
     circle_fill(
         cx,
         cy,
-        4.9,
+        4.9 * scale,
         col
     )
 
@@ -17551,11 +17905,13 @@ function FALLEN_DRAW_GEAR(cx, cy, hot)
         circle_fill(
             cx
                 + math.cos(a)
-                * 6.1,
+                * 6.1
+                * scale,
             cy
                 + math.sin(a)
-                * 6.1,
-            2.15,
+                * 6.1
+                * scale,
+            2.15 * scale,
             col
         )
     end
@@ -17564,15 +17920,14 @@ function FALLEN_DRAW_GEAR(cx, cy, hot)
     circle_fill(
         cx,
         cy,
-        2.35,
+        2.35 * scale,
         hole_col
     )
 
-    -- Light inner edge so the hole reads sharper.
     circle(
         cx,
         cy,
-        2.85,
+        2.85 * scale,
         alpha(col, 0.22),
         1
     )
@@ -18036,6 +18391,116 @@ function FALLEN_DRAW_MENU_TYPE_DROPDOWN(
 end
 
 
+function FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w,
+    label,
+    prefix
+)
+    local hot =
+        row_hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            41
+        )
+
+    text(
+        x + 13,
+        y + 14,
+        label,
+        FALLEN_HOVER_TEXT(
+            prefix .. "_row",
+            hot,
+            C.text
+        )
+    )
+
+    local swatch_s = 20
+
+    local swatch_x =
+        x + w
+        - swatch_s
+        - 12
+
+    local swatch_y =
+        y + 10
+
+    local c =
+        world_color_from_prefix(
+            prefix
+        )
+
+    world_square_swatch(
+        swatch_x,
+        swatch_y,
+        swatch_s,
+        c
+    )
+
+    local swatch_hot =
+        hover(
+            mx,
+            my,
+            swatch_x,
+            swatch_y,
+            swatch_s,
+            swatch_s
+        )
+
+    if clicked
+        and swatch_hot
+    then
+        FALLEN_COLOR_INPUT_STOP(true)
+
+        if A.world_color_picker_open
+            and A.world_color_picker_key == prefix
+        then
+            A.world_color_picker_open = false
+            A.world_color_picker_drag = nil
+        else
+            A.world_color_picker_key = prefix
+            A.world_color_picker_open = true
+            A.world_color_picker_drag = nil
+            A.fov_picker_open = false
+            A.fov_picker_drag = nil
+        end
+
+        A.world_color_picker_anchor_x =
+            FALLEN_UI_X(
+                swatch_x
+            )
+
+        A.world_color_picker_anchor_y =
+            FALLEN_UI_Y(
+                swatch_y
+            )
+
+        A.world_color_picker_anchor_w =
+            FALLEN_UI_LEN(
+                swatch_s
+            )
+
+        A.world_color_picker_anchor_h =
+            FALLEN_UI_LEN(
+                swatch_s
+            )
+
+        if numeric_stop then
+            numeric_stop(true)
+        end
+    end
+
+    return hot
+end
+
+
 function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
     local raw = FALLEN_MENU_SETTINGS_STEP()
 
@@ -18056,7 +18521,22 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or ease_in_out_cubic(raw)
 
     local pw = 278
-    local ph = 344
+
+    local gradient_selected =
+        tostring(
+            S.menu_type
+            or "glass"
+        ):lower() == "gradient"
+        or tostring(
+            S.menu_type
+            or "glass"
+        ):lower() == "blur"
+
+    local ph =
+        gradient_selected
+        and 426
+        or 344
+
     local px = snap(anchor_x + 18)
     local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
     local shell_h = math.max(38, ph - (1 - anim) * 46)
@@ -18065,7 +18545,13 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
 
     -- When Glow Color picker is open, clicks belong to the picker first.
     -- Do not close the whole Menu settings popup while choosing colors.
-    if A.world_color_picker_open and A.world_color_picker_key == "menu_glow" then
+    if A.world_color_picker_open
+        and (
+            A.world_color_picker_key == "menu_glow"
+            or A.world_color_picker_key == "menu_gradient_a"
+            or A.world_color_picker_key == "menu_gradient_b"
+        )
+    then
         interactive = true
     end
 
@@ -18276,14 +18762,75 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             A.menu_scale_dropdown_open = false
         end
 
+        local weather_offset = 0
+
+        if gradient_selected then
+            if shell_h > 246 then
+                line(
+                    px + 12,
+                    py + 203,
+                    px + pw - 12,
+                    py + 203,
+                    C.divider,
+                    1
+                )
+
+                FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
+                    mx,
+                    my,
+                    row_clicked,
+                    px + 8,
+                    py + 204,
+                    pw - 16,
+                    "Gradient Color 1",
+                    "menu_gradient_a"
+                )
+            end
+
+            if shell_h > 287 then
+                line(
+                    px + 12,
+                    py + 244,
+                    px + pw - 12,
+                    py + 244,
+                    C.divider,
+                    1
+                )
+
+                FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
+                    mx,
+                    my,
+                    row_clicked,
+                    px + 8,
+                    py + 245,
+                    pw - 16,
+                    "Gradient Color 2",
+                    "menu_gradient_b"
+                )
+            end
+
+            weather_offset = 82
+        end
+
         -- Animated background weather.
-        -- Uses the exact same row/toggle style as the rest of Fallen-lua.
-        if shell_h > 246 then
+        local snow_y =
+            py + 204
+            + weather_offset
+
+        local rain_y =
+            py + 245
+            + weather_offset
+
+        local lightning_y =
+            py + 286
+            + weather_offset
+
+        if shell_h > 246 + weather_offset then
             line(
                 px + 12,
-                py + 203,
+                snow_y - 1,
                 px + pw - 12,
-                py + 203,
+                snow_y - 1,
                 C.divider,
                 1
             )
@@ -18293,7 +18840,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 204,
+                snow_y,
                 pw - 16,
                 "Snow",
                 "menu_snow",
@@ -18301,12 +18848,12 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
-        if shell_h > 287 then
+        if shell_h > 287 + weather_offset then
             line(
                 px + 12,
-                py + 244,
+                rain_y - 1,
                 px + pw - 12,
-                py + 244,
+                rain_y - 1,
                 C.divider,
                 1
             )
@@ -18316,7 +18863,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 245,
+                rain_y,
                 pw - 16,
                 "Rain",
                 "menu_rain",
@@ -18324,12 +18871,12 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
-        if shell_h > 328 then
+        if shell_h > 328 + weather_offset then
             line(
                 px + 12,
-                py + 285,
+                lightning_y - 1,
                 px + pw - 12,
-                py + 285,
+                lightning_y - 1,
                 C.divider,
                 1
             )
@@ -18339,7 +18886,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 286,
+                lightning_y,
                 pw - 16,
                 "Lightning",
                 "menu_lightning",
@@ -20946,51 +21493,37 @@ hooks.on_render(function()
     local menu_texture_type =
         tostring(S.menu_type or "glass"):lower()
 
-    if menu_texture_type == "gradient"
+    local is_gradient_menu =
+        menu_texture_type == "gradient"
         or menu_texture_type == "blur"
-    then
-        local blur_img =
-            FALLEN_BT_IMAGE_GET(
-                "blur_menu",
-                FALLEN_BT_IMAGE.blur_menu_url
-            )
 
-        if blur_img
-            and type(DrawImage) == "function"
-        then
-            pcall(
-                DrawImage,
-                blur_img,
-                wx,
-                wy,
-                WIN_W,
-                WIN_H,
-                1,
-                1,
-                1,
-                0.50 * menu_base_alpha,
-                OUTER_R
-            )
-        end
+    if is_gradient_menu then
+        FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
+            wx,
+            wy,
+            WIN_W,
+            WIN_H,
+            menu_base_alpha
+        )
+    else
+        rounded_left_fill(
+            wx,
+            wy,
+            SIDEBAR_W,
+            WIN_H,
+            OUTER_R,
+            C.sidebar
+        )
+
+        rounded_right_fill(
+            wx + SIDEBAR_W,
+            wy,
+            WIN_W - SIDEBAR_W,
+            WIN_H,
+            OUTER_R,
+            C.content
+        )
     end
-
-    rounded_left_fill(
-        wx,
-        wy,
-        SIDEBAR_W,
-        WIN_H,
-        OUTER_R,
-        C.sidebar
-    )
-
-    rounded_right_fill(
-        wx + SIDEBAR_W,
-        wy,
-        WIN_W - SIDEBAR_W,
-        WIN_H,
-        OUTER_R,
-        C.content
-    )
 
     -- Let the base become mostly visible before layered controls/cards fade in.
     -- This keeps the transparency animation, while preventing stacked
@@ -21557,19 +22090,33 @@ hooks.on_render(function()
             22
         )
 
-    if gear_hot then
+    local gear_hover_anim =
+        FALLEN_GEAR_HOVER_STEP(
+            gear_hot
+        )
+
+    if gear_hover_anim > 0.002 then
         circle_fill(
             gear_x,
             gear_y,
-            11,
-            { 0.10, 0.105, 0.125, 1 }
+            10
+                + gear_hover_anim,
+            {
+                0.10,
+                0.105,
+                0.125,
+                0.18
+                    + 0.82
+                    * gear_hover_anim,
+            }
         )
     end
 
     FALLEN_DRAW_GEAR(
         gear_x,
         gear_y,
-        gear_hot
+        gear_hot,
+        gear_hover_anim
     )
 
     if clicked
@@ -21593,7 +22140,10 @@ hooks.on_render(function()
 
             A.world_settings_open = false
 
-            if A.world_color_picker_key ~= "menu_glow" then
+            if A.world_color_picker_key ~= "menu_glow"
+                and A.world_color_picker_key ~= "menu_gradient_a"
+                and A.world_color_picker_key ~= "menu_gradient_b"
+            then
                 A.world_color_picker_open = false
                 A.world_color_picker_drag = nil
             end
@@ -22556,8 +23106,19 @@ end
 local function fetch_profile_avatar()
     if profile_avatar
         or profile_avatar_failed
-        or not profile_user_id then
+    then
+        return
+    end
 
+    local custom =
+        FALLEN_CUSTOM_AVATAR_LOAD()
+
+    if custom then
+        profile_avatar = custom
+        return
+    end
+
+    if not profile_user_id then
         return
     end
 
@@ -22648,8 +23209,7 @@ local function ensure_profile_avatar()
     if profile_avatar
         or profile_avatar_failed
         or profile_avatar_started
-        or not profile_user_id then
-
+    then
         return
     end
 
