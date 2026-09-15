@@ -17957,6 +17957,278 @@ function FALLEN_DRAW_PITUS_LOGO(
 end
 
 
+
+function FALLEN_LOGO_CHAR_STEP(
+    ch,
+    s,
+    spacing_mul
+)
+    local base
+
+    if ch == "I" then
+        base = 3.8
+    elseif ch == "-" then
+        base = 3.8
+    elseif ch == "L" then
+        base = 5.1
+    elseif ch == "T" then
+        base = 5.9
+    elseif ch == "P" then
+        base = 6.1
+    elseif ch == "U" then
+        base = 6.2
+    elseif ch == "S" then
+        base = 6.0
+    elseif ch == "A" then
+        base = 6.1
+    else
+        base = 6.0
+    end
+
+    return
+        base
+        * s
+        * (spacing_mul or 1)
+end
+
+function FALLEN_LOGO_DRAW_PASS(
+    label,
+    x,
+    y,
+    s,
+    col,
+    spacing_mul,
+    bold_x,
+    bold_y,
+    step_x,
+    step_y,
+    slant_x
+)
+    local ox = 0
+
+    local bx_count =
+        math.max(
+            1,
+            math.floor(bold_x or 1)
+        )
+
+    local by_count =
+        math.max(
+            1,
+            math.floor(bold_y or 1)
+        )
+
+    local dx =
+        tonumber(step_x) or 0.42 * s
+
+    local dy =
+        tonumber(step_y) or 0.42 * s
+
+    local slant =
+        tonumber(slant_x) or 0
+
+    for i = 1, #label do
+        local ch =
+            label:sub(i, i)
+
+        for by = 0, by_count - 1 do
+            for bx = 0, bx_count - 1 do
+                text(
+                    x + ox + bx * dx + by * slant,
+                    y + by * dy,
+                    ch,
+                    col
+                )
+            end
+        end
+
+        ox =
+            ox
+            + FALLEN_LOGO_CHAR_STEP(
+                ch,
+                s,
+                spacing_mul
+            )
+    end
+end
+
+function FALLEN_DRAW_LOGO_STYLE(
+    style_id,
+    x,
+    y,
+    s
+)
+    local label =
+        "PITUS-LUA"
+
+    if style_id == 1 then
+        -- Compact Neverlose-like clean.
+        FALLEN_LOGO_DRAW_PASS(label, x + 1.2 * s, y + 1.9 * s, s, {0.03,0.03,0.04,0.40}, 0.90, 1, 1, 0.36*s, 0.36*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y + 0.95 * s, s, {0.60,0.64,0.71,0.98}, 0.90, 2, 2, 0.26*s, 0.25*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y,            s, {0.98,0.99,1.00,1.00}, 0.90, 2, 2, 0.24*s, 0.24*s, 0)
+
+    elseif style_id == 2 then
+        -- Heavy block.
+        FALLEN_LOGO_DRAW_PASS(label, x + 1.5 * s, y + 2.2 * s, s, {0.04,0.04,0.05,0.42}, 0.88, 2, 2, 0.35*s, 0.35*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y + 1.10 * s, s, {0.55,0.59,0.67,0.96}, 0.88, 3, 3, 0.34*s, 0.32*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y,            s, {1.00,1.00,1.00,1.00}, 0.88, 3, 3, 0.32*s, 0.31*s, 0)
+
+    elseif style_id == 3 then
+        -- Sharp outline.
+        FALLEN_LOGO_DRAW_PASS(label, x - 0.6*s, y,            s, {0.06,0.07,0.09,0.90}, 0.90, 1, 1, 0.40*s, 0.40*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x + 0.6*s, y,            s, {0.06,0.07,0.09,0.90}, 0.90, 1, 1, 0.40*s, 0.40*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,         y - 0.6*s,    s, {0.06,0.07,0.09,0.90}, 0.90, 1, 1, 0.40*s, 0.40*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,         y + 0.6*s,    s, {0.06,0.07,0.09,0.90}, 0.90, 1, 1, 0.40*s, 0.40*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,         y + 0.95 * s, s, {0.58,0.62,0.69,0.96}, 0.90, 2, 2, 0.28*s, 0.28*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,         y,            s, {0.99,1.00,1.00,1.00}, 0.90, 2, 2, 0.26*s, 0.26*s, 0)
+
+    elseif style_id == 4 then
+        -- Tall premium.
+        FALLEN_LOGO_DRAW_PASS(label, x + 1.2 * s, y + 2.4 * s, s, {0.03,0.03,0.04,0.32}, 0.86, 1, 1, 0.30*s, 0.40*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y + 1.20 * s, s, {0.61,0.65,0.72,0.96}, 0.86, 2, 3, 0.23*s, 0.34*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y,            s, {1.00,1.00,1.00,1.00}, 0.86, 2, 3, 0.20*s, 0.32*s, 0)
+
+    elseif style_id == 5 then
+        -- Slanted.
+        FALLEN_LOGO_DRAW_PASS(label, x + 1.6 * s, y + 2.0 * s, s, {0.03,0.03,0.04,0.36}, 0.89, 1, 1, 0.32*s, 0.32*s, 0.18*s)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y + 1.00 * s, s, {0.58,0.62,0.70,0.96}, 0.89, 2, 2, 0.27*s, 0.27*s, 0.18*s)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y,            s, {0.99,1.00,1.00,1.00}, 0.89, 2, 2, 0.25*s, 0.25*s, 0.18*s)
+
+    elseif style_id == 6 then
+        -- Ultra compact.
+        FALLEN_LOGO_DRAW_PASS(label, x + 1.0 * s, y + 1.7 * s, s, {0.02,0.02,0.03,0.34}, 0.80, 1, 1, 0.30*s, 0.30*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y + 0.85 * s, s, {0.58,0.63,0.71,0.96}, 0.80, 2, 2, 0.22*s, 0.22*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y,            s, {1.00,1.00,1.00,1.00}, 0.80, 2, 2, 0.20*s, 0.20*s, 0)
+
+    elseif style_id == 7 then
+        -- Silver face with dark edge.
+        FALLEN_LOGO_DRAW_PASS(label, x - 0.5*s, y,            s, {0.04,0.04,0.05,0.88}, 0.86, 1, 1, 0.34*s, 0.34*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x + 0.5*s, y,            s, {0.04,0.04,0.05,0.88}, 0.86, 1, 1, 0.34*s, 0.34*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,         y + 0.5*s,    s, {0.04,0.04,0.05,0.88}, 0.86, 1, 1, 0.34*s, 0.34*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,         y + 0.85 * s, s, {0.50,0.55,0.62,0.98}, 0.86, 2, 2, 0.24*s, 0.24*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,         y,            s, {0.95,0.96,0.98,1.00}, 0.86, 2, 2, 0.22*s, 0.22*s, 0)
+
+    elseif style_id == 8 then
+        -- Big block soft.
+        FALLEN_LOGO_DRAW_PASS(label, x + 1.4 * s, y + 2.3 * s, s, {0.04,0.04,0.05,0.30}, 0.92, 2, 2, 0.36*s, 0.34*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y + 1.10 * s, s, {0.57,0.61,0.69,0.96}, 0.92, 4, 3, 0.23*s, 0.25*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y,            s, {1.00,1.00,1.00,1.00}, 0.92, 4, 3, 0.20*s, 0.22*s, 0)
+
+    elseif style_id == 9 then
+        -- Thin but wide face.
+        FALLEN_LOGO_DRAW_PASS(label, x + 1.2 * s, y + 2.0 * s, s, {0.03,0.03,0.04,0.30}, 0.98, 1, 1, 0.30*s, 0.30*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y + 0.95 * s, s, {0.60,0.64,0.72,0.95}, 0.98, 2, 1, 0.28*s, 0.15*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y,            s, {1.00,1.00,1.00,1.00}, 0.98, 2, 1, 0.26*s, 0.14*s, 0)
+
+    else
+        -- 10 = very bold compact.
+        FALLEN_LOGO_DRAW_PASS(label, x + 1.7 * s, y + 2.5 * s, s, {0.03,0.03,0.04,0.42}, 0.84, 2, 2, 0.36*s, 0.34*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y + 1.15 * s, s, {0.56,0.60,0.67,0.98}, 0.84, 4, 4, 0.26*s, 0.24*s, 0)
+        FALLEN_LOGO_DRAW_PASS(label, x,           y,            s, {1.00,1.00,1.00,1.00}, 0.84, 4, 4, 0.24*s, 0.22*s, 0)
+    end
+end
+
+function FALLEN_DRAW_LOGO_TEST_CARD(
+    idx,
+    x,
+    y,
+    w,
+    h
+)
+    rounded_fill(
+        x,
+        y,
+        w,
+        h,
+        11,
+        C.card
+    )
+
+    rounded_outline(
+        x,
+        y,
+        w,
+        h,
+        11,
+        alpha(C.border, 0.95),
+        1,
+        nil
+    )
+
+    text(
+        x + 12,
+        y + 9,
+        tostring(idx),
+        C.text_dim
+    )
+
+    FALLEN_DRAW_LOGO_STYLE(
+        idx,
+        x + 18,
+        y + 28,
+        1.28
+    )
+end
+
+function FALLEN_DRAW_LOGO_TEST_PAGE(
+    mx,
+    my,
+    clicked,
+    lmb,
+    page_x,
+    page_y,
+    page_w
+)
+    section_title(
+        page_x,
+        page_y,
+        "LOGO TESTS"
+    )
+
+    text(
+        page_x + 112,
+        page_y + 1,
+        "Choose the number you like",
+        C.text_faint
+    )
+
+    local gap = 14
+    local cw =
+        math.floor(
+            (page_w - gap) / 2
+        )
+
+    local ch = 86
+    local start_y = page_y + 22
+
+    for idx = 1, 10 do
+        local col =
+            ((idx - 1) % 2)
+
+        local row =
+            math.floor(
+                (idx - 1) / 2
+            )
+
+        local x =
+            page_x
+            + col * (cw + gap)
+
+        local y =
+            start_y
+            + row * (ch + 12)
+
+        FALLEN_DRAW_LOGO_TEST_CARD(
+            idx,
+            x,
+            y,
+            cw,
+            ch
+        )
+    end
+end
+
+
 function FALLEN_APPLY_STYLE_COLOR()
     local t =
         tostring(S.menu_type or "glass")
@@ -22735,10 +23007,14 @@ hooks.on_render(function()
         end
 
     elseif S.tab == 3 then
-        section_title(
+        FALLEN_DRAW_LOGO_TEST_PAGE(
+            mx,
+            my,
+            page_clicked,
+            lmb,
             page_x,
             page_y,
-            "Misc"
+            page_w
         )
     end
 
