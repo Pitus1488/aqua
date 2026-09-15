@@ -25554,14 +25554,10 @@ hooks.on_render(function()
         return
     end
 
-    local sw, sh =
-        screen_size()
+    local sw, sh = screen_size()
 
-    local cx =
-        math.floor(sw * 0.5)
-
-    local cy =
-        math.floor(sh * 0.5)
+    local cx = math.floor(sw * 0.5)
+    local cy = math.floor(sh * 0.5)
 
     local size =
         clamp(
@@ -25572,107 +25568,88 @@ hooks.on_render(function()
             40
         )
 
-    -- Shape matched to the latest user reference:
-    -- top horizontal (left -> center),
-    -- center vertical (top -> bottom),
-    -- middle horizontal (left -> right),
-    -- left vertical (middle -> bottom),
-    -- right vertical (top -> middle),
-    -- bottom horizontal (center -> right).
-    local arm =
-        math.max(
-            5,
-            math.floor(size * 0.50)
-        )
-
+    -- Rounded version of the same shape.
     local thick =
         math.max(
             2,
             math.floor(size * 0.18)
         )
 
-    local half_lo =
-        math.floor(
-            (thick - 1) * 0.5
+    local half_lo = math.floor((thick - 1) * 0.5)
+    local half_hi = thick - 1 - half_lo
+
+    local extent =
+        math.max(
+            5,
+            math.floor(size * 0.50)
         )
 
-    local half_hi =
-        thick - 1 - half_lo
+    local end_trim =
+        math.max(
+            0,
+            math.floor(thick * 0.34)
+        )
 
-    local xL =
-        cx - arm
+    local xL = cx - extent + end_trim
+    local xC = cx
+    local xR = cx + extent - end_trim
 
-    local xC =
-        cx
+    local yT = cy - extent + end_trim
+    local yM = cy
+    local yB = cy + extent - end_trim
 
-    local xR =
-        cx + arm
+    local function circle(x, y, rad)
+        if type(DrawCircleFilled) == "function" then
+            DrawCircleFilled(
+                x, y, rad,
+                1, 1, 1, 1
+            )
+        else
+            DrawBoxFilled(
+                x - rad, y - rad,
+                x + rad, y + rad,
+                1, 1, 1, 1
+            )
+        end
+    end
 
-    local yT =
-        cy - arm
+    local function rect(x1, y1, x2, y2)
+        DrawBoxFilled(
+            x1, y1, x2, y2,
+            1, 1, 1, 1
+        )
+    end
 
-    local yM =
-        cy
+    local cap = math.max(1, math.floor(thick * 0.5))
 
-    local yB =
-        cy + arm
+    local function hbar(x1, x2, y)
+        rect(x1, y - half_lo, x2, y + half_hi)
+        circle(x1, y, cap)
+        circle(x2, y, cap)
+    end
 
-    local r = 1
-    local g = 1
-    local b = 1
-    local a = 1
+    local function vbar(x, y1, y2)
+        rect(x - half_lo, y1, x + half_hi, y2)
+        circle(x, y1, cap)
+        circle(x, y2, cap)
+    end
 
     -- Top horizontal: left -> center
-    DrawBoxFilled(
-        xL,
-        yT - half_lo,
-        xC,
-        yT + half_hi,
-        r, g, b, a
-    )
+    hbar(xL, xC, yT)
 
     -- Center vertical: top -> bottom
-    DrawBoxFilled(
-        xC - half_lo,
-        yT,
-        xC + half_hi,
-        yB,
-        r, g, b, a
-    )
+    vbar(xC, yT, yB)
 
     -- Middle horizontal: left -> right
-    DrawBoxFilled(
-        xL,
-        yM - half_lo,
-        xR,
-        yM + half_hi,
-        r, g, b, a
-    )
+    hbar(xL, xR, yM)
 
     -- Left vertical: middle -> bottom
-    DrawBoxFilled(
-        xL - half_lo,
-        yM,
-        xL + half_hi,
-        yB,
-        r, g, b, a
-    )
+    vbar(xL, yM, yB)
 
     -- Right vertical: top -> middle
-    DrawBoxFilled(
-        xR - half_lo,
-        yT,
-        xR + half_hi,
-        yM,
-        r, g, b, a
-    )
+    vbar(xR, yT, yM)
 
     -- Bottom horizontal: center -> right
-    DrawBoxFilled(
-        xC,
-        yB - half_lo,
-        xR,
-        yB + half_hi,
-        r, g, b, a
-    )
+    hbar(xC, xR, yB)
 end)
+
