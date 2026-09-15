@@ -173,6 +173,9 @@ local defaults = {
     menu_lightning = false,
     menu_dark_background = false,
 
+    -- Custom profile avatar editor.
+    avatar_display_size = 38,
+
     -- Hidden option revealed only after triple-clicking the brand.
     secret_enabled = false,
     secret_crosshair = false,
@@ -553,6 +556,14 @@ local A = {
     gear_hover_anim = 0,
     gear_hover_last_t = nil,
 
+    -- Clickable profile-avatar editor.
+    avatar_editor_open = false,
+    avatar_editor_candidate_handle = nil,
+    avatar_editor_candidate_path = nil,
+    avatar_editor_status = "",
+    avatar_editor_original_size = 38,
+    avatar_editor_frame_clicked = false,
+
     -- Invisible Fallen-lua triple-click gesture.
     secret_unlocked = false,
     secret_brand_clicks = 0,
@@ -645,6 +656,63 @@ function FALLEN_CUSTOM_AVATAR_FIND_PATH()
 
     local base =
         "C:\\blueberry\\scripts\\avatar\\"
+
+    -- A path chosen from the in-menu avatar editor has priority.
+    local selected_path_file =
+        base .. "SELECTED_PATH.txt"
+
+    if type(read_file) == "function" then
+        local ok_saved, saved_path =
+            pcall(
+                read_file,
+                selected_path_file
+            )
+
+        if ok_saved
+            and type(saved_path) == "string"
+        then
+            saved_path =
+                string.gsub(
+                    saved_path,
+                    "[\r\n]+",
+                    ""
+                )
+
+            saved_path =
+                string.gsub(
+                    saved_path,
+                    '^%s*"',
+                    ""
+                )
+
+            saved_path =
+                string.gsub(
+                    saved_path,
+                    '"%s*$',
+                    ""
+                )
+
+            if saved_path ~= "" then
+                local path_ok = true
+
+                if type(exists_file) == "function" then
+                    local ok_exists, exists =
+                        pcall(
+                            exists_file,
+                            saved_path
+                        )
+
+                    path_ok =
+                        ok_exists
+                        and exists == true
+                end
+
+                if path_ok then
+                    return saved_path
+                end
+            end
+        end
+    end
 
     local names = {
         "avatar.png",
@@ -21728,6 +21796,837 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
 end
 
 -- =========================================================
+-- Clickable custom-avatar editor
+-- =========================================================
+function FALLEN_AVATAR_EDITOR_CLEAN_PATH(path)
+    if type(path) ~= "string" then
+        return nil
+    end
+
+    path =
+        string.gsub(
+            path,
+            "[\r\n]+",
+            ""
+        )
+
+    path =
+        string.gsub(
+            path,
+            "^%s+",
+            ""
+        )
+
+    path =
+        string.gsub(
+            path,
+            "%s+$",
+            ""
+        )
+
+    path =
+        string.gsub(
+            path,
+            '^"',
+            ""
+        )
+
+    path =
+        string.gsub(
+            path,
+            '"$',
+            ""
+        )
+
+    if path == "" then
+        return nil
+    end
+
+    return path
+end
+
+function FALLEN_AVATAR_EDITOR_FILENAME(path)
+    path =
+        tostring(
+            path
+            or ""
+        )
+
+    local name =
+        string.match(
+            path,
+            "([^\\/]+)$"
+        )
+
+    return
+        name
+        or path
+        or ""
+end
+
+function FALLEN_AVATAR_EDITOR_PATH_SUPPORTED(path)
+    local p =
+        string.lower(
+            tostring(
+                path
+                or ""
+            )
+        )
+
+    return
+        string.match(p, "%.png$")
+        or string.match(p, "%.jpg$")
+        or string.match(p, "%.jpeg$")
+        or string.match(p, "%.bmp$")
+        or string.match(p, "%.gif$")
+        or string.match(p, "%.tga$")
+end
+
+function FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+    local h =
+        A.avatar_editor_candidate_handle
+
+    if not h then
+        return
+    end
+
+    if Drawing
+        and type(Drawing.UnloadImage) == "function"
+    then
+        pcall(
+            Drawing.UnloadImage,
+            h
+        )
+    end
+
+    A.avatar_editor_candidate_handle = nil
+    A.avatar_editor_candidate_path = nil
+end
+
+function FALLEN_AVATAR_EDITOR_LOAD_PATH(path)
+    path =
+        FALLEN_AVATAR_EDITOR_CLEAN_PATH(
+            path
+        )
+
+    if not path then
+        A.avatar_editor_status =
+            "No file selected"
+        return false
+    end
+
+    if not FALLEN_AVATAR_EDITOR_PATH_SUPPORTED(
+        path
+    ) then
+        A.avatar_editor_status =
+            "Unsupported image format"
+        return false
+    end
+
+    if type(exists_file) == "function" then
+        local ok_exists, exists =
+            pcall(
+                exists_file,
+                path
+            )
+
+        if not ok_exists
+            or exists ~= true
+        then
+            A.avatar_editor_status =
+                "File not found"
+            return false
+        end
+    end
+
+    local handle = nil
+
+    pcall(function()
+        if Drawing
+            and type(Drawing.LoadImageFromFile) == "function"
+        then
+            handle =
+                Drawing.LoadImageFromFile(
+                    path
+                )
+        elseif type(LoadImage) == "function" then
+            handle =
+                LoadImage(
+                    path
+                )
+        end
+    end)
+
+    if not handle then
+        A.avatar_editor_status =
+            "Could not load image"
+        return false
+    end
+
+    FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+
+    A.avatar_editor_candidate_handle =
+        handle
+
+    A.avatar_editor_candidate_path =
+        path
+
+    A.avatar_editor_status =
+        FALLEN_AVATAR_EDITOR_FILENAME(
+            path
+        )
+
+    return true
+end
+
+function FALLEN_AVATAR_EDITOR_EXTRACT_PICK_PATH(value)
+    if type(value) == "string" then
+        return
+            FALLEN_AVATAR_EDITOR_CLEAN_PATH(
+                value
+            )
+    end
+
+    if type(value) == "table" then
+        local path =
+            value.path
+            or value.Path
+            or value.file
+            or value.File
+            or value.filename
+            or value.FileName
+            or value[1]
+
+        if type(path) == "string" then
+            return
+                FALLEN_AVATAR_EDITOR_CLEAN_PATH(
+                    path
+                )
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_AVATAR_EDITOR_TRY_NATIVE_PICKER()
+    -- Different Blueberry/API builds expose file dialogs under different
+    -- names. Probe them safely without depending on one exact build.
+    local fns = {}
+
+    if Windows then
+        if type(Windows.OpenFileDialog) == "function" then
+            fns[#fns + 1] = {
+                fn = Windows.OpenFileDialog,
+                owner = Windows,
+            }
+        end
+
+        if type(Windows.SelectFile) == "function" then
+            fns[#fns + 1] = {
+                fn = Windows.SelectFile,
+                owner = Windows,
+            }
+        end
+
+        if type(Windows.ChooseFile) == "function" then
+            fns[#fns + 1] = {
+                fn = Windows.ChooseFile,
+                owner = Windows,
+            }
+        end
+    end
+
+    if type(open_file_dialog) == "function" then
+        fns[#fns + 1] = {
+            fn = open_file_dialog,
+            owner = nil,
+        }
+    end
+
+    if type(select_file) == "function" then
+        fns[#fns + 1] = {
+            fn = select_file,
+            owner = nil,
+        }
+    end
+
+    if type(choose_file) == "function" then
+        fns[#fns + 1] = {
+            fn = choose_file,
+            owner = nil,
+        }
+    end
+
+    for _, entry in ipairs(fns) do
+        local result = nil
+        local ok = false
+
+        if entry.owner then
+            ok, result =
+                pcall(
+                    entry.fn,
+                    entry.owner,
+                    "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tga)"
+                )
+
+            if not ok then
+                ok, result =
+                    pcall(
+                        entry.fn,
+                        entry.owner
+                    )
+            end
+        else
+            ok, result =
+                pcall(
+                    entry.fn,
+                    "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tga)"
+                )
+
+            if not ok then
+                ok, result =
+                    pcall(
+                        entry.fn
+                    )
+            end
+        end
+
+        if ok then
+            local path =
+                FALLEN_AVATAR_EDITOR_EXTRACT_PICK_PATH(
+                    result
+                )
+
+            if path then
+                return path
+            end
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_AVATAR_EDITOR_PICK()
+    local path =
+        FALLEN_AVATAR_EDITOR_TRY_NATIVE_PICKER()
+
+    if path then
+        return
+            FALLEN_AVATAR_EDITOR_LOAD_PATH(
+                path
+            )
+    end
+
+    A.avatar_editor_status =
+        "Picker unavailable - copy file path and use Paste Path"
+
+    return false
+end
+
+function FALLEN_AVATAR_EDITOR_PASTE_PATH()
+    if type(get_clipboard) ~= "function" then
+        A.avatar_editor_status =
+            "Clipboard API unavailable"
+        return false
+    end
+
+    local ok, clip =
+        pcall(
+            get_clipboard
+        )
+
+    if not ok then
+        A.avatar_editor_status =
+            "Could not read clipboard"
+        return false
+    end
+
+    return
+        FALLEN_AVATAR_EDITOR_LOAD_PATH(
+            clip
+        )
+end
+
+function FALLEN_AVATAR_EDITOR_OPEN()
+    A.avatar_editor_open = true
+    A.avatar_editor_original_size =
+        tonumber(S.avatar_display_size)
+        or 38
+
+    A.avatar_editor_status =
+        _G.FALLEN_CUSTOM_AVATAR.path
+        and FALLEN_AVATAR_EDITOR_FILENAME(
+            _G.FALLEN_CUSTOM_AVATAR.path
+        )
+        or "Select an image"
+
+    FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+
+    A.active_slider = nil
+    numeric_stop(true)
+    FALLEN_COLOR_INPUT_STOP(true)
+
+    A.config_open = false
+    A.menu_settings_open = false
+    A.world_color_picker_open = false
+    A.world_color_picker_drag = nil
+end
+
+function FALLEN_AVATAR_EDITOR_CANCEL()
+    FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+
+    S.avatar_display_size =
+        A.avatar_editor_original_size
+        or 38
+
+    A.avatar_editor_open = false
+    A.avatar_editor_status = ""
+    A.active_slider = nil
+end
+
+function FALLEN_AVATAR_EDITOR_SAVE()
+    local candidate =
+        A.avatar_editor_candidate_handle
+
+    local path =
+        A.avatar_editor_candidate_path
+
+    if candidate
+        and path
+    then
+        _G.FALLEN_CUSTOM_AVATAR.handle =
+            candidate
+
+        _G.FALLEN_CUSTOM_AVATAR.path =
+            path
+
+        _G.FALLEN_CUSTOM_AVATAR.tried =
+            true
+
+        PROFILE.avatar =
+            candidate
+
+        PROFILE.avatar_done =
+            true
+
+        PROFILE.avatar_failed =
+            false
+
+        PROFILE.avatar_started =
+            true
+
+        -- Candidate ownership has moved to the live profile.
+        A.avatar_editor_candidate_handle = nil
+        A.avatar_editor_candidate_path = nil
+
+        if type(write_file) == "function" then
+            pcall(
+                write_file,
+                "C:\\blueberry\\scripts\\avatar\\SELECTED_PATH.txt",
+                path
+            )
+        end
+    end
+
+    A.avatar_editor_open = false
+    A.avatar_editor_status = ""
+    A.active_slider = nil
+end
+
+function FALLEN_AVATAR_EDITOR_FOOTER_CLICK(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    size
+)
+    if not clicked
+        or A.avatar_editor_open
+        or A.world_color_picker_open
+    then
+        return false
+    end
+
+    if hover(
+        mx,
+        my,
+        x,
+        y,
+        size,
+        size
+    ) then
+        FALLEN_AVATAR_EDITOR_OPEN()
+        return true
+    end
+
+    return false
+end
+
+function FALLEN_DRAW_AVATAR_EDITOR(
+    mx,
+    my,
+    clicked,
+    lmb,
+    wx,
+    wy,
+    win_w,
+    win_h
+)
+    if not A.avatar_editor_open then
+        return
+    end
+
+    local pw = 414
+    local ph = 330
+
+    local px =
+        wx
+        + (win_w - pw) * 0.5
+
+    local py =
+        wy
+        + (win_h - ph) * 0.5
+
+    -- Modal dim inside menu.
+    rounded_fill(
+        wx + 4,
+        wy + 4,
+        win_w - 8,
+        win_h - 8,
+        14,
+        { 0, 0, 0, 0.54 }
+    )
+
+    FALLEN_POPUP_GLOW(
+        px,
+        py,
+        pw,
+        ph,
+        12,
+        1
+    )
+
+    rounded_fill(
+        px,
+        py,
+        pw,
+        ph,
+        12,
+        { 0.055, 0.060, 0.073, 1 }
+    )
+
+    text(
+        px + 16,
+        py + 15,
+        "Profile Avatar",
+        C.text
+    )
+
+    line(
+        px + 14,
+        py + 39,
+        px + pw - 14,
+        py + 39,
+        C.divider,
+        1
+    )
+
+    local preview_size = 112
+    local preview_x = px + 18
+    local preview_y = py + 58
+
+    rounded_fill(
+        preview_x - 2,
+        preview_y - 2,
+        preview_size + 4,
+        preview_size + 4,
+        12,
+        { 0.11, 0.12, 0.15, 0.72 }
+    )
+
+    local preview_handle =
+        A.avatar_editor_candidate_handle
+        or PROFILE.avatar
+
+    local preview_drawn = false
+
+    if preview_handle
+        and type(DrawImage) == "function"
+    then
+        local ready = true
+
+        if type(IsImageReady) == "function" then
+            local ok_ready, is_ready =
+                pcall(
+                    IsImageReady,
+                    preview_handle
+                )
+
+            ready =
+                ok_ready
+                and is_ready == true
+        end
+
+        if ready then
+            local ok_draw =
+                pcall(
+                    DrawImage,
+                    preview_handle,
+                    FALLEN_UI_X(preview_x),
+                    FALLEN_UI_Y(preview_y),
+                    FALLEN_UI_LEN(preview_size),
+                    FALLEN_UI_LEN(preview_size),
+                    1, 1, 1,
+                    MENU_RENDER_ALPHA,
+                    FALLEN_UI_LEN(12)
+                )
+
+            preview_drawn =
+                ok_draw == true
+        end
+    end
+
+    if not preview_drawn then
+        rounded_fill(
+            preview_x,
+            preview_y,
+            preview_size,
+            preview_size,
+            10,
+            { 0.09, 0.10, 0.12, 1 }
+        )
+
+        centered_text(
+            preview_x + preview_size * 0.5,
+            preview_y + preview_size * 0.5 - 5,
+            "No image",
+            C.text_dim
+        )
+    end
+
+    local bx = px + 151
+    local bw = pw - 169
+    local bh = 31
+
+    local pick_y = py + 58
+    local paste_y = py + 99
+
+    local pick_hot =
+        hover(
+            mx,
+            my,
+            bx,
+            pick_y,
+            bw,
+            bh
+        )
+
+    rounded_fill(
+        bx,
+        pick_y,
+        bw,
+        bh,
+        7,
+        pick_hot
+            and C.card_hover
+            or C.card
+    )
+
+    centered_text(
+        bx + bw * 0.5,
+        pick_y + 9,
+        "Select File",
+        pick_hot
+            and C.text
+            or C.text_dim
+    )
+
+    if clicked
+        and pick_hot
+    then
+        FALLEN_AVATAR_EDITOR_PICK()
+    end
+
+    local paste_hot =
+        hover(
+            mx,
+            my,
+            bx,
+            paste_y,
+            bw,
+            bh
+        )
+
+    rounded_fill(
+        bx,
+        paste_y,
+        bw,
+        bh,
+        7,
+        paste_hot
+            and C.card_hover
+            or C.card
+    )
+
+    centered_text(
+        bx + bw * 0.5,
+        paste_y + 9,
+        "Paste Path",
+        paste_hot
+            and C.text
+            or C.text_dim
+    )
+
+    if clicked
+        and paste_hot
+    then
+        FALLEN_AVATAR_EDITOR_PASTE_PATH()
+    end
+
+    local status =
+        tostring(
+            A.avatar_editor_status
+            or ""
+        )
+
+    if #status > 36 then
+        status =
+            string.sub(
+                status,
+                1,
+                33
+            )
+            .. "..."
+    end
+
+    text(
+        bx,
+        py + 145,
+        status,
+        C.text_faint
+    )
+
+    line(
+        px + 14,
+        py + 187,
+        px + pw - 14,
+        py + 187,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        clicked,
+        lmb,
+        px + 8,
+        py + 194,
+        pw - 16,
+        "Size / Zoom",
+        "avatar_display_size",
+        30,
+        50,
+        "int"
+    )
+
+    text(
+        px + 20,
+        py + 242,
+        "Changes avatar size in the sidebar",
+        C.text_faint
+    )
+
+    local button_y = py + ph - 48
+    local button_w = 92
+    local gap = 10
+
+    local save_x =
+        px + pw - 16 - button_w
+
+    local cancel_x =
+        save_x - gap - button_w
+
+    local cancel_hot =
+        hover(
+            mx,
+            my,
+            cancel_x,
+            button_y,
+            button_w,
+            31
+        )
+
+    rounded_fill(
+        cancel_x,
+        button_y,
+        button_w,
+        31,
+        7,
+        cancel_hot
+            and C.card_hover
+            or C.card
+    )
+
+    centered_text(
+        cancel_x + button_w * 0.5,
+        button_y + 9,
+        "Cancel",
+        cancel_hot
+            and C.text
+            or C.text_dim
+    )
+
+    local save_hot =
+        hover(
+            mx,
+            my,
+            save_x,
+            button_y,
+            button_w,
+            31
+        )
+
+    rounded_fill(
+        save_x,
+        button_y,
+        button_w,
+        31,
+        7,
+        save_hot
+            and C.selected
+            or {
+                C.accent[1],
+                C.accent[2],
+                C.accent[3],
+                0.72,
+            }
+    )
+
+    centered_text(
+        save_x + button_w * 0.5,
+        button_y + 9,
+        "Save",
+        C.text
+    )
+
+    if clicked
+        and cancel_hot
+    then
+        FALLEN_AVATAR_EDITOR_CANCEL()
+        return
+    end
+
+    if clicked
+        and save_hot
+    then
+        FALLEN_AVATAR_EDITOR_SAVE()
+        return
+    end
+end
+
+-- =========================================================
 -- Render
 -- =========================================================
 
@@ -21821,6 +22720,13 @@ hooks.on_render(function()
         and not prev_lmb
         and MENU_RENDER_ALPHA > 0.88
 
+    A.avatar_editor_frame_clicked =
+        clicked
+
+    if A.avatar_editor_open then
+        clicked = false
+    end
+
     prev_lmb = lmb
 
     local rmb = key_down(VK_RBUTTON)
@@ -21829,6 +22735,10 @@ hooks.on_render(function()
         rmb
         and not prev_rmb
         and MENU_RENDER_ALPHA > 0.88
+
+    if A.avatar_editor_open then
+        rmb_clicked = false
+    end
 
     prev_rmb = rmb
 
@@ -22610,9 +23520,19 @@ hooks.on_render(function()
 
     line(wx + 12, wy + WIN_H - 74, wx + SIDEBAR_W - 12, wy + WIN_H - 74, C.divider, 1)
 
-    local avatar_x = wx + 19
-    local avatar_y = wy + WIN_H - 56
-    local avatar_size = 38
+    local avatar_size =
+        clamp(
+            tonumber(S.avatar_display_size) or 38,
+            30,
+            50
+        )
+
+    local avatar_x =
+        wx + 38 - avatar_size * 0.5
+
+    local avatar_y =
+        wy + WIN_H - 37 - avatar_size * 0.5
+
     local avatar_drawn = false
 
     if PROFILE.avatar
@@ -22657,11 +23577,20 @@ hooks.on_render(function()
 
         centered_text(
             avatar_x + avatar_size * 0.5,
-            avatar_y + 13,
+            avatar_y + avatar_size * 0.5 - 6,
             string.upper(first),
             C.accent
         )
     end
+
+    FALLEN_AVATAR_EDITOR_FOOTER_CLICK(
+        mx,
+        my,
+        clicked,
+        avatar_x,
+        avatar_y,
+        avatar_size
+    )
 
     local username = tostring(PROFILE.name or "Roblox User")
     if #username > 14 then
@@ -23242,6 +24171,18 @@ hooks.on_render(function()
             lmb
         )
     end
+
+    -- Avatar editor is a true modal and renders above everything else.
+    FALLEN_DRAW_AVATAR_EDITOR(
+        mx,
+        my,
+        A.avatar_editor_frame_clicked,
+        lmb,
+        wx,
+        wy,
+        WIN_W,
+        WIN_H
+    )
 
     -- Keep helper state sane for the next frame.
     MENU_UI_TRANSFORM_ACTIVE = false
