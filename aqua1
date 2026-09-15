@@ -152,14 +152,16 @@ local defaults = {
 
     -- Real two-color diagonal Gradient menu style.
     -- Color 1 = top-right, Color 2 = bottom-left.
-    menu_gradient_a_h = 0.62,
-    menu_gradient_a_s = 0.68,
-    menu_gradient_a_v = 0.92,
+    -- Color 1: black (top-right).
+    menu_gradient_a_h = 0.00,
+    menu_gradient_a_s = 0.00,
+    menu_gradient_a_v = 0.00,
     menu_gradient_a_alpha = 100,
 
-    menu_gradient_b_h = 0.82,
-    menu_gradient_b_s = 0.62,
-    menu_gradient_b_v = 0.80,
+    -- Color 2: blue (bottom-left).
+    menu_gradient_b_h = 0.625,
+    menu_gradient_b_s = 0.85,
+    menu_gradient_b_v = 0.85,
     menu_gradient_b_alpha = 100,
 
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
@@ -17433,6 +17435,16 @@ function FALLEN_POPUP_GLOW(x, y, w, h, radius, strength)
     end
 end
 
+FALLEN_MENU_GRADIENT_TEXTURE =
+    FALLEN_MENU_GRADIENT_TEXTURE
+    or {
+        handle = nil,
+        key = nil,
+        pending_key = nil,
+        last_build = 0,
+        path = "C:\\blueberry\\scripts\\fallen_menu_gradient.bmp",
+    }
+
 function FALLEN_MENU_GRADIENT_COLOR(prefix)
     local r, g, b =
         hsv_to_rgb(
@@ -17442,11 +17454,260 @@ function FALLEN_MENU_GRADIENT_COLOR(prefix)
         )
 
     return {
-        r,
-        g,
-        b,
+        clamp(r, 0, 1),
+        clamp(g, 0, 1),
+        clamp(b, 0, 1),
         1,
     }
+end
+
+function FALLEN_GRADIENT_BYTE(v)
+    return
+        math.floor(
+            clamp(v or 0, 0, 1)
+            * 255
+            + 0.5
+        )
+end
+
+function FALLEN_GRADIENT_U16_LE(v)
+    v = math.floor(v or 0)
+
+    return string.char(
+        v % 256,
+        math.floor(v / 256) % 256
+    )
+end
+
+function FALLEN_GRADIENT_U32_LE(v)
+    v = math.floor(v or 0)
+
+    return string.char(
+        v % 256,
+        math.floor(v / 256) % 256,
+        math.floor(v / 65536) % 256,
+        math.floor(v / 16777216) % 256
+    )
+end
+
+function FALLEN_GRADIENT_BUILD_BMP(a, b)
+    -- Small texture is enough because DrawImage scales it smoothly.
+    -- 96x96 also keeps regeneration cheap while dragging a color picker.
+    local w = 96
+    local h = 96
+    local row_bytes = w * 3
+    local row_pad = (4 - (row_bytes % 4)) % 4
+    local image_size = (row_bytes + row_pad) * h
+    local file_size = 54 + image_size
+
+    local chunks = {}
+
+    chunks[#chunks + 1] = "BM"
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(file_size)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(54)
+
+    -- BITMAPINFOHEADER
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(40)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(w)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(h)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(1)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U16_LE(24)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(image_size)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+    chunks[#chunks + 1] = FALLEN_GRADIENT_U32_LE(0)
+
+    local pad =
+        row_pad > 0
+        and string.rep("\0", row_pad)
+        or ""
+
+    -- BMP rows are stored bottom-up.
+    for py = h - 1, 0, -1 do
+        local v =
+            py / (h - 1)
+
+        local row = {}
+
+        for px = 0, w - 1 do
+            local u =
+                px / (w - 1)
+
+            -- Diagonal axis:
+            -- top-right  => t = 1 => Color 1 (A)
+            -- bottom-left => t = 0 => Color 2 (B)
+            local t =
+                clamp(
+                    (u - v + 1) * 0.5,
+                    0,
+                    1
+                )
+
+            local r =
+                lerp(
+                    b[1],
+                    a[1],
+                    t
+                )
+
+            local g =
+                lerp(
+                    b[2],
+                    a[2],
+                    t
+                )
+
+            local bb =
+                lerp(
+                    b[3],
+                    a[3],
+                    t
+                )
+
+            -- BMP pixel order = B, G, R.
+            row[#row + 1] =
+                string.char(
+                    FALLEN_GRADIENT_BYTE(bb),
+                    FALLEN_GRADIENT_BYTE(g),
+                    FALLEN_GRADIENT_BYTE(r)
+                )
+        end
+
+        chunks[#chunks + 1] =
+            table.concat(row)
+            .. pad
+    end
+
+    return table.concat(chunks)
+end
+
+function FALLEN_GRADIENT_COLOR_KEY(a, b)
+    return string.format(
+        "%02X%02X%02X-%02X%02X%02X",
+        FALLEN_GRADIENT_BYTE(a[1]),
+        FALLEN_GRADIENT_BYTE(a[2]),
+        FALLEN_GRADIENT_BYTE(a[3]),
+        FALLEN_GRADIENT_BYTE(b[1]),
+        FALLEN_GRADIENT_BYTE(b[2]),
+        FALLEN_GRADIENT_BYTE(b[3])
+    )
+end
+
+function FALLEN_GRADIENT_ENSURE_TEXTURE(a, b)
+    if type(write_file) ~= "function" then
+        return FALLEN_MENU_GRADIENT_TEXTURE.handle
+    end
+
+    local state =
+        FALLEN_MENU_GRADIENT_TEXTURE
+
+    local key =
+        FALLEN_GRADIENT_COLOR_KEY(
+            a,
+            b
+        )
+
+    if state.key == key
+        and state.handle
+    then
+        return state.handle
+    end
+
+    -- Avoid rebuilding a texture every single frame while the user is
+    -- actively dragging a color picker. About 12 updates/sec stays smooth.
+    local now = tick()
+
+    if state.handle
+        and now - (state.last_build or 0) < 0.08
+    then
+        state.pending_key = key
+        return state.handle
+    end
+
+    local bmp =
+        FALLEN_GRADIENT_BUILD_BMP(
+            a,
+            b
+        )
+
+    local ok_write =
+        pcall(
+            write_file,
+            state.path,
+            bmp
+        )
+
+    if not ok_write then
+        return state.handle
+    end
+
+    if state.handle
+        and Drawing
+        and type(Drawing.UnloadImage) == "function"
+    then
+        pcall(
+            Drawing.UnloadImage,
+            state.handle
+        )
+    end
+
+    state.handle = nil
+
+    pcall(function()
+        if Drawing
+            and type(Drawing.LoadImageFromFile) == "function"
+        then
+            state.handle =
+                Drawing.LoadImageFromFile(
+                    state.path
+                )
+        elseif type(LoadImage) == "function" then
+            state.handle =
+                LoadImage(
+                    state.path
+                )
+        end
+    end)
+
+    state.key = key
+    state.pending_key = nil
+    state.last_build = now
+
+    return state.handle
+end
+
+function FALLEN_GRADIENT_MIGRATE_OLD_DEFAULTS()
+    if _G.FALLEN_GRADIENT_DEFAULTS_MIGRATED then
+        return
+    end
+
+    _G.FALLEN_GRADIENT_DEFAULTS_MIGRATED = true
+
+    -- Existing configs may still contain the old purple/blue defaults.
+    -- Migrate only that exact old default pair; custom user colors stay intact.
+    local old_a =
+        math.abs((tonumber(S.menu_gradient_a_h) or 0) - 0.62) < 0.0001
+        and math.abs((tonumber(S.menu_gradient_a_s) or 0) - 0.68) < 0.0001
+        and math.abs((tonumber(S.menu_gradient_a_v) or 0) - 0.92) < 0.0001
+
+    local old_b =
+        math.abs((tonumber(S.menu_gradient_b_h) or 0) - 0.82) < 0.0001
+        and math.abs((tonumber(S.menu_gradient_b_s) or 0) - 0.62) < 0.0001
+        and math.abs((tonumber(S.menu_gradient_b_v) or 0) - 0.80) < 0.0001
+
+    if old_a and old_b then
+        S.menu_gradient_a_h = 0.00
+        S.menu_gradient_a_s = 0.00
+        S.menu_gradient_a_v = 0.00
+
+        S.menu_gradient_b_h = 0.625
+        S.menu_gradient_b_s = 0.85
+        S.menu_gradient_b_v = 0.85
+    end
 end
 
 function FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
@@ -17456,14 +17717,14 @@ function FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
     h,
     alpha_mul
 )
-    if type(DrawLine) ~= "function"
-        or w <= 1
+    if w <= 1
         or h <= 1
     then
         return
     end
 
-    -- A = top-right, B = bottom-left.
+    FALLEN_GRADIENT_MIGRATE_OLD_DEFAULTS()
+
     local a =
         FALLEN_MENU_GRADIENT_COLOR(
             "menu_gradient_a"
@@ -17474,7 +17735,6 @@ function FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
             "menu_gradient_b"
         )
 
-    -- Fixed 50% shell transparency requested for Gradient.
     local shell_alpha =
         0.50
         * clamp(
@@ -17483,87 +17743,51 @@ function FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
             1
         )
 
-    -- Iso-color bands run top-left -> bottom-right.
-    -- 160 thin bands makes the result visually smooth while remaining
-    -- far cheaper than painting thousands of tiny rectangles.
-    local count = 160
-
-    local norm =
-        math.sqrt(
-            1 / (w * w)
-            + 1 / (h * h)
+    local handle =
+        FALLEN_GRADIENT_ENSURE_TEXTURE(
+            a,
+            b
         )
 
-    local q_step =
-        2 / (count - 1)
-
-    local thickness =
-        (q_step / norm)
-        * 1.05
-
-    for i = 0, count - 1 do
-        local q =
-            -1
-            + 2
-            * i
-            / (count - 1)
-
-        local t =
-            (q + 1) * 0.5
-
-        local r =
-            lerp(
-                b[1],
-                a[1],
-                t
-            )
-
-        local g =
-            lerp(
-                b[2],
-                a[2],
-                t
-            )
-
-        local bb =
-            lerp(
-                b[3],
-                a[3],
-                t
-            )
-
-        local x1, y1, x2, y2
-
-        if q <= 0 then
-            -- left edge -> bottom edge
-            x1 = x
-            y1 = y + (-q) * h
-
-            x2 = x + (q + 1) * w
-            y2 = y + h
-        else
-            -- top edge -> right edge
-            x1 = x + q * w
-            y1 = y
-
-            x2 = x + w
-            y2 = y + (1 - q) * h
-        end
-
-        DrawLine(
-            x1,
-            y1,
-            x2,
-            y2,
-            r,
-            g,
-            bb,
+    if handle
+        and type(DrawImage) == "function"
+    then
+        -- Single rounded image: no diagonal-line endpoints can poke through
+        -- the menu sides, and sidebar vector icons remain perfectly clean.
+        pcall(
+            DrawImage,
+            handle,
+            x,
+            y,
+            w,
+            h,
+            1,
+            1,
+            1,
             shell_alpha,
-            thickness
+            OUTER_R
         )
-    end
-end
 
+        return
+    end
+
+    -- Safe fallback while the local texture is loading.
+    local mid = {
+        lerp(b[1], a[1], 0.5),
+        lerp(b[2], a[2], 0.5),
+        lerp(b[3], a[3], 0.5),
+        shell_alpha,
+    }
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        h,
+        OUTER_R,
+        mid
+    )
+end
 
 function FALLEN_APPLY_STYLE_COLOR()
     local t =
