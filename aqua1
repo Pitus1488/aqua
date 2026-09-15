@@ -17836,12 +17836,14 @@ function FALLEN_DRAW_PITUS_LOGO(
         return v
     end
 
+    -- Tight hand-tuned kerning so PITUS looks like one compact logo,
+    -- not five separated letters.
     local letters = {
         { "P",  0.0, 0.0 },
-        { "I", 12.0, 0.0 },
-        { "T", 18.2, 0.0 },
-        { "U", 29.0, 0.0 },
-        { "S", 42.3, 0.0 },
+        { "I",  7.2, 0.0 },
+        { "T", 11.5, 0.0 },
+        { "U", 18.8, 0.0 },
+        { "S", 27.4, 0.0 },
     }
 
     local function draw_pass(
@@ -21904,10 +21906,10 @@ hooks.on_render(function()
 
     -- Brand.
     FALLEN_DRAW_PITUS_LOGO(
-        wx + 21,
-        wy + 20,
+        wx + 16,
+        wy + 17,
         1,
-        2.15
+        3.05
     )
 
     -- Sidebar
@@ -23941,10 +23943,10 @@ hooks.on_render(function()
 
     -- Clean loader header brand.
     FALLEN_DRAW_PITUS_LOGO(
-        x + 12 * scale,
-        y + 14 * scale,
+        x + 10 * scale,
+        y + 12 * scale,
         alpha,
-        scale * 1.55
+        scale * 1.95
     )
 
 
