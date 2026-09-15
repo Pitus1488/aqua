@@ -25572,162 +25572,84 @@ hooks.on_render(function()
             40
         )
 
-    -- Same mirrored construction as the straight test variants 3 / 8 / 9.
-    -- Four independent arms guarantee:
-    -- left == right and up == down.
+    -- Shape based directly on the user's white reference:
+    -- one connected figure:
+    --   center vertical full,
+    --   middle horizontal,
+    --   left side vertical goes only DOWN,
+    --   right side vertical goes only UP.
     local arm =
         math.max(
-            4,
-            math.floor(size * 0.5)
+            5,
+            math.floor(size * 0.52)
         )
 
-    -- Fixed 3 px body like test variants 3 / 8.
+    local side_offset =
+        math.max(
+            5,
+            math.floor(size * 0.42)
+        )
+
     local thick = 3
     local half_lo = 1
     local half_hi = 1
 
-    -- Left arm
-    DrawBoxFilled(
-        cx - arm,
-        cy - half_lo,
-        cx - 1,
-        cy + half_hi,
-        1,
-        1,
-        1,
-        1
-    )
+    local left_x =
+        cx - side_offset
 
-    -- Right arm
-    DrawBoxFilled(
-        cx + 1,
-        cy - half_lo,
-        cx + arm,
-        cy + half_hi,
-        1,
-        1,
-        1,
-        1
-    )
+    local right_x =
+        cx + side_offset
 
-    -- Up arm
+    local white_r = 1
+    local white_g = 1
+    local white_b = 1
+    local white_a = 1
+
+    -- Center vertical: top to bottom.
     DrawBoxFilled(
         cx - half_lo,
         cy - arm,
         cx + half_hi,
-        cy - 1,
-        1,
-        1,
-        1,
-        1
-    )
-
-    -- Down arm
-    DrawBoxFilled(
-        cx - half_lo,
-        cy + 1,
-        cx + half_hi,
         cy + arm,
-        1,
-        1,
-        1,
-        1
+        white_r,
+        white_g,
+        white_b,
+        white_a
     )
 
-    -- Exact centered 3x3 joint.
+    -- Middle horizontal: connects left and right parts into one figure.
     DrawBoxFilled(
-        cx - half_lo,
+        left_x,
         cy - half_lo,
-        cx + half_hi,
+        right_x,
         cy + half_hi,
-        1,
-        1,
-        1,
-        1
+        white_r,
+        white_g,
+        white_b,
+        white_a
     )
 
-    -- Two short attached side hooks / brackets, based on the reference.
-    -- They are black, compact, and attached to the white crosshair.
-    local hook_gap =
-        math.max(
-            2,
-            math.floor(size * 0.10)
-        )
-
-    local hook_len =
-        math.max(
-            5,
-            math.floor(size * 0.34)
-        )
-
-    local hook_height =
-        math.max(
-            8,
-            math.floor(size * 0.62)
-        )
-
-    local hook_thick =
-        math.max(
-            2,
-            math.floor(size * 0.18)
-        )
-
-    local hh_lo =
-        math.floor(
-            (hook_thick - 1) * 0.5
-        )
-
-    local hh_hi =
-        hook_thick - 1 - hh_lo
-
-    local hv_half =
-        math.floor(
-            hook_height * 0.5
-        )
-
-    -- Left hook: short horizontal connector + outer vertical.
+    -- Left side vertical: ONLY downward from the middle.
     DrawBoxFilled(
-        cx - hook_gap - hook_len,
-        cy - hh_lo,
-        cx - hook_gap,
-        cy + hh_hi,
-        0,
-        0,
-        0,
-        1
+        left_x - half_lo,
+        cy - half_lo,
+        left_x + half_hi,
+        cy + arm,
+        white_r,
+        white_g,
+        white_b,
+        white_a
     )
 
+    -- Right side vertical: ONLY upward from the middle.
     DrawBoxFilled(
-        cx - hook_gap - hook_len - hh_lo,
-        cy - hv_half,
-        cx - hook_gap - hook_len + hh_hi,
-        cy + hv_half,
-        0,
-        0,
-        0,
-        1
-    )
-
-    -- Right hook: mirrored copy.
-    DrawBoxFilled(
-        cx + hook_gap,
-        cy - hh_lo,
-        cx + hook_gap + hook_len,
-        cy + hh_hi,
-        0,
-        0,
-        0,
-        1
-    )
-
-    DrawBoxFilled(
-        cx + hook_gap + hook_len - hh_lo,
-        cy - hv_half,
-        cx + hook_gap + hook_len + hh_hi,
-        cy + hv_half,
-        0,
-        0,
-        0,
-        1
+        right_x - half_lo,
+        cy - arm,
+        right_x + half_hi,
+        cy + half_hi,
+        white_r,
+        white_g,
+        white_b,
+        white_a
     )
 end)
