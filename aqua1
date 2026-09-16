@@ -670,6 +670,26 @@ function FALLEN_CUSTOM_AVATAR_FIND_PATH()
     local base =
         "C:\\blueberry\\scripts\\avatar\\"
 
+    -- A real pre-cropped circular PNG created by the editor always wins.
+    -- It has transparent pixels outside the circle, so no fake square mask
+    -- has to be painted over the translucent sidebar.
+    local saved_circle =
+        base .. "avatar_saved_circle.png"
+
+    do
+        local ok_saved, exists_saved =
+            pcall(
+                exists_file,
+                saved_circle
+            )
+
+        if ok_saved
+            and exists_saved == true
+        then
+            return saved_circle
+        end
+    end
+
     -- A path chosen from the in-menu avatar editor has priority.
     local selected_path_file =
         base .. "SELECTED_PATH.txt"
@@ -22574,23 +22594,15 @@ function FALLEN_AVATAR_DRAW_CROP_VIEW(
             (draw_size - size) * 0.5
         )
 
-    local off_x =
-        pan_x
-        * max_off
-
-    local off_y =
-        pan_y
-        * max_off
-
     local image_x =
         x
         + (size - draw_size) * 0.5
-        + off_x
+        + pan_x * max_off
 
     local image_y =
         y
         + (size - draw_size) * 0.5
-        + off_y
+        + pan_y * max_off
 
     local ok_draw =
         pcall(
@@ -22605,66 +22617,7 @@ function FALLEN_AVATAR_DRAW_CROP_VIEW(
             0
         )
 
-    if not ok_draw then
-        return false
-    end
-
-    mask_color =
-        mask_color
-        or { 0.055, 0.060, 0.073, 1 }
-
-    -- Clip the enlarged image back to the square viewport.
-    if image_x < x then
-        fill(
-            image_x,
-            image_y,
-            x - image_x,
-            draw_size,
-            mask_color
-        )
-    end
-
-    if image_x + draw_size > x + size then
-        fill(
-            x + size,
-            image_y,
-            image_x + draw_size - (x + size),
-            draw_size,
-            mask_color
-        )
-    end
-
-    if image_y < y then
-        fill(
-            x,
-            image_y,
-            size,
-            y - image_y,
-            mask_color
-        )
-    end
-
-    if image_y + draw_size > y + size then
-        fill(
-            x,
-            y + size,
-            size,
-            image_y + draw_size - (y + size),
-            mask_color
-        )
-    end
-
-    if circle_clip then
-        FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
-            x,
-            y,
-            size,
-            size * 0.5,
-            mask_color
-        )
-    end
-
-    return true
+    return ok_draw == true
 end
 
 function FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
@@ -22757,6 +22710,316 @@ function FALLEN_AVATAR_DIM_OUTSIDE_CIRCLE(
     )
 end
 
+function FALLEN_AVATAR_EDITOR_SOURCE_PATH()
+    if A.avatar_editor_candidate_path
+        and not string.find(
+            string.lower(A.avatar_editor_candidate_path),
+            "avatar_saved_circle.png",
+            1,
+            true
+        )
+    then
+        return A.avatar_editor_candidate_path
+    end
+
+    local base =
+        FALLEN_AVATAR_EDITOR_FOLDER()
+
+    if type(read_file) == "function" then
+        local ok, raw =
+            pcall(
+                read_file,
+                base .. "SELECTED_SOURCE.txt"
+            )
+
+        if ok
+            and type(raw) == "string"
+        then
+            local path =
+                FALLEN_AVATAR_EDITOR_CLEAN_PATH(
+                    raw
+                )
+
+            if path
+                and FALLEN_AVATAR_EDITOR_PATH_SUPPORTED(path)
+            then
+                if type(exists_file) ~= "function" then
+                    return path
+                end
+
+                local ok_exists, exists =
+                    pcall(
+                        exists_file,
+                        path
+                    )
+
+                if ok_exists
+                    and exists == true
+                then
+                    return path
+                end
+            end
+        end
+    end
+
+    local path =
+        FALLEN_AVATAR_EDITOR_FIND_FOLDER_IMAGE()
+
+    return path
+end
+
+function FALLEN_AVATAR_EDITOR_LOAD_ORIGINAL_SOURCE()
+    local path =
+        FALLEN_AVATAR_EDITOR_SOURCE_PATH()
+
+    if not path then
+        return false
+    end
+
+    return
+        FALLEN_AVATAR_EDITOR_LOAD_PATH(
+            path
+        )
+end
+
+function FALLEN_AVATAR_EDITOR_WRITE_CIRCLE_WORKER()
+    if type(write_file) ~= "function" then
+        return nil
+    end
+
+    local path =
+        FALLEN_AVATAR_EDITOR_FOLDER()
+        .. "avatar_circle_crop.ps1"
+
+    local script = [=[
+param(
+    [Parameter(Mandatory=$true)][string]$Source,
+    [Parameter(Mandatory=$true)][string]$Output,
+    [double]$Zoom = 1.0,
+    [double]$PanX = 0.0,
+    [double]$PanY = 0.0
+)
+
+$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Drawing
+
+$loaded = [System.Drawing.Image]::FromFile($Source)
+$image = New-Object System.Drawing.Bitmap($loaded)
+$loaded.Dispose()
+
+$w = [double]$image.Width
+$h = [double]$image.Height
+
+if ($w -le 0 -or $h -le 0) {
+    throw "Invalid source image"
+}
+
+$Zoom = [Math]::Max(1.0, [Math]::Min(3.5, $Zoom))
+$PanX = [Math]::Max(-1.0, [Math]::Min(1.0, $PanX))
+$PanY = [Math]::Max(-1.0, [Math]::Min(1.0, $PanY))
+
+# Discord-like square crop: preserve aspect ratio, then zoom into it.
+$base = [Math]::Min($w, $h)
+$crop = $base / $Zoom
+
+$travelX = [Math]::Max(0.0, ($w - $crop) * 0.5)
+$travelY = [Math]::Max(0.0, ($h - $crop) * 0.5)
+
+$centerX = ($w * 0.5) + ($PanX * $travelX)
+$centerY = ($h * 0.5) + ($PanY * $travelY)
+
+$srcX = $centerX - ($crop * 0.5)
+$srcY = $centerY - ($crop * 0.5)
+
+$srcX = [Math]::Max(0.0, [Math]::Min($w - $crop, $srcX))
+$srcY = [Math]::Max(0.0, [Math]::Min($h - $crop, $srcY))
+
+$outSize = 320
+$bitmap = New-Object System.Drawing.Bitmap(
+    $outSize,
+    $outSize,
+    [System.Drawing.Imaging.PixelFormat]::Format32bppArgb
+)
+
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.Clear([System.Drawing.Color]::Transparent)
+
+$graphics.CompositingMode =
+    [System.Drawing.Drawing2D.CompositingMode]::SourceOver
+$graphics.CompositingQuality =
+    [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+$graphics.InterpolationMode =
+    [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+$graphics.SmoothingMode =
+    [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+$graphics.PixelOffsetMode =
+    [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+
+# Actual circular clip. Pixels outside this ellipse stay transparent.
+$path = New-Object System.Drawing.Drawing2D.GraphicsPath
+$path.AddEllipse(0, 0, $outSize - 1, $outSize - 1)
+$graphics.SetClip($path)
+
+$destRect = New-Object System.Drawing.RectangleF(
+    0,
+    0,
+    $outSize,
+    $outSize
+)
+
+$srcRect = New-Object System.Drawing.RectangleF(
+    [single]$srcX,
+    [single]$srcY,
+    [single]$crop,
+    [single]$crop
+)
+
+$graphics.DrawImage(
+    $image,
+    $destRect,
+    $srcRect,
+    [System.Drawing.GraphicsUnit]::Pixel
+)
+
+$graphics.ResetClip()
+$path.Dispose()
+$graphics.Dispose()
+$image.Dispose()
+
+$bitmap.Save(
+    $Output,
+    [System.Drawing.Imaging.ImageFormat]::Png
+)
+$bitmap.Dispose()
+]=]
+
+    local ok =
+        pcall(
+            write_file,
+            path,
+            script
+        )
+
+    if ok then
+        return path
+    end
+
+    return nil
+end
+
+function FALLEN_AVATAR_EDITOR_RENDER_FINAL_CIRCLE()
+    local source =
+        FALLEN_AVATAR_EDITOR_SOURCE_PATH()
+
+    if not source then
+        A.avatar_editor_status =
+            "No source image loaded"
+        return nil
+    end
+
+    if not os
+        or type(os.execute) ~= "function"
+    then
+        A.avatar_editor_status =
+            "Crop renderer unavailable"
+        return nil
+    end
+
+    local worker =
+        FALLEN_AVATAR_EDITOR_WRITE_CIRCLE_WORKER()
+
+    if not worker then
+        A.avatar_editor_status =
+            "Could not create crop renderer"
+        return nil
+    end
+
+    local output =
+        FALLEN_AVATAR_EDITOR_FOLDER()
+        .. "avatar_saved_circle.png"
+
+    local zoom =
+        clamp(
+            tonumber(S.avatar_crop_zoom) or 1,
+            1,
+            3.5
+        )
+
+    local pan_x =
+        clamp(
+            tonumber(S.avatar_crop_pan_x) or 0,
+            -1,
+            1
+        )
+
+    local pan_y =
+        clamp(
+            tonumber(S.avatar_crop_pan_y) or 0,
+            -1,
+            1
+        )
+
+    local command =
+        'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "'
+        .. worker
+        .. '" -Source "'
+        .. source
+        .. '" -Output "'
+        .. output
+        .. '" -Zoom '
+        .. string.format("%.5f", zoom)
+        .. ' -PanX '
+        .. string.format("%.5f", pan_x)
+        .. ' -PanY '
+        .. string.format("%.5f", pan_y)
+
+    local ok_exec =
+        pcall(
+            os.execute,
+            command
+        )
+
+    if not ok_exec then
+        A.avatar_editor_status =
+            "Could not render avatar"
+        return nil
+    end
+
+    if type(exists_file) == "function" then
+        local ok_exists, exists =
+            pcall(
+                exists_file,
+                output
+            )
+
+        if not ok_exists
+            or exists ~= true
+        then
+            A.avatar_editor_status =
+                "Avatar render failed"
+            return nil
+        end
+    end
+
+    if type(write_file) == "function" then
+        pcall(
+            write_file,
+            FALLEN_AVATAR_EDITOR_FOLDER()
+                .. "SELECTED_SOURCE.txt",
+            source
+        )
+
+        pcall(
+            write_file,
+            FALLEN_AVATAR_EDITOR_FOLDER()
+                .. "SELECTED_PATH.txt",
+            output
+        )
+    end
+
+    return output
+end
+
 function FALLEN_AVATAR_EDITOR_OPEN()
     A.avatar_editor_open = true
 
@@ -22776,6 +23039,7 @@ function FALLEN_AVATAR_EDITOR_OPEN()
         "Drag image to position it. Use Zoom below."
 
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+    FALLEN_AVATAR_EDITOR_LOAD_ORIGINAL_SOURCE()
 
     A.avatar_editor_dragging = false
     A.active_slider = nil
@@ -22810,48 +23074,54 @@ function FALLEN_AVATAR_EDITOR_CANCEL()
 end
 
 function FALLEN_AVATAR_EDITOR_SAVE()
-    local candidate =
-        A.avatar_editor_candidate_handle
+    local final_path =
+        FALLEN_AVATAR_EDITOR_RENDER_FINAL_CIRCLE()
 
-    local path =
-        A.avatar_editor_candidate_path
-
-    if candidate
-        and path
-    then
-        _G.FALLEN_CUSTOM_AVATAR.handle =
-            candidate
-
-        _G.FALLEN_CUSTOM_AVATAR.path =
-            path
-
-        _G.FALLEN_CUSTOM_AVATAR.tried =
-            true
-
-        PROFILE.avatar =
-            candidate
-
-        PROFILE.avatar_done =
-            true
-
-        PROFILE.avatar_failed =
-            false
-
-        PROFILE.avatar_started =
-            true
-
-        -- Candidate ownership has moved to the live profile.
-        A.avatar_editor_candidate_handle = nil
-        A.avatar_editor_candidate_path = nil
-
-        if type(write_file) == "function" then
-            pcall(
-                write_file,
-                "C:\\blueberry\\scripts\\avatar\\SELECTED_PATH.txt",
-                path
-            )
-        end
+    if not final_path then
+        return
     end
+
+    local final_handle = nil
+
+    pcall(function()
+        if Drawing
+            and type(Drawing.LoadImageFromFile) == "function"
+        then
+            final_handle =
+                Drawing.LoadImageFromFile(
+                    final_path
+                )
+        elseif type(LoadImage) == "function" then
+            final_handle =
+                LoadImage(
+                    final_path
+                )
+        end
+    end)
+
+    if not final_handle then
+        A.avatar_editor_status =
+            "Saved, but could not reload avatar"
+        return
+    end
+
+    FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+
+    _G.FALLEN_CUSTOM_AVATAR.handle =
+        final_handle
+
+    _G.FALLEN_CUSTOM_AVATAR.path =
+        final_path
+
+    _G.FALLEN_CUSTOM_AVATAR.tried =
+        true
+
+    PROFILE.avatar =
+        final_handle
+
+    PROFILE.avatar_done = true
+    PROFILE.avatar_failed = false
+    PROFILE.avatar_started = true
 
     A.avatar_editor_dragging = false
     A.avatar_editor_open = false
@@ -23008,6 +23278,41 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             false
         )
 
+    -- Erase every part of the moving image that escaped the fixed preview
+    -- rectangle. The editor panel itself is opaque, so this does not create
+    -- the dark square artifact that happened in the translucent sidebar.
+    fill(
+        px,
+        py + 40,
+        preview_x - px,
+        ph - 40,
+        panel_color
+    )
+
+    fill(
+        preview_x + preview_size,
+        py + 40,
+        px + pw - (preview_x + preview_size),
+        ph - 40,
+        panel_color
+    )
+
+    fill(
+        preview_x,
+        py + 40,
+        preview_size,
+        preview_y - (py + 40),
+        panel_color
+    )
+
+    fill(
+        preview_x,
+        preview_y + preview_size,
+        preview_size,
+        py + ph - (preview_y + preview_size),
+        panel_color
+    )
+
     if not preview_ok then
         centered_text(
             preview_x + preview_size * 0.5,
@@ -23016,7 +23321,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             C.text_dim
         )
     else
-        -- Hide the moving square completely outside the crop guide.
+        -- Real fixed circular viewport inside the editor.
         FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
             preview_x,
             preview_y,
@@ -23025,6 +23330,23 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             panel_color
         )
     end
+
+    -- Moving image can reach the header before the clipping pass, so redraw it.
+    text(
+        px + 16,
+        py + 15,
+        "Edit Avatar",
+        C.text
+    )
+
+    line(
+        px + 14,
+        py + 39,
+        px + pw - 14,
+        py + 39,
+        C.divider,
+        1
+    )
 
     circle(
         preview_x + preview_size * 0.5,
@@ -24244,23 +24566,37 @@ hooks.on_render(function()
     if PROFILE.avatar
         and type(DrawImage) == "function"
     then
-        avatar_drawn =
-            FALLEN_AVATAR_DRAW_CROP_VIEW(
-                PROFILE.avatar,
-                avatar_x,
-                avatar_y,
-                avatar_size,
-                S.avatar_crop_zoom,
-                S.avatar_crop_pan_x,
-                S.avatar_crop_pan_y,
-                {
-                    C.sidebar[1],
-                    C.sidebar[2],
-                    C.sidebar[3],
-                    1,
-                },
-                true
-            )
+        local ready = true
+
+        if type(IsImageReady) == "function" then
+            local ok_ready, is_ready =
+                pcall(
+                    IsImageReady,
+                    PROFILE.avatar
+                )
+
+            ready =
+                ok_ready
+                and is_ready == true
+        end
+
+        if ready then
+            local ok_draw =
+                pcall(
+                    DrawImage,
+                    PROFILE.avatar,
+                    FALLEN_UI_X(avatar_x),
+                    FALLEN_UI_Y(avatar_y),
+                    FALLEN_UI_LEN(avatar_size),
+                    FALLEN_UI_LEN(avatar_size),
+                    1, 1, 1,
+                    MENU_RENDER_ALPHA,
+                    FALLEN_UI_LEN(avatar_size * 0.5)
+                )
+
+            avatar_drawn =
+                ok_draw == true
+        end
     end
 
     if not avatar_drawn then
