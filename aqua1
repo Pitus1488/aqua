@@ -672,25 +672,9 @@ function FALLEN_CUSTOM_AVATAR_FIND_PATH()
     local base =
         "C:\\blueberry\\scripts\\avatar\\"
 
-    -- A real pre-cropped circular PNG created by the editor always wins.
-    -- It has transparent pixels outside the circle, so no fake square mask
-    -- has to be painted over the translucent sidebar.
-    local saved_circle =
-        base .. "avatar_saved_circle.png"
-
-    do
-        local ok_saved, exists_saved =
-            pcall(
-                exists_file,
-                saved_circle
-            )
-
-        if ok_saved
-            and exists_saved == true
-        then
-            return saved_circle
-        end
-    end
+    -- The editor now keeps the original image and applies the crop
+    -- directly through DrawImage UV coordinates. Old generated circle files
+    -- are intentionally ignored here.
 
     -- A path chosen from the in-menu avatar editor has priority.
     local selected_path_file =
@@ -22531,162 +22515,6 @@ function FALLEN_AVATAR_EDITOR_OPEN_FOLDER()
     return false
 end
 
-function FALLEN_AVATAR_CLIP_PUSH(
-    x,
-    y,
-    w,
-    h
-)
-    local x1 = FALLEN_UI_X(x)
-    local y1 = FALLEN_UI_Y(y)
-    local x2 = FALLEN_UI_X(x + w)
-    local y2 = FALLEN_UI_Y(y + h)
-
-    -- Probe the clipping APIs used by different Drawing builds.
-    if Drawing then
-        if type(Drawing.PushClipRect) == "function"
-            and type(Drawing.PopClipRect) == "function"
-        then
-            local ok =
-                pcall(
-                    Drawing.PushClipRect,
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    true
-                )
-
-            if not ok then
-                ok =
-                    pcall(
-                        Drawing.PushClipRect,
-                        x1,
-                        y1,
-                        x2,
-                        y2
-                    )
-            end
-
-            if ok then
-                return "drawing_push"
-            end
-        end
-
-        if type(Drawing.SetClipRect) == "function" then
-            local ok =
-                pcall(
-                    Drawing.SetClipRect,
-                    x1,
-                    y1,
-                    x2,
-                    y2
-                )
-
-            if ok then
-                return "drawing_set"
-            end
-        end
-    end
-
-    if type(PushClipRect) == "function"
-        and type(PopClipRect) == "function"
-    then
-        local ok =
-            pcall(
-                PushClipRect,
-                x1,
-                y1,
-                x2,
-                y2,
-                true
-            )
-
-        if not ok then
-            ok =
-                pcall(
-                    PushClipRect,
-                    x1,
-                    y1,
-                    x2,
-                    y2
-                )
-        end
-
-        if ok then
-            return "global_push"
-        end
-    end
-
-    if type(SetClipRect) == "function" then
-        local ok =
-            pcall(
-                SetClipRect,
-                x1,
-                y1,
-                x2,
-                y2
-            )
-
-        if ok then
-            return "global_set"
-        end
-    end
-
-    return nil
-end
-
-function FALLEN_AVATAR_CLIP_POP(
-    mode
-)
-    if mode == "drawing_push"
-        and Drawing
-        and type(Drawing.PopClipRect) == "function"
-    then
-        pcall(
-            Drawing.PopClipRect
-        )
-        return
-    end
-
-    if mode == "global_push"
-        and type(PopClipRect) == "function"
-    then
-        pcall(
-            PopClipRect
-        )
-        return
-    end
-
-    if mode == "drawing_set"
-        and Drawing
-    then
-        if type(Drawing.ResetClipRect) == "function" then
-            pcall(
-                Drawing.ResetClipRect
-            )
-        elseif type(Drawing.ClearClipRect) == "function" then
-            pcall(
-                Drawing.ClearClipRect
-            )
-        end
-
-        return
-    end
-
-    if mode == "global_set" then
-        if type(ResetClipRect) == "function" then
-            pcall(
-                ResetClipRect
-            )
-        elseif type(ClearClipRect) == "function" then
-            pcall(
-                ClearClipRect
-            )
-        end
-    end
-end
-
 function FALLEN_AVATAR_DRAW_CROP_VIEW(
     handle,
     x,
@@ -22743,75 +22571,92 @@ function FALLEN_AVATAR_DRAW_CROP_VIEW(
             1
         )
 
-    local draw_size =
-        size * zoom
+    -- DrawImage supports an optional UV rectangle after the rounding value:
+    -- handle,x,y,w,h,r,g,b,a,rounding,u0,v0,u1,v1
+    --
+    -- Crop the texture itself instead of drawing a giant moving image.
+    -- Because destination x/y/w/h NEVER change, pixels physically cannot
+    -- escape the preview/avatar rectangle.
+    local span =
+        1.0 / zoom
 
-    local max_off =
-        math.max(
+    local travel =
+        1.0 - span
+
+    -- Positive pan means the image itself was dragged right/down,
+    -- so the source window moves left/up.
+    local u0 =
+        travel * 0.5
+        - pan_x * travel * 0.5
+
+    local v0 =
+        travel * 0.5
+        - pan_y * travel * 0.5
+
+    u0 =
+        clamp(
+            u0,
             0,
-            (draw_size - size) * 0.5
+            1 - span
         )
 
-    local image_x =
-        x
-        + (size - draw_size) * 0.5
-        + pan_x * max_off
-
-    local image_y =
-        y
-        + (size - draw_size) * 0.5
-        + pan_y * max_off
-
-    local clip_mode =
-        FALLEN_AVATAR_CLIP_PUSH(
-            x,
-            y,
-            size,
-            size
+    v0 =
+        clamp(
+            v0,
+            0,
+            1 - span
         )
 
-    local ok_draw = false
+    local u1 =
+        u0 + span
 
-    if clip_mode then
-        ok_draw =
-            pcall(
-                DrawImage,
-                handle,
-                FALLEN_UI_X(image_x),
-                FALLEN_UI_Y(image_y),
-                FALLEN_UI_LEN(draw_size),
-                FALLEN_UI_LEN(draw_size),
-                1, 1, 1,
-                MENU_RENDER_ALPHA,
-                0
-            )
+    local v1 =
+        v0 + span
 
-        FALLEN_AVATAR_CLIP_POP(
-            clip_mode
+    local rounding =
+        circle_clip
+        and FALLEN_UI_LEN(size * 0.5)
+        or 0
+
+    local ok_draw =
+        pcall(
+            DrawImage,
+            handle,
+            FALLEN_UI_X(x),
+            FALLEN_UI_Y(y),
+            FALLEN_UI_LEN(size),
+            FALLEN_UI_LEN(size),
+            1,
+            1,
+            1,
+            MENU_RENDER_ALPHA,
+            rounding,
+            u0,
+            v0,
+            u1,
+            v1
         )
-    else
-        -- Safe fallback: never allow a texture to escape the viewport.
-        -- If this Drawing build has no clip API, use a fixed circular image
-        -- rather than letting the zoomed texture cover the UI.
-        ok_draw =
-            pcall(
-                DrawImage,
-                handle,
-                FALLEN_UI_X(x),
-                FALLEN_UI_Y(y),
-                FALLEN_UI_LEN(size),
-                FALLEN_UI_LEN(size),
-                1, 1, 1,
-                MENU_RENDER_ALPHA,
-                FALLEN_UI_LEN(
-                    circle_clip
-                    and size * 0.5
-                    or 0
-                )
-            )
+
+    if ok_draw then
+        return true
     end
 
-    return ok_draw == true
+    -- Compatibility fallback for an older DrawImage build.
+    -- It stays safely inside the viewport; zoom requires UV support.
+    return
+        pcall(
+            DrawImage,
+            handle,
+            FALLEN_UI_X(x),
+            FALLEN_UI_Y(y),
+            FALLEN_UI_LEN(size),
+            FALLEN_UI_LEN(size),
+            1,
+            1,
+            1,
+            MENU_RENDER_ALPHA,
+            rounding
+        ) == true
 end
 
 function FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
@@ -23268,54 +23113,78 @@ function FALLEN_AVATAR_EDITOR_CANCEL()
 end
 
 function FALLEN_AVATAR_EDITOR_SAVE()
-    local final_path =
-        FALLEN_AVATAR_EDITOR_RENDER_FINAL_CIRCLE()
+    local source =
+        FALLEN_AVATAR_EDITOR_SOURCE_PATH()
 
-    if not final_path then
-        return
-    end
-
-    local final_handle = nil
-
-    pcall(function()
-        if Drawing
-            and type(Drawing.LoadImageFromFile) == "function"
-        then
-            final_handle =
-                Drawing.LoadImageFromFile(
-                    final_path
-                )
-        elseif type(LoadImage) == "function" then
-            final_handle =
-                LoadImage(
-                    final_path
-                )
-        end
-    end)
-
-    if not final_handle then
+    if not source then
         A.avatar_editor_status =
-            "Saved, but could not reload avatar"
+            "No source image loaded"
         return
     end
 
-    FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+    local handle =
+        A.avatar_editor_candidate_handle
+
+    if not handle then
+        pcall(function()
+            if Drawing
+                and type(Drawing.LoadImageFromFile) == "function"
+            then
+                handle =
+                    Drawing.LoadImageFromFile(
+                        source
+                    )
+            elseif type(LoadImage) == "function" then
+                handle =
+                    LoadImage(
+                        source
+                    )
+            end
+        end)
+    end
+
+    if not handle then
+        A.avatar_editor_status =
+            "Could not load avatar"
+        return
+    end
+
+    -- Candidate becomes the live image. Do NOT unload it.
+    A.avatar_editor_candidate_handle = nil
+    A.avatar_editor_candidate_path = nil
 
     _G.FALLEN_CUSTOM_AVATAR.handle =
-        final_handle
+        handle
 
     _G.FALLEN_CUSTOM_AVATAR.path =
-        final_path
+        source
 
     _G.FALLEN_CUSTOM_AVATAR.tried =
         true
 
     PROFILE.avatar =
-        final_handle
+        handle
 
     PROFILE.avatar_done = true
     PROFILE.avatar_failed = false
     PROFILE.avatar_started = true
+
+    -- Persist the ORIGINAL source. Zoom / pan live in the normal config.
+    if type(write_file) == "function" then
+        pcall(
+            write_file,
+            FALLEN_AVATAR_EDITOR_FOLDER()
+                .. "SELECTED_SOURCE.txt",
+            source
+        )
+
+        pcall(
+            write_file,
+            FALLEN_AVATAR_EDITOR_FOLDER()
+                .. "SELECTED_PATH.txt",
+            source
+        )
+    end
 
     A.avatar_editor_dragging = false
     A.avatar_editor_open = false
@@ -23459,17 +23328,30 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         A.avatar_editor_candidate_handle
         or PROFILE.avatar
 
+    -- Use a dedicated circular destination. The source crop happens in UV
+    -- space, so there is no moving square behind the circle.
+    local crop_size =
+        preview_size * 0.77
+
+    local crop_x =
+        preview_x
+        + (preview_size - crop_size) * 0.5
+
+    local crop_y =
+        preview_y
+        + (preview_size - crop_size) * 0.5
+
     local preview_ok =
         FALLEN_AVATAR_DRAW_CROP_VIEW(
             preview_handle,
-            preview_x,
-            preview_y,
-            preview_size,
+            crop_x,
+            crop_y,
+            crop_size,
             S.avatar_crop_zoom,
             S.avatar_crop_pan_x,
             S.avatar_crop_pan_y,
             panel_color,
-            false
+            true
         )
 
     if not preview_ok then
@@ -23479,22 +23361,12 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             "No image",
             C.text_dim
         )
-    else
-        -- Square clipping already prevented any escape. This only masks
-        -- the four corners inside the preview to form the crop circle.
-        FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
-            preview_x,
-            preview_y,
-            preview_size,
-            preview_size * 0.385,
-            panel_color
-        )
     end
 
     circle(
         preview_x + preview_size * 0.5,
         preview_y + preview_size * 0.5,
-        preview_size * 0.385,
+        crop_size * 0.5,
         { 0.94, 0.95, 0.98, 0.98 },
         2
     )
@@ -23503,10 +23375,10 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         hover(
             mx,
             my,
-            preview_x,
-            preview_y,
-            preview_size,
-            preview_size
+            crop_x,
+            crop_y,
+            crop_size,
+            crop_size
         )
 
     if clicked
@@ -23561,7 +23433,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             local max_off =
                 math.max(
                     1,
-                    preview_size
+                    crop_size
                     * (zoom - 1)
                     * 0.5
                 )
