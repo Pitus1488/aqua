@@ -579,12 +579,6 @@ local A = {
     avatar_editor_original_pan_x = 0,
     avatar_editor_original_pan_y = 0,
 
-    avatar_editor_preview_handle = nil,
-    avatar_editor_preview_path = nil,
-    avatar_editor_preview_slot = 0,
-    avatar_editor_preview_signature = nil,
-    avatar_editor_preview_dirty = false,
-
     -- Invisible Fallen-lua triple-click gesture.
     secret_unlocked = false,
     secret_brand_clicks = 0,
@@ -22037,9 +22031,6 @@ function FALLEN_AVATAR_EDITOR_IS_INTERNAL_IMAGE(path)
 
     return
         name == "avatar_saved.bmp"
-        or name == "avatar_saved_circle.png"
-        or name == "avatar_editor_preview_a.png"
-        or name == "avatar_editor_preview_b.png"
         or string.match(
             name,
             "^avatar_crop_preview_"
@@ -22340,27 +22331,25 @@ function FALLEN_AVATAR_EDITOR_RELOAD_PREVIEW()
         return false
     end
 
-    -- Keep source path, but don't draw its raw oversized texture.
-    FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
-
-    A.avatar_editor_candidate_path =
-        path
-
-    S.avatar_crop_zoom = 1
-    S.avatar_crop_pan_x = 0
-    S.avatar_crop_pan_y = 0
-
-    A.avatar_editor_preview_signature = nil
-    A.avatar_editor_preview_dirty = true
-
-    A.avatar_editor_status =
-        "Loaded: "
-        .. FALLEN_AVATAR_EDITOR_FILENAME(
+    local ok =
+        FALLEN_AVATAR_EDITOR_LOAD_PATH(
             path
         )
 
-    return
-        FALLEN_AVATAR_EDITOR_RENDER_PREVIEW()
+    if ok then
+        -- Like Discord: a freshly selected image starts centered at 1x.
+        S.avatar_crop_zoom = 1
+        S.avatar_crop_pan_x = 0
+        S.avatar_crop_pan_y = 0
+
+        A.avatar_editor_status =
+            "Loaded: "
+            .. FALLEN_AVATAR_EDITOR_FILENAME(
+                path
+            )
+    end
+
+    return ok
 end
 
 function FALLEN_AVATAR_EDITOR_COPY_FOLDER_PATH()
@@ -22542,6 +22531,162 @@ function FALLEN_AVATAR_EDITOR_OPEN_FOLDER()
     return false
 end
 
+function FALLEN_AVATAR_CLIP_PUSH(
+    x,
+    y,
+    w,
+    h
+)
+    local x1 = FALLEN_UI_X(x)
+    local y1 = FALLEN_UI_Y(y)
+    local x2 = FALLEN_UI_X(x + w)
+    local y2 = FALLEN_UI_Y(y + h)
+
+    -- Probe the clipping APIs used by different Drawing builds.
+    if Drawing then
+        if type(Drawing.PushClipRect) == "function"
+            and type(Drawing.PopClipRect) == "function"
+        then
+            local ok =
+                pcall(
+                    Drawing.PushClipRect,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    true
+                )
+
+            if not ok then
+                ok =
+                    pcall(
+                        Drawing.PushClipRect,
+                        x1,
+                        y1,
+                        x2,
+                        y2
+                    )
+            end
+
+            if ok then
+                return "drawing_push"
+            end
+        end
+
+        if type(Drawing.SetClipRect) == "function" then
+            local ok =
+                pcall(
+                    Drawing.SetClipRect,
+                    x1,
+                    y1,
+                    x2,
+                    y2
+                )
+
+            if ok then
+                return "drawing_set"
+            end
+        end
+    end
+
+    if type(PushClipRect) == "function"
+        and type(PopClipRect) == "function"
+    then
+        local ok =
+            pcall(
+                PushClipRect,
+                x1,
+                y1,
+                x2,
+                y2,
+                true
+            )
+
+        if not ok then
+            ok =
+                pcall(
+                    PushClipRect,
+                    x1,
+                    y1,
+                    x2,
+                    y2
+                )
+        end
+
+        if ok then
+            return "global_push"
+        end
+    end
+
+    if type(SetClipRect) == "function" then
+        local ok =
+            pcall(
+                SetClipRect,
+                x1,
+                y1,
+                x2,
+                y2
+            )
+
+        if ok then
+            return "global_set"
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_AVATAR_CLIP_POP(
+    mode
+)
+    if mode == "drawing_push"
+        and Drawing
+        and type(Drawing.PopClipRect) == "function"
+    then
+        pcall(
+            Drawing.PopClipRect
+        )
+        return
+    end
+
+    if mode == "global_push"
+        and type(PopClipRect) == "function"
+    then
+        pcall(
+            PopClipRect
+        )
+        return
+    end
+
+    if mode == "drawing_set"
+        and Drawing
+    then
+        if type(Drawing.ResetClipRect) == "function" then
+            pcall(
+                Drawing.ResetClipRect
+            )
+        elseif type(Drawing.ClearClipRect) == "function" then
+            pcall(
+                Drawing.ClearClipRect
+            )
+        end
+
+        return
+    end
+
+    if mode == "global_set" then
+        if type(ResetClipRect) == "function" then
+            pcall(
+                ResetClipRect
+            )
+        elseif type(ClearClipRect) == "function" then
+            pcall(
+                ClearClipRect
+            )
+        end
+    end
+end
+
 function FALLEN_AVATAR_DRAW_CROP_VIEW(
     handle,
     x,
@@ -22617,18 +22762,54 @@ function FALLEN_AVATAR_DRAW_CROP_VIEW(
         + (size - draw_size) * 0.5
         + pan_y * max_off
 
-    local ok_draw =
-        pcall(
-            DrawImage,
-            handle,
-            FALLEN_UI_X(image_x),
-            FALLEN_UI_Y(image_y),
-            FALLEN_UI_LEN(draw_size),
-            FALLEN_UI_LEN(draw_size),
-            1, 1, 1,
-            MENU_RENDER_ALPHA,
-            0
+    local clip_mode =
+        FALLEN_AVATAR_CLIP_PUSH(
+            x,
+            y,
+            size,
+            size
         )
+
+    local ok_draw = false
+
+    if clip_mode then
+        ok_draw =
+            pcall(
+                DrawImage,
+                handle,
+                FALLEN_UI_X(image_x),
+                FALLEN_UI_Y(image_y),
+                FALLEN_UI_LEN(draw_size),
+                FALLEN_UI_LEN(draw_size),
+                1, 1, 1,
+                MENU_RENDER_ALPHA,
+                0
+            )
+
+        FALLEN_AVATAR_CLIP_POP(
+            clip_mode
+        )
+    else
+        -- Safe fallback: never allow a texture to escape the viewport.
+        -- If this Drawing build has no clip API, use a fixed circular image
+        -- rather than letting the zoomed texture cover the UI.
+        ok_draw =
+            pcall(
+                DrawImage,
+                handle,
+                FALLEN_UI_X(x),
+                FALLEN_UI_Y(y),
+                FALLEN_UI_LEN(size),
+                FALLEN_UI_LEN(size),
+                1, 1, 1,
+                MENU_RENDER_ALPHA,
+                FALLEN_UI_LEN(
+                    circle_clip
+                    and size * 0.5
+                    or 0
+                )
+            )
+    end
 
     return ok_draw == true
 end
@@ -23033,230 +23214,6 @@ function FALLEN_AVATAR_EDITOR_RENDER_FINAL_CIRCLE()
     return output
 end
 
-function FALLEN_AVATAR_EDITOR_PREVIEW_SIGNATURE()
-    return
-        string.format(
-            "%.4f|%.4f|%.4f|%s",
-            clamp(
-                tonumber(S.avatar_crop_zoom) or 1,
-                1,
-                5
-            ),
-            clamp(
-                tonumber(S.avatar_crop_pan_x) or 0,
-                -1,
-                1
-            ),
-            clamp(
-                tonumber(S.avatar_crop_pan_y) or 0,
-                -1,
-                1
-            ),
-            tostring(
-                FALLEN_AVATAR_EDITOR_SOURCE_PATH()
-                or ""
-            )
-        )
-end
-
-function FALLEN_AVATAR_EDITOR_UNLOAD_PREVIEW()
-    local h =
-        A.avatar_editor_preview_handle
-
-    if h
-        and Drawing
-        and type(Drawing.UnloadImage) == "function"
-    then
-        pcall(
-            Drawing.UnloadImage,
-            h
-        )
-    end
-
-    A.avatar_editor_preview_handle = nil
-    A.avatar_editor_preview_path = nil
-end
-
-function FALLEN_AVATAR_EDITOR_RENDER_PREVIEW()
-    local source =
-        FALLEN_AVATAR_EDITOR_SOURCE_PATH()
-
-    if not source then
-        return false
-    end
-
-    if not os
-        or type(os.execute) ~= "function"
-    then
-        return false
-    end
-
-    local worker =
-        FALLEN_AVATAR_EDITOR_WRITE_CIRCLE_WORKER()
-
-    if not worker then
-        return false
-    end
-
-    local slot =
-        A.avatar_editor_preview_slot == 1
-        and "b"
-        or "a"
-
-    local output =
-        FALLEN_AVATAR_EDITOR_FOLDER()
-        .. "avatar_editor_preview_"
-        .. slot
-        .. ".png"
-
-    local zoom =
-        clamp(
-            tonumber(S.avatar_crop_zoom) or 1,
-            1,
-            5
-        )
-
-    local pan_x =
-        clamp(
-            tonumber(S.avatar_crop_pan_x) or 0,
-            -1,
-            1
-        )
-
-    local pan_y =
-        clamp(
-            tonumber(S.avatar_crop_pan_y) or 0,
-            -1,
-            1
-        )
-
-    local command =
-        'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "'
-        .. worker
-        .. '" -Source "'
-        .. source
-        .. '" -Output "'
-        .. output
-        .. '" -Zoom '
-        .. string.format("%.5f", zoom)
-        .. ' -PanX '
-        .. string.format("%.5f", pan_x)
-        .. ' -PanY '
-        .. string.format("%.5f", pan_y)
-
-    local ok_exec =
-        pcall(
-            os.execute,
-            command
-        )
-
-    if not ok_exec then
-        A.avatar_editor_status =
-            "Could not update preview"
-        return false
-    end
-
-    if type(exists_file) == "function" then
-        local ok_exists, exists =
-            pcall(
-                exists_file,
-                output
-            )
-
-        if not ok_exists
-            or exists ~= true
-        then
-            A.avatar_editor_status =
-                "Preview render failed"
-            return false
-        end
-    end
-
-    local handle = nil
-
-    pcall(function()
-        if Drawing
-            and type(Drawing.LoadImageFromFile) == "function"
-        then
-            handle =
-                Drawing.LoadImageFromFile(
-                    output
-                )
-        elseif type(LoadImage) == "function" then
-            handle =
-                LoadImage(
-                    output
-                )
-        end
-    end)
-
-    if not handle then
-        A.avatar_editor_status =
-            "Could not load preview"
-        return false
-    end
-
-    local old =
-        A.avatar_editor_preview_handle
-
-    A.avatar_editor_preview_handle =
-        handle
-
-    A.avatar_editor_preview_path =
-        output
-
-    A.avatar_editor_preview_slot =
-        slot == "a"
-        and 1
-        or 2
-
-    A.avatar_editor_preview_signature =
-        FALLEN_AVATAR_EDITOR_PREVIEW_SIGNATURE()
-
-    A.avatar_editor_preview_dirty =
-        false
-
-    if old
-        and old ~= handle
-        and Drawing
-        and type(Drawing.UnloadImage) == "function"
-    then
-        pcall(
-            Drawing.UnloadImage,
-            old
-        )
-    end
-
-    return true
-end
-
-function FALLEN_AVATAR_EDITOR_MARK_PREVIEW_DIRTY()
-    A.avatar_editor_preview_dirty = true
-end
-
-function FALLEN_AVATAR_EDITOR_UPDATE_PREVIEW(
-    lmb
-)
-    local signature =
-        FALLEN_AVATAR_EDITOR_PREVIEW_SIGNATURE()
-
-    if signature
-        ~= A.avatar_editor_preview_signature
-    then
-        A.avatar_editor_preview_dirty = true
-    end
-
-    -- Never launch the crop renderer while the user is holding the mouse.
-    -- Rebuild once after drag / slider release instead.
-    if A.avatar_editor_preview_dirty
-        and not lmb
-        and not A.avatar_editor_dragging
-        and A.active_slider ~= "avatar_crop_zoom"
-    then
-        FALLEN_AVATAR_EDITOR_RENDER_PREVIEW()
-    end
-end
-
 function FALLEN_AVATAR_EDITOR_OPEN()
     A.avatar_editor_open = true
 
@@ -23276,15 +23233,7 @@ function FALLEN_AVATAR_EDITOR_OPEN()
         "Drag image to position it. Use Zoom below."
 
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
-    FALLEN_AVATAR_EDITOR_UNLOAD_PREVIEW()
-
-    -- Keep the already-saved circular avatar as the instant preview.
-    -- Source file is only processed after Reload / drag / zoom release.
-    A.avatar_editor_preview_signature =
-        FALLEN_AVATAR_EDITOR_PREVIEW_SIGNATURE()
-
-    A.avatar_editor_preview_dirty =
-        false
+    FALLEN_AVATAR_EDITOR_LOAD_ORIGINAL_SOURCE()
 
     A.avatar_editor_dragging = false
     A.active_slider = nil
@@ -23299,7 +23248,6 @@ end
 
 function FALLEN_AVATAR_EDITOR_CANCEL()
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
-    FALLEN_AVATAR_EDITOR_UNLOAD_PREVIEW()
 
     S.avatar_crop_zoom =
         A.avatar_editor_original_zoom
@@ -23352,7 +23300,6 @@ function FALLEN_AVATAR_EDITOR_SAVE()
     end
 
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
-    FALLEN_AVATAR_EDITOR_UNLOAD_PREVIEW()
 
     _G.FALLEN_CUSTOM_AVATAR.handle =
         final_handle
@@ -23508,50 +23455,22 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         { 0.035, 0.038, 0.047, 1 }
     )
 
-    FALLEN_AVATAR_EDITOR_UPDATE_PREVIEW(
-        lmb
-    )
-
     local preview_handle =
-        A.avatar_editor_preview_handle
+        A.avatar_editor_candidate_handle
         or PROFILE.avatar
 
-    local preview_ok = false
-
-    if preview_handle
-        and type(DrawImage) == "function"
-    then
-        local ready = true
-
-        if type(IsImageReady) == "function" then
-            local ok_ready, is_ready =
-                pcall(
-                    IsImageReady,
-                    preview_handle
-                )
-
-            ready =
-                ok_ready
-                and is_ready == true
-        end
-
-        if ready then
-            preview_ok =
-                pcall(
-                    DrawImage,
-                    preview_handle,
-                    FALLEN_UI_X(preview_x),
-                    FALLEN_UI_Y(preview_y),
-                    FALLEN_UI_LEN(preview_size),
-                    FALLEN_UI_LEN(preview_size),
-                    1, 1, 1,
-                    MENU_RENDER_ALPHA,
-                    FALLEN_UI_LEN(
-                        preview_size * 0.5
-                    )
-                )
-        end
-    end
+    local preview_ok =
+        FALLEN_AVATAR_DRAW_CROP_VIEW(
+            preview_handle,
+            preview_x,
+            preview_y,
+            preview_size,
+            S.avatar_crop_zoom,
+            S.avatar_crop_pan_x,
+            S.avatar_crop_pan_y,
+            panel_color,
+            false
+        )
 
     if not preview_ok then
         centered_text(
@@ -23560,12 +23479,22 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             "No image",
             C.text_dim
         )
+    else
+        -- Square clipping already prevented any escape. This only masks
+        -- the four corners inside the preview to form the crop circle.
+        FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
+            preview_x,
+            preview_y,
+            preview_size,
+            preview_size * 0.385,
+            panel_color
+        )
     end
 
     circle(
         preview_x + preview_size * 0.5,
         preview_y + preview_size * 0.5,
-        preview_size * 0.5,
+        preview_size * 0.385,
         { 0.94, 0.95, 0.98, 0.98 },
         2
     )
@@ -23652,9 +23581,6 @@ function FALLEN_DRAW_AVATAR_EDITOR(
                     -1,
                     1
                 )
-
-            A.avatar_editor_preview_dirty =
-                true
         else
             A.avatar_editor_dragging = false
         end
