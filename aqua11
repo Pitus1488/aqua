@@ -559,6 +559,8 @@ local A = {
     gear_hover_anim = 0,
     gear_hover_last_t = nil,
 
+    avatar_hover_anim = 0,
+
     -- Clickable profile-avatar editor.
     avatar_editor_open = false,
     avatar_editor_candidate_handle = nil,
@@ -22568,7 +22570,7 @@ function FALLEN_AVATAR_DRAW_CROP_VIEW(
         clamp(
             tonumber(zoom) or 1,
             1,
-            3.5
+            2.0
         )
 
     pan_x =
@@ -22814,7 +22816,7 @@ if ($w -le 0 -or $h -le 0) {
     throw "Invalid source image"
 }
 
-$Zoom = [Math]::Max(1.0, [Math]::Min(3.5, $Zoom))
+$Zoom = [Math]::Max(1.0, [Math]::Min(2.0, $Zoom))
 $PanX = [Math]::Max(-1.0, [Math]::Min(1.0, $PanX))
 $PanY = [Math]::Max(-1.0, [Math]::Min(1.0, $PanY))
 
@@ -22942,7 +22944,7 @@ function FALLEN_AVATAR_EDITOR_RENDER_FINAL_CIRCLE()
         clamp(
             tonumber(S.avatar_crop_zoom) or 1,
             1,
-            3.5
+            2.0
         )
 
     local pan_x =
@@ -23174,7 +23176,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
     end
 
     local pw = 468
-    local ph = 396
+    local ph = 460
 
     local px =
         wx
@@ -23235,7 +23237,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         px + (pw - preview_size) * 0.5
 
     local preview_y =
-        py + 55
+        py + 115
 
     rounded_fill(
         preview_x - 2,
@@ -23278,9 +23280,10 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             false
         )
 
-    -- Erase every part of the moving image that escaped the fixed preview
-    -- rectangle. The editor panel itself is opaque, so this does not create
-    -- the dark square artifact that happened in the translucent sidebar.
+    -- The live image is capped at 2x and the preview is positioned so the
+    -- entire enlarged source always stays INSIDE this opaque modal. These
+    -- four fills then clip it back to the preview without any texture ever
+    -- leaking over the menu/game behind the popup.
     fill(
         px,
         py + 40,
@@ -23412,7 +23415,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
                 clamp(
                     tonumber(S.avatar_crop_zoom) or 1,
                     1,
-                    3.5
+                    2.0
                 )
 
             local max_off =
@@ -23445,7 +23448,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
 
     text(
         px + 18,
-        py + 269,
+        py + 329,
         "Drag the image to reposition it",
         C.text_faint
     )
@@ -23457,17 +23460,17 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             and not A.avatar_editor_dragging,
         lmb,
         px + 8,
-        py + 283,
+        py + 343,
         pw - 16,
         "Zoom",
         "avatar_crop_zoom",
         1.00,
-        3.50,
+        2.00,
         "float"
     )
 
     local open_x = px + 16
-    local open_y = py + 331
+    local open_y = py + 391
     local open_w = 128
     local button_h = 31
 
@@ -24608,6 +24611,38 @@ hooks.on_render(function()
             avatar_y + avatar_size * 0.5 - 6,
             string.upper(first),
             C.accent
+        )
+    end
+
+    local avatar_hot =
+        hover(
+            mx,
+            my,
+            avatar_x,
+            avatar_y,
+            avatar_size,
+            avatar_size
+        )
+
+    A.avatar_hover_anim =
+        lerp(
+            tonumber(A.avatar_hover_anim) or 0,
+            avatar_hot and 1 or 0,
+            0.24
+        )
+
+    if (A.avatar_hover_anim or 0) > 0.003 then
+        -- Soft gray wash makes it obvious that the avatar is clickable.
+        circle_fill(
+            avatar_x + avatar_size * 0.5,
+            avatar_y + avatar_size * 0.5,
+            avatar_size * 0.5,
+            {
+                0.58,
+                0.58,
+                0.58,
+                0.22 * (A.avatar_hover_anim or 0),
+            }
         )
     end
 
