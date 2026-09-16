@@ -579,6 +579,12 @@ local A = {
     avatar_editor_original_pan_x = 0,
     avatar_editor_original_pan_y = 0,
 
+    avatar_editor_preview_handle = nil,
+    avatar_editor_preview_path = nil,
+    avatar_editor_preview_slot = 0,
+    avatar_editor_preview_signature = nil,
+    avatar_editor_preview_dirty = false,
+
     -- Invisible Fallen-lua triple-click gesture.
     secret_unlocked = false,
     secret_brand_clicks = 0,
@@ -22031,6 +22037,9 @@ function FALLEN_AVATAR_EDITOR_IS_INTERNAL_IMAGE(path)
 
     return
         name == "avatar_saved.bmp"
+        or name == "avatar_saved_circle.png"
+        or name == "avatar_editor_preview_a.png"
+        or name == "avatar_editor_preview_b.png"
         or string.match(
             name,
             "^avatar_crop_preview_"
@@ -22331,25 +22340,27 @@ function FALLEN_AVATAR_EDITOR_RELOAD_PREVIEW()
         return false
     end
 
-    local ok =
-        FALLEN_AVATAR_EDITOR_LOAD_PATH(
+    -- Keep source path, but don't draw its raw oversized texture.
+    FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+
+    A.avatar_editor_candidate_path =
+        path
+
+    S.avatar_crop_zoom = 1
+    S.avatar_crop_pan_x = 0
+    S.avatar_crop_pan_y = 0
+
+    A.avatar_editor_preview_signature = nil
+    A.avatar_editor_preview_dirty = true
+
+    A.avatar_editor_status =
+        "Loaded: "
+        .. FALLEN_AVATAR_EDITOR_FILENAME(
             path
         )
 
-    if ok then
-        -- Like Discord: a freshly selected image starts centered at 1x.
-        S.avatar_crop_zoom = 1
-        S.avatar_crop_pan_x = 0
-        S.avatar_crop_pan_y = 0
-
-        A.avatar_editor_status =
-            "Loaded: "
-            .. FALLEN_AVATAR_EDITOR_FILENAME(
-                path
-            )
-    end
-
-    return ok
+    return
+        FALLEN_AVATAR_EDITOR_RENDER_PREVIEW()
 end
 
 function FALLEN_AVATAR_EDITOR_COPY_FOLDER_PATH()
@@ -22570,7 +22581,7 @@ function FALLEN_AVATAR_DRAW_CROP_VIEW(
         clamp(
             tonumber(zoom) or 1,
             1,
-            2.0
+            5.0
         )
 
     pan_x =
@@ -22816,7 +22827,7 @@ if ($w -le 0 -or $h -le 0) {
     throw "Invalid source image"
 }
 
-$Zoom = [Math]::Max(1.0, [Math]::Min(2.0, $Zoom))
+$Zoom = [Math]::Max(1.0, [Math]::Min(5.0, $Zoom))
 $PanX = [Math]::Max(-1.0, [Math]::Min(1.0, $PanX))
 $PanY = [Math]::Max(-1.0, [Math]::Min(1.0, $PanY))
 
@@ -22944,7 +22955,7 @@ function FALLEN_AVATAR_EDITOR_RENDER_FINAL_CIRCLE()
         clamp(
             tonumber(S.avatar_crop_zoom) or 1,
             1,
-            2.0
+            5.0
         )
 
     local pan_x =
@@ -23022,6 +23033,230 @@ function FALLEN_AVATAR_EDITOR_RENDER_FINAL_CIRCLE()
     return output
 end
 
+function FALLEN_AVATAR_EDITOR_PREVIEW_SIGNATURE()
+    return
+        string.format(
+            "%.4f|%.4f|%.4f|%s",
+            clamp(
+                tonumber(S.avatar_crop_zoom) or 1,
+                1,
+                5
+            ),
+            clamp(
+                tonumber(S.avatar_crop_pan_x) or 0,
+                -1,
+                1
+            ),
+            clamp(
+                tonumber(S.avatar_crop_pan_y) or 0,
+                -1,
+                1
+            ),
+            tostring(
+                FALLEN_AVATAR_EDITOR_SOURCE_PATH()
+                or ""
+            )
+        )
+end
+
+function FALLEN_AVATAR_EDITOR_UNLOAD_PREVIEW()
+    local h =
+        A.avatar_editor_preview_handle
+
+    if h
+        and Drawing
+        and type(Drawing.UnloadImage) == "function"
+    then
+        pcall(
+            Drawing.UnloadImage,
+            h
+        )
+    end
+
+    A.avatar_editor_preview_handle = nil
+    A.avatar_editor_preview_path = nil
+end
+
+function FALLEN_AVATAR_EDITOR_RENDER_PREVIEW()
+    local source =
+        FALLEN_AVATAR_EDITOR_SOURCE_PATH()
+
+    if not source then
+        return false
+    end
+
+    if not os
+        or type(os.execute) ~= "function"
+    then
+        return false
+    end
+
+    local worker =
+        FALLEN_AVATAR_EDITOR_WRITE_CIRCLE_WORKER()
+
+    if not worker then
+        return false
+    end
+
+    local slot =
+        A.avatar_editor_preview_slot == 1
+        and "b"
+        or "a"
+
+    local output =
+        FALLEN_AVATAR_EDITOR_FOLDER()
+        .. "avatar_editor_preview_"
+        .. slot
+        .. ".png"
+
+    local zoom =
+        clamp(
+            tonumber(S.avatar_crop_zoom) or 1,
+            1,
+            5
+        )
+
+    local pan_x =
+        clamp(
+            tonumber(S.avatar_crop_pan_x) or 0,
+            -1,
+            1
+        )
+
+    local pan_y =
+        clamp(
+            tonumber(S.avatar_crop_pan_y) or 0,
+            -1,
+            1
+        )
+
+    local command =
+        'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "'
+        .. worker
+        .. '" -Source "'
+        .. source
+        .. '" -Output "'
+        .. output
+        .. '" -Zoom '
+        .. string.format("%.5f", zoom)
+        .. ' -PanX '
+        .. string.format("%.5f", pan_x)
+        .. ' -PanY '
+        .. string.format("%.5f", pan_y)
+
+    local ok_exec =
+        pcall(
+            os.execute,
+            command
+        )
+
+    if not ok_exec then
+        A.avatar_editor_status =
+            "Could not update preview"
+        return false
+    end
+
+    if type(exists_file) == "function" then
+        local ok_exists, exists =
+            pcall(
+                exists_file,
+                output
+            )
+
+        if not ok_exists
+            or exists ~= true
+        then
+            A.avatar_editor_status =
+                "Preview render failed"
+            return false
+        end
+    end
+
+    local handle = nil
+
+    pcall(function()
+        if Drawing
+            and type(Drawing.LoadImageFromFile) == "function"
+        then
+            handle =
+                Drawing.LoadImageFromFile(
+                    output
+                )
+        elseif type(LoadImage) == "function" then
+            handle =
+                LoadImage(
+                    output
+                )
+        end
+    end)
+
+    if not handle then
+        A.avatar_editor_status =
+            "Could not load preview"
+        return false
+    end
+
+    local old =
+        A.avatar_editor_preview_handle
+
+    A.avatar_editor_preview_handle =
+        handle
+
+    A.avatar_editor_preview_path =
+        output
+
+    A.avatar_editor_preview_slot =
+        slot == "a"
+        and 1
+        or 2
+
+    A.avatar_editor_preview_signature =
+        FALLEN_AVATAR_EDITOR_PREVIEW_SIGNATURE()
+
+    A.avatar_editor_preview_dirty =
+        false
+
+    if old
+        and old ~= handle
+        and Drawing
+        and type(Drawing.UnloadImage) == "function"
+    then
+        pcall(
+            Drawing.UnloadImage,
+            old
+        )
+    end
+
+    return true
+end
+
+function FALLEN_AVATAR_EDITOR_MARK_PREVIEW_DIRTY()
+    A.avatar_editor_preview_dirty = true
+end
+
+function FALLEN_AVATAR_EDITOR_UPDATE_PREVIEW(
+    lmb
+)
+    local signature =
+        FALLEN_AVATAR_EDITOR_PREVIEW_SIGNATURE()
+
+    if signature
+        ~= A.avatar_editor_preview_signature
+    then
+        A.avatar_editor_preview_dirty = true
+    end
+
+    -- Never launch the crop renderer while the user is holding the mouse.
+    -- Rebuild once after drag / slider release instead.
+    if A.avatar_editor_preview_dirty
+        and not lmb
+        and not A.avatar_editor_dragging
+        and A.active_slider ~= "avatar_crop_zoom"
+    then
+        FALLEN_AVATAR_EDITOR_RENDER_PREVIEW()
+    end
+end
+
 function FALLEN_AVATAR_EDITOR_OPEN()
     A.avatar_editor_open = true
 
@@ -23041,7 +23276,15 @@ function FALLEN_AVATAR_EDITOR_OPEN()
         "Drag image to position it. Use Zoom below."
 
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
-    FALLEN_AVATAR_EDITOR_LOAD_ORIGINAL_SOURCE()
+    FALLEN_AVATAR_EDITOR_UNLOAD_PREVIEW()
+
+    -- Keep the already-saved circular avatar as the instant preview.
+    -- Source file is only processed after Reload / drag / zoom release.
+    A.avatar_editor_preview_signature =
+        FALLEN_AVATAR_EDITOR_PREVIEW_SIGNATURE()
+
+    A.avatar_editor_preview_dirty =
+        false
 
     A.avatar_editor_dragging = false
     A.active_slider = nil
@@ -23056,6 +23299,7 @@ end
 
 function FALLEN_AVATAR_EDITOR_CANCEL()
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+    FALLEN_AVATAR_EDITOR_UNLOAD_PREVIEW()
 
     S.avatar_crop_zoom =
         A.avatar_editor_original_zoom
@@ -23108,6 +23352,7 @@ function FALLEN_AVATAR_EDITOR_SAVE()
     end
 
     FALLEN_AVATAR_EDITOR_UNLOAD_CANDIDATE()
+    FALLEN_AVATAR_EDITOR_UNLOAD_PREVIEW()
 
     _G.FALLEN_CUSTOM_AVATAR.handle =
         final_handle
@@ -23176,7 +23421,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
     end
 
     local pw = 468
-    local ph = 460
+    local ph = 396
 
     local px =
         wx
@@ -23237,7 +23482,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         px + (pw - preview_size) * 0.5
 
     local preview_y =
-        py + 115
+        py + 55
 
     rounded_fill(
         preview_x - 2,
@@ -23263,58 +23508,50 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         { 0.035, 0.038, 0.047, 1 }
     )
 
+    FALLEN_AVATAR_EDITOR_UPDATE_PREVIEW(
+        lmb
+    )
+
     local preview_handle =
-        A.avatar_editor_candidate_handle
+        A.avatar_editor_preview_handle
         or PROFILE.avatar
 
-    local preview_ok =
-        FALLEN_AVATAR_DRAW_CROP_VIEW(
-            preview_handle,
-            preview_x,
-            preview_y,
-            preview_size,
-            S.avatar_crop_zoom,
-            S.avatar_crop_pan_x,
-            S.avatar_crop_pan_y,
-            panel_color,
-            false
-        )
+    local preview_ok = false
 
-    -- The live image is capped at 2x and the preview is positioned so the
-    -- entire enlarged source always stays INSIDE this opaque modal. These
-    -- four fills then clip it back to the preview without any texture ever
-    -- leaking over the menu/game behind the popup.
-    fill(
-        px,
-        py + 40,
-        preview_x - px,
-        ph - 40,
-        panel_color
-    )
+    if preview_handle
+        and type(DrawImage) == "function"
+    then
+        local ready = true
 
-    fill(
-        preview_x + preview_size,
-        py + 40,
-        px + pw - (preview_x + preview_size),
-        ph - 40,
-        panel_color
-    )
+        if type(IsImageReady) == "function" then
+            local ok_ready, is_ready =
+                pcall(
+                    IsImageReady,
+                    preview_handle
+                )
 
-    fill(
-        preview_x,
-        py + 40,
-        preview_size,
-        preview_y - (py + 40),
-        panel_color
-    )
+            ready =
+                ok_ready
+                and is_ready == true
+        end
 
-    fill(
-        preview_x,
-        preview_y + preview_size,
-        preview_size,
-        py + ph - (preview_y + preview_size),
-        panel_color
-    )
+        if ready then
+            preview_ok =
+                pcall(
+                    DrawImage,
+                    preview_handle,
+                    FALLEN_UI_X(preview_x),
+                    FALLEN_UI_Y(preview_y),
+                    FALLEN_UI_LEN(preview_size),
+                    FALLEN_UI_LEN(preview_size),
+                    1, 1, 1,
+                    MENU_RENDER_ALPHA,
+                    FALLEN_UI_LEN(
+                        preview_size * 0.5
+                    )
+                )
+        end
+    end
 
     if not preview_ok then
         centered_text(
@@ -23323,38 +23560,12 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             "No image",
             C.text_dim
         )
-    else
-        -- Real fixed circular viewport inside the editor.
-        FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
-            preview_x,
-            preview_y,
-            preview_size,
-            preview_size * 0.385,
-            panel_color
-        )
     end
-
-    -- Moving image can reach the header before the clipping pass, so redraw it.
-    text(
-        px + 16,
-        py + 15,
-        "Edit Avatar",
-        C.text
-    )
-
-    line(
-        px + 14,
-        py + 39,
-        px + pw - 14,
-        py + 39,
-        C.divider,
-        1
-    )
 
     circle(
         preview_x + preview_size * 0.5,
         preview_y + preview_size * 0.5,
-        preview_size * 0.385,
+        preview_size * 0.5,
         { 0.94, 0.95, 0.98, 0.98 },
         2
     )
@@ -23415,7 +23626,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
                 clamp(
                     tonumber(S.avatar_crop_zoom) or 1,
                     1,
-                    2.0
+                    5.0
                 )
 
             local max_off =
@@ -23441,6 +23652,9 @@ function FALLEN_DRAW_AVATAR_EDITOR(
                     -1,
                     1
                 )
+
+            A.avatar_editor_preview_dirty =
+                true
         else
             A.avatar_editor_dragging = false
         end
@@ -23448,7 +23662,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
 
     text(
         px + 18,
-        py + 329,
+        py + 269,
         "Drag the image to reposition it",
         C.text_faint
     )
@@ -23460,17 +23674,17 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             and not A.avatar_editor_dragging,
         lmb,
         px + 8,
-        py + 343,
+        py + 283,
         pw - 16,
         "Zoom",
         "avatar_crop_zoom",
         1.00,
-        2.00,
+        5.00,
         "float"
     )
 
     local open_x = px + 16
-    local open_y = py + 391
+    local open_y = py + 331
     local open_w = 128
     local button_h = 31
 
