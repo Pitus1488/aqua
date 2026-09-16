@@ -22655,133 +22655,77 @@ function FALLEN_AVATAR_DRAW_CROP_VIEW(
     end
 
     if circle_clip then
-        -- Small scanline inverse mask gives a true circular viewport without
-        -- requiring UV/source-rect support from DrawImage.
-        local radius =
-            size * 0.5
-
-        local cy =
-            y + radius
-
-        local step = 2
-        local yy = 0
-
-        while yy < size do
-            local sample_y =
-                yy
-                + math.min(
-                    step * 0.5,
-                    size - yy
-                )
-
-            local dy =
-                sample_y
-                - radius
-
-            local inside =
-                radius * radius
-                - dy * dy
-
-            if inside > 0 then
-                local half =
-                    math.sqrt(
-                        inside
-                    )
-
-                local side =
-                    math.max(
-                        0,
-                        radius - half
-                    )
-
-                if side > 0.15 then
-                    fill(
-                        x,
-                        y + yy,
-                        side,
-                        math.min(step, size - yy),
-                        mask_color
-                    )
-
-                    fill(
-                        x + size - side,
-                        y + yy,
-                        side,
-                        math.min(step, size - yy),
-                        mask_color
-                    )
-                end
-            else
-                fill(
-                    x,
-                    y + yy,
-                    size,
-                    math.min(step, size - yy),
-                    mask_color
-                )
-            end
-
-            yy = yy + step
-        end
+        FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
+            x,
+            y,
+            size,
+            size * 0.5,
+            mask_color
+        )
     end
 
     return true
 end
 
-function FALLEN_AVATAR_DIM_OUTSIDE_CIRCLE(
+function FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
     x,
     y,
-    size
+    size,
+    radius,
+    color
 )
-    local radius =
-        size * 0.5
+    radius =
+        clamp(
+            tonumber(radius) or (size * 0.5),
+            0,
+            size * 0.5
+        )
 
-    local step = 3
+    color = color or { 0, 0, 0, 1 }
+
+    local step = 1
     local yy = 0
 
     while yy < size do
-        local sample_y =
-            yy
-            + math.min(
-                step * 0.5,
+        local row_h =
+            math.min(
+                step,
                 size - yy
             )
 
+        local sample_y =
+            yy + row_h * 0.5
+
         local dy =
-            sample_y
-            - radius
+            sample_y - size * 0.5
 
         local inside =
-            radius * radius
-            - dy * dy
+            radius * radius - dy * dy
 
         if inside > 0 then
-            local half =
-                math.sqrt(
-                    inside
-                )
-
-            local side =
+            local half = math.sqrt(inside)
+            local side = math.ceil(
                 math.max(
                     0,
-                    radius - half
+                    size * 0.5 - half
                 )
+            )
 
-            if side > 0.15 then
+            if side > 0 then
                 fill(
                     x,
                     y + yy,
                     side,
-                    math.min(step, size - yy),
-                    { 0, 0, 0, 0.40 }
+                    row_h,
+                    color
                 )
 
                 fill(
                     x + size - side,
                     y + yy,
                     side,
-                    math.min(step, size - yy),
-                    { 0, 0, 0, 0.40 }
+                    row_h,
+                    color
                 )
             end
         else
@@ -22789,13 +22733,28 @@ function FALLEN_AVATAR_DIM_OUTSIDE_CIRCLE(
                 x,
                 y + yy,
                 size,
-                math.min(step, size - yy),
-                { 0, 0, 0, 0.40 }
+                row_h,
+                color
             )
         end
 
         yy = yy + step
     end
+end
+
+function FALLEN_AVATAR_DIM_OUTSIDE_CIRCLE(
+    x,
+    y,
+    size,
+    radius
+)
+    FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
+        x,
+        y,
+        size,
+        radius or (size * 0.5),
+        { 0, 0, 0, 0.40 }
+    )
 end
 
 function FALLEN_AVATAR_EDITOR_OPEN()
@@ -23025,6 +22984,13 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         { 0.035, 0.038, 0.047, 1 }
     )
 
+    circle_fill(
+        preview_x + preview_size * 0.5,
+        preview_y + preview_size * 0.5,
+        preview_size * 0.385,
+        { 0.035, 0.038, 0.047, 1 }
+    )
+
     local preview_handle =
         A.avatar_editor_candidate_handle
         or PROFILE.avatar
@@ -23050,11 +23016,13 @@ function FALLEN_DRAW_AVATAR_EDITOR(
             C.text_dim
         )
     else
-        -- Discord-like dim outside crop circle.
-        FALLEN_AVATAR_DIM_OUTSIDE_CIRCLE(
+        -- Hide the moving square completely outside the crop guide.
+        FALLEN_AVATAR_MASK_OUTSIDE_CIRCLE_RADIUS(
             preview_x,
             preview_y,
-            preview_size
+            preview_size,
+            preview_size * 0.385,
+            panel_color
         )
     end
 
@@ -24266,6 +24234,13 @@ hooks.on_render(function()
 
     local avatar_drawn = false
 
+    circle_fill(
+        avatar_x + avatar_size * 0.5,
+        avatar_y + avatar_size * 0.5,
+        avatar_size * 0.5,
+        { 0.11, 0.12, 0.14, 1 }
+    )
+
     if PROFILE.avatar
         and type(DrawImage) == "function"
     then
@@ -24289,13 +24264,6 @@ hooks.on_render(function()
     end
 
     if not avatar_drawn then
-        circle_fill(
-            avatar_x + avatar_size * 0.5,
-            avatar_y + avatar_size * 0.5,
-            avatar_size * 0.5,
-            { 0.11, 0.12, 0.14, 1 }
-        )
-
         local first = string.sub(PROFILE.name or "F", 1, 1)
         if first == "" then first = "F" end
 
