@@ -24581,37 +24581,23 @@ hooks.on_render(function()
     if PROFILE.avatar
         and type(DrawImage) == "function"
     then
-        local ready = true
-
-        if type(IsImageReady) == "function" then
-            local ok_ready, is_ready =
-                pcall(
-                    IsImageReady,
-                    PROFILE.avatar
-                )
-
-            ready =
-                ok_ready
-                and is_ready == true
-        end
-
-        if ready then
-            local ok_draw =
-                pcall(
-                    DrawImage,
-                    PROFILE.avatar,
-                    FALLEN_UI_X(avatar_x),
-                    FALLEN_UI_Y(avatar_y),
-                    FALLEN_UI_LEN(avatar_size),
-                    FALLEN_UI_LEN(avatar_size),
-                    1, 1, 1,
-                    MENU_RENDER_ALPHA,
-                    FALLEN_UI_LEN(avatar_size * 0.5)
-                )
-
-            avatar_drawn =
-                ok_draw == true
-        end
+        avatar_drawn =
+            FALLEN_AVATAR_DRAW_CROP_VIEW(
+                PROFILE.avatar,
+                avatar_x,
+                avatar_y,
+                avatar_size,
+                S.avatar_crop_zoom,
+                S.avatar_crop_pan_x,
+                S.avatar_crop_pan_y,
+                {
+                    C.sidebar[1],
+                    C.sidebar[2],
+                    C.sidebar[3],
+                    1,
+                },
+                true
+            )
     end
 
     if not avatar_drawn then
