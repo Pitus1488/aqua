@@ -190,8 +190,7 @@ local defaults = {
     secret_crosshair_v = 1,
     secret_crosshair_alpha = 100,
 
-    secret_spin_enabled = false,
-    secret_spin_speed = 360,
+    secret_desync_enabled = false,
 
     -- Main UI outer glow color (HSV + alpha, same picker system as Aim FOV).
     menu_glow_h = 0.00,
@@ -444,9 +443,8 @@ local A = {
     secret_crosshair_angle = 0,
     secret_crosshair_render_last_t = nil,
 
-    secret_spin_angle = 0,
-    secret_spin_last_t = nil,
-    secret_spin_was_active = false,
+    secret_desync_module = nil,
+    secret_desync_last_state = nil,
 
     hit_effect_style_open = false,
     hit_effect_style_anim = 0,
@@ -24950,7 +24948,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            288,
+            247,
             11
         )
 
@@ -25192,29 +25190,13 @@ hooks.on_render(function()
             page_x,
             page_y + 214,
             page_w,
-            "Spin Anti-Aim",
-            "secret_spin_enabled",
+            "Desync",
+            "secret_desync_enabled",
             false
         )
 
-        slider_row(
-            mx,
-            my,
-            secret_controls_clicked,
-            lmb,
-            page_x,
-            page_y + 247,
-            page_w,
-            "Spin Speed",
-            "secret_spin_speed",
-            60,
-            1080,
-            "int"
-        )
-
-        -- IMPORTANT: render the popup LAST so Color / Rotate / Spin controls
+        -- IMPORTANT: render the popup LAST so Color / Rotate / Desync controls
         -- can never visually draw over it.
-        -- visually draw over it.
         local secret_dropdown_hot =
             FALLEN_DRAW_SECRET_CROSSHAIR_STYLE_DROPDOWN(
                 mx,
@@ -28201,184 +28183,155 @@ hooks.on_render(function()
 end)
 
 -- =========================================================
--- Secret Spin Anti-Aim
+-- Secret Desync bridge
 -- =========================================================
-function FALLEN_SECRET_SPIN_VECTOR(
-    x,
-    y,
-    z
-)
-    if type(Vector3) == "function" then
-        local ok, v =
-            pcall(
-                Vector3,
-                x,
-                y,
-                z
-            )
-
-        if ok and v then
-            return v
-        end
+function FALLEN_SECRET_DESYNC_FIND_MODULE()
+    if A.secret_desync_module then
+        return
+            A.secret_desync_module
     end
 
-    return {
-        X = x,
-        Y = y,
-        Z = z,
-    }
-end
+    local found = nil
 
-function FALLEN_SECRET_SPIN_FIND_ROOT()
-    local char = nil
+    -- The host exposes Silent Aim as cheat.silent_aim, so try the matching
+    -- built-in Desync module names first.
+    if cheat then
+        local direct = {
+            "desync",
+            "Desync",
+            "desyncer",
+            "desync_module",
+        }
 
-    pcall(function()
-        if rbx
-            and type(rbx.local_character) == "function"
-        then
-            char =
-                rbx.local_character()
-        end
-    end)
+        for _, key in ipairs(direct) do
+            local ok, value =
+                pcall(function()
+                    return cheat[key]
+                end)
 
-    if not char then
-        pcall(function()
-            if rbx
-                and type(rbx.local_player) == "function"
+            if ok
+                and value ~= nil
             then
-                local lp =
-                    rbx.local_player()
-
-                if lp
-                    and lp.get_character
-                then
-                    char =
-                        lp:get_character()
-                end
+                found = value
+                break
             end
-        end)
-    end
-
-    if not char then
-        return nil
-    end
-
-    local root = nil
-
-    pcall(function()
-        if char.find_first_child then
-            root =
-                char:find_first_child(
-                    "HumanoidRootPart"
-                )
         end
-    end)
 
-    if not root then
-        pcall(function()
-            if char.find_first_child then
-                root =
-                    char:find_first_child(
-                        "RootPart"
-                    )
-            end
-        end)
+        -- Build-independent fallback: find any cheat field containing
+        -- "desync" in its name.
+        if not found then
+            pcall(function()
+                for key, value in pairs(cheat) do
+                    local name =
+                        string.lower(
+                            tostring(key)
+                        )
+
+                    if string.find(
+                        name,
+                        "desync",
+                        1,
+                        true
+                    ) then
+                        found = value
+                        break
+                    end
+                end
+            end)
+        end
     end
 
-    return root
+    -- A few builds may expose the module globally instead of under cheat.
+    if not found then
+        local globals = {
+            "desync",
+            "Desync",
+            "DESYNC",
+        }
+
+        for _, key in ipairs(globals) do
+            local ok, value =
+                pcall(function()
+                    return _G[key]
+                end)
+
+            if ok
+                and value ~= nil
+            then
+                found = value
+                break
+            end
+        end
+    end
+
+    if found then
+        A.secret_desync_module =
+            found
+    end
+
+    return found
 end
 
-function FALLEN_SECRET_SPIN_SET_ANGULAR(
-    root,
-    radians_per_second
+function FALLEN_SECRET_DESYNC_APPLY(
+    module,
+    enabled
 )
-    if not root then
+    if module == nil then
         return false
     end
 
-    local vec =
-        FALLEN_SECRET_SPIN_VECTOR(
-            0,
-            radians_per_second,
-            0
-        )
+    -- Some hosts expose the feature itself as a callback.
+    if type(module) == "function" then
+        local ok =
+            pcall(
+                module,
+                enabled
+            )
 
-    local methods = {
-        "set_assembly_angular_velocity",
-        "set_angular_velocity",
-        "set_rot_velocity",
-    }
-
-    for _, method in ipairs(methods) do
-        local worked = false
-
-        pcall(function()
-            if type(root[method]) == "function" then
-                root[method](
-                    root,
-                    vec
-                )
-
-                worked = true
-            end
-        end)
-
-        if worked then
-            return true
-        end
+        return ok == true
     end
 
-    local worked = false
+    local applied = false
 
+    -- Most likely layout: cheat.desync.enabled
     pcall(function()
-        root.AssemblyAngularVelocity =
-            vec
+        module.enabled =
+            enabled
 
-        worked = true
+        applied = true
     end)
 
-    if worked then
+    if applied then
         return true
     end
 
     pcall(function()
-        root.AngularVelocity =
-            vec
+        module.Enabled =
+            enabled
 
-        worked = true
+        applied = true
     end)
 
-    return worked
-end
-
-function FALLEN_SECRET_SPIN_SET_ROTATION(
-    root,
-    angle_deg
-)
-    if not root then
-        return false
+    if applied then
+        return true
     end
 
-    local rot =
-        FALLEN_SECRET_SPIN_VECTOR(
-            0,
-            angle_deg,
-            0
-        )
-
-    local methods = {
-        "set_rotation",
-        "set_orientation",
+    local setters = {
+        "set_enabled",
+        "SetEnabled",
+        "setEnabled",
+        "set_active",
+        "SetActive",
     }
 
-    for _, method in ipairs(methods) do
+    for _, method in ipairs(setters) do
         local worked = false
 
         pcall(function()
-            if type(root[method]) == "function" then
-                root[method](
-                    root,
-                    rot
+            if type(module[method]) == "function" then
+                module[method](
+                    module,
+                    enabled
                 )
 
                 worked = true
@@ -28393,234 +28346,37 @@ function FALLEN_SECRET_SPIN_SET_ROTATION(
     return false
 end
 
-function FALLEN_SECRET_SPIN_SET_CFRAME(
-    root,
-    angle_rad
-)
-    if not root
-        or not CFrame
-    then
-        return false
-    end
-
-    local pos = nil
-
-    pcall(function()
-        if root.get_position then
-            pos =
-                root:get_position()
-        end
-    end)
-
-    if not pos then
-        return false
-    end
-
-    local cf = nil
-
-    pcall(function()
-        local base = nil
-
-        if type(CFrame) == "function" then
-            base =
-                CFrame(
-                    pos.X,
-                    pos.Y,
-                    pos.Z
-                )
-        elseif type(CFrame) == "table"
-            and type(CFrame.new) == "function"
-        then
-            base =
-                CFrame.new(
-                    pos.X,
-                    pos.Y,
-                    pos.Z
-                )
-        end
-
-        local rot = nil
-
-        if type(CFrame) == "table"
-            and type(CFrame.Angles) == "function"
-        then
-            rot =
-                CFrame.Angles(
-                    0,
-                    angle_rad,
-                    0
-                )
-        elseif type(CFrame) == "table"
-            and type(CFrame.angles) == "function"
-        then
-            rot =
-                CFrame.angles(
-                    0,
-                    angle_rad,
-                    0
-                )
-        end
-
-        if base and rot then
-            cf = base * rot
-        end
-    end)
-
-    if not cf then
-        return false
-    end
-
-    local worked = false
-
-    pcall(function()
-        if type(root.set_cframe) == "function" then
-            root:set_cframe(
-                cf
-            )
-
-            worked = true
-        end
-    end)
-
-    if worked then
-        return true
-    end
-
-    pcall(function()
-        if type(root.set_property) == "function" then
-            root:set_property(
-                "CFrame",
-                cf
-            )
-
-            worked = true
-        end
-    end)
-
-    if worked then
-        return true
-    end
-
-    pcall(function()
-        root.CFrame =
-            cf
-
-        worked = true
-    end)
-
-    return worked
-end
-
-function FALLEN_SECRET_SPIN_TICK()
-    local enabled =
+function FALLEN_SECRET_DESYNC_TICK()
+    local desired =
         A.secret_unlocked == true
         and S.secret_enabled == true
-        and S.secret_spin_enabled == true
+        and S.secret_desync_enabled == true
 
-    local root =
-        FALLEN_SECRET_SPIN_FIND_ROOT()
+    local module =
+        FALLEN_SECRET_DESYNC_FIND_MODULE()
 
-    if not enabled then
-        if A.secret_spin_was_active
-            and root
-        then
-            FALLEN_SECRET_SPIN_SET_ANGULAR(
-                root,
-                0
-            )
-        end
-
-        A.secret_spin_was_active =
-            false
-
-        A.secret_spin_last_t =
-            tick()
-
+    if not module then
         return
     end
 
-    if not root then
-        return
-    end
-
-    local now = tick()
-
-    if A.secret_spin_last_t == nil then
-        A.secret_spin_last_t =
-            now
-    end
-
-    local dt =
-        clamp(
-            now
-            - A.secret_spin_last_t,
-            0,
-            0.05
-        )
-
-    A.secret_spin_last_t =
-        now
-
-    local speed_deg =
-        clamp(
-            tonumber(S.secret_spin_speed) or 360,
-            60,
-            1080
-        )
-
-    local speed_rad =
-        math.rad(
-            speed_deg
-        )
-
-    A.secret_spin_angle =
-        (
-            tonumber(A.secret_spin_angle)
-            or 0
-        )
-        + speed_rad * dt
-
-    if A.secret_spin_angle
-        > math.pi * 2
+    -- Re-apply while enabled so the built-in Desync UI and our hidden toggle
+    -- stay synchronized even if the host rebuilds its state.
+    if desired
+        or A.secret_desync_last_state ~= desired
     then
-        A.secret_spin_angle =
-            A.secret_spin_angle
-            - math.pi * 2
-    end
-
-    -- Prefer true angular velocity: it looks like a real spin and preserves
-    -- the character's current position/movement.
-    local applied =
-        FALLEN_SECRET_SPIN_SET_ANGULAR(
-            root,
-            speed_rad
-        )
-
-    -- Fallbacks for builds that expose rotation setters instead.
-    if not applied then
-        applied =
-            FALLEN_SECRET_SPIN_SET_ROTATION(
-                root,
-                math.deg(
-                    A.secret_spin_angle
-                )
-            )
-    end
-
-    if not applied then
-        FALLEN_SECRET_SPIN_SET_CFRAME(
-            root,
-            A.secret_spin_angle
+        FALLEN_SECRET_DESYNC_APPLY(
+            module,
+            desired
         )
     end
 
-    A.secret_spin_was_active =
-        true
+    A.secret_desync_last_state =
+        desired
 end
 
 hooks.on_render(function()
     pcall(
-        FALLEN_SECRET_SPIN_TICK
+        FALLEN_SECRET_DESYNC_TICK
     )
 end)
 
