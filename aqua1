@@ -24168,107 +24168,140 @@ hooks.on_render(function()
         C.selected
     )
 
-    -- Selected-tab glow centered exactly on the LEFT EDGE OF THE PILL.
-    -- 35 vertical DrawLine layers. The center columns are taller/brighter;
-    -- side columns get shorter + more transparent, forming a soft bloom.
-    -- There is NO separate hard blue rail.
-    local sidebar_glow_edge_x =
-        wx + 10
+    -- Selected-tab glow matched closer to the reference.
+    -- Slim accent: bright and a little fuller in the center, then it
+    -- quickly becomes thinner and dimmer toward the sides.
+    local sidebar_glow_core_x =
+        wx + 11.2
 
     local sidebar_glow_center_y =
         A.sidebar_indicator_y
         + 17.5
 
-    local sidebar_glow_layers =
-        35
+    -- Soft outer shoulders.
+    for i = -6, 6 do
+        local d =
+            math.abs(i)
+            / 6
 
-    -- Reference-style profile: narrow overall bloom, hot center,
-    -- very faint/thin shoulders.
-    local sidebar_glow_spread =
-        4.2
-
-    for layer = 1, sidebar_glow_layers do
-        local u =
-            (layer - 1)
-            / (sidebar_glow_layers - 1)
-
-        -- -1 at far left, 0 in the middle, +1 at far right.
-        local side =
-            u * 2
-            - 1
-
-        local distance =
-            math.abs(side)
-
-        local center_power =
-            1
-            - distance
-
-        -- Sharper bell than before: side layers lose brightness quickly,
-        -- leaving a thin bright center like the reference.
-        center_power =
+        local p =
             math.pow(
-                center_power,
-                2.65
+                1 - d,
+                2.8
             )
 
         local line_x =
-            sidebar_glow_edge_x
-            + side
-            * sidebar_glow_spread
+            sidebar_glow_core_x
+            + i * 0.72
 
-        -- Center is noticeably taller; the outer shoulders are much shorter.
-        local half_height =
-            2.8
-            + 9.2
-            * math.pow(
-                center_power,
-                0.62
-            )
+        local half_h =
+            7.0
+            + 3.6 * p
 
-        -- Bright hot center, weak side glow.
         local line_alpha =
-            0.0015
-            + 0.145
-            * math.pow(
-                center_power,
-                1.35
-            )
+            0.004
+            + 0.090 * p
 
-        -- Side layers stay thin; only the very center gains a little weight.
         local line_thickness =
-            0.72
-            + 0.42
-            * math.pow(
-                center_power,
-                1.55
-            )
+            0.58
+            + 0.34 * p
 
         DrawLine(
             FALLEN_UI_X(
                 line_x
             ),
             FALLEN_UI_Y(
-                sidebar_glow_center_y
-                - half_height
+                sidebar_glow_center_y - half_h
             ),
             FALLEN_UI_X(
                 line_x
             ),
             FALLEN_UI_Y(
-                sidebar_glow_center_y
-                + half_height
+                sidebar_glow_center_y + half_h
             ),
             C.accent[1],
             C.accent[2],
             C.accent[3],
-            line_alpha
-                * MENU_RENDER_ALPHA,
+            line_alpha * MENU_RENDER_ALPHA,
             FALLEN_UI_LEN(
                 line_thickness
             )
         )
     end
+
+    -- Hot inner core.
+    for i = -2, 2 do
+        local d =
+            math.abs(i)
+            / 2
+
+        local p =
+            math.pow(
+                1 - d,
+                1.15
+            )
+
+        local line_x =
+            sidebar_glow_core_x
+            + i * 0.56
+
+        local half_h =
+            9.2
+            + 2.6 * p
+
+        local line_alpha =
+            0.040
+            + 0.165 * p
+
+        local line_thickness =
+            0.84
+            + 0.42 * p
+
+        DrawLine(
+            FALLEN_UI_X(
+                line_x
+            ),
+            FALLEN_UI_Y(
+                sidebar_glow_center_y - half_h
+            ),
+            FALLEN_UI_X(
+                line_x
+            ),
+            FALLEN_UI_Y(
+                sidebar_glow_center_y + half_h
+            ),
+            C.accent[1],
+            C.accent[2],
+            C.accent[3],
+            line_alpha * MENU_RENDER_ALPHA,
+            FALLEN_UI_LEN(
+                line_thickness
+            )
+        )
+    end
+
+    -- Tiny bright center spine so the middle is clearly hotter than the edges.
+    DrawLine(
+        FALLEN_UI_X(
+            sidebar_glow_core_x
+        ),
+        FALLEN_UI_Y(
+            sidebar_glow_center_y - 11.0
+        ),
+        FALLEN_UI_X(
+            sidebar_glow_core_x
+        ),
+        FALLEN_UI_Y(
+            sidebar_glow_center_y + 11.0
+        ),
+        C.accent[1],
+        C.accent[2],
+        C.accent[3],
+        0.255 * MENU_RENDER_ALPHA,
+        FALLEN_UI_LEN(
+            1.18
+        )
+    )
 
     text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
     sidebar_tab(
