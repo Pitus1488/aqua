@@ -24168,14 +24168,45 @@ hooks.on_render(function()
         C.selected
     )
 
-    -- Small accent rail moves together with the pill.
+    -- Selected-tab left-edge glow.
+    -- Stronger/taller in the center, softer/shorter toward the ends.
+    local glow_x = wx + 8
+    local glow_y = A.sidebar_indicator_y + 3
+
     rounded_fill(
-        wx + 13,
-        A.sidebar_indicator_y + 9,
-        3,
+        glow_x,
+        glow_y,
+        10,
+        29,
+        5,
+        alpha(C.accent, 0.08)
+    )
+
+    rounded_fill(
+        glow_x + 1,
+        glow_y + 3,
+        7,
+        23,
+        4,
+        alpha(C.accent, 0.16)
+    )
+
+    rounded_fill(
+        glow_x + 2,
+        glow_y + 6,
+        5,
         17,
-        1.5,
-        alpha(C.accent, 0.88)
+        3,
+        alpha(C.accent, 0.26)
+    )
+
+    rounded_fill(
+        glow_x + 3,
+        glow_y + 8,
+        3,
+        13,
+        2,
+        alpha(C.accent, 0.82)
     )
 
     text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
