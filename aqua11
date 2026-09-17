@@ -24182,8 +24182,10 @@ hooks.on_render(function()
     local sidebar_glow_layers =
         35
 
+    -- Reference-style profile: narrow overall bloom, hot center,
+    -- very faint/thin shoulders.
     local sidebar_glow_spread =
-        8.5
+        4.2
 
     for layer = 1, sidebar_glow_layers do
         local u =
@@ -24202,42 +24204,44 @@ hooks.on_render(function()
             1
             - distance
 
-        -- Smooth bell profile.
+        -- Sharper bell than before: side layers lose brightness quickly,
+        -- leaving a thin bright center like the reference.
         center_power =
-            center_power
-            * center_power
-            * (3 - 2 * center_power)
+            math.pow(
+                center_power,
+                2.65
+            )
 
         local line_x =
             sidebar_glow_edge_x
             + side
             * sidebar_glow_spread
 
-        -- Center is tallest; outer glow columns shrink toward the middle.
+        -- Center is noticeably taller; the outer shoulders are much shorter.
         local half_height =
-            4.0
-            + 10.5
+            2.8
+            + 9.2
             * math.pow(
                 center_power,
-                0.72
+                0.62
             )
 
-        -- Keep every individual line subtle. Overlap between the 35 columns
-        -- produces the bloom instead of a visible solid rail.
+        -- Bright hot center, weak side glow.
         local line_alpha =
-            0.004
-            + 0.095
+            0.0015
+            + 0.145
             * math.pow(
                 center_power,
-                1.80
+                1.35
             )
 
+        -- Side layers stay thin; only the very center gains a little weight.
         local line_thickness =
-            1.05
-            + 0.35
+            0.72
+            + 0.42
             * math.pow(
                 center_power,
-                1.15
+                1.55
             )
 
         DrawLine(
