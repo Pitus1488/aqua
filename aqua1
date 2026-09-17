@@ -24168,86 +24168,101 @@ hooks.on_render(function()
         C.selected
     )
 
-    -- Selected-tab glow on the ACTUAL left edge of the sidebar.
-    -- Exactly 35 DrawLine layers, matching the same multi-layer glow idea
-    -- used by the World icon glow. There is deliberately NO hard blue rail.
-    -- The middle is brightest + reaches furthest into the tab; top/bottom
-    -- become shorter and softer, creating the reference-style bloom.
+    -- Selected-tab glow centered exactly on the LEFT EDGE OF THE PILL.
+    -- 35 vertical DrawLine layers. The center columns are taller/brighter;
+    -- side columns get shorter + more transparent, forming a soft bloom.
+    -- There is NO separate hard blue rail.
     local sidebar_glow_edge_x =
-        wx + 1
+        wx + 10
 
     local sidebar_glow_center_y =
         A.sidebar_indicator_y
         + 17.5
 
-    for layer = 0, 34 do
-        local signed =
-            layer - 17
+    local sidebar_glow_layers =
+        35
+
+    local sidebar_glow_spread =
+        8.5
+
+    for layer = 1, sidebar_glow_layers do
+        local u =
+            (layer - 1)
+            / (sidebar_glow_layers - 1)
+
+        -- -1 at far left, 0 in the middle, +1 at far right.
+        local side =
+            u * 2
+            - 1
 
         local distance =
-            math.abs(signed)
-            / 17
+            math.abs(side)
 
-        local falloff =
-            1 - distance
+        local center_power =
+            1
+            - distance
 
-        -- Smooth bell-shaped vertical profile.
-        local shaped =
-            falloff
-            * falloff
-            * (3 - 2 * falloff)
+        -- Smooth bell profile.
+        center_power =
+            center_power
+            * center_power
+            * (3 - 2 * center_power)
 
-        -- At the center the glow pushes deeply into the sidebar.
-        -- Near the top/bottom it collapses to a tiny soft edge haze.
-        local reach_right =
-            4
-            + 20
+        local line_x =
+            sidebar_glow_edge_x
+            + side
+            * sidebar_glow_spread
+
+        -- Center is tallest; outer glow columns shrink toward the middle.
+        local half_height =
+            4.0
+            + 10.5
             * math.pow(
-                shaped,
-                0.78
+                center_power,
+                0.72
             )
 
-        local reach_left =
-            1.5
-            + 4.5
+        -- Keep every individual line subtle. Overlap between the 35 columns
+        -- produces the bloom instead of a visible solid rail.
+        local line_alpha =
+            0.004
+            + 0.095
             * math.pow(
-                shaped,
-                0.90
+                center_power,
+                1.80
             )
 
-        local glow_alpha =
-            0.012
-            + 0.245
+        local line_thickness =
+            1.05
+            + 0.35
             * math.pow(
-                shaped,
-                1.72
+                center_power,
+                1.15
             )
 
-        -- Horizontal 1px glow line. 35 vertically stacked lines form one
-        -- continuous bloom, but none of them is a visible vertical "rail".
         DrawLine(
             FALLEN_UI_X(
-                sidebar_glow_edge_x
-                - reach_left
+                line_x
             ),
             FALLEN_UI_Y(
                 sidebar_glow_center_y
-                + signed
+                - half_height
             ),
             FALLEN_UI_X(
-                sidebar_glow_edge_x
-                + reach_right
+                line_x
             ),
             FALLEN_UI_Y(
                 sidebar_glow_center_y
-                + signed
+                + half_height
             ),
             C.accent[1],
             C.accent[2],
             C.accent[3],
-            glow_alpha
+            line_alpha
                 * MENU_RENDER_ALPHA,
-            FALLEN_UI_LEN(1.20)
+            FALLEN_UI_LEN(
+                line_thickness
+            )
         )
     end
 
