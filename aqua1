@@ -24168,46 +24168,131 @@ hooks.on_render(function()
         C.selected
     )
 
-    -- Selected-tab left-edge glow.
-    -- Stronger/taller in the center, softer/shorter toward the ends.
-    local glow_x = wx + 8
-    local glow_y = A.sidebar_indicator_y + 3
+    -- Selected-tab edge glow.
+    -- No hard blue rail: this is a soft light cloud anchored exactly to
+    -- the left edge of the selected pill. It is brightest/widest in the
+    -- vertical center and fades smoothly toward the top/bottom.
+    local glow_edge_x =
+        wx + 10
 
-    rounded_fill(
-        glow_x,
-        glow_y,
-        10,
-        29,
-        5,
-        alpha(C.accent, 0.08)
-    )
+    local glow_center_y =
+        A.sidebar_indicator_y
+        + 17.5
 
-    rounded_fill(
-        glow_x + 1,
-        glow_y + 3,
-        7,
-        23,
-        4,
-        alpha(C.accent, 0.16)
-    )
+    -- Wide outer haze.
+    for gy = -17, 17 do
+        local d =
+            math.abs(gy)
+            / 17
 
-    rounded_fill(
-        glow_x + 2,
-        glow_y + 6,
-        5,
-        17,
-        3,
-        alpha(C.accent, 0.26)
-    )
+        local power =
+            1
+            - d
 
-    rounded_fill(
-        glow_x + 3,
-        glow_y + 8,
-        3,
-        13,
-        2,
-        alpha(C.accent, 0.82)
-    )
+        local glow_w =
+            4
+            + 14
+            * math.pow(
+                power,
+                0.72
+            )
+
+        local glow_a =
+            0.010
+            + 0.070
+            * math.pow(
+                power,
+                1.75
+            )
+
+        fill(
+            glow_edge_x - 3,
+            glow_center_y + gy,
+            glow_w,
+            1.15,
+            alpha(
+                C.accent,
+                glow_a
+            )
+        )
+    end
+
+    -- Denser inner haze, still with no visible straight core/line.
+    for gy = -12, 12 do
+        local d =
+            math.abs(gy)
+            / 12
+
+        local power =
+            1
+            - d
+
+        local glow_w =
+            3
+            + 9
+            * math.pow(
+                power,
+                0.78
+            )
+
+        local glow_a =
+            0.015
+            + 0.105
+            * math.pow(
+                power,
+                2.0
+            )
+
+        fill(
+            glow_edge_x - 2,
+            glow_center_y + gy,
+            glow_w,
+            1.10,
+            alpha(
+                C.accent,
+                glow_a
+            )
+        )
+    end
+
+    -- Small hot bloom in the middle. It is intentionally made from
+    -- fading strips instead of a rectangle so no blue "line" is visible.
+    for gy = -7, 7 do
+        local d =
+            math.abs(gy)
+            / 7
+
+        local power =
+            1
+            - d
+
+        local glow_w =
+            2
+            + 6
+            * math.pow(
+                power,
+                0.85
+            )
+
+        local glow_a =
+            0.020
+            + 0.145
+            * math.pow(
+                power,
+                2.35
+            )
+
+        fill(
+            glow_edge_x - 1,
+            glow_center_y + gy,
+            glow_w,
+            1.05,
+            alpha(
+                C.accent,
+                glow_a
+            )
+        )
+    end
 
     text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
     sidebar_tab(
