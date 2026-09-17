@@ -24169,8 +24169,7 @@ hooks.on_render(function()
     )
 
     -- Selected-tab glow matched closer to the reference.
-    -- Slim accent: bright and a little fuller in the center, then it
-    -- quickly becomes thinner and dimmer toward the sides.
+    -- Slightly wider, with a hotter / lighter center and dimmer thinner sides.
     local sidebar_glow_core_x =
         wx + 11.2
 
@@ -24178,32 +24177,101 @@ hooks.on_render(function()
         A.sidebar_indicator_y
         + 17.5
 
-    -- Soft outer shoulders.
-    for i = -6, 6 do
+    local glow_hot_r =
+        math.min(
+            1,
+            C.accent[1] * 0.45 + 0.55
+        )
+
+    local glow_hot_g =
+        math.min(
+            1,
+            C.accent[2] * 0.45 + 0.55
+        )
+
+    local glow_hot_b =
+        math.min(
+            1,
+            C.accent[3] * 0.70 + 0.30
+        )
+
+    -- Soft outer shoulders: a bit wider, still thin and faint.
+    for i = -7, 7 do
         local d =
             math.abs(i)
-            / 6
+            / 7
 
         local p =
             math.pow(
                 1 - d,
-                2.8
+                2.9
             )
 
         local line_x =
             sidebar_glow_core_x
-            + i * 0.72
+            + i * 0.78
 
         local half_h =
-            7.0
-            + 3.6 * p
+            6.8
+            + 4.0 * p
 
         local line_alpha =
             0.004
-            + 0.090 * p
+            + 0.082 * p
 
         local line_thickness =
-            0.58
+            0.54
+            + 0.28 * p
+
+        DrawLine(
+            FALLEN_UI_X(
+                line_x
+            ),
+            FALLEN_UI_Y(
+                sidebar_glow_center_y - half_h
+            ),
+            FALLEN_UI_X(
+                line_x
+            ),
+            FALLEN_UI_Y(
+                sidebar_glow_center_y + half_h
+            ),
+            C.accent[1],
+            C.accent[2],
+            C.accent[3],
+            line_alpha * MENU_RENDER_ALPHA,
+            FALLEN_UI_LEN(
+                line_thickness
+            )
+        )
+    end
+
+    -- Inner body: brighter and a little fuller.
+    for i = -3, 3 do
+        local d =
+            math.abs(i)
+            / 3
+
+        local p =
+            math.pow(
+                1 - d,
+                1.10
+            )
+
+        local line_x =
+            sidebar_glow_core_x
+            + i * 0.60
+
+        local half_h =
+            8.8
+            + 2.8 * p
+
+        local line_alpha =
+            0.026
+            + 0.150 * p
+
+        local line_thickness =
+            0.74
             + 0.34 * p
 
         DrawLine(
@@ -24219,9 +24287,9 @@ hooks.on_render(function()
             FALLEN_UI_Y(
                 sidebar_glow_center_y + half_h
             ),
-            C.accent[1],
-            C.accent[2],
-            C.accent[3],
+            glow_hot_r,
+            glow_hot_g,
+            glow_hot_b,
             line_alpha * MENU_RENDER_ALPHA,
             FALLEN_UI_LEN(
                 line_thickness
@@ -24229,79 +24297,24 @@ hooks.on_render(function()
         )
     end
 
-    -- Hot inner core.
-    for i = -2, 2 do
-        local d =
-            math.abs(i)
-            / 2
-
-        local p =
-            math.pow(
-                1 - d,
-                1.15
-            )
-
-        local line_x =
-            sidebar_glow_core_x
-            + i * 0.56
-
-        local half_h =
-            9.2
-            + 2.6 * p
-
-        local line_alpha =
-            0.040
-            + 0.165 * p
-
-        local line_thickness =
-            0.84
-            + 0.42 * p
+    -- Bright center stack so the middle is visibly lighter than the sides.
+    for i = -1, 1 do
+        local d = math.abs(i)
+        local p = 1 - d * 0.45
+        local line_x = sidebar_glow_core_x + i * 0.38
 
         DrawLine(
-            FALLEN_UI_X(
-                line_x
-            ),
-            FALLEN_UI_Y(
-                sidebar_glow_center_y - half_h
-            ),
-            FALLEN_UI_X(
-                line_x
-            ),
-            FALLEN_UI_Y(
-                sidebar_glow_center_y + half_h
-            ),
-            C.accent[1],
-            C.accent[2],
-            C.accent[3],
-            line_alpha * MENU_RENDER_ALPHA,
-            FALLEN_UI_LEN(
-                line_thickness
-            )
+            FALLEN_UI_X(line_x),
+            FALLEN_UI_Y(sidebar_glow_center_y - (10.3 + 1.4 * p)),
+            FALLEN_UI_X(line_x),
+            FALLEN_UI_Y(sidebar_glow_center_y + (10.3 + 1.4 * p)),
+            glow_hot_r,
+            glow_hot_g,
+            glow_hot_b,
+            (0.145 + 0.115 * p) * MENU_RENDER_ALPHA,
+            FALLEN_UI_LEN(0.96 + 0.20 * p)
         )
     end
-
-    -- Tiny bright center spine so the middle is clearly hotter than the edges.
-    DrawLine(
-        FALLEN_UI_X(
-            sidebar_glow_core_x
-        ),
-        FALLEN_UI_Y(
-            sidebar_glow_center_y - 11.0
-        ),
-        FALLEN_UI_X(
-            sidebar_glow_core_x
-        ),
-        FALLEN_UI_Y(
-            sidebar_glow_center_y + 11.0
-        ),
-        C.accent[1],
-        C.accent[2],
-        C.accent[3],
-        0.255 * MENU_RENDER_ALPHA,
-        FALLEN_UI_LEN(
-            1.18
-        )
-    )
 
     text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
     sidebar_tab(
