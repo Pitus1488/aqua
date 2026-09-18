@@ -167,6 +167,9 @@ local defaults = {
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
     menu_glow_strength = 100,
 
+    -- Glass style blur intensity. 0 = disabled, 100 = maximum.
+    menu_glass_blur = 65,
+
     -- Animated menu-background weather.
     menu_snow = false,
     menu_rain = false,
@@ -18234,19 +18237,6 @@ end
 -- =========================================================
 -- New cheat API bridge
 -- =========================================================
-FALLEN_GLASS_BLUR_STATE =
-    FALLEN_GLASS_BLUR_STATE
-    or {
-        active = false,
-        previous_menu_blur = nil,
-        x = nil,
-        y = nil,
-        w = nil,
-        h = nil,
-        rounding = nil,
-        id = "__fallen_glass_blur",
-    }
-
 function FALLEN_CHEAT_SET_FEATURE(
     name,
     enabled
@@ -18290,191 +18280,94 @@ function FALLEN_CHEAT_SET_FEATURE(
     return applied
 end
 
-function FALLEN_GLASS_BLUR_REMOVE()
-    local state =
-        FALLEN_GLASS_BLUR_STATE
-
-    if not state then
-        return
-    end
-
-    if state.active
-        and UIManager
-        and type(UIManager.RemoveElement) == "function"
-    then
-        pcall(
-            UIManager.RemoveElement,
-            state.id
-        )
-    end
-
-    if state.previous_menu_blur ~= nil then
-        pcall(function()
-            if cheat
-                and cheat.menu
-            then
-                cheat.menu.blur =
-                    state.previous_menu_blur == true
-            end
-        end)
-    end
-
-    state.active = false
-    state.previous_menu_blur = nil
-    state.x = nil
-    state.y = nil
-    state.w = nil
-    state.h = nil
-    state.rounding = nil
-end
-
-function FALLEN_GLASS_BLUR_SHOULD_DRAW()
-    return
-        tostring(
-            S.menu_type
-            or "default"
-        ):lower() == "glass"
-        and MENU_RENDER_ALPHA > 0.90
-        and A.menu_open_target == 1
-        and not A.menu_dragging
-end
-
-function FALLEN_SYNC_GLASS_BLUR()
-    -- Called before the menu rect is known. Its job here is only cleanup.
-    -- Actual creation happens in FALLEN_SYNC_GLASS_BLUR_RECT below.
-    if not FALLEN_GLASS_BLUR_SHOULD_DRAW() then
-        FALLEN_GLASS_BLUR_REMOVE()
-    end
-end
-
-function FALLEN_SYNC_GLASS_BLUR_RECT(
+-- =========================================================
+-- Glass blur
+-- Uses the new Drawing.DrawBlur API directly from on_render.
+-- No UIManager window/carrier, no recreation, no per-frame
+-- CreateWindow/RemoveElement calls.
+-- =========================================================
+function FALLEN_DRAW_GLASS_BLUR(
     x,
     y,
     w,
     h,
     rounding
 )
-    if not FALLEN_GLASS_BLUR_SHOULD_DRAW() then
-        FALLEN_GLASS_BLUR_REMOVE()
-        return
-    end
-
-    if not UIManager
-        or type(UIManager.CreateWindow) ~= "function"
-        or type(UIManager.SetWindowBlur) ~= "function"
+    if tostring(
+        S.menu_type
+        or "default"
+    ):lower() ~= "glass"
     then
         return
     end
 
-    local state =
-        FALLEN_GLASS_BLUR_STATE
-
-    if not state then
-        return
-    end
-
-    x = math.floor((tonumber(x) or 0) + 0.5)
-    y = math.floor((tonumber(y) or 0) + 0.5)
-    w = math.max(1, math.floor((tonumber(w) or 1) + 0.5))
-    h = math.max(1, math.floor((tonumber(h) or 1) + 0.5))
-    rounding = math.max(0, tonumber(rounding) or 0)
-
-    local changed =
-        not state.active
-        or state.x ~= x
-        or state.y ~= y
-        or state.w ~= w
-        or state.h ~= h
-        or math.abs((state.rounding or 0) - rounding) > 0.25
-
-    if not changed then
-        return
-    end
-
-    -- The UIManager blur docs say that with built-in Background Blur OFF,
-    -- the game is captured/frosted only inside this window rect. That is
-    -- exactly what the custom Drawing menu needs.
-    if state.active then
-        pcall(
-            UIManager.RemoveElement,
-            state.id
+    local intensity =
+        clamp(
+            (tonumber(S.menu_glass_blur) or 65)
+            / 100,
+            0,
+            1
         )
 
-        state.active = false
+    if intensity <= 0.001
+        or MENU_RENDER_ALPHA <= 0.004
+    then
+        return
     end
 
-    if state.previous_menu_blur == nil then
-        local previous = false
+    local fn = nil
 
-        pcall(function()
-            if cheat
-                and cheat.menu
-            then
-                previous =
-                    cheat.menu.blur == true
-
-                cheat.menu.blur = false
-            end
-        end)
-
-        state.previous_menu_blur =
-            previous
-    else
-        pcall(function()
-            if cheat
-                and cheat.menu
-            then
-                cheat.menu.blur = false
-            end
-        end)
+    if Drawing
+        and type(Drawing.DrawBlur) == "function"
+    then
+        fn =
+            Drawing.DrawBlur
+    elseif type(DrawBlur) == "function" then
+        fn =
+            DrawBlur
     end
 
-    local created = false
+    if not fn then
+        return
+    end
 
-    pcall(function()
-        UIManager.CreateWindow(
-            state.id,
-            "",
-            w,
-            h,
-            x,
+    -- DrawBlur works in real screen coordinates, while our menu primitives
+    -- use the menu transform helpers.
+    local bx =
+        FALLEN_UI_X(
+            x
+        )
+
+    local by =
+        FALLEN_UI_Y(
             y
         )
 
-        created = true
-    end)
+    local bw =
+        FALLEN_UI_LEN(
+            w
+        )
 
-    if not created then
-        return
-    end
+    local bh =
+        FALLEN_UI_LEN(
+            h
+        )
 
-    local blur_ok = false
-
-    pcall(function()
-        UIManager.SetWindowBlur(
-            state.id,
-            true,
-            0.78,
+    local br =
+        FALLEN_UI_LEN(
             rounding
+            or 0
         )
 
-        blur_ok = true
-    end)
-
-    if not blur_ok then
-        pcall(
-            UIManager.RemoveElement,
-            state.id
-        )
-        return
-    end
-
-    state.active = true
-    state.x = x
-    state.y = y
-    state.w = w
-    state.h = h
-    state.rounding = rounding
+    pcall(
+        fn,
+        bx,
+        by,
+        bw,
+        bh,
+        br,
+        intensity
+    )
 end
 
 function FALLEN_GLOW_COLOR()
@@ -19340,21 +19233,29 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
 
     local pw = 278
 
-    local gradient_selected =
+    local menu_type_lower =
         tostring(
             S.menu_type
             or "glass"
-        ):lower() == "gradient"
-        or tostring(
-            S.menu_type
-            or "glass"
-        ):lower() == "blur"
+        ):lower()
+
+    local gradient_selected =
+        menu_type_lower == "gradient"
+        or menu_type_lower == "blur"
+
+    local glass_selected =
+        menu_type_lower == "glass"
 
     local ph =
-        (
+        385
+        + (
             gradient_selected
-            and 467
-            or 385
+            and 82
+            or (
+                glass_selected
+                and 41
+                or 0
+            )
         )
         + (
             A.secret_unlocked
@@ -19635,6 +19536,35 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             end
 
             weather_offset = 82
+
+        elseif glass_selected then
+            if shell_h > 246 then
+                line(
+                    px + 12,
+                    py + 203,
+                    px + pw - 12,
+                    py + 203,
+                    C.divider,
+                    1
+                )
+
+                slider_row(
+                    mx,
+                    my,
+                    ui_clicked,
+                    lmb,
+                    px + 8,
+                    py + 204,
+                    pw - 16,
+                    "Glass Blur",
+                    "menu_glass_blur",
+                    0,
+                    100,
+                    "int"
+                )
+            end
+
+            weather_offset = 41
         end
 
         -- Animated background weather.
@@ -24005,9 +23935,6 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA =
         clamp(A.menu_open, 0, 1)
 
-    -- Glass uses the new native menu acrylic / blur API.
-    FALLEN_SYNC_GLASS_BLUR()
-
     -- Once the closing animation is essentially invisible, stop drawing it.
     if A.menu_open <= 0.004
         and A.menu_open_target == 0
@@ -24164,12 +24091,14 @@ hooks.on_render(function()
     wy = snap(wy)
 
     -- Native frosted Glass region underneath our Drawing menu.
-    FALLEN_SYNC_GLASS_BLUR_RECT(
+    -- Drawing.DrawBlur is queued every render frame, exactly as the new API
+    -- expects, so the blur follows the live game image.
+    FALLEN_DRAW_GLASS_BLUR(
         wx,
         wy,
-        WIN_W * menu_scale,
-        WIN_H * menu_scale,
-        14 * menu_scale
+        WIN_W,
+        WIN_H,
+        OUTER_R
     )
 
     S.anim = clamp(lerp(S.anim or 0, 1, 0.16), 0, 1)
