@@ -8650,6 +8650,15 @@ function FALLEN_SILENT_TICK()
         )
 
     -- Silent Aim toggle from our menu.
+    if A.silent_api_last_enabled ~= enabled then
+        FALLEN_CHEAT_SET_FEATURE(
+            "silent_aim",
+            enabled
+        )
+
+        A.silent_api_last_enabled = enabled
+    end
+
     pcall(function()
         sa.enabled = enabled
     end)
@@ -18222,6 +18231,117 @@ function FALLEN_APPLY_STYLE_COLOR()
     end
 end
 
+-- =========================================================
+-- New cheat API bridge
+-- =========================================================
+FALLEN_GLASS_BLUR_STATE =
+    FALLEN_GLASS_BLUR_STATE
+    or {
+        active = false,
+        previous = nil,
+    }
+
+function FALLEN_CHEAT_SET_FEATURE(
+    name,
+    enabled
+)
+    if not cheat then
+        return false
+    end
+
+    enabled = enabled == true
+
+    if type(cheat.enable) == "function" then
+        local ok, result =
+            pcall(
+                cheat.enable,
+                tostring(name),
+                enabled
+            )
+
+        if ok and result ~= false then
+            return true
+        end
+    end
+
+    local applied = false
+
+    pcall(function()
+        local module = cheat[name]
+
+        if module ~= nil
+            and type(module) == "table"
+        then
+            module.enabled = enabled
+            applied = true
+        end
+    end)
+
+    return applied
+end
+
+function FALLEN_SYNC_GLASS_BLUR()
+    local state = FALLEN_GLASS_BLUR_STATE
+
+    if not state then
+        return
+    end
+
+    local glass =
+        tostring(S.menu_type or "glass"):lower()
+        == "glass"
+
+    local should_blur =
+        glass
+        and (tonumber(A.menu_open) or 0) > 0.004
+
+    local menu_api = nil
+
+    pcall(function()
+        if cheat then
+            menu_api = cheat.menu
+        end
+    end)
+
+    if not menu_api then
+        return
+    end
+
+    if should_blur and not state.active then
+        local previous = false
+
+        pcall(function()
+            previous = menu_api.blur == true
+        end)
+
+        state.previous = previous
+
+        local applied = false
+
+        pcall(function()
+            menu_api.blur = true
+            applied = true
+        end)
+
+        if applied then
+            state.active = true
+        end
+
+        return
+    end
+
+    if not should_blur and state.active then
+        local restore = state.previous == true
+
+        pcall(function()
+            menu_api.blur = restore
+        end)
+
+        state.active = false
+        state.previous = nil
+    end
+end
+
 function FALLEN_GLOW_COLOR()
     local r, g, b =
         hsv_to_rgb(
@@ -23750,6 +23870,9 @@ hooks.on_render(function()
     MENU_RENDER_ALPHA =
         clamp(A.menu_open, 0, 1)
 
+    -- Glass uses the new native menu acrylic / blur API.
+    FALLEN_SYNC_GLASS_BLUR()
+
     -- Once the closing animation is essentially invisible, stop drawing it.
     if A.menu_open <= 0.004
         and A.menu_open_target == 0
@@ -24167,154 +24290,6 @@ hooks.on_render(function()
         7,
         C.selected
     )
-
-    -- Selected-tab glow matched closer to the reference.
-    -- Slightly wider, with a hotter / lighter center and dimmer thinner sides.
-    local sidebar_glow_core_x =
-        wx + 11.2
-
-    local sidebar_glow_center_y =
-        A.sidebar_indicator_y
-        + 17.5
-
-    local glow_hot_r =
-        math.min(
-            1,
-            C.accent[1] * 0.45 + 0.55
-        )
-
-    local glow_hot_g =
-        math.min(
-            1,
-            C.accent[2] * 0.45 + 0.55
-        )
-
-    local glow_hot_b =
-        math.min(
-            1,
-            C.accent[3] * 0.70 + 0.30
-        )
-
-    -- Soft outer shoulders: a bit wider, still thin and faint.
-    for i = -7, 7 do
-        local d =
-            math.abs(i)
-            / 7
-
-        local p =
-            math.pow(
-                1 - d,
-                2.9
-            )
-
-        local line_x =
-            sidebar_glow_core_x
-            + i * 0.78
-
-        local half_h =
-            6.8
-            + 4.0 * p
-
-        local line_alpha =
-            0.004
-            + 0.082 * p
-
-        local line_thickness =
-            0.54
-            + 0.28 * p
-
-        DrawLine(
-            FALLEN_UI_X(
-                line_x
-            ),
-            FALLEN_UI_Y(
-                sidebar_glow_center_y - half_h
-            ),
-            FALLEN_UI_X(
-                line_x
-            ),
-            FALLEN_UI_Y(
-                sidebar_glow_center_y + half_h
-            ),
-            C.accent[1],
-            C.accent[2],
-            C.accent[3],
-            line_alpha * MENU_RENDER_ALPHA,
-            FALLEN_UI_LEN(
-                line_thickness
-            )
-        )
-    end
-
-    -- Inner body: brighter and a little fuller.
-    for i = -3, 3 do
-        local d =
-            math.abs(i)
-            / 3
-
-        local p =
-            math.pow(
-                1 - d,
-                1.10
-            )
-
-        local line_x =
-            sidebar_glow_core_x
-            + i * 0.60
-
-        local half_h =
-            8.8
-            + 2.8 * p
-
-        local line_alpha =
-            0.026
-            + 0.150 * p
-
-        local line_thickness =
-            0.74
-            + 0.34 * p
-
-        DrawLine(
-            FALLEN_UI_X(
-                line_x
-            ),
-            FALLEN_UI_Y(
-                sidebar_glow_center_y - half_h
-            ),
-            FALLEN_UI_X(
-                line_x
-            ),
-            FALLEN_UI_Y(
-                sidebar_glow_center_y + half_h
-            ),
-            glow_hot_r,
-            glow_hot_g,
-            glow_hot_b,
-            line_alpha * MENU_RENDER_ALPHA,
-            FALLEN_UI_LEN(
-                line_thickness
-            )
-        )
-    end
-
-    -- Bright center stack so the middle is visibly lighter than the sides.
-    for i = -1, 1 do
-        local d = math.abs(i)
-        local p = 1 - d * 0.45
-        local line_x = sidebar_glow_core_x + i * 0.38
-
-        DrawLine(
-            FALLEN_UI_X(line_x),
-            FALLEN_UI_Y(sidebar_glow_center_y - (10.3 + 1.4 * p)),
-            FALLEN_UI_X(line_x),
-            FALLEN_UI_Y(sidebar_glow_center_y + (10.3 + 1.4 * p)),
-            glow_hot_r,
-            glow_hot_g,
-            glow_hot_b,
-            (0.145 + 0.115 * p) * MENU_RENDER_ALPHA,
-            FALLEN_UI_LEN(0.96 + 0.20 * p)
-        )
-    end
 
     text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
     sidebar_tab(
@@ -28490,22 +28465,24 @@ function FALLEN_SECRET_DESYNC_TICK()
         and S.secret_enabled == true
         and S.secret_desync_enabled == true
 
-    local module =
-        FALLEN_SECRET_DESYNC_FIND_MODULE()
+    if A.secret_desync_last_state ~= desired then
+        local applied =
+            FALLEN_CHEAT_SET_FEATURE(
+                "desync",
+                desired
+            )
 
-    if not module then
-        return
-    end
+        if not applied then
+            local module =
+                FALLEN_SECRET_DESYNC_FIND_MODULE()
 
-    -- Re-apply while enabled so the built-in Desync UI and our hidden toggle
-    -- stay synchronized even if the host rebuilds its state.
-    if desired
-        or A.secret_desync_last_state ~= desired
-    then
-        FALLEN_SECRET_DESYNC_APPLY(
-            module,
-            desired
-        )
+            if module then
+                FALLEN_SECRET_DESYNC_APPLY(
+                    module,
+                    desired
+                )
+            end
+        end
     end
 
     A.secret_desync_last_state =
