@@ -28675,82 +28675,168 @@ function FALLEN_SECRET_DESYNC_APPLY(
     return false
 end
 
+function FALLEN_FORCE_BUILTIN_FEATURE(
+    feature_name,
+    desired
+)
+    if not cheat then
+        return
+    end
+
+    desired =
+        desired == true
+
+    -- Use the API EXACTLY as documented. Keep it inside a closure rather than
+    -- passing cheat.enable around as a detached callback.
+    pcall(function()
+        cheat.enable(
+            feature_name,
+            desired
+        )
+    end)
+
+    -- Direct live-mirror fields as a second path.
+    if feature_name == "fly" then
+        pcall(function()
+            cheat.mobility.fly =
+                desired
+        end)
+
+        pcall(function()
+            if cheat.mobility:_type("fly_enabled") == "bool" then
+                cheat.mobility.fly_enabled =
+                    desired
+            end
+        end)
+
+    elseif feature_name == "flip" then
+        -- Depending on build, Upside Down may be surfaced as flip/upside_down
+        -- in one of the live sections. Probe the schema and set matching bools.
+        pcall(function()
+            if type(cheat._schema) == "function" then
+                for _, field in ipairs(
+                    cheat._schema()
+                    or {}
+                ) do
+                    if type(field) == "table"
+                        and field.type == "bool"
+                    then
+                        local key =
+                            tostring(
+                                field.key
+                                or ""
+                            ):lower()
+
+                        if key == "flip"
+                            or key == "flip_enabled"
+                            or key == "upside_down"
+                            or key == "upsidedown"
+                            or key == "upside_down_enabled"
+                        then
+                            local section =
+                                cheat[
+                                    field.section
+                                ]
+
+                            if section then
+                                section[
+                                    field.key
+                                ] =
+                                    desired
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    -- Force the writable keybind latch too. This matters for built-in features
+    -- that already have a key assigned (the screenshot shows Upside Down = F).
+    pcall(function()
+        if cheat.keybinds then
+            cheat.keybinds[
+                feature_name
+                .. "_toggled"
+            ] =
+                desired
+        end
+    end)
+
+    -- Some builds expose the live active flag. It is overwritten by the host,
+    -- so re-assert it each render while our custom toggle is enabled.
+    pcall(function()
+        if cheat.keybinds then
+            cheat.keybinds[
+                feature_name
+                .. "_active"
+            ] =
+                desired
+        end
+    end)
+
+    -- Last compatibility path: dynamically locate matching keybind bools.
+    pcall(function()
+        if cheat.keybinds
+            and type(cheat.keybinds._keys) == "function"
+        then
+            for _, key in ipairs(
+                cheat.keybinds:_keys()
+                or {}
+            ) do
+                local lower =
+                    tostring(key):lower()
+
+                local match =
+                    false
+
+                if feature_name == "fly" then
+                    match =
+                        lower == "fly_toggled"
+                        or lower == "fly_active"
+                elseif feature_name == "flip" then
+                    match =
+                        lower == "flip_toggled"
+                        or lower == "flip_active"
+                        or lower == "upside_down_toggled"
+                        or lower == "upside_down_active"
+                        or lower == "upsidedown_toggled"
+                        or lower == "upsidedown_active"
+                end
+
+                if match then
+                    cheat.keybinds[key] =
+                        desired
+                end
+            end
+        end
+    end)
+end
+
+
 function FALLEN_MISC_BUILTIN_FEATURES_TICK()
     if not cheat then
         return
     end
 
-    -- On first run, mirror the real cheat state instead of forcibly
-    -- disabling features the user may already have enabled.
-    if A.misc_fly_api_last_enabled == nil then
-        local current = nil
+    -- Do not wait for a state-change edge here. These are built-in features
+    -- whose keybind state can be rewritten by the host every frame, so our
+    -- custom menu continuously owns the requested state.
+    FALLEN_FORCE_BUILTIN_FEATURE(
+        "fly",
+        S.misc_fly_enabled == true
+    )
 
-        pcall(function()
-            if type(cheat.is_enabled) == "function" then
-                current =
-                    cheat.is_enabled(
-                        "fly"
-                    )
-            end
-        end)
+    FALLEN_FORCE_BUILTIN_FEATURE(
+        "flip",
+        S.misc_upside_down_enabled == true
+    )
 
-        if current ~= nil then
-            S.misc_fly_enabled =
-                current == true
-        end
-
-        A.misc_fly_api_last_enabled =
-            S.misc_fly_enabled == true
-    end
-
-    if A.misc_flip_api_last_enabled == nil then
-        local current = nil
-
-        pcall(function()
-            if type(cheat.is_enabled) == "function" then
-                current =
-                    cheat.is_enabled(
-                        "flip"
-                    )
-            end
-        end)
-
-        if current ~= nil then
-            S.misc_upside_down_enabled =
-                current == true
-        end
-
-        A.misc_flip_api_last_enabled =
-            S.misc_upside_down_enabled == true
-    end
-
-    local fly_enabled =
+    A.misc_fly_api_last_enabled =
         S.misc_fly_enabled == true
 
-    if A.misc_fly_api_last_enabled ~= fly_enabled then
-        FALLEN_CHEAT_SET_FEATURE(
-            "fly",
-            fly_enabled
-        )
-
-        A.misc_fly_api_last_enabled =
-            fly_enabled
-    end
-
-    -- The updated Lua API exposes the built-in Upside Down / Flip feature
-    -- under the feature name "flip".
-    local flip_enabled =
+    A.misc_flip_api_last_enabled =
         S.misc_upside_down_enabled == true
-
-    if A.misc_flip_api_last_enabled ~= flip_enabled then
-        FALLEN_CHEAT_SET_FEATURE(
-            "flip",
-            flip_enabled
-        )
-
-        A.misc_flip_api_last_enabled =
-            flip_enabled
-    end
 end
 
 
