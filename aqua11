@@ -5295,34 +5295,6 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         false
     )
 
-    -- Method is intentionally fixed and not user-selectable.
-    section_title(
-        cx,
-        cy + 150,
-        "Method"
-    )
-
-    card(
-        cx,
-        cy + 175,
-        cw,
-        54,
-        11
-    )
-
-    text(
-        cx + 14,
-        cy + 195,
-        "Raycast",
-        C.text
-    )
-
-    text(
-        cx + cw - 115,
-        cy + 195,
-        "Always",
-        C.text_dim
-    )
 end
 
 
@@ -8736,26 +8708,38 @@ function FALLEN_SILENT_TICK()
         sa.method = 2
     end)
 
-    -- Magic Bullet lives in the Silent Aim page. It is only activated while
-    -- Silent Aim itself is enabled, so it cannot remain latched on by itself.
+    -- Magic Bullet toggle.
+    -- Drive BOTH API surfaces: the feature master and the Silent Aim field.
+    -- Do not gate it behind the Silent Aim checkbox; the host decides how the
+    -- built-in feature combines them.
     local magic_enabled =
-        enabled
-        and S.silent_magic_bullet == true
+        S.silent_magic_bullet == true
 
-    if A.silent_magic_api_last_enabled ~= magic_enabled then
-        FALLEN_CHEAT_SET_FEATURE(
-            "magic_bullet",
-            magic_enabled
-        )
-
-        A.silent_magic_api_last_enabled =
-            magic_enabled
-    end
+    -- Re-assert the feature through the new Lua API so it cannot get lost
+    -- if the host rebuilds/latches the built-in state.
+    pcall(function()
+        if cheat
+            and type(cheat.enable) == "function"
+        then
+            cheat.enable(
+                "magic_bullet",
+                magic_enabled
+            )
+        end
+    end)
 
     pcall(function()
         sa.magic_bullet =
             magic_enabled
     end)
+
+    -- Keep Raycast fixed even if toggling Magic Bullet changes host state.
+    pcall(function()
+        sa.method = 2
+    end)
+
+    A.silent_magic_api_last_enabled =
+        magic_enabled
 
     -- Use the exact same FOV setting as our Aimbot/FOV panel.
     pcall(function()
