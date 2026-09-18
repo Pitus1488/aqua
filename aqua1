@@ -5239,7 +5239,7 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
 end
 
 
-local function FALLEN_DRAW_SILENT_AIM_PAGE(
+function FALLEN_DRAW_SILENT_AIM_PAGE(
     mx,
     my,
     clicked,
