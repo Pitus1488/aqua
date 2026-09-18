@@ -25231,6 +25231,9 @@ hooks.on_render(function()
             11
         )
 
+        local fly_before =
+            S.misc_fly_enabled == true
+
         toggle_row(
             mx,
             my,
@@ -25243,6 +25246,15 @@ hooks.on_render(function()
             false
         )
 
+        if fly_before ~= (S.misc_fly_enabled == true) then
+            pcall(function()
+                cheat.enable(
+                    "fly",
+                    S.misc_fly_enabled == true
+                )
+            end)
+        end
+
         line(
             page_x + 12,
             page_y + 72,
@@ -25251,6 +25263,9 @@ hooks.on_render(function()
             C.divider,
             1
         )
+
+        local flip_before =
+            S.misc_upside_down_enabled == true
 
         toggle_row(
             mx,
@@ -25263,6 +25278,15 @@ hooks.on_render(function()
             "misc_upside_down_enabled",
             false
         )
+
+        if flip_before ~= (S.misc_upside_down_enabled == true) then
+            pcall(function()
+                cheat.enable(
+                    "flip",
+                    S.misc_upside_down_enabled == true
+                )
+            end)
+        end
     elseif S.tab == 4
         and A.secret_unlocked
         and S.secret_enabled == true
@@ -28675,171 +28699,6 @@ function FALLEN_SECRET_DESYNC_APPLY(
     return false
 end
 
-function FALLEN_FORCE_BUILTIN_FEATURE(
-    feature_name,
-    desired
-)
-    if not cheat then
-        return
-    end
-
-    desired =
-        desired == true
-
-    -- Use the API EXACTLY as documented. Keep it inside a closure rather than
-    -- passing cheat.enable around as a detached callback.
-    pcall(function()
-        cheat.enable(
-            feature_name,
-            desired
-        )
-    end)
-
-    -- Direct live-mirror fields as a second path.
-    if feature_name == "fly" then
-        pcall(function()
-            cheat.mobility.fly =
-                desired
-        end)
-
-        pcall(function()
-            if cheat.mobility:_type("fly_enabled") == "bool" then
-                cheat.mobility.fly_enabled =
-                    desired
-            end
-        end)
-
-    elseif feature_name == "flip" then
-        -- Depending on build, Upside Down may be surfaced as flip/upside_down
-        -- in one of the live sections. Probe the schema and set matching bools.
-        pcall(function()
-            if type(cheat._schema) == "function" then
-                for _, field in ipairs(
-                    cheat._schema()
-                    or {}
-                ) do
-                    if type(field) == "table"
-                        and field.type == "bool"
-                    then
-                        local key =
-                            tostring(
-                                field.key
-                                or ""
-                            ):lower()
-
-                        if key == "flip"
-                            or key == "flip_enabled"
-                            or key == "upside_down"
-                            or key == "upsidedown"
-                            or key == "upside_down_enabled"
-                        then
-                            local section =
-                                cheat[
-                                    field.section
-                                ]
-
-                            if section then
-                                section[
-                                    field.key
-                                ] =
-                                    desired
-                            end
-                        end
-                    end
-                end
-            end
-        end)
-    end
-
-    -- Force the writable keybind latch too. This matters for built-in features
-    -- that already have a key assigned (the screenshot shows Upside Down = F).
-    pcall(function()
-        if cheat.keybinds then
-            cheat.keybinds[
-                feature_name
-                .. "_toggled"
-            ] =
-                desired
-        end
-    end)
-
-    -- Some builds expose the live active flag. It is overwritten by the host,
-    -- so re-assert it each render while our custom toggle is enabled.
-    pcall(function()
-        if cheat.keybinds then
-            cheat.keybinds[
-                feature_name
-                .. "_active"
-            ] =
-                desired
-        end
-    end)
-
-    -- Last compatibility path: dynamically locate matching keybind bools.
-    pcall(function()
-        if cheat.keybinds
-            and type(cheat.keybinds._keys) == "function"
-        then
-            for _, key in ipairs(
-                cheat.keybinds:_keys()
-                or {}
-            ) do
-                local lower =
-                    tostring(key):lower()
-
-                local match =
-                    false
-
-                if feature_name == "fly" then
-                    match =
-                        lower == "fly_toggled"
-                        or lower == "fly_active"
-                elseif feature_name == "flip" then
-                    match =
-                        lower == "flip_toggled"
-                        or lower == "flip_active"
-                        or lower == "upside_down_toggled"
-                        or lower == "upside_down_active"
-                        or lower == "upsidedown_toggled"
-                        or lower == "upsidedown_active"
-                end
-
-                if match then
-                    cheat.keybinds[key] =
-                        desired
-                end
-            end
-        end
-    end)
-end
-
-
-function FALLEN_MISC_BUILTIN_FEATURES_TICK()
-    if not cheat then
-        return
-    end
-
-    -- Do not wait for a state-change edge here. These are built-in features
-    -- whose keybind state can be rewritten by the host every frame, so our
-    -- custom menu continuously owns the requested state.
-    FALLEN_FORCE_BUILTIN_FEATURE(
-        "fly",
-        S.misc_fly_enabled == true
-    )
-
-    FALLEN_FORCE_BUILTIN_FEATURE(
-        "flip",
-        S.misc_upside_down_enabled == true
-    )
-
-    A.misc_fly_api_last_enabled =
-        S.misc_fly_enabled == true
-
-    A.misc_flip_api_last_enabled =
-        S.misc_upside_down_enabled == true
-end
-
-
 function FALLEN_SECRET_DESYNC_TICK()
     local desired =
         A.secret_unlocked == true
@@ -28871,10 +28730,6 @@ function FALLEN_SECRET_DESYNC_TICK()
 end
 
 hooks.on_render(function()
-    pcall(
-        FALLEN_MISC_BUILTIN_FEATURES_TICK
-    )
-
     pcall(
         FALLEN_SECRET_DESYNC_TICK
     )
