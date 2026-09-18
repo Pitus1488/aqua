@@ -294,6 +294,7 @@ local defaults = {
     world_icon_glow_alpha = 70,
 
     silent_enabled = false,
+    silent_magic_bullet = false,
 
     trigger_enabled = false,
     visuals_enabled = false,
@@ -312,6 +313,7 @@ end
 if tonumber(S.tab) ~= 1
     and tonumber(S.tab) ~= 2
     and tonumber(S.tab) ~= 3
+    and tonumber(S.tab) ~= 5
 then
     S.tab = 1
 end
@@ -2741,6 +2743,7 @@ local ICONS = {
     icon_world,
     FALLEN_ICON_MISC,
     FALLEN_ICON_SECRET,
+    icon_aim,
 }
 
 -- =========================================================
@@ -2774,6 +2777,7 @@ local TABS = {
     { group = "VISUALS", label = "Visuals" },
     { group = "COMMON", label = "Misc" },
     { group = "SECRET", label = "Secret" },
+    { group = "AIMBOT", label = "Silent Aim" },
 }
 
 local function sidebar_tab(mx, my, clicked, x, y, index)
@@ -5235,6 +5239,93 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
 end
 
 
+local function FALLEN_DRAW_SILENT_AIM_PAGE(
+    mx,
+    my,
+    clicked,
+    lmb,
+    cx,
+    cy,
+    cw
+)
+    section_title(
+        cx,
+        cy,
+        "Silent Aim"
+    )
+
+    card(
+        cx,
+        cy + 25,
+        cw,
+        101,
+        11
+    )
+
+    toggle_row(
+        mx,
+        my,
+        clicked,
+        cx,
+        cy + 32,
+        cw,
+        "Silent Aim",
+        "silent_enabled",
+        false
+    )
+
+    line(
+        cx + 12,
+        cy + 72,
+        cx + cw - 12,
+        cy + 72,
+        C.divider,
+        1
+    )
+
+    toggle_row(
+        mx,
+        my,
+        clicked,
+        cx,
+        cy + 73,
+        cw,
+        "Magic Bullet",
+        "silent_magic_bullet",
+        false
+    )
+
+    -- Method is intentionally fixed and not user-selectable.
+    section_title(
+        cx,
+        cy + 150,
+        "Method"
+    )
+
+    card(
+        cx,
+        cy + 175,
+        cw,
+        54,
+        11
+    )
+
+    text(
+        cx + 14,
+        cy + 195,
+        "Raycast",
+        C.text
+    )
+
+    text(
+        cx + cw - 115,
+        cy + 195,
+        "Always",
+        C.text_dim
+    )
+end
+
+
 local function draw_aimbot_page(
     mx, my, clicked, lmb, rmb_clicked, cx, cy, cw
 )
@@ -5348,33 +5439,6 @@ local function draw_aimbot_page(
         left_w,
         "Sticky Aim",
         "sticky_aim",
-        false
-    )
-
-    -- LEFT: separate Silent Aim block.
-    section_title(
-        lx,
-        cy + 199,
-        "Silent Aim"
-    )
-
-    card(
-        lx,
-        cy + 224,
-        left_w,
-        54,
-        11
-    )
-
-    toggle_row(
-        mx,
-        my,
-        base_clicked,
-        lx,
-        cy + 231,
-        left_w,
-        "Silent Aim",
-        "silent_enabled",
         false
     )
 
@@ -8670,6 +8734,27 @@ function FALLEN_SILENT_TICK()
     -- No method selector is exposed in our menu.
     pcall(function()
         sa.method = 2
+    end)
+
+    -- Magic Bullet lives in the Silent Aim page. It is only activated while
+    -- Silent Aim itself is enabled, so it cannot remain latched on by itself.
+    local magic_enabled =
+        enabled
+        and S.silent_magic_bullet == true
+
+    if A.silent_magic_api_last_enabled ~= magic_enabled then
+        FALLEN_CHEAT_SET_FEATURE(
+            "magic_bullet",
+            magic_enabled
+        )
+
+        A.silent_magic_api_last_enabled =
+            magic_enabled
+    end
+
+    pcall(function()
+        sa.magic_bullet =
+            magic_enabled
     end)
 
     -- Use the exact same FOV setting as our Aimbot/FOV panel.
@@ -24291,10 +24376,10 @@ hooks.on_render(function()
         74 * common_layout_expand
 
     local common_label_y =
-        wy + 233 + common_layout_shift
+        wy + 273 + common_layout_shift
 
     local misc_tab_y =
-        wy + 253 + common_layout_shift
+        wy + 293 + common_layout_shift
 
     local sidebar_target_y
 
@@ -24309,7 +24394,10 @@ hooks.on_render(function()
             misc_tab_y
     elseif S.tab == 2 then
         sidebar_target_y =
-            wy + 179
+            wy + 219
+    elseif S.tab == 5 then
+        sidebar_target_y =
+            wy + 145
     else
         sidebar_target_y =
             wy + 105
@@ -24376,13 +24464,24 @@ hooks.on_render(function()
         1
     )
 
-    text(wx + 22, wy + 159, "VISUALS", C.text_faint)
+    sidebar_tab(
+        mx,
+        my,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
+        wx + 10,
+        wy + 145,
+        5
+    )
+
+    text(wx + 22, wy + 199, "VISUALS", C.text_faint)
 
     local visuals_parent_x =
         wx + 10
 
     local visuals_parent_y =
-        wy + 179
+        wy + 219
 
     local visuals_parent_hot =
         hover(
@@ -24489,11 +24588,11 @@ hooks.on_render(function()
             * 15
 
         local world_y =
-            wy + 219
+            wy + 259
             - collapse_shift
 
         local armor_y =
-            wy + 252
+            wy + 292
             - collapse_shift
 
         -- Same smooth selected-background motion as the main Aimbot/Visuals tabs.
@@ -24711,10 +24810,10 @@ hooks.on_render(function()
         74 * common_layout_expand
 
     common_label_y =
-        wy + 233 + common_layout_shift
+        wy + 273 + common_layout_shift
 
     misc_tab_y =
-        wy + 253 + common_layout_shift
+        wy + 293 + common_layout_shift
 
     text(
         wx + 22,
@@ -25068,6 +25167,16 @@ hooks.on_render(function()
             page_clicked,
             lmb,
             page_rmb_clicked,
+            page_x,
+            page_y,
+            page_w
+        )
+    elseif S.tab == 5 then
+        FALLEN_DRAW_SILENT_AIM_PAGE(
+            mx,
+            my,
+            page_clicked,
+            lmb,
             page_x,
             page_y,
             page_w
