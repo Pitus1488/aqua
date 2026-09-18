@@ -8677,8 +8677,21 @@ function FALLEN_SILENT_TICK()
     local sa =
         cheat.silent_aim
 
+    local magic_enabled =
+        S.silent_magic_bullet == true
+
+    -- Magic Bullet is a Silent Aim sub-feature in the host API.
+    -- If Magic Bullet is on, Silent Aim must also stay on.
+    if magic_enabled
+        and S.silent_enabled ~= true
+    then
+        S.silent_enabled =
+            true
+    end
+
     local enabled =
         S.silent_enabled == true
+        or magic_enabled
 
     local fov =
         clamp(
@@ -8688,58 +8701,50 @@ function FALLEN_SILENT_TICK()
             600
         )
 
-    -- Silent Aim toggle from our menu.
+    -- 1) Enable the Silent Aim master first.
     if A.silent_api_last_enabled ~= enabled then
         FALLEN_CHEAT_SET_FEATURE(
             "silent_aim",
             enabled
         )
 
-        A.silent_api_last_enabled = enabled
+        A.silent_api_last_enabled =
+            enabled
     end
 
     pcall(function()
-        sa.enabled = enabled
+        sa.enabled =
+            enabled
     end)
 
-    -- Always force the cheat's built-in Raycast method.
-    -- No method selector is exposed in our menu.
+    -- 2) Always force Raycast before touching Magic Bullet.
     pcall(function()
-        sa.method = 2
+        sa.method =
+            2
     end)
 
-    -- Magic Bullet toggle.
-    -- Drive BOTH API surfaces: the feature master and the Silent Aim field.
-    -- Do not gate it behind the Silent Aim checkbox; the host decides how the
-    -- built-in feature combines them.
-    local magic_enabled =
-        S.silent_magic_bullet == true
+    -- 3) Enable the Magic Bullet master through the new API.
+    if A.silent_magic_api_last_enabled ~= magic_enabled then
+        FALLEN_CHEAT_SET_FEATURE(
+            "magic_bullet",
+            magic_enabled
+        )
 
-    -- Re-assert the feature through the new Lua API so it cannot get lost
-    -- if the host rebuilds/latches the built-in state.
-    pcall(function()
-        if cheat
-            and type(cheat.enable) == "function"
-        then
-            cheat.enable(
-                "magic_bullet",
-                magic_enabled
-            )
-        end
-    end)
+        A.silent_magic_api_last_enabled =
+            magic_enabled
+    end
 
+    -- 4) Mirror the fine-grained field exactly like the documented example.
     pcall(function()
         sa.magic_bullet =
             magic_enabled
     end)
 
-    -- Keep Raycast fixed even if toggling Magic Bullet changes host state.
+    -- Keep Raycast pinned in case the host feature toggle rewrites method.
     pcall(function()
-        sa.method = 2
+        sa.method =
+            2
     end)
-
-    A.silent_magic_api_last_enabled =
-        magic_enabled
 
     -- Use the exact same FOV setting as our Aimbot/FOV panel.
     pcall(function()
