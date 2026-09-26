@@ -17977,20 +17977,15 @@ FALLEN_GLASS_BLUR_LAST_RECT =
     FALLEN_GLASS_BLUR_LAST_RECT
     or nil
 
-FALLEN_GLASS_BLUR_CLEAR_FRAMES =
-    FALLEN_GLASS_BLUR_CLEAR_FRAMES
-    or 0
-
-function FALLEN_CLEAR_GLASS_BLUR_LAST()
-    if not FALLEN_GLASS_BLUR_LAST_RECT
+function FALLEN_GLASS_BLUR_ZERO_RECT(
+    r
+)
+    if not r
         or not Drawing
         or type(Drawing.DrawBlur) ~= "function"
     then
         return
     end
-
-    local r =
-        FALLEN_GLASS_BLUR_LAST_RECT
 
     pcall(function()
         Drawing.DrawBlur(
@@ -17999,20 +17994,24 @@ function FALLEN_CLEAR_GLASS_BLUR_LAST()
             r[3],
             r[4],
             r[5],
+            0,
+            0.045,
+            0.050,
+            0.060,
             0
         )
     end)
+end
 
-    FALLEN_GLASS_BLUR_CLEAR_FRAMES =
-        math.max(
-            0,
-            (tonumber(FALLEN_GLASS_BLUR_CLEAR_FRAMES) or 0)
-            - 1
+function FALLEN_CLEAR_GLASS_BLUR_LAST()
+    -- Keep submitting a zero-strength blur while the menu is closed.
+    -- Do NOT forget the rect after a few frames: the blur backend can be
+    -- asynchronous, so continuously overwriting the last region prevents
+    -- the one-second lingering acrylic.
+    if FALLEN_GLASS_BLUR_LAST_RECT then
+        FALLEN_GLASS_BLUR_ZERO_RECT(
+            FALLEN_GLASS_BLUR_LAST_RECT
         )
-
-    if FALLEN_GLASS_BLUR_CLEAR_FRAMES <= 0 then
-        FALLEN_GLASS_BLUR_LAST_RECT =
-            nil
     end
 end
 
@@ -18021,7 +18020,8 @@ function FALLEN_DRAW_GLASS_BLUR(
     y,
     w,
     h,
-    rounding
+    rounding,
+    base_alpha
 )
     if tostring(
         S.menu_type
@@ -18030,71 +18030,74 @@ function FALLEN_DRAW_GLASS_BLUR(
         or S.menu_glass_blur_enabled ~= true
     then
         FALLEN_CLEAR_GLASS_BLUR_LAST()
-        return
+        return false
     end
 
     if not Drawing
         or type(Drawing.DrawBlur) ~= "function"
     then
-        return
+        return false
     end
 
     local open_alpha =
         clamp(
-            tonumber(MENU_RENDER_ALPHA) or 0,
+            tonumber(base_alpha)
+            or tonumber(MENU_RENDER_ALPHA)
+            or 0,
             0,
             1
         )
 
-    if open_alpha <= 0.004 then
-        FALLEN_CLEAR_GLASS_BLUR_LAST()
-        return
-    end
-
-    -- Keep the blur rectangle safely INSIDE the menu's rounded shell.
-    -- A 5px inset means even if DrawBlur's own rounding is imperfect,
-    -- its square bounds cannot stick through the 16px rounded menu corners.
-    local inset =
-        5
-
     local bx =
         FALLEN_UI_X(
-            x + inset
+            x
         )
 
     local by =
         FALLEN_UI_Y(
-            y + inset
+            y
         )
 
     local bw =
         FALLEN_UI_LEN(
-            math.max(
-                1,
-                w - inset * 2
-            )
+            w
         )
 
     local bh =
         FALLEN_UI_LEN(
-            math.max(
-                1,
-                h - inset * 2
-            )
+            h
         )
 
-    -- Use the documented rounded blur shape.
     local br =
         FALLEN_UI_LEN(
-            12
+            rounding
+            or 12
         )
 
-    -- Fixed strength, but multiplied by the SAME menu-open alpha.
-    -- This makes blur fade out together with the menu instead of lingering.
-    local intensity =
-        0.70
-        * open_alpha
+    -- Clear the previous animated position first. The whole menu moves a few
+    -- pixels during its open/close animation, and leaving the previous DWM
+    -- rect alive is what creates the visible blur trail / delayed disappearance.
+    local old =
+        FALLEN_GLASS_BLUR_LAST_RECT
 
+    if old
+        and (
+            math.abs((old[1] or 0) - bx) > 0.01
+            or math.abs((old[2] or 0) - by) > 0.01
+            or math.abs((old[3] or 0) - bw) > 0.01
+            or math.abs((old[4] or 0) - bh) > 0.01
+            or math.abs((old[5] or 0) - br) > 0.01
+        )
+    then
+        FALLEN_GLASS_BLUR_ZERO_RECT(
+            old
+        )
+    end
+
+    -- The blur itself IS the Glass menu base now.
+    -- No inset: its rounded rectangle is exactly the outer menu rectangle.
+    -- RGBA tint is part of DrawBlur itself instead of an opaque menu panel
+    -- drawn over the blur.
     pcall(function()
         Drawing.DrawBlur(
             bx,
@@ -18102,7 +18105,11 @@ function FALLEN_DRAW_GLASS_BLUR(
             bw,
             bh,
             br,
-            intensity
+            0.70 * open_alpha,
+            0.045,
+            0.050,
+            0.060,
+            0.78 * open_alpha
         )
     end)
 
@@ -18114,10 +18121,7 @@ function FALLEN_DRAW_GLASS_BLUR(
         br,
     }
 
-    -- If the menu/style disappears, send a few zero-intensity frames
-    -- to clear any cached blur surface immediately.
-    FALLEN_GLASS_BLUR_CLEAR_FRAMES =
-        4
+    return true
 end
 
 
@@ -23839,17 +23843,6 @@ hooks.on_render(function()
     wx = snap(wx)
     wy = snap(wy)
 
-    -- Native frosted Glass region underneath our Drawing menu.
-    -- Drawing.DrawBlur is queued every render frame, exactly as the new API
-    -- expects, so the blur follows the live game image.
-    FALLEN_DRAW_GLASS_BLUR(
-        wx,
-        wy,
-        WIN_W,
-        WIN_H,
-        OUTER_R
-    )
-
     S.anim = clamp(lerp(S.anim or 0, 1, 0.16), 0, 1)
 
     FALLEN_APPLY_STYLE_COLOR()
@@ -23949,7 +23942,12 @@ hooks.on_render(function()
         menu_texture_type == "gradient"
         or menu_texture_type == "blur"
 
+    local is_glass_menu =
+        menu_texture_type == "glass"
+
     if is_gradient_menu then
+        FALLEN_CLEAR_GLASS_BLUR_LAST()
+
         FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
             wx,
             wy,
@@ -23957,7 +23955,23 @@ hooks.on_render(function()
             WIN_H,
             menu_base_alpha
         )
+
+    elseif is_glass_menu
+        and S.menu_glass_blur_enabled == true
+    then
+        -- Glass uses DrawBlur AS THE MENU SHELL, not behind another opaque base.
+        FALLEN_DRAW_GLASS_BLUR(
+            wx,
+            wy,
+            WIN_W,
+            WIN_H,
+            OUTER_R,
+            menu_base_alpha
+        )
+
     else
+        FALLEN_CLEAR_GLASS_BLUR_LAST()
+
         rounded_left_fill(
             wx,
             wy,
