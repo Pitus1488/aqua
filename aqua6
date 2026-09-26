@@ -23637,14 +23637,6 @@ hooks.on_render(function()
         end
     end
 
-    -- Compact Fallen layout.
-    -- Keep the original 875x630 design coordinate system and scale the
-    -- ENTIRE menu as one unit so cards, popups, glow, hitboxes, sliders,
-    -- dropdowns and sidebar navigation stay perfectly aligned.
-    -- 875 * 0.685 ~= 599 px real width at the normal 100% menu scale.
-    -- 630 * 0.685 ~= 432 px real height.
-    menu_scale = menu_scale * 0.685
-
     WIN_W = 875
     WIN_H = 630
 
@@ -28113,15 +28105,30 @@ end)
 -- Keep this bridge global on purpose: the main chunk is already near Lua's
 -- top-level local-variable limit, so adding more top-level locals breaks loading.
 function FALLEN_SHOT_ON_AIR_SET_FEATURE(name, enabled)
-    if not cheat or type(cheat.enable) ~= "function" then
+    enabled = enabled == true
+
+    if not cheat then
         return
     end
 
+    -- Master feature state.
+    if type(cheat.enable) == "function" then
+        pcall(function()
+            cheat.enable(
+                name,
+                enabled
+            )
+        end)
+    end
+
+    -- Force the keybind latch immediately.  The host normally derives
+    -- *_active from the keybind state once per frame; writing both removes
+    -- the delayed "as if the bind was pressed later" activation.
     pcall(function()
-        cheat.enable(
-            name,
-            enabled == true
-        )
+        if cheat.keybinds then
+            cheat.keybinds[name .. "_toggled"] = enabled
+            cheat.keybinds[name .. "_active"] = enabled
+        end
     end)
 end
 
@@ -28165,6 +28172,19 @@ function FALLEN_SHOT_ON_AIR_TICK()
 
             A.shot_on_air_active = true
         end
+
+        -- Keep the built-in features and their bind latches hot on EVERY
+        -- render frame while Space is held.  This avoids waiting for the
+        -- host's normal keybind transition/update path.
+        FALLEN_SHOT_ON_AIR_SET_FEATURE(
+            "fly",
+            true
+        )
+
+        FALLEN_SHOT_ON_AIR_SET_FEATURE(
+            "flip",
+            true
+        )
 
         -- Pin Shot on air tuning while Space is held so another menu write
         -- cannot change the method/speed mid-jump.
