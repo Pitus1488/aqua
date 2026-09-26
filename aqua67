@@ -17970,204 +17970,19 @@ end
 
 -- =========================================================
 -- Glass blur
--- Uses the new Drawing.DrawBlur API directly from on_render.
--- No UIManager window/carrier, no recreation, no per-frame
--- CreateWindow/RemoveElement calls.
+-- Same Default UI shell, one rounded blur draw underneath it.
+-- IMPORTANT: when the menu is hidden we DO NOT call DrawBlur at all.
 -- =========================================================
--- =========================================================
--- Glass blur
--- Default menu shell + rounded Drawing.DrawBlur underneath.
--- The rounded mask is built from non-overlapping strips so we
--- do NOT rely on DrawBlur's own corner clipping.
--- =========================================================
-
--- Clean up the carrier used by the previous broken build, if it still exists.
-pcall(function()
-    if UIManager then
-        if type(UIManager.SetWindowBlur) == "function" then
-            UIManager.SetWindowBlur(
-                "fallen_lua_glass_base",
-                false,
-                0.0,
-                12
-            )
-        end
-
-        if type(UIManager.RemoveElement) == "function" then
-            UIManager.RemoveElement(
-                "fallen_lua_glass_base"
-            )
-        end
-    end
-end)
 
 FALLEN_GLASS_BLUR_LAST =
-    FALLEN_GLASS_BLUR_LAST
-    or nil
-
-function FALLEN_DRAW_GLASS_BLUR_MASK(
-    x,
-    y,
-    w,
-    h,
-    radius,
-    intensity
-)
-    if not Drawing
-        or type(Drawing.DrawBlur) ~= "function"
-    then
-        return false
-    end
-
-    intensity =
-        clamp(
-            tonumber(intensity) or 0,
-            0,
-            1
-        )
-
-    radius =
-        clamp(
-            tonumber(radius) or 0,
-            0,
-            math.min(w * 0.5, h * 0.5)
-        )
-
-    if radius <= 0.5 then
-        pcall(function()
-            Drawing.DrawBlur(
-                x,
-                y,
-                w,
-                h,
-                0,
-                intensity,
-                0,
-                0,
-                0,
-                0
-            )
-        end)
-
-        return true
-    end
-
-    -- Middle rectangle: full width, no overlap with top/bottom rounded bands.
-    local middle_h =
-        math.max(
-            0,
-            h - radius * 2
-        )
-
-    if middle_h > 0 then
-        pcall(function()
-            Drawing.DrawBlur(
-                x,
-                y + radius,
-                w,
-                middle_h,
-                0,
-                intensity,
-                0,
-                0,
-                0,
-                0
-            )
-        end)
-    end
-
-    -- Eight 2px-ish bands per rounded edge at the stock radius 16.
-    -- Each band uses the circle equation to keep every blur pixel INSIDE
-    -- the same rounded silhouette as the normal menu.
-    local strips =
-        8
-
-    local strip_h =
-        radius / strips
-
-    for i = 0, strips - 1 do
-        local sy =
-            i * strip_h
-
-        local dy =
-            radius - sy
-
-        local inside =
-            math.max(
-                0,
-                radius * radius
-                - dy * dy
-            )
-
-        local inset =
-            radius
-            - math.sqrt(
-                inside
-            )
-
-        local sw =
-            math.max(
-                0,
-                w - inset * 2
-            )
-
-        if sw > 0
-            and strip_h > 0
-        then
-            pcall(function()
-                Drawing.DrawBlur(
-                    x + inset,
-                    y + sy,
-                    sw,
-                    strip_h + 0.02,
-                    0,
-                    intensity,
-                    0,
-                    0,
-                    0,
-                    0
-                )
-            end)
-
-            pcall(function()
-                Drawing.DrawBlur(
-                    x + inset,
-                    y + h - sy - strip_h,
-                    sw,
-                    strip_h + 0.02,
-                    0,
-                    intensity,
-                    0,
-                    0,
-                    0,
-                    0
-                )
-            end)
-        end
-    end
-
-    return true
-end
+    nil
 
 function FALLEN_CLEAR_GLASS_BLUR_LAST()
-    if not FALLEN_GLASS_BLUR_LAST then
-        return
-    end
-
-    local r =
-        FALLEN_GLASS_BLUR_LAST
-
-    -- Keep overwriting the last blur region with zero intensity every closed
-    -- frame. We intentionally keep LAST instead of clearing the table once,
-    -- because the blur backend may have a buffered frame.
-    FALLEN_DRAW_GLASS_BLUR_MASK(
-        r[1],
-        r[2],
-        r[3],
-        r[4],
-        r[5],
-        0
-    )
+    -- Drawing.DrawBlur is a per-render draw command.
+    -- Do not try to "clear" it with intensity = 0: on this API that can
+    -- leave the blur surface alive. Simply stop submitting the draw.
+    FALLEN_GLASS_BLUR_LAST =
+        nil
 end
 
 function FALLEN_DRAW_GLASS_BLUR(
@@ -18203,6 +18018,12 @@ function FALLEN_DRAW_GLASS_BLUR(
             1
         )
 
+    -- When the menu animation reaches invisible, submit NOTHING.
+    if open_alpha <= 0.004 then
+        FALLEN_CLEAR_GLASS_BLUR_LAST()
+        return false
+    end
+
     local bx =
         FALLEN_UI_X(
             x
@@ -18223,52 +18044,25 @@ function FALLEN_DRAW_GLASS_BLUR(
             h
         )
 
+    -- Slightly stronger clip than the 16px menu shell so the blur can never
+    -- poke through the outer rounded corners.
     local br =
         FALLEN_UI_LEN(
-            rounding
-            or 16
+            (rounding or 16)
+            + 3
         )
 
-    -- If the menu moved, erase the previous blur position first.
-    local old =
-        FALLEN_GLASS_BLUR_LAST
-
-    if old
-        and (
-            math.abs((old[1] or 0) - bx) > 0.25
-            or math.abs((old[2] or 0) - by) > 0.25
-            or math.abs((old[3] or 0) - bw) > 0.25
-            or math.abs((old[4] or 0) - bh) > 0.25
+    -- ONE blur rectangle only. No strips, no stacked passes, no clear pass.
+    pcall(function()
+        Drawing.DrawBlur(
+            bx,
+            by,
+            bw,
+            bh,
+            br,
+            0.70 * open_alpha
         )
-    then
-        FALLEN_DRAW_GLASS_BLUR_MASK(
-            old[1],
-            old[2],
-            old[3],
-            old[4],
-            old[5],
-            0
-        )
-    end
-
-    -- Same alpha as the menu animation.
-    -- At alpha 0 this actively submits a zero-blur rounded mask.
-    FALLEN_DRAW_GLASS_BLUR_MASK(
-        bx,
-        by,
-        bw,
-        bh,
-        br,
-        0.70 * open_alpha
-    )
-
-    FALLEN_GLASS_BLUR_LAST = {
-        bx,
-        by,
-        bw,
-        bh,
-        br,
-    }
+    end)
 
     return true
 end
@@ -23837,6 +23631,7 @@ hooks.on_render(function()
         clamp(A.menu_open, 0, 1)
 
     -- Once the closing animation is essentially invisible, stop drawing it.
+    -- No DrawBlur call is issued after this point.
     if A.menu_open <= 0.004
         and A.menu_open_target == 0
     then
