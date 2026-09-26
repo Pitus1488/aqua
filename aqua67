@@ -17973,46 +17973,54 @@ end
 -- No UIManager window/carrier, no recreation, no per-frame
 -- CreateWindow/RemoveElement calls.
 -- =========================================================
-FALLEN_GLASS_BLUR_LAST_RECT =
-    FALLEN_GLASS_BLUR_LAST_RECT
+FALLEN_GLASS_WINDOW_ID =
+    "fallen_lua_glass_base"
+
+FALLEN_GLASS_WINDOW_CREATED =
+    FALLEN_GLASS_WINDOW_CREATED
+    or false
+
+FALLEN_GLASS_WINDOW_RECT =
+    FALLEN_GLASS_WINDOW_RECT
     or nil
 
-function FALLEN_GLASS_BLUR_ZERO_RECT(
-    r
-)
-    if not r
-        or not Drawing
-        or type(Drawing.DrawBlur) ~= "function"
+function FALLEN_CLEAR_GLASS_BLUR_LAST()
+    if not UIManager
+        or FALLEN_GLASS_WINDOW_CREATED ~= true
     then
         return
     end
 
+    -- Disable the acrylic first, hide the window, then remove it.
+    -- UIManager owns the blur lifecycle, so there is no stale DrawBlur
+    -- rectangle left behind after the custom menu closes.
     pcall(function()
-        Drawing.DrawBlur(
-            r[1],
-            r[2],
-            r[3],
-            r[4],
-            r[5],
-            0,
-            0.045,
-            0.050,
-            0.060,
-            0
+        UIManager.SetWindowBlur(
+            FALLEN_GLASS_WINDOW_ID,
+            false,
+            0.0,
+            12
         )
     end)
-end
 
-function FALLEN_CLEAR_GLASS_BLUR_LAST()
-    -- Keep submitting a zero-strength blur while the menu is closed.
-    -- Do NOT forget the rect after a few frames: the blur backend can be
-    -- asynchronous, so continuously overwriting the last region prevents
-    -- the one-second lingering acrylic.
-    if FALLEN_GLASS_BLUR_LAST_RECT then
-        FALLEN_GLASS_BLUR_ZERO_RECT(
-            FALLEN_GLASS_BLUR_LAST_RECT
+    pcall(function()
+        UIManager.SetElementVisible(
+            FALLEN_GLASS_WINDOW_ID,
+            false
         )
-    end
+    end)
+
+    pcall(function()
+        UIManager.RemoveElement(
+            FALLEN_GLASS_WINDOW_ID
+        )
+    end)
+
+    FALLEN_GLASS_WINDOW_CREATED =
+        false
+
+    FALLEN_GLASS_WINDOW_RECT =
+        nil
 end
 
 function FALLEN_DRAW_GLASS_BLUR(
@@ -18033,8 +18041,9 @@ function FALLEN_DRAW_GLASS_BLUR(
         return false
     end
 
-    if not Drawing
-        or type(Drawing.DrawBlur) ~= "function"
+    if not UIManager
+        or type(UIManager.CreateWindow) ~= "function"
+        or type(UIManager.SetWindowBlur) ~= "function"
     then
         return false
     end
@@ -18048,78 +18057,121 @@ function FALLEN_DRAW_GLASS_BLUR(
             1
         )
 
+    if open_alpha <= 0.004 then
+        FALLEN_CLEAR_GLASS_BLUR_LAST()
+        return false
+    end
+
+    -- UIManager windows use real screen coordinates.
     local bx =
-        FALLEN_UI_X(
-            x
+        snap(
+            FALLEN_UI_X(
+                x
+            )
         )
 
     local by =
-        FALLEN_UI_Y(
-            y
+        snap(
+            FALLEN_UI_Y(
+                y
+            )
         )
 
     local bw =
-        FALLEN_UI_LEN(
-            w
+        snap(
+            FALLEN_UI_LEN(
+                w
+            )
         )
 
     local bh =
-        FALLEN_UI_LEN(
-            h
+        snap(
+            FALLEN_UI_LEN(
+                h
+            )
         )
 
     local br =
-        FALLEN_UI_LEN(
-            rounding
-            or 12
+        math.max(
+            1,
+            snap(
+                FALLEN_UI_LEN(
+                    rounding
+                    or 12
+                )
+            )
         )
 
-    -- Clear the previous animated position first. The whole menu moves a few
-    -- pixels during its open/close animation, and leaving the previous DWM
-    -- rect alive is what creates the visible blur trail / delayed disappearance.
     local old =
-        FALLEN_GLASS_BLUR_LAST_RECT
+        FALLEN_GLASS_WINDOW_RECT
 
-    if old
-        and (
-            math.abs((old[1] or 0) - bx) > 0.01
-            or math.abs((old[2] or 0) - by) > 0.01
-            or math.abs((old[3] or 0) - bw) > 0.01
-            or math.abs((old[4] or 0) - bh) > 0.01
-            or math.abs((old[5] or 0) - br) > 0.01
-        )
+    local rect_changed =
+        not old
+        or math.abs((old[1] or 0) - bx) > 0.5
+        or math.abs((old[2] or 0) - by) > 0.5
+        or math.abs((old[3] or 0) - bw) > 0.5
+        or math.abs((old[4] or 0) - bh) > 0.5
+        or math.abs((old[5] or 0) - br) > 0.5
+
+    if FALLEN_GLASS_WINDOW_CREATED ~= true
+        or rect_changed
     then
-        FALLEN_GLASS_BLUR_ZERO_RECT(
-            old
-        )
-    end
+        if FALLEN_GLASS_WINDOW_CREATED == true then
+            FALLEN_CLEAR_GLASS_BLUR_LAST()
+        end
 
-    -- The blur itself IS the Glass menu base now.
-    -- No inset: its rounded rectangle is exactly the outer menu rectangle.
-    -- RGBA tint is part of DrawBlur itself instead of an opaque menu panel
-    -- drawn over the blur.
-    pcall(function()
-        Drawing.DrawBlur(
+        local created =
+            false
+
+        pcall(function()
+            -- Correct API order:
+            -- id, label, width, height, x, y
+            UIManager.CreateWindow(
+                FALLEN_GLASS_WINDOW_ID,
+                "",
+                bw,
+                bh,
+                bx,
+                by
+            )
+
+            created =
+                true
+        end)
+
+        if not created then
+            return false
+        end
+
+        FALLEN_GLASS_WINDOW_CREATED =
+            true
+
+        FALLEN_GLASS_WINDOW_RECT = {
             bx,
             by,
             bw,
             bh,
             br,
-            0.70 * open_alpha,
-            0.045,
-            0.050,
-            0.060,
-            0.78 * open_alpha
+        }
+    end
+
+    pcall(function()
+        UIManager.SetElementVisible(
+            FALLEN_GLASS_WINDOW_ID,
+            true
         )
     end)
 
-    FALLEN_GLASS_BLUR_LAST_RECT = {
-        bx,
-        by,
-        bw,
-        bh,
-        br,
-    }
+    -- This is now the actual Glass shell.
+    -- UIManager.SetWindowBlur owns the rounded clip and blur lifetime.
+    pcall(function()
+        UIManager.SetWindowBlur(
+            FALLEN_GLASS_WINDOW_ID,
+            true,
+            0.70 * open_alpha,
+            br
+        )
+    end)
 
     return true
 end
@@ -23834,10 +23886,16 @@ hooks.on_render(function()
     MENU_UI_ORIGIN_X = wx
     MENU_UI_ORIGIN_Y = wy
 
-    -- Whole window rises gently into place on open and drops on close.
-    wy =
-        wy
-        + (1 - MENU_RENDER_ALPHA) * 16
+    -- Default/Gradient keep the small vertical open/close motion.
+    -- Glass uses UIManager.SetWindowBlur as the actual shell, so keep its
+    -- rectangle fixed and animate it with the same alpha instead.
+    if tostring(S.menu_type or "glass"):lower() ~= "glass"
+        or S.menu_glass_blur_enabled ~= true
+    then
+        wy =
+            wy
+            + (1 - MENU_RENDER_ALPHA) * 16
+    end
 
     -- Snap the menu root to integer pixels so the Drawing text stays crisp.
     wx = snap(wx)
