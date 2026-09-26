@@ -122,6 +122,8 @@ local defaults = {
     world_rain_radius = 28,
     world_rain_speed = 1.00,
     world_rain_splash = true,
+    world_thunder_enabled = false,
+    world_thunder_rate = 1.00,
 
     -- Bullet Tracers / Misc.
     bullet_tracer_enabled = false,
@@ -472,6 +474,16 @@ local A = {
     world_rain_alpha = 0,
     world_rain_last_t = nil,
     world_rain_ground_y = nil,
+
+    -- 3D World Thunderstorm runtime.
+    world_thunder_alpha = 0,
+    world_thunder_timer = nil,
+    world_thunder_life = 0,
+    world_thunder_max_life = 0,
+    world_thunder_flash = 0,
+    world_thunder_points = nil,
+    world_thunder_branches = {},
+    world_thunder_last_t = nil,
 
     hit_effect_style_open = false,
     hit_effect_style_anim = 0,
@@ -21601,14 +21613,14 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     section_title(
         right_x,
         y + 145,
-        "World Rain"
+        "World Weather"
     )
 
     card(
         right_x,
         y + 170,
         right_w,
-        215,
+        297,
         11
     )
 
@@ -21715,6 +21727,51 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         "Impact Splashes",
         "world_rain_splash",
         false
+    )
+
+    line(
+        right_x + 12,
+        y + 381,
+        right_x + right_w - 12,
+        y + 381,
+        C.divider,
+        1
+    )
+
+    toggle_row(
+        mx,
+        my,
+        controls_clicked,
+        right_x,
+        y + 382,
+        right_w,
+        "Thunderstorm",
+        "world_thunder_enabled",
+        false
+    )
+
+    line(
+        right_x + 12,
+        y + 422,
+        right_x + right_w - 12,
+        y + 422,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        right_x,
+        y + 423,
+        right_w,
+        "Thunder Rate",
+        "world_thunder_rate",
+        0.25,
+        3.00,
+        "float"
     )
 
 
@@ -28550,12 +28607,377 @@ function FALLEN_WORLD_RAIN_TICK()
     end
 end
 
+
+-- =========================================================
+-- 3D World Thunderstorm
+-- =========================================================
+-- Visual-only thunder built on top of the World Rain projection/masking layer.
+-- Strikes are generated as jagged world-space paths with short branches and a
+-- cool-white screen flash.  Everything is clipped behind the open custom menu.
+function FALLEN_WORLD_THUNDER_INTERVAL()
+    local rate = clamp(
+        tonumber(S.world_thunder_rate) or 1,
+        0.25,
+        3.00
+    )
+
+    return clamp(
+        FALLEN_WEATHER_RAND(3.2, 7.0) / rate,
+        0.85,
+        24.0
+    )
+end
+
+function FALLEN_WORLD_THUNDER_NEW_POINT(x, y, z)
+    return Vector3(x, y, z)
+end
+
+function FALLEN_WORLD_THUNDER_SPAWN(center, ground_y, radius)
+    if not center then
+        return
+    end
+
+    radius = clamp(tonumber(radius) or 28, 8, 300)
+
+    local angle = FALLEN_WEATHER_RAND(0, math.pi * 2)
+    local dist = math.sqrt(FALLEN_WEATHER_RAND(0, 1)) * radius * 0.88
+
+    local hit_x = center.X + math.cos(angle) * dist
+    local hit_z = center.Z + math.sin(angle) * dist
+
+    local top_h = clamp(48 + radius * 0.20, 48, 108)
+    local top_x = hit_x + FALLEN_WEATHER_RAND(-18, 18)
+    local top_z = hit_z + FALLEN_WEATHER_RAND(-18, 18)
+
+    local segments = math.random(12, 18)
+    local points = {}
+
+    for i = 0, segments do
+        local t = i / segments
+        local inv = 1 - t
+        local jitter = 1.2 + inv * 5.8
+
+        local x = top_x + (hit_x - top_x) * t
+        local z = top_z + (hit_z - top_z) * t
+        local y = ground_y + top_h * inv
+
+        if i > 0 and i < segments then
+            x = x + FALLEN_WEATHER_RAND(-jitter, jitter)
+            z = z + FALLEN_WEATHER_RAND(-jitter, jitter)
+            y = y + FALLEN_WEATHER_RAND(-1.8, 1.8)
+        end
+
+        points[#points + 1] =
+            FALLEN_WORLD_THUNDER_NEW_POINT(x, y, z)
+    end
+
+    local branches = {}
+    local branch_count = math.random(2, 4)
+
+    for b = 1, branch_count do
+        local start_index = math.random(3, math.max(3, segments - 3))
+        local start = points[start_index]
+
+        if start then
+            local branch = { start }
+            local branch_angle = FALLEN_WEATHER_RAND(0, math.pi * 2)
+            local branch_len = math.random(3, 6)
+            local step = FALLEN_WEATHER_RAND(3.2, 6.2)
+
+            local bx = start.X
+            local by = start.Y
+            local bz = start.Z
+
+            for j = 1, branch_len do
+                local spread = step * j
+
+                bx = bx
+                    + math.cos(branch_angle) * step
+                    + FALLEN_WEATHER_RAND(-1.7, 1.7)
+
+                bz = bz
+                    + math.sin(branch_angle) * step
+                    + FALLEN_WEATHER_RAND(-1.7, 1.7)
+
+                by = by
+                    - FALLEN_WEATHER_RAND(1.2, 3.6)
+
+                branch[#branch + 1] =
+                    FALLEN_WORLD_THUNDER_NEW_POINT(
+                        bx,
+                        by,
+                        bz
+                    )
+            end
+
+            branches[#branches + 1] = branch
+        end
+    end
+
+    A.world_thunder_points = points
+    A.world_thunder_branches = branches
+
+    local life = FALLEN_WEATHER_RAND(0.20, 0.42)
+
+    A.world_thunder_life = life
+    A.world_thunder_max_life = life
+    A.world_thunder_flash = 1
+end
+
+function FALLEN_WORLD_THUNDER_DRAW_PATH(points, alpha_value, branch_scale)
+    if type(points) ~= "table" then
+        return
+    end
+
+    local a = clamp(tonumber(alpha_value) or 0, 0, 1)
+    local scale = tonumber(branch_scale) or 1
+
+    for i = 1, #points - 1 do
+        local p1 = points[i]
+        local p2 = points[i + 1]
+
+        FALLEN_WORLD_RAIN_LINE3D(
+            p1,
+            p2,
+            0.28,
+            0.48,
+            1.00,
+            a * 0.08 * scale,
+            9.0 * scale
+        )
+
+        FALLEN_WORLD_RAIN_LINE3D(
+            p1,
+            p2,
+            0.48,
+            0.70,
+            1.00,
+            a * 0.30 * scale,
+            4.2 * scale
+        )
+
+        FALLEN_WORLD_RAIN_LINE3D(
+            p1,
+            p2,
+            0.92,
+            0.97,
+            1.00,
+            a * scale,
+            1.25 * scale
+        )
+    end
+end
+
+function FALLEN_WORLD_THUNDER_FILL(x, y, w, h, r, g, b, a)
+    if w <= 0 or h <= 0 then
+        return
+    end
+
+    if type(DrawBoxFilled) == "function" then
+        pcall(
+            DrawBoxFilled,
+            x,
+            y,
+            x + w,
+            y + h,
+            r,
+            g,
+            b,
+            a
+        )
+    end
+end
+
+function FALLEN_WORLD_THUNDER_FLASH(alpha_value)
+    local a = clamp(tonumber(alpha_value) or 0, 0, 1)
+    if a <= 0.002 then
+        return
+    end
+
+    local sw, sh = screen_size()
+    local c_a = 0.105 * a
+    local rect = FALLEN_WEATHER_MENU_RECT
+
+    if type(rect) ~= "table"
+        or (tonumber(rect.open_alpha) or 0) <= 0.02
+    then
+        FALLEN_WORLD_THUNDER_FILL(
+            0, 0, sw, sh,
+            0.72, 0.82, 1.00,
+            c_a
+        )
+        return
+    end
+
+    local x = clamp(tonumber(rect.x) or 0, 0, sw)
+    local y = clamp(tonumber(rect.y) or 0, 0, sh)
+    local w = clamp(tonumber(rect.w) or 0, 0, sw)
+    local h = clamp(tonumber(rect.h) or 0, 0, sh)
+    local x2 = clamp(x + w, 0, sw)
+    local y2 = clamp(y + h, 0, sh)
+
+    FALLEN_WORLD_THUNDER_FILL(
+        0, 0, sw, y,
+        0.72, 0.82, 1.00,
+        c_a
+    )
+
+    FALLEN_WORLD_THUNDER_FILL(
+        0, y2, sw, sh - y2,
+        0.72, 0.82, 1.00,
+        c_a
+    )
+
+    FALLEN_WORLD_THUNDER_FILL(
+        0, y, x, math.max(0, y2 - y),
+        0.72, 0.82, 1.00,
+        c_a
+    )
+
+    FALLEN_WORLD_THUNDER_FILL(
+        x2, y, sw - x2, math.max(0, y2 - y),
+        0.72, 0.82, 1.00,
+        c_a
+    )
+end
+
+function FALLEN_WORLD_THUNDER_TICK()
+    local now_t = tick()
+
+    if A.world_thunder_last_t == nil then
+        A.world_thunder_last_t = now_t
+    end
+
+    local dt = clamp(
+        now_t - A.world_thunder_last_t,
+        0,
+        0.05
+    )
+
+    A.world_thunder_last_t = now_t
+
+    local wanted =
+        S.world_thunder_enabled == true
+        and 1
+        or 0
+
+    A.world_thunder_alpha = exp_chase(
+        tonumber(A.world_thunder_alpha) or 0,
+        wanted,
+        wanted > 0 and 9 or 13,
+        dt
+    )
+
+    local center = FALLEN_WORLD_RAIN_CENTER()
+
+    if not center then
+        return
+    end
+
+    local ground_y =
+        tonumber(A.world_rain_ground_y)
+        or (center.Y - 3.05)
+
+    local radius = clamp(
+        tonumber(S.world_rain_radius) or 28,
+        8,
+        300
+    )
+
+    if S.world_thunder_enabled == true then
+        if A.world_thunder_timer == nil then
+            A.world_thunder_timer =
+                FALLEN_WEATHER_RAND(0.35, 1.20)
+        end
+
+        A.world_thunder_timer =
+            A.world_thunder_timer - dt
+
+        if A.world_thunder_timer <= 0 then
+            FALLEN_WORLD_THUNDER_SPAWN(
+                center,
+                ground_y,
+                radius
+            )
+
+            A.world_thunder_timer =
+                FALLEN_WORLD_THUNDER_INTERVAL()
+        end
+    elseif (A.world_thunder_alpha or 0) < 0.02 then
+        A.world_thunder_timer = nil
+    end
+
+    if (A.world_thunder_flash or 0) > 0 then
+        A.world_thunder_flash =
+            math.max(
+                0,
+                (A.world_thunder_flash or 0)
+                - dt * 5.8
+            )
+
+        FALLEN_WORLD_THUNDER_FLASH(
+            (A.world_thunder_flash or 0)
+            * (A.world_thunder_alpha or 0)
+        )
+    end
+
+    if (A.world_thunder_life or 0) > 0
+        and type(A.world_thunder_points) == "table"
+    then
+        A.world_thunder_life =
+            math.max(
+                0,
+                (A.world_thunder_life or 0) - dt
+            )
+
+        local life_t = clamp(
+            (A.world_thunder_life or 0)
+            / math.max(
+                0.001,
+                tonumber(A.world_thunder_max_life) or 1
+            ),
+            0,
+            1
+        )
+
+        local a =
+            smooth01(life_t)
+            * (A.world_thunder_alpha or 0)
+
+        FALLEN_WORLD_THUNDER_DRAW_PATH(
+            A.world_thunder_points,
+            a,
+            1
+        )
+
+        if type(A.world_thunder_branches) == "table" then
+            for _, branch in ipairs(A.world_thunder_branches) do
+                FALLEN_WORLD_THUNDER_DRAW_PATH(
+                    branch,
+                    a * 0.72,
+                    0.72
+                )
+            end
+        end
+    end
+
+    if S.world_thunder_enabled ~= true
+        and (A.world_thunder_alpha or 0) < 0.012
+        and (A.world_thunder_life or 0) <= 0
+    then
+        A.world_thunder_points = nil
+        A.world_thunder_branches = {}
+        A.world_thunder_flash = 0
+    end
+end
+
 hooks.on_render(function()
     if _G.FallenMenuReady ~= true then
         return
     end
 
     pcall(FALLEN_WORLD_RAIN_TICK)
+    pcall(FALLEN_WORLD_THUNDER_TICK)
 end)
 
 -- =========================================================
