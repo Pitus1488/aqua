@@ -116,6 +116,13 @@ local defaults = {
     misc_upside_down_enabled = false,
     misc_shot_on_air_enabled = false,
 
+    -- Visuals / World Rain effect.
+    world_rain_enabled = false,
+    world_rain_amount = 34,
+    world_rain_radius = 28,
+    world_rain_speed = 1.00,
+    world_rain_splash = true,
+
     -- Bullet Tracers / Misc.
     bullet_tracer_enabled = false,
     bullet_tracer_style = "Neon",
@@ -458,6 +465,13 @@ local A = {
     shot_on_air_active = false,
     shot_on_air_prev_speed = nil,
     shot_on_air_prev_type = nil,
+
+    -- 3D World Rain runtime.
+    world_rain_particles = {},
+    world_rain_splashes = {},
+    world_rain_alpha = 0,
+    world_rain_last_t = nil,
+    world_rain_ground_y = nil,
 
     hit_effect_style_open = false,
     hit_effect_style_anim = 0,
@@ -21583,6 +21597,126 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         numeric_stop(true)
     end
 
+    -- World Rain: 3D falling rain around the local player with impact splashes.
+    section_title(
+        right_x,
+        y + 145,
+        "World Rain"
+    )
+
+    card(
+        right_x,
+        y + 170,
+        right_w,
+        215,
+        11
+    )
+
+    toggle_row(
+        mx,
+        my,
+        controls_clicked,
+        right_x,
+        y + 177,
+        right_w,
+        "World Rain",
+        "world_rain_enabled",
+        false
+    )
+
+    line(
+        right_x + 12,
+        y + 217,
+        right_x + right_w - 12,
+        y + 217,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        right_x,
+        y + 218,
+        right_w,
+        "Rain Amount",
+        "world_rain_amount",
+        12,
+        64,
+        "int"
+    )
+
+    line(
+        right_x + 12,
+        y + 258,
+        right_x + right_w - 12,
+        y + 258,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        right_x,
+        y + 259,
+        right_w,
+        "Rain Radius",
+        "world_rain_radius",
+        8,
+        60,
+        "int"
+    )
+
+    line(
+        right_x + 12,
+        y + 299,
+        right_x + right_w - 12,
+        y + 299,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        right_x,
+        y + 300,
+        right_w,
+        "Rain Speed",
+        "world_rain_speed",
+        0.35,
+        2.50,
+        "float"
+    )
+
+    line(
+        right_x + 12,
+        y + 340,
+        right_x + right_w - 12,
+        y + 340,
+        C.divider,
+        1
+    )
+
+    toggle_row(
+        mx,
+        my,
+        controls_clicked,
+        right_x,
+        y + 341,
+        right_w,
+        "Impact Splashes",
+        "world_rain_splash",
+        false
+    )
+
 
     local dropdown_hot =
         FALLEN_DRAW_BT_STYLE_DROPDOWN(
@@ -24765,12 +24899,9 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            142,
+            60,
             11
         )
-
-        local fly_before =
-            S.misc_fly_enabled == true
 
         toggle_row(
             mx,
@@ -24778,69 +24909,6 @@ hooks.on_render(function()
             page_clicked,
             page_x,
             page_y + 32,
-            page_w,
-            "Fly",
-            "misc_fly_enabled",
-            false
-        )
-
-        if fly_before ~= (S.misc_fly_enabled == true) then
-            pcall(function()
-                cheat.enable(
-                    "fly",
-                    S.misc_fly_enabled == true
-                )
-            end)
-        end
-
-        line(
-            page_x + 12,
-            page_y + 72,
-            page_x + page_w - 12,
-            page_y + 72,
-            C.divider,
-            1
-        )
-
-        local flip_before =
-            S.misc_upside_down_enabled == true
-
-        toggle_row(
-            mx,
-            my,
-            page_clicked,
-            page_x,
-            page_y + 73,
-            page_w,
-            "Upside Down",
-            "misc_upside_down_enabled",
-            false
-        )
-
-        if flip_before ~= (S.misc_upside_down_enabled == true) then
-            pcall(function()
-                cheat.enable(
-                    "flip",
-                    S.misc_upside_down_enabled == true
-                )
-            end)
-        end
-
-        line(
-            page_x + 12,
-            page_y + 113,
-            page_x + page_w - 12,
-            page_y + 113,
-            C.divider,
-            1
-        )
-
-        toggle_row(
-            mx,
-            my,
-            page_clicked,
-            page_x,
-            page_y + 114,
             page_w,
             "Shot on air",
             "misc_shot_on_air_enabled",
@@ -28095,6 +28163,313 @@ hooks.on_render(function()
 end)
 
 -- =========================================================
+-- 3D World Rain
+-- =========================================================
+-- The old falling World Effects idea is kept, but cube geometry is replaced
+-- by rain streaks. When a drop reaches the local ground plane it bursts into
+-- short 3D splash streaks, mirroring the menu Rain impact style.
+--
+-- This API does not expose a general-purpose world raycast, so the impact
+-- plane is estimated from HumanoidRootPart height and held steady while the
+-- character is moving vertically. That avoids scanning Workspace each frame.
+function FALLEN_WORLD_RAIN_CENTER()
+    if not rbx
+        or type(rbx.local_hrp) ~= "function"
+    then
+        return nil, nil
+    end
+
+    local hrp = nil
+    local pos = nil
+
+    pcall(function()
+        hrp = rbx.local_hrp()
+        if hrp then
+            pos = hrp:get_position()
+        end
+    end)
+
+    return pos, hrp
+end
+
+function FALLEN_WORLD_RAIN_LINE3D(p1, p2, r, g, b, a, thickness)
+    if not p1 or not p2 then
+        return
+    end
+
+    if Drawing
+        and type(Drawing.DrawLine3D) == "function"
+    then
+        pcall(
+            Drawing.DrawLine3D,
+            p1,
+            p2,
+            r,
+            g,
+            b,
+            a,
+            thickness
+        )
+    end
+end
+
+function FALLEN_WORLD_RAIN_NEW_DROP(center, ground_y, top_y, radius, fill_height)
+    if not center then
+        return nil
+    end
+
+    local angle = FALLEN_WEATHER_RAND(0, math.pi * 2)
+    local dist = math.sqrt(FALLEN_WEATHER_RAND(0, 1)) * radius
+    local y = fill_height
+        and FALLEN_WEATHER_RAND(ground_y + 0.65, top_y + 3.5)
+        or FALLEN_WEATHER_RAND(top_y, top_y + 5.0)
+
+    return {
+        x = center.X + math.cos(angle) * dist,
+        y = y,
+        z = center.Z + math.sin(angle) * dist,
+        ground_y = ground_y,
+        vx = FALLEN_WEATHER_RAND(-1.9, -0.55),
+        vz = FALLEN_WEATHER_RAND(-0.55, 0.55),
+        speed_mul = FALLEN_WEATHER_RAND(0.82, 1.22),
+        len = FALLEN_WEATHER_RAND(1.75, 3.15),
+        a = FALLEN_WEATHER_RAND(0.38, 0.72),
+    }
+end
+
+function FALLEN_WORLD_RAIN_SPLASH(x, y, z, alpha_value)
+    if S.world_rain_splash ~= true then
+        return
+    end
+
+    if type(A.world_rain_splashes) ~= "table" then
+        A.world_rain_splashes = {}
+    end
+
+    local amount = math.random(4, 7)
+
+    for i = 1, amount do
+        if #A.world_rain_splashes >= 110 then
+            break
+        end
+
+        local ang = FALLEN_WEATHER_RAND(0, math.pi * 2)
+        local hspeed = FALLEN_WEATHER_RAND(4.0, 10.5)
+        local life = FALLEN_WEATHER_RAND(0.18, 0.34)
+
+        A.world_rain_splashes[#A.world_rain_splashes + 1] = {
+            x = x + FALLEN_WEATHER_RAND(-0.10, 0.10),
+            y = y + 0.08,
+            z = z + FALLEN_WEATHER_RAND(-0.10, 0.10),
+            vx = math.cos(ang) * hspeed,
+            vy = FALLEN_WEATHER_RAND(4.0, 8.5),
+            vz = math.sin(ang) * hspeed,
+            life = life,
+            max_life = life,
+            a = FALLEN_WEATHER_RAND(0.45, 0.85) * (tonumber(alpha_value) or 1),
+        }
+    end
+end
+
+function FALLEN_WORLD_RAIN_DRAW_DROP(p, alpha_value)
+    local head = Vector3(p.x, p.y, p.z)
+    local tail = Vector3(
+        p.x - p.vx * 0.055,
+        p.y + p.len,
+        p.z - p.vz * 0.055
+    )
+
+    local a = clamp((p.a or 0.5) * (alpha_value or 1), 0, 1)
+
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.34, 0.58, 0.94, a * 0.10, 4.4)
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.50, 0.70, 0.98, a * 0.34, 2.0)
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.82, 0.91, 1.00, a, 0.82)
+end
+
+function FALLEN_WORLD_RAIN_DRAW_SPLASH(p, life_a, alpha_value)
+    local head = Vector3(p.x, p.y, p.z)
+    local tail = Vector3(
+        p.x - p.vx * 0.027,
+        p.y - p.vy * 0.027,
+        p.z - p.vz * 0.027
+    )
+
+    local a = clamp(
+        (p.a or 0.6) * (life_a or 1) * (alpha_value or 1),
+        0,
+        1
+    )
+
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.44, 0.68, 1.00, a * 0.16, 3.8)
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.74, 0.88, 1.00, a, 0.72)
+end
+
+function FALLEN_WORLD_RAIN_TICK()
+    if type(A.world_rain_particles) ~= "table" then
+        A.world_rain_particles = {}
+    end
+
+    if type(A.world_rain_splashes) ~= "table" then
+        A.world_rain_splashes = {}
+    end
+
+    local now_t = tick()
+
+    if A.world_rain_last_t == nil then
+        A.world_rain_last_t = now_t
+    end
+
+    local dt = clamp(now_t - A.world_rain_last_t, 0, 0.05)
+    A.world_rain_last_t = now_t
+
+    local wanted = S.world_rain_enabled == true and 1 or 0
+
+    A.world_rain_alpha = exp_chase(
+        tonumber(A.world_rain_alpha) or 0,
+        wanted,
+        wanted > 0 and 10 or 13,
+        dt
+    )
+
+    local center, hrp = FALLEN_WORLD_RAIN_CENTER()
+
+    if not center then
+        if A.world_rain_alpha < 0.01 then
+            A.world_rain_particles = {}
+            A.world_rain_splashes = {}
+        end
+        return
+    end
+
+    local velocity_y = 0
+
+    if hrp then
+        pcall(function()
+            local velocity = hrp:get_velocity()
+            if velocity then
+                velocity_y = tonumber(velocity.Y) or 0
+            end
+        end)
+    end
+
+    local candidate_ground = center.Y - 3.05
+
+    if A.world_rain_ground_y == nil then
+        A.world_rain_ground_y = candidate_ground
+    elseif math.abs(velocity_y) < 3.0 then
+        A.world_rain_ground_y = exp_chase(
+            A.world_rain_ground_y,
+            candidate_ground,
+            14,
+            dt
+        )
+    end
+
+    local ground_y = tonumber(A.world_rain_ground_y) or candidate_ground
+    local radius = clamp(tonumber(S.world_rain_radius) or 28, 8, 60)
+    local speed_setting = clamp(tonumber(S.world_rain_speed) or 1, 0.35, 2.50)
+    local target_amount = math.floor(clamp(tonumber(S.world_rain_amount) or 34, 12, 64) + 0.5)
+    local top_y = ground_y + 17 + radius * 0.18
+
+    if S.world_rain_enabled == true then
+        while #A.world_rain_particles < target_amount do
+            A.world_rain_particles[#A.world_rain_particles + 1] =
+                FALLEN_WORLD_RAIN_NEW_DROP(
+                    center,
+                    ground_y,
+                    top_y,
+                    radius,
+                    true
+                )
+        end
+    end
+
+    while #A.world_rain_particles > target_amount do
+        table.remove(A.world_rain_particles)
+    end
+
+    for i = #A.world_rain_particles, 1, -1 do
+        local p = A.world_rain_particles[i]
+
+        if not p then
+            table.remove(A.world_rain_particles, i)
+        else
+            local fall_speed = (24 + speed_setting * 19) * (p.speed_mul or 1)
+
+            p.x = p.x + (p.vx or 0) * dt
+            p.z = p.z + (p.vz or 0) * dt
+            p.y = p.y - fall_speed * dt
+
+            if p.y <= (p.ground_y or ground_y) then
+                FALLEN_WORLD_RAIN_SPLASH(
+                    p.x,
+                    p.ground_y or ground_y,
+                    p.z,
+                    A.world_rain_alpha
+                )
+
+                if S.world_rain_enabled == true then
+                    A.world_rain_particles[i] =
+                        FALLEN_WORLD_RAIN_NEW_DROP(
+                            center,
+                            ground_y,
+                            top_y,
+                            radius,
+                            false
+                        )
+                else
+                    table.remove(A.world_rain_particles, i)
+                end
+            elseif A.world_rain_alpha > 0.008 then
+                FALLEN_WORLD_RAIN_DRAW_DROP(p, A.world_rain_alpha)
+            end
+        end
+    end
+
+    for i = #A.world_rain_splashes, 1, -1 do
+        local p = A.world_rain_splashes[i]
+
+        p.life = (p.life or 0) - dt
+
+        if p.life <= 0 then
+            table.remove(A.world_rain_splashes, i)
+        else
+            p.x = p.x + (p.vx or 0) * dt
+            p.y = p.y + (p.vy or 0) * dt
+            p.z = p.z + (p.vz or 0) * dt
+            p.vy = (p.vy or 0) - 27 * dt
+
+            local life_a = clamp(
+                p.life / math.max(0.001, p.max_life or p.life),
+                0,
+                1
+            )
+
+            FALLEN_WORLD_RAIN_DRAW_SPLASH(
+                p,
+                life_a,
+                A.world_rain_alpha
+            )
+        end
+    end
+
+    if S.world_rain_enabled ~= true
+        and A.world_rain_alpha < 0.012
+    then
+        A.world_rain_particles = {}
+        A.world_rain_splashes = {}
+    end
+end
+
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    pcall(FALLEN_WORLD_RAIN_TICK)
+end)
+
+-- =========================================================
 -- Shot on air bridge
 -- =========================================================
 -- While the feature is enabled, holding the normal Roblox jump key (Space)
@@ -28221,15 +28596,16 @@ function FALLEN_SHOT_ON_AIR_TICK()
             end
         end
 
-        -- Return master states to the ordinary Misc toggles.
+        -- Fly/Upside Down are no longer standalone Misc controls.
+        -- Shot on air owns both temporary features, so release them immediately.
         FALLEN_SHOT_ON_AIR_SET_FEATURE(
             "fly",
-            S.misc_fly_enabled == true
+            false
         )
 
         FALLEN_SHOT_ON_AIR_SET_FEATURE(
             "flip",
-            S.misc_upside_down_enabled == true
+            false
         )
 
         A.shot_on_air_active = false
