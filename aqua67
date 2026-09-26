@@ -23637,6 +23637,14 @@ hooks.on_render(function()
         end
     end
 
+    -- Compact Fallen layout.
+    -- Keep the original 875x630 design coordinate system and scale the
+    -- ENTIRE menu as one unit so cards, popups, glow, hitboxes, sliders,
+    -- dropdowns and sidebar navigation stay perfectly aligned.
+    -- 875 * 0.685 ~= 599 px real width at the normal 100% menu scale.
+    -- 630 * 0.685 ~= 432 px real height.
+    menu_scale = menu_scale * 0.685
+
     WIN_W = 875
     WIN_H = 630
 
