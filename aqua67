@@ -173,7 +173,6 @@ local defaults = {
 
     -- Glass style blur.
     menu_glass_blur_enabled = true,
-    menu_glass_blur = 70,
 
     -- Animated menu-background weather.
     menu_snow = false,
@@ -17974,6 +17973,49 @@ end
 -- No UIManager window/carrier, no recreation, no per-frame
 -- CreateWindow/RemoveElement calls.
 -- =========================================================
+FALLEN_GLASS_BLUR_LAST_RECT =
+    FALLEN_GLASS_BLUR_LAST_RECT
+    or nil
+
+FALLEN_GLASS_BLUR_CLEAR_FRAMES =
+    FALLEN_GLASS_BLUR_CLEAR_FRAMES
+    or 0
+
+function FALLEN_CLEAR_GLASS_BLUR_LAST()
+    if not FALLEN_GLASS_BLUR_LAST_RECT
+        or not Drawing
+        or type(Drawing.DrawBlur) ~= "function"
+    then
+        return
+    end
+
+    local r =
+        FALLEN_GLASS_BLUR_LAST_RECT
+
+    pcall(function()
+        Drawing.DrawBlur(
+            r[1],
+            r[2],
+            r[3],
+            r[4],
+            r[5],
+            0
+        )
+    end)
+
+    FALLEN_GLASS_BLUR_CLEAR_FRAMES =
+        math.max(
+            0,
+            (tonumber(FALLEN_GLASS_BLUR_CLEAR_FRAMES) or 0)
+            - 1
+        )
+
+    if FALLEN_GLASS_BLUR_CLEAR_FRAMES <= 0 then
+        FALLEN_GLASS_BLUR_LAST_RECT =
+            nil
+    end
+end
+
 function FALLEN_DRAW_GLASS_BLUR(
     x,
     y,
@@ -17987,6 +18029,7 @@ function FALLEN_DRAW_GLASS_BLUR(
     ):lower() ~= "glass"
         or S.menu_glass_blur_enabled ~= true
     then
+        FALLEN_CLEAR_GLASS_BLUR_LAST()
         return
     end
 
@@ -17996,47 +18039,62 @@ function FALLEN_DRAW_GLASS_BLUR(
         return
     end
 
-    local intensity =
+    local open_alpha =
         clamp(
-            (tonumber(S.menu_glass_blur) or 70)
-            / 100,
+            tonumber(MENU_RENDER_ALPHA) or 0,
             0,
             1
         )
 
-    if intensity <= 0.001
-        or MENU_RENDER_ALPHA <= 0.004
-    then
+    if open_alpha <= 0.004 then
+        FALLEN_CLEAR_GLASS_BLUR_LAST()
         return
     end
 
+    -- Keep the blur rectangle safely INSIDE the menu's rounded shell.
+    -- A 5px inset means even if DrawBlur's own rounding is imperfect,
+    -- its square bounds cannot stick through the 16px rounded menu corners.
+    local inset =
+        5
+
     local bx =
         FALLEN_UI_X(
-            x
+            x + inset
         )
 
     local by =
         FALLEN_UI_Y(
-            y
+            y + inset
         )
 
     local bw =
         FALLEN_UI_LEN(
-            w
+            math.max(
+                1,
+                w - inset * 2
+            )
         )
 
     local bh =
         FALLEN_UI_LEN(
-            h
+            math.max(
+                1,
+                h - inset * 2
+            )
         )
 
+    -- Use the documented rounded blur shape.
     local br =
         FALLEN_UI_LEN(
-            rounding
-            or 0
+            12
         )
 
-    -- Exact new API style: Drawing.DrawBlur is issued every render frame.
+    -- Fixed strength, but multiplied by the SAME menu-open alpha.
+    -- This makes blur fade out together with the menu instead of lingering.
+    local intensity =
+        0.70
+        * open_alpha
+
     pcall(function()
         Drawing.DrawBlur(
             bx,
@@ -18047,7 +18105,21 @@ function FALLEN_DRAW_GLASS_BLUR(
             intensity
         )
     end)
+
+    FALLEN_GLASS_BLUR_LAST_RECT = {
+        bx,
+        by,
+        bw,
+        bh,
+        br,
+    }
+
+    -- If the menu/style disappears, send a few zero-intensity frames
+    -- to clear any cached blur surface immediately.
+    FALLEN_GLASS_BLUR_CLEAR_FRAMES =
+        4
 end
+
 
 function FALLEN_GLOW_COLOR()
     local r, g, b =
@@ -18932,7 +19004,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             and 82
             or (
                 glass_selected
-                and 82
+                and 41
                 or 0
             )
         )
@@ -19240,33 +19312,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 )
             end
 
-            if shell_h > 287 then
-                line(
-                    px + 12,
-                    py + 244,
-                    px + pw - 12,
-                    py + 244,
-                    C.divider,
-                    1
-                )
-
-                slider_row(
-                    mx,
-                    my,
-                    ui_clicked,
-                    lmb,
-                    px + 8,
-                    py + 245,
-                    pw - 16,
-                    "Blur Intensity",
-                    "menu_glass_blur",
-                    0,
-                    100,
-                    "int"
-                )
-            end
-
-            weather_offset = 82
+            weather_offset = 41
         end
 
         -- Animated background weather.
@@ -23641,6 +23687,7 @@ hooks.on_render(function()
     if A.menu_open <= 0.004
         and A.menu_open_target == 0
     then
+        FALLEN_CLEAR_GLASS_BLUR_LAST()
         return
     end
 
