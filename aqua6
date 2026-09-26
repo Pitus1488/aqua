@@ -28222,13 +28222,13 @@ end)
 -- =========================================================
 -- 3D World Rain
 -- =========================================================
--- The old falling World Effects idea is kept, but cube geometry is replaced
--- by rain streaks. When a drop reaches the local ground plane it bursts into
--- short 3D splash streaks, mirroring the menu Rain impact style.
---
--- This API does not expose a general-purpose world raycast, so the impact
--- plane is estimated from HumanoidRootPart height and held steady while the
--- character is moving vertically. That avoids scanning Workspace each frame.
+-- World-space rain with real geometry collision + visibility occlusion.
+-- The API has no Workspace:Raycast, so we build a lightweight cache of
+-- collidable BaseParts and perform our own ray-vs-oriented-box tests.
+-- This fixes both old issues:
+--   * rain no longer renders through walls;
+--   * impact splashes land on the actual surface below each drop instead of
+--     on a flat plane derived from the local HumanoidRootPart.
 function FALLEN_WORLD_RAIN_CENTER()
     if not rbx
         or type(rbx.local_hrp) ~= "function"
@@ -28249,9 +28249,43 @@ function FALLEN_WORLD_RAIN_CENTER()
     return pos, hrp
 end
 
--- Keep world rain visually behind the custom menu.  The menu can be
+function FALLEN_WORLD_RAIN_CAMERA_POS()
+    local pos = nil
+
+    pcall(function()
+        if rbx and type(rbx.camera) == "function" then
+            local cam = rbx.camera()
+            if cam and type(cam.camera_pos) == "function" then
+                pos = cam:camera_pos()
+            end
+        end
+    end)
+
+    if not pos then
+        pcall(function()
+            if aim and type(aim.get_camera_position) == "function" then
+                pos = aim.get_camera_position()
+            end
+        end)
+    end
+
+    if not pos then
+        pcall(function()
+            if type(get_camera) == "function" then
+                local cam = get_camera()
+                if type(cam) == "table" then
+                    pos = cam.position or cam.Position
+                end
+            end
+        end)
+    end
+
+    return pos
+end
+
+-- Keep world weather visually behind the custom menu. The menu can be
 -- translucent (Glass), so normal draw order alone is not enough: projected
--- rain strokes are clipped against the live menu rectangle.
+-- weather strokes are clipped against the live menu rectangle.
 function FALLEN_WORLD_RAIN_W2S(pos)
     if not pos then return nil end
 
@@ -28288,7 +28322,6 @@ function FALLEN_WORLD_RAIN_LINE_HITS_MENU(p1, p2)
     local b = FALLEN_WORLD_RAIN_W2S(p2)
     if not a or not b then return false end
 
-    -- Tiny padding prevents glow layers from bleeding through the rounded edge.
     local pad = 4
     local x1 = (tonumber(rect.x) or 0) - pad
     local y1 = (tonumber(rect.y) or 0) - pad
@@ -28304,8 +28337,6 @@ function FALLEN_WORLD_RAIN_LINE_HITS_MENU(p1, p2)
         return true
     end
 
-    -- Liang-Barsky style 2D segment/rectangle clipping.  This also catches
-    -- long rain streaks whose endpoints are outside but cross the menu.
     local dx = b.X - a.X
     local dy = b.Y - a.Y
     local t0, t1 = 0, 1
@@ -28334,12 +28365,452 @@ function FALLEN_WORLD_RAIN_LINE_HITS_MENU(p1, p2)
     return t0 <= t1
 end
 
-function FALLEN_WORLD_RAIN_LINE3D(p1, p2, r, g, b, a, thickness)
+function FALLEN_WORLD_RAIN_GRID_KEY(ix, iz)
+    return tostring(ix) .. ":" .. tostring(iz)
+end
+
+-- Exact segment/ray hit against a rotated BasePart box. The rotation matrix
+-- returned by :get_rotation() is row-major; transpose transforms world-space
+-- ray data into the part's local box space.
+function FALLEN_WORLD_RAIN_RAY_OBB(ox, oy, oz, dx, dy, dz, max_dist, p)
+    if not p then return nil end
+
+    local rx = ox - p.x
+    local ry = oy - p.y
+    local rz = oz - p.z
+
+    local lox = p.m1 * rx + p.m4 * ry + p.m7 * rz
+    local loy = p.m2 * rx + p.m5 * ry + p.m8 * rz
+    local loz = p.m3 * rx + p.m6 * ry + p.m9 * rz
+
+    local ldx = p.m1 * dx + p.m4 * dy + p.m7 * dz
+    local ldy = p.m2 * dx + p.m5 * dy + p.m8 * dz
+    local ldz = p.m3 * dx + p.m6 * dy + p.m9 * dz
+
+    local tmin = 0
+    local tmax = max_dist
+    local eps = 0.000001
+
+    if math.abs(ldx) < eps then
+        if lox < -p.hx or lox > p.hx then return nil end
+    else
+        local t1 = (-p.hx - lox) / ldx
+        local t2 = ( p.hx - lox) / ldx
+        if t1 > t2 then t1, t2 = t2, t1 end
+        if t1 > tmin then tmin = t1 end
+        if t2 < tmax then tmax = t2 end
+        if tmin > tmax then return nil end
+    end
+
+    if math.abs(ldy) < eps then
+        if loy < -p.hy or loy > p.hy then return nil end
+    else
+        local t1 = (-p.hy - loy) / ldy
+        local t2 = ( p.hy - loy) / ldy
+        if t1 > t2 then t1, t2 = t2, t1 end
+        if t1 > tmin then tmin = t1 end
+        if t2 < tmax then tmax = t2 end
+        if tmin > tmax then return nil end
+    end
+
+    if math.abs(ldz) < eps then
+        if loz < -p.hz or loz > p.hz then return nil end
+    else
+        local t1 = (-p.hz - loz) / ldz
+        local t2 = ( p.hz - loz) / ldz
+        if t1 > t2 then t1, t2 = t2, t1 end
+        if t1 > tmin then tmin = t1 end
+        if t2 < tmax then tmax = t2 end
+        if tmin > tmax then return nil end
+    end
+
+    if tmax < 0 or tmin > max_dist then
+        return nil
+    end
+
+    if tmin < 0 then
+        return 0
+    end
+
+    return tmin
+end
+
+function FALLEN_WORLD_RAIN_PART_IS_LOCAL_CHARACTER(part, char_addr)
+    if not part or not char_addr or char_addr == 0 then
+        return false
+    end
+
+    local cur = part
+
+    for _ = 1, 8 do
+        if not cur then break end
+
+        local addr = tonumber(cur.addr) or 0
+        if addr == char_addr then
+            return true
+        end
+
+        local parent = nil
+        pcall(function()
+            parent = cur:parent()
+        end)
+        cur = parent
+    end
+
+    return false
+end
+
+function FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(center, radius)
+    if not center or not rbx or type(rbx.workspace) ~= "function" then
+        return
+    end
+
+    radius = clamp(tonumber(radius) or 28, 8, 300)
+
+    local now_t = tick()
+    local old = A.world_rain_geo
+    local refresh = old == nil
+
+    if old then
+        local age = now_t - (tonumber(old.time) or -100)
+        local dx = center.X - (tonumber(old.cx) or center.X)
+        local dz = center.Z - (tonumber(old.cz) or center.Z)
+        local moved = math.sqrt(dx * dx + dz * dz)
+        local old_radius = tonumber(old.radius) or radius
+
+        if age > 2.5
+            or moved > 32
+            or math.abs(old_radius - radius) > 24
+        then
+            refresh = true
+        end
+    end
+
+    if not refresh then
+        return
+    end
+
+    local ws = nil
+    pcall(function()
+        ws = rbx.workspace()
+    end)
+    if not ws then return end
+
+    local char_addr = 0
+    pcall(function()
+        if type(rbx.local_character) == "function" then
+            local ch = rbx.local_character()
+            char_addr = ch and (tonumber(ch.addr) or 0) or 0
+        end
+    end)
+
+    local source = {}
+    local seen_addr = {}
+
+    local function add_list(list)
+        if type(list) ~= "table" then return end
+        for _, inst in ipairs(list) do
+            local addr = inst and (tonumber(inst.addr) or 0) or 0
+            if inst and (addr == 0 or not seen_addr[addr]) then
+                if addr ~= 0 then seen_addr[addr] = true end
+                source[#source + 1] = inst
+            end
+        end
+    end
+
+    -- Some builds accept BasePart as an IsA query. If not, fall back to the
+    -- concrete part classes most commonly used by Roblox maps.
+    pcall(function()
+        add_list(ws:find_descendants_of_class("BasePart"))
+    end)
+
+    if #source == 0 then
+        local classes = {
+            "Part",
+            "MeshPart",
+            "UnionOperation",
+            "TrussPart",
+            "WedgePart",
+            "CornerWedgePart"
+        }
+
+        for _, class_name in ipairs(classes) do
+            pcall(function()
+                add_list(ws:find_descendants_of_class(class_name))
+            end)
+        end
+    end
+
+    local cell = 36
+    local pad = radius + 110
+    local scan_x1 = center.X - pad
+    local scan_x2 = center.X + pad
+    local scan_z1 = center.Z - pad
+    local scan_z2 = center.Z + pad
+
+    local geo = {
+        time = now_t,
+        cx = center.X,
+        cz = center.Z,
+        radius = radius,
+        cell = cell,
+        parts = {},
+        grid = {},
+        ray_serial = 0,
+    }
+
+    for _, part in ipairs(source) do
+        if #geo.parts >= 6500 then
+            break
+        end
+
+        if not FALLEN_WORLD_RAIN_PART_IS_LOCAL_CHARACTER(part, char_addr) then
+            local can_collide = true
+            pcall(function()
+                if type(part.get_can_collide) == "function" then
+                    can_collide = part:get_can_collide() == true
+                end
+            end)
+
+            if can_collide then
+                local pos, size, rot = nil, nil, nil
+
+                pcall(function() pos = part:get_position() end)
+                pcall(function() size = part:get_size() end)
+                pcall(function() rot = part:get_rotation() end)
+
+                if pos and size then
+                    rot = type(rot) == "table" and rot or {1,0,0, 0,1,0, 0,0,1}
+
+                    local px = tonumber(pos.X or pos[1])
+                    local py = tonumber(pos.Y or pos[2])
+                    local pz = tonumber(pos.Z or pos[3])
+                    local sx = math.abs(tonumber(size.X or size[1]) or 0)
+                    local sy = math.abs(tonumber(size.Y or size[2]) or 0)
+                    local sz = math.abs(tonumber(size.Z or size[3]) or 0)
+
+                    if px and py and pz
+                        and sx > 0.04 and sy > 0.04 and sz > 0.04
+                    then
+                        local hx, hy, hz = sx * 0.5, sy * 0.5, sz * 0.5
+                        local m1 = tonumber(rot[1]) or 1
+                        local m2 = tonumber(rot[2]) or 0
+                        local m3 = tonumber(rot[3]) or 0
+                        local m4 = tonumber(rot[4]) or 0
+                        local m5 = tonumber(rot[5]) or 1
+                        local m6 = tonumber(rot[6]) or 0
+                        local m7 = tonumber(rot[7]) or 0
+                        local m8 = tonumber(rot[8]) or 0
+                        local m9 = tonumber(rot[9]) or 1
+
+                        local ex = math.abs(m1) * hx + math.abs(m2) * hy + math.abs(m3) * hz
+                        local ez = math.abs(m7) * hx + math.abs(m8) * hy + math.abs(m9) * hz
+
+                        if px + ex >= scan_x1 and px - ex <= scan_x2
+                            and pz + ez >= scan_z1 and pz - ez <= scan_z2
+                            and math.abs(py - center.Y) <= 520 + hy
+                        then
+                            local rec = {
+                                x = px, y = py, z = pz,
+                                hx = hx, hy = hy, hz = hz,
+                                m1 = m1, m2 = m2, m3 = m3,
+                                m4 = m4, m5 = m5, m6 = m6,
+                                m7 = m7, m8 = m8, m9 = m9,
+                                mark = 0,
+                            }
+
+                            geo.parts[#geo.parts + 1] = rec
+                            local index = #geo.parts
+
+                            local minx = math.max(px - ex, scan_x1)
+                            local maxx = math.min(px + ex, scan_x2)
+                            local minz = math.max(pz - ez, scan_z1)
+                            local maxz = math.min(pz + ez, scan_z2)
+
+                            local gx1 = math.floor(minx / cell)
+                            local gx2 = math.floor(maxx / cell)
+                            local gz1 = math.floor(minz / cell)
+                            local gz2 = math.floor(maxz / cell)
+
+                            for gx = gx1, gx2 do
+                                for gz = gz1, gz2 do
+                                    local key = FALLEN_WORLD_RAIN_GRID_KEY(gx, gz)
+                                    local bucket = geo.grid[key]
+                                    if not bucket then
+                                        bucket = {}
+                                        geo.grid[key] = bucket
+                                    end
+                                    bucket[#bucket + 1] = index
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    A.world_rain_geo = geo
+end
+
+-- Raycast through the cached part grid. Direction must be normalized.
+function FALLEN_WORLD_RAIN_RAYCAST_GRID(ox, oy, oz, dx, dy, dz, max_dist)
+    local geo = A.world_rain_geo
+    if type(geo) ~= "table" or type(geo.grid) ~= "table" then
+        return nil, nil
+    end
+
+    max_dist = tonumber(max_dist) or 0
+    if max_dist <= 0 then return nil, nil end
+
+    local cell = tonumber(geo.cell) or 36
+    local cx = math.floor(ox / cell)
+    local cz = math.floor(oz / cell)
+    local ex = ox + dx * max_dist
+    local ez = oz + dz * max_dist
+    local end_cx = math.floor(ex / cell)
+    local end_cz = math.floor(ez / cell)
+
+    local step_x = dx > 0 and 1 or (dx < 0 and -1 or 0)
+    local step_z = dz > 0 and 1 or (dz < 0 and -1 or 0)
+
+    local inf = 1e30
+    local t_delta_x = step_x ~= 0 and (cell / math.abs(dx)) or inf
+    local t_delta_z = step_z ~= 0 and (cell / math.abs(dz)) or inf
+
+    local next_x = step_x > 0 and ((cx + 1) * cell) or (cx * cell)
+    local next_z = step_z > 0 and ((cz + 1) * cell) or (cz * cell)
+
+    local t_max_x = step_x ~= 0 and ((next_x - ox) / dx) or inf
+    local t_max_z = step_z ~= 0 and ((next_z - oz) / dz) or inf
+
+    if t_max_x < 0 then t_max_x = 0 end
+    if t_max_z < 0 then t_max_z = 0 end
+
+    geo.ray_serial = (tonumber(geo.ray_serial) or 0) + 1
+    if geo.ray_serial > 2000000000 then geo.ray_serial = 1 end
+    local mark = geo.ray_serial
+
+    local best_t = nil
+    local best_part = nil
+    local guard = 0
+
+    while guard < 1024 do
+        guard = guard + 1
+
+        local bucket = geo.grid[FALLEN_WORLD_RAIN_GRID_KEY(cx, cz)]
+        if type(bucket) == "table" then
+            for _, index in ipairs(bucket) do
+                local p = geo.parts[index]
+                if p and p.mark ~= mark then
+                    p.mark = mark
+                    local hit = FALLEN_WORLD_RAIN_RAY_OBB(
+                        ox, oy, oz,
+                        dx, dy, dz,
+                        best_t or max_dist,
+                        p
+                    )
+
+                    if hit and hit >= 0
+                        and hit <= max_dist
+                        and (best_t == nil or hit < best_t)
+                    then
+                        best_t = hit
+                        best_part = p
+                    end
+                end
+            end
+        end
+
+        if best_t then
+            local next_boundary = math.min(t_max_x, t_max_z)
+            if best_t <= next_boundary + 0.001 then
+                break
+            end
+        end
+
+        if cx == end_cx and cz == end_cz then
+            break
+        end
+
+        if t_max_x < t_max_z then
+            if t_max_x > max_dist then break end
+            cx = cx + step_x
+            t_max_x = t_max_x + t_delta_x
+        else
+            if t_max_z > max_dist then break end
+            cz = cz + step_z
+            t_max_z = t_max_z + t_delta_z
+        end
+    end
+
+    return best_t, best_part
+end
+
+function FALLEN_WORLD_RAIN_GROUND_Y(x, z, from_y, max_down)
+    local geo = A.world_rain_geo
+    if type(geo) ~= "table" then return nil end
+
+    local hit = FALLEN_WORLD_RAIN_RAYCAST_GRID(
+        x,
+        from_y,
+        z,
+        0,
+        -1,
+        0,
+        max_down or 420
+    )
+
+    if not hit then return nil end
+    return from_y - hit + 0.035
+end
+
+function FALLEN_WORLD_RAIN_SEGMENT_VISIBLE(p1, p2)
+    if not p1 or not p2 then return false end
+
+    local cam = FALLEN_WORLD_RAIN_CAMERA_POS()
+    if not cam then return true end
+
+    local tx = (p1.X + p2.X) * 0.5
+    local ty = (p1.Y + p2.Y) * 0.5
+    local tz = (p1.Z + p2.Z) * 0.5
+
+    local dx = tx - cam.X
+    local dy = ty - cam.Y
+    local dz = tz - cam.Z
+    local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    if dist < 0.35 then return true end
+
+    dx, dy, dz = dx / dist, dy / dist, dz / dist
+
+    -- Leave a small tolerance at the target so the surface the splash sits on
+    -- does not hide the splash itself.
+    local hit = FALLEN_WORLD_RAIN_RAYCAST_GRID(
+        cam.X,
+        cam.Y,
+        cam.Z,
+        dx,
+        dy,
+        dz,
+        math.max(0, dist - 0.42)
+    )
+
+    return hit == nil
+end
+
+function FALLEN_WORLD_RAIN_LINE3D(p1, p2, r, g, b, a, thickness, visibility_checked)
     if not p1 or not p2 then
         return
     end
 
     if FALLEN_WORLD_RAIN_LINE_HITS_MENU(p1, p2) then
+        return
+    end
+
+    if visibility_checked ~= true
+        and not FALLEN_WORLD_RAIN_SEGMENT_VISIBLE(p1, p2)
+    then
         return
     end
 
@@ -28359,22 +28830,39 @@ function FALLEN_WORLD_RAIN_LINE3D(p1, p2, r, g, b, a, thickness)
     end
 end
 
-function FALLEN_WORLD_RAIN_NEW_DROP(center, ground_y, top_y, radius, fill_height)
+function FALLEN_WORLD_RAIN_NEW_DROP(center, fallback_ground, top_y, radius, fill_height)
     if not center then
         return nil
     end
 
     local angle = FALLEN_WEATHER_RAND(0, math.pi * 2)
     local dist = math.sqrt(FALLEN_WEATHER_RAND(0, 1)) * radius
+    local x = center.X + math.cos(angle) * dist
+    local z = center.Z + math.sin(angle) * dist
+
+    -- Cast from above the whole rain volume. This finds roofs, terrain made
+    -- from Parts/MeshParts, slopes and floors at this exact X/Z position.
+    local real_ground = FALLEN_WORLD_RAIN_GROUND_Y(
+        x,
+        z,
+        top_y + 18,
+        520
+    )
+
+    local has_ground = real_ground ~= nil
+    local ground_y = real_ground or (center.Y - 150)
+
+    local low_y = has_ground and (ground_y + 0.65) or (top_y - 42)
     local y = fill_height
-        and FALLEN_WEATHER_RAND(ground_y + 0.65, top_y + 3.5)
+        and FALLEN_WEATHER_RAND(low_y, top_y + 3.5)
         or FALLEN_WEATHER_RAND(top_y, top_y + 5.0)
 
     return {
-        x = center.X + math.cos(angle) * dist,
+        x = x,
         y = y,
-        z = center.Z + math.sin(angle) * dist,
+        z = z,
         ground_y = ground_y,
+        has_ground = has_ground,
         vx = FALLEN_WEATHER_RAND(-1.9, -0.55),
         vz = FALLEN_WEATHER_RAND(-0.55, 0.55),
         speed_mul = FALLEN_WEATHER_RAND(0.82, 1.22),
@@ -28394,7 +28882,7 @@ function FALLEN_WORLD_RAIN_SPLASH(x, y, z, alpha_value)
 
     local amount = math.random(4, 7)
 
-    for i = 1, amount do
+    for _ = 1, amount do
         if #A.world_rain_splashes >= 110 then
             break
         end
@@ -28425,11 +28913,15 @@ function FALLEN_WORLD_RAIN_DRAW_DROP(p, alpha_value)
         p.z - p.vz * 0.055
     )
 
+    if not FALLEN_WORLD_RAIN_SEGMENT_VISIBLE(tail, head) then
+        return
+    end
+
     local a = clamp((p.a or 0.5) * (alpha_value or 1), 0, 1)
 
-    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.34, 0.58, 0.94, a * 0.10, 4.4)
-    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.50, 0.70, 0.98, a * 0.34, 2.0)
-    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.82, 0.91, 1.00, a, 0.82)
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.34, 0.58, 0.94, a * 0.10, 4.4, true)
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.50, 0.70, 0.98, a * 0.34, 2.0, true)
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.82, 0.91, 1.00, a, 0.82, true)
 end
 
 function FALLEN_WORLD_RAIN_DRAW_SPLASH(p, life_a, alpha_value)
@@ -28440,14 +28932,18 @@ function FALLEN_WORLD_RAIN_DRAW_SPLASH(p, life_a, alpha_value)
         p.z - p.vz * 0.027
     )
 
+    if not FALLEN_WORLD_RAIN_SEGMENT_VISIBLE(tail, head) then
+        return
+    end
+
     local a = clamp(
         (p.a or 0.6) * (life_a or 1) * (alpha_value or 1),
         0,
         1
     )
 
-    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.44, 0.68, 1.00, a * 0.16, 3.8)
-    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.74, 0.88, 1.00, a, 0.72)
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.44, 0.68, 1.00, a * 0.16, 3.8, true)
+    FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.74, 0.88, 1.00, a, 0.72, true)
 end
 
 function FALLEN_WORLD_RAIN_TICK()
@@ -28477,7 +28973,7 @@ function FALLEN_WORLD_RAIN_TICK()
         dt
     )
 
-    local center, hrp = FALLEN_WORLD_RAIN_CENTER()
+    local center = FALLEN_WORLD_RAIN_CENTER()
 
     if not center then
         if A.world_rain_alpha < 0.01 then
@@ -28487,42 +28983,36 @@ function FALLEN_WORLD_RAIN_TICK()
         return
     end
 
-    local velocity_y = 0
-
-    if hrp then
-        pcall(function()
-            local velocity = hrp:get_velocity()
-            if velocity then
-                velocity_y = tonumber(velocity.Y) or 0
-            end
-        end)
-    end
-
-    local candidate_ground = center.Y - 3.05
-
-    if A.world_rain_ground_y == nil then
-        A.world_rain_ground_y = candidate_ground
-    elseif math.abs(velocity_y) < 3.0 then
-        A.world_rain_ground_y = exp_chase(
-            A.world_rain_ground_y,
-            candidate_ground,
-            14,
-            dt
-        )
-    end
-
-    local ground_y = tonumber(A.world_rain_ground_y) or candidate_ground
     local radius = clamp(tonumber(S.world_rain_radius) or 28, 8, 300)
     local speed_setting = clamp(tonumber(S.world_rain_speed) or 1, 0.05, 2.50)
     local target_amount = math.floor(clamp(tonumber(S.world_rain_amount) or 34, 12, 64) + 0.5)
-    local top_y = ground_y + 17 + radius * 0.18
+
+    if S.world_rain_enabled == true or S.world_thunder_enabled == true then
+        FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(center, radius)
+    end
+
+    -- Center ground is now a real downward hit as well. Thunder uses this as
+    -- a fallback, but every rain drop has its own per-X/Z surface hit.
+    local center_ground = FALLEN_WORLD_RAIN_GROUND_Y(
+        center.X,
+        center.Z,
+        center.Y + 24,
+        360
+    )
+
+    if center_ground then
+        A.world_rain_ground_y = center_ground
+    end
+
+    local fallback_ground = center_ground or tonumber(A.world_rain_ground_y) or (center.Y - 3.05)
+    local top_y = fallback_ground + 17 + radius * 0.18
 
     if S.world_rain_enabled == true then
         while #A.world_rain_particles < target_amount do
             A.world_rain_particles[#A.world_rain_particles + 1] =
                 FALLEN_WORLD_RAIN_NEW_DROP(
                     center,
-                    ground_y,
+                    fallback_ground,
                     top_y,
                     radius,
                     true
@@ -28546,19 +29036,21 @@ function FALLEN_WORLD_RAIN_TICK()
             p.z = p.z + (p.vz or 0) * dt
             p.y = p.y - fall_speed * dt
 
-            if p.y <= (p.ground_y or ground_y) then
-                FALLEN_WORLD_RAIN_SPLASH(
-                    p.x,
-                    p.ground_y or ground_y,
-                    p.z,
-                    A.world_rain_alpha
-                )
+            if p.y <= (p.ground_y or fallback_ground) then
+                if p.has_ground == true then
+                    FALLEN_WORLD_RAIN_SPLASH(
+                        p.x,
+                        p.ground_y,
+                        p.z,
+                        A.world_rain_alpha
+                    )
+                end
 
                 if S.world_rain_enabled == true then
                     A.world_rain_particles[i] =
                         FALLEN_WORLD_RAIN_NEW_DROP(
                             center,
-                            ground_y,
+                            fallback_ground,
                             top_y,
                             radius,
                             false
@@ -28644,6 +29136,14 @@ function FALLEN_WORLD_THUNDER_SPAWN(center, ground_y, radius)
 
     local hit_x = center.X + math.cos(angle) * dist
     local hit_z = center.Z + math.sin(angle) * dist
+
+    local real_hit_y = FALLEN_WORLD_RAIN_GROUND_Y(
+        hit_x,
+        hit_z,
+        center.Y + 150,
+        620
+    )
+    ground_y = real_hit_y or ground_y
 
     local top_h = clamp(48 + radius * 0.20, 48, 108)
     local top_x = hit_x + FALLEN_WEATHER_RAND(-18, 18)
@@ -28736,35 +29236,40 @@ function FALLEN_WORLD_THUNDER_DRAW_PATH(points, alpha_value, branch_scale)
         local p1 = points[i]
         local p2 = points[i + 1]
 
-        FALLEN_WORLD_RAIN_LINE3D(
-            p1,
-            p2,
-            0.28,
-            0.48,
-            1.00,
-            a * 0.08 * scale,
-            9.0 * scale
-        )
+        if FALLEN_WORLD_RAIN_SEGMENT_VISIBLE(p1, p2) then
+            FALLEN_WORLD_RAIN_LINE3D(
+                p1,
+                p2,
+                0.28,
+                0.48,
+                1.00,
+                a * 0.08 * scale,
+                9.0 * scale,
+                true
+            )
 
-        FALLEN_WORLD_RAIN_LINE3D(
-            p1,
-            p2,
-            0.48,
-            0.70,
-            1.00,
-            a * 0.30 * scale,
-            4.2 * scale
-        )
+            FALLEN_WORLD_RAIN_LINE3D(
+                p1,
+                p2,
+                0.48,
+                0.70,
+                1.00,
+                a * 0.30 * scale,
+                4.2 * scale,
+                true
+            )
 
-        FALLEN_WORLD_RAIN_LINE3D(
-            p1,
-            p2,
-            0.92,
-            0.97,
-            1.00,
-            a * scale,
-            1.25 * scale
-        )
+            FALLEN_WORLD_RAIN_LINE3D(
+                p1,
+                p2,
+                0.92,
+                0.97,
+                1.00,
+                a * scale,
+                1.25 * scale,
+                true
+            )
+        end
     end
 end
 
