@@ -114,6 +114,7 @@ local defaults = {
     -- Misc built-in cheat features.
     misc_fly_enabled = false,
     misc_upside_down_enabled = false,
+    misc_shot_on_air_enabled = false,
 
     -- Bullet Tracers / Misc.
     bullet_tracer_enabled = false,
@@ -451,6 +452,12 @@ local A = {
 
     secret_desync_module = nil,
     secret_desync_last_state = nil,
+
+    -- Shot on air runtime.
+    -- Temporarily owns Fly + Upside Down only while Space is held.
+    shot_on_air_active = false,
+    shot_on_air_prev_speed = nil,
+    shot_on_air_prev_type = nil,
 
     hit_effect_style_open = false,
     hit_effect_style_anim = 0,
@@ -24758,7 +24765,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            101,
+            142,
             11
         )
 
@@ -24818,6 +24825,27 @@ hooks.on_render(function()
                 )
             end)
         end
+
+        line(
+            page_x + 12,
+            page_y + 113,
+            page_x + page_w - 12,
+            page_y + 113,
+            C.divider,
+            1
+        )
+
+        toggle_row(
+            mx,
+            my,
+            page_clicked,
+            page_x,
+            page_y + 114,
+            page_w,
+            "Shot on air",
+            "misc_shot_on_air_enabled",
+            false
+        )
     elseif S.tab == 4
         and A.secret_unlocked
         and S.secret_enabled == true
@@ -28064,6 +28092,133 @@ hooks.on_render(function()
         draw_cap(0, extent)        -- bottom-center
         draw_cap(extent, extent)   -- bottom-right
     end
+end)
+
+-- =========================================================
+-- Shot on air bridge
+-- =========================================================
+-- While the feature is enabled, holding the normal Roblox jump key (Space)
+-- temporarily forces built-in Fly + Upside Down directly through cheat.enable.
+-- No Fly/Flip keybind is required.
+--
+-- fly_type = 0 is the Velocity mode used by this API build.
+local FALLEN_SHOT_ON_AIR_SPEED = 3
+local FALLEN_SHOT_ON_AIR_FLY_TYPE = 0
+
+local function FALLEN_SHOT_ON_AIR_SET_FEATURE(name, enabled)
+    if not cheat or type(cheat.enable) ~= "function" then
+        return
+    end
+
+    pcall(function()
+        cheat.enable(
+            name,
+            enabled == true
+        )
+    end)
+end
+
+function FALLEN_SHOT_ON_AIR_TICK()
+    local feature_enabled =
+        S.misc_shot_on_air_enabled == true
+
+    -- Shot on air follows the actual jump key, not the Fly/Flip binds.
+    local jumping =
+        feature_enabled
+        and key_down(0x20) -- VK_SPACE
+
+    if jumping then
+        if A.shot_on_air_active ~= true then
+            -- Preserve whatever Fly tuning existed before the temporary override.
+            A.shot_on_air_prev_speed = nil
+            A.shot_on_air_prev_type = nil
+
+            if cheat and cheat.mobility then
+                pcall(function()
+                    A.shot_on_air_prev_speed =
+                        cheat.mobility.fly_speed
+                end)
+
+                pcall(function()
+                    A.shot_on_air_prev_type =
+                        cheat.mobility.fly_type
+                end)
+            end
+
+            -- Direct master toggles: no user Fly/Flip bind press is needed.
+            FALLEN_SHOT_ON_AIR_SET_FEATURE(
+                "fly",
+                true
+            )
+
+            FALLEN_SHOT_ON_AIR_SET_FEATURE(
+                "flip",
+                true
+            )
+
+            A.shot_on_air_active = true
+        end
+
+        -- Pin Shot on air tuning while Space is held so another menu write
+        -- cannot change the method/speed mid-jump.
+        if cheat and cheat.mobility then
+            pcall(function()
+                cheat.mobility.fly_speed =
+                    FALLEN_SHOT_ON_AIR_SPEED
+            end)
+
+            pcall(function()
+                cheat.mobility.fly_type =
+                    FALLEN_SHOT_ON_AIR_FLY_TYPE
+            end)
+        end
+
+        return
+    end
+
+    if A.shot_on_air_active == true then
+        -- Restore Fly tuning first.
+        if cheat and cheat.mobility then
+            if A.shot_on_air_prev_speed ~= nil then
+                pcall(function()
+                    cheat.mobility.fly_speed =
+                        A.shot_on_air_prev_speed
+                end)
+            end
+
+            if A.shot_on_air_prev_type ~= nil then
+                pcall(function()
+                    cheat.mobility.fly_type =
+                        A.shot_on_air_prev_type
+                end)
+            end
+        end
+
+        -- Return master states to the ordinary Misc toggles.
+        FALLEN_SHOT_ON_AIR_SET_FEATURE(
+            "fly",
+            S.misc_fly_enabled == true
+        )
+
+        FALLEN_SHOT_ON_AIR_SET_FEATURE(
+            "flip",
+            S.misc_upside_down_enabled == true
+        )
+
+        A.shot_on_air_active = false
+        A.shot_on_air_prev_speed = nil
+        A.shot_on_air_prev_type = nil
+    end
+end
+
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    pcall(
+        FALLEN_SHOT_ON_AIR_TICK
+    )
 end)
 
 -- =========================================================
