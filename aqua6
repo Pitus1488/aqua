@@ -21668,7 +21668,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         "Rain Radius",
         "world_rain_radius",
         8,
-        60,
+        300,
         "int"
     )
 
@@ -21691,7 +21691,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         right_w,
         "Rain Speed",
         "world_rain_speed",
-        0.35,
+        0.05,
         2.50,
         "float"
     )
@@ -28192,8 +28192,97 @@ function FALLEN_WORLD_RAIN_CENTER()
     return pos, hrp
 end
 
+-- Keep world rain visually behind the custom menu.  The menu can be
+-- translucent (Glass), so normal draw order alone is not enough: projected
+-- rain strokes are clipped against the live menu rectangle.
+function FALLEN_WORLD_RAIN_W2S(pos)
+    if not pos then return nil end
+
+    local s = nil
+
+    pcall(function()
+        if rbx and type(rbx.world_to_screen) == "function" then
+            s = rbx.world_to_screen(pos)
+        elseif aim and type(aim.world_to_screen) == "function" then
+            s = aim.world_to_screen(pos)
+        end
+    end)
+
+    if not s then return nil end
+    if s.visible == false then return nil end
+
+    local x = tonumber(s.X or s.x or s[1])
+    local y = tonumber(s.Y or s.y or s[2])
+    if not x or not y then return nil end
+
+    return { X = x, Y = y }
+end
+
+function FALLEN_WORLD_RAIN_LINE_HITS_MENU(p1, p2)
+    local rect = FALLEN_WEATHER_MENU_RECT
+
+    if type(rect) ~= "table"
+        or (tonumber(rect.open_alpha) or 0) <= 0.02
+    then
+        return false
+    end
+
+    local a = FALLEN_WORLD_RAIN_W2S(p1)
+    local b = FALLEN_WORLD_RAIN_W2S(p2)
+    if not a or not b then return false end
+
+    -- Tiny padding prevents glow layers from bleeding through the rounded edge.
+    local pad = 4
+    local x1 = (tonumber(rect.x) or 0) - pad
+    local y1 = (tonumber(rect.y) or 0) - pad
+    local x2 = x1 + (tonumber(rect.w) or 0) + pad * 2
+    local y2 = y1 + (tonumber(rect.h) or 0) + pad * 2
+
+    local function inside(pt)
+        return pt.X >= x1 and pt.X <= x2
+            and pt.Y >= y1 and pt.Y <= y2
+    end
+
+    if inside(a) or inside(b) then
+        return true
+    end
+
+    -- Liang-Barsky style 2D segment/rectangle clipping.  This also catches
+    -- long rain streaks whose endpoints are outside but cross the menu.
+    local dx = b.X - a.X
+    local dy = b.Y - a.Y
+    local t0, t1 = 0, 1
+
+    local function clip(pv, qv)
+        if math.abs(pv) < 0.000001 then
+            return qv >= 0
+        end
+
+        local rr = qv / pv
+        if pv < 0 then
+            if rr > t1 then return false end
+            if rr > t0 then t0 = rr end
+        else
+            if rr < t0 then return false end
+            if rr < t1 then t1 = rr end
+        end
+        return true
+    end
+
+    if not clip(-dx, a.X - x1) then return false end
+    if not clip( dx, x2 - a.X) then return false end
+    if not clip(-dy, a.Y - y1) then return false end
+    if not clip( dy, y2 - a.Y) then return false end
+
+    return t0 <= t1
+end
+
 function FALLEN_WORLD_RAIN_LINE3D(p1, p2, r, g, b, a, thickness)
     if not p1 or not p2 then
+        return
+    end
+
+    if FALLEN_WORLD_RAIN_LINE_HITS_MENU(p1, p2) then
         return
     end
 
@@ -28366,8 +28455,8 @@ function FALLEN_WORLD_RAIN_TICK()
     end
 
     local ground_y = tonumber(A.world_rain_ground_y) or candidate_ground
-    local radius = clamp(tonumber(S.world_rain_radius) or 28, 8, 60)
-    local speed_setting = clamp(tonumber(S.world_rain_speed) or 1, 0.35, 2.50)
+    local radius = clamp(tonumber(S.world_rain_radius) or 28, 8, 300)
+    local speed_setting = clamp(tonumber(S.world_rain_speed) or 1, 0.05, 2.50)
     local target_amount = math.floor(clamp(tonumber(S.world_rain_amount) or 34, 12, 64) + 0.5)
     local top_y = ground_y + 17 + radius * 0.18
 
@@ -28394,7 +28483,7 @@ function FALLEN_WORLD_RAIN_TICK()
         if not p then
             table.remove(A.world_rain_particles, i)
         else
-            local fall_speed = (24 + speed_setting * 19) * (p.speed_mul or 1)
+            local fall_speed = (3 + speed_setting * 40) * (p.speed_mul or 1)
 
             p.x = p.x + (p.vx or 0) * dt
             p.z = p.z + (p.vz or 0) * dt
