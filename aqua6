@@ -171,8 +171,9 @@ local defaults = {
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
     menu_glow_strength = 100,
 
-    -- Glass style blur intensity. 0 = disabled, 100 = maximum.
-    menu_glass_blur = 65,
+    -- Glass style blur.
+    menu_glass_blur_enabled = true,
+    menu_glass_blur = 70,
 
     -- Animated menu-background weather.
     menu_snow = false,
@@ -8681,21 +8682,11 @@ function FALLEN_SILENT_TICK()
     local sa =
         cheat.silent_aim
 
-    local magic_enabled =
-        S.silent_magic_bullet == true
-
-    -- Magic Bullet is a Silent Aim sub-feature in the host API.
-    -- If Magic Bullet is on, Silent Aim must also stay on.
-    if magic_enabled
-        and S.silent_enabled ~= true
-    then
-        S.silent_enabled =
-            true
-    end
-
     local enabled =
         S.silent_enabled == true
-        or magic_enabled
+
+    local magic_enabled =
+        S.silent_magic_bullet == true
 
     local fov =
         clamp(
@@ -8705,49 +8696,36 @@ function FALLEN_SILENT_TICK()
             600
         )
 
-    -- 1) Enable the Silent Aim master first.
+    -- Exact new API master toggle.
     if A.silent_api_last_enabled ~= enabled then
-        FALLEN_CHEAT_SET_FEATURE(
-            "silent_aim",
-            enabled
-        )
+        pcall(function()
+            cheat.enable(
+                "silent_aim",
+                enabled
+            )
+        end)
 
         A.silent_api_last_enabled =
             enabled
     end
 
+    -- Keep the live mirror synchronized too.
     pcall(function()
         sa.enabled =
             enabled
     end)
 
-    -- 2) Always force Raycast before touching Magic Bullet.
+    -- Silent Aim is ALWAYS Raycast.
     pcall(function()
         sa.method =
             2
     end)
 
-    -- 3) Enable the Magic Bullet master through the new API.
-    if A.silent_magic_api_last_enabled ~= magic_enabled then
-        FALLEN_CHEAT_SET_FEATURE(
-            "magic_bullet",
-            magic_enabled
-        )
-
-        A.silent_magic_api_last_enabled =
-            magic_enabled
-    end
-
-    -- 4) Mirror the fine-grained field exactly like the documented example.
+    -- Exact API field from the documentation.
+    -- No separate magic_bullet feature master is used here.
     pcall(function()
         sa.magic_bullet =
             magic_enabled
-    end)
-
-    -- Keep Raycast pinned in case the host feature toggle rewrites method.
-    pcall(function()
-        sa.method =
-            2
     end)
 
     -- Use the exact same FOV setting as our Aimbot/FOV panel.
@@ -8774,7 +8752,6 @@ function FALLEN_SILENT_TICK()
             S.aim_auto_prediction == true
     end)
 
-    -- Keep our Auto Prediction bridge.
     pcall(function()
         sa.prediction_callback =
             FALLEN_SILENT_PRED_CALLBACK
@@ -8786,384 +8763,17 @@ function FALLEN_SILENT_TICK()
     end)
 
     pcall(function()
-        sa.target_position_callback =
+        sa.pred_callback =
             FALLEN_SILENT_PRED_CALLBACK
     end)
 
+    -- Re-pin Raycast last in case another field write touches method.
     pcall(function()
-        sa.position_callback =
-            FALLEN_SILENT_PRED_CALLBACK
-    end)
-
-end
-
-local function fap_draw_fov()
-    if (
-            S.aim_enabled ~= true
-            and S.silent_enabled ~= true
-        )
-        or S.aim_fov_enabled ~= true
-        or type(DrawCircle) ~= "function"
-    then
-        return
-    end
-
-    local c =
-        crosshair_pos()
-
-    if not c then
-        return
-    end
-
-    local col =
-        fov_color()
-
-    local fov_radius =
-        clamp(
-            tonumber(S.aim_fov_size)
-            or 50,
-            10,
-            600
-        )
-
-    local fov_segments =
-        math.floor(
-            clamp(
-                fov_radius * 3.6,
-                180,
-                512
-            )
-        )
-
-    -- Optional Filled FOV: same color as the outline,
-    -- fixed at 50% opacity.
-    if S.aim_fov_filled == true
-        and type(DrawCircleFilled) == "function"
-    then
-        DrawCircleFilled(
-            c.X,
-            c.Y,
-            fov_radius,
-            col[1],
-            col[2],
-            col[3],
-            col[4] * 0.50
-        )
-    end
-
-    if S.aim_fov_glow_enabled == true then
-        local gc =
-            FALLEN_FOV_GLOW_COLOR()
-
-        local glow_strength =
-            clamp(
-                (tonumber(S.aim_fov_glow_strength) or 60) / 100,
-                0,
-                1
-            )
-
-        local glow_spread =
-            clamp(
-                tonumber(S.aim_fov_glow_spread) or 6,
-                1,
-                12
-            )
-
-        if glow_strength > 0.001
-            and gc[4] > 0.001
-        then
-            -- Same idea as the menu glow: many thin lines, strongest right at
-            -- the edge of the FOV circle, then fading outward.
-            local glow_layers = 35
-
-            for layer = 1, glow_layers do
-                local t =
-                    (layer - 1)
-                    / (glow_layers - 1)
-
-                local edge_fade =
-                    1 - t
-
-                local ring_radius =
-                    fov_radius
-                    + t * glow_spread
-
-                local ring_alpha =
-                    gc[4]
-                    * glow_strength
-                    * (
-                        edge_fade
-                        * edge_fade
-                    )
-                    * 0.80
-
-                local ring_thickness =
-                    1.15
-                    + edge_fade * 0.35
-
-                local ring_prev_x =
-                    c.X + ring_radius
-
-                local ring_prev_y =
-                    c.Y
-
-                for i = 1, fov_segments do
-                    local ang =
-                        (i / fov_segments)
-                        * math.pi
-                        * 2
-
-                    local nx =
-                        c.X
-                        + math.cos(ang)
-                        * ring_radius
-
-                    local ny =
-                        c.Y
-                        + math.sin(ang)
-                        * ring_radius
-
-                    DrawLine(
-                        ring_prev_x,
-                        ring_prev_y,
-                        nx,
-                        ny,
-                        gc[1],
-                        gc[2],
-                        gc[3],
-                        ring_alpha,
-                        ring_thickness
-                    )
-
-                    ring_prev_x = nx
-                    ring_prev_y = ny
-                end
-            end
-        end
-    end
-
-    local prev_x =
-        c.X + fov_radius
-
-    local prev_y =
-        c.Y
-
-    for i = 1, fov_segments do
-        local ang =
-            (i / fov_segments)
-            * math.pi
-            * 2
-
-        local nx =
-            c.X
-            + math.cos(ang)
-            * fov_radius
-
-        local ny =
-            c.Y
-            + math.sin(ang)
-            * fov_radius
-
-        DrawLine(
-            prev_x,
-            prev_y,
-            nx,
-            ny,
-            col[1],
-            col[2],
-            col[3],
-            col[4],
-            1.2
-        )
-
-        prev_x = nx
-        prev_y = ny
-    end
-end
-
-local function fap_tick()
-    if _G.FallenMenuReady ~= true then
-        return
-    end
-
-    -- Aim FOV is visual and stays visible while the feature is enabled.
-    fap_draw_fov()
-
-    if S.aim_enabled ~= true then
-        fap_clear_lock()
-        return
-    end
-
-    fap_refresh_weapon()
-
-    if not fap_hold_down() then
-        fap_clear_lock()
-        return
-    end
-
-    if not aim
-        or type(aim.get_camera_position) ~= "function"
-        or type(aim.world_to_screen) ~= "function"
-        or type(aim.look_at_matrix) ~= "function"
-        or type(aim.set_camera_rotation) ~= "function"
-    then
-        return
-    end
-
-    local cross =
-        crosshair_pos()
-
-    if not cross then
-        return
-    end
-
-    local cam = nil
-
-    pcall(function()
-        cam =
-            aim.get_camera_position()
-    end)
-
-    if not cam then
-        return
-    end
-
-    local target =
-        fap_find_target(
-            cross,
-            cam
-        )
-
-    if not target then
-        if S.sticky_aim ~= true then
-            fap_clear_lock()
-        end
-        return
-    end
-
-    local pos =
-        fap_target_pos(
-            target
-        )
-
-    if not pos then
-        return
-    end
-
-    local predicted =
-        fap_predict(
-            target,
-            pos,
-            cam
-        )
-
-    if not predicted then
-        return
-    end
-
-    FAP.current_target_addr =
-        target.address
-        or target.player_addr
-        or target.character_addr
-
-    FAP.current_target_name =
-        tostring(
-            target.name
-            or target.display_name
-            or ""
-        )
-
-    FAP.current_target_pos = {
-        X = predicted.X,
-        Y = predicted.Y,
-        Z = predicted.Z,
-    }
-
-    FAP.current_target_health =
-        tonumber(
-            target.health
-            or target.hp
-            or target.Health
-        )
-
-    FAP.current_prediction_time =
-        tonumber(predicted.time)
-        or 0
-
-    FAP.current_prediction_gravity =
-        tonumber(FAP.gravity)
-        or 0
-
-    FAP.current_prediction_speed =
-        tonumber(FAP.bullet_speed)
-        or 0
-
-    FAP.current_auto_prediction =
-        S.aim_auto_prediction == true
-
-    FAP.current_target_seen = tick()
-
-    local mat = nil
-
-    pcall(function()
-        mat =
-            aim.look_at_matrix(
-                cam,
-                predicted
-            )
-    end)
-
-    if not mat then
-        return
-    end
-
-    pcall(function()
-        aim.set_camera_rotation(
-            mat
-        )
+        sa.method =
+            2
     end)
 end
 
-hooks.on_render(function()
-    local ok, err =
-        pcall(
-            fap_tick
-        )
-
-    if not ok then
-        -- Do not spam console every frame with the same transient target error.
-        FAP.last_error_at =
-            FAP.last_error_at
-            or 0
-
-        if tick() - FAP.last_error_at > 2 then
-            FAP.last_error_at = tick()
-            warn(
-                SYS
-                .. "Aimbot: "
-                .. tostring(err)
-            )
-        end
-    end
-end)
-
-hooks.on_render(function()
-    pcall(
-        FALLEN_SILENT_TICK
-    )
-end)
-
--- =========================================================
--- Bullet Tracers
--- LOCAL Mouse1 + current Aimbot target only.
--- =========================================================
-
-FALLEN_BT = FALLEN_BT or {
-    items = {},
-    last_shot = 0,
-    local_name = nil,
-    local_name_scan = 0,
-}
 
 function FALLEN_BT_LOCAL_NAME()
     local now = tick()
@@ -18375,13 +17985,20 @@ function FALLEN_DRAW_GLASS_BLUR(
         S.menu_type
         or "default"
     ):lower() ~= "glass"
+        or S.menu_glass_blur_enabled ~= true
+    then
+        return
+    end
+
+    if not Drawing
+        or type(Drawing.DrawBlur) ~= "function"
     then
         return
     end
 
     local intensity =
         clamp(
-            (tonumber(S.menu_glass_blur) or 65)
+            (tonumber(S.menu_glass_blur) or 70)
             / 100,
             0,
             1
@@ -18393,24 +18010,6 @@ function FALLEN_DRAW_GLASS_BLUR(
         return
     end
 
-    local fn = nil
-
-    if Drawing
-        and type(Drawing.DrawBlur) == "function"
-    then
-        fn =
-            Drawing.DrawBlur
-    elseif type(DrawBlur) == "function" then
-        fn =
-            DrawBlur
-    end
-
-    if not fn then
-        return
-    end
-
-    -- DrawBlur works in real screen coordinates, while our menu primitives
-    -- use the menu transform helpers.
     local bx =
         FALLEN_UI_X(
             x
@@ -18437,15 +18036,17 @@ function FALLEN_DRAW_GLASS_BLUR(
             or 0
         )
 
-    pcall(
-        fn,
-        bx,
-        by,
-        bw,
-        bh,
-        br,
-        intensity
-    )
+    -- Exact new API style: Drawing.DrawBlur is issued every render frame.
+    pcall(function()
+        Drawing.DrawBlur(
+            bx,
+            by,
+            bw,
+            bh,
+            br,
+            intensity
+        )
+    end)
 end
 
 function FALLEN_GLOW_COLOR()
@@ -19331,7 +18932,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             and 82
             or (
                 glass_selected
-                and 41
+                and 82
                 or 0
             )
         )
@@ -19626,15 +19227,38 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                     1
                 )
 
+                toggle_row(
+                    mx,
+                    my,
+                    row_clicked,
+                    px + 8,
+                    py + 204,
+                    pw - 16,
+                    "Glass Blur",
+                    "menu_glass_blur_enabled",
+                    false
+                )
+            end
+
+            if shell_h > 287 then
+                line(
+                    px + 12,
+                    py + 244,
+                    px + pw - 12,
+                    py + 244,
+                    C.divider,
+                    1
+                )
+
                 slider_row(
                     mx,
                     my,
                     ui_clicked,
                     lmb,
                     px + 8,
-                    py + 204,
+                    py + 245,
                     pw - 16,
-                    "Glass Blur",
+                    "Blur Intensity",
                     "menu_glass_blur",
                     0,
                     100,
@@ -19642,7 +19266,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 )
             end
 
-            weather_offset = 41
+            weather_offset = 82
         end
 
         -- Animated background weather.
