@@ -355,7 +355,7 @@ local C = {
 -- =========================================================
 
 local WIN_W = 875
-local WIN_H = 700
+local WIN_H = 630
 local SIDEBAR_W = 172
 local OUTER_R = 16
 
@@ -23617,7 +23617,7 @@ hooks.on_render(function()
                 1.00,
                 math.max(
                     0.82,
-                    math.min((sw - 40) / 875, (sh - 40) / 700)
+                    math.min((sw - 40) / 875, (sh - 40) / 630)
                 )
             )
     else
@@ -23638,7 +23638,7 @@ hooks.on_render(function()
     end
 
     WIN_W = 875
-    WIN_H = 700
+    WIN_H = 630
 
     if A.menu_cx == nil then
         A.menu_cx = sw * 0.5
@@ -28102,10 +28102,9 @@ end)
 -- No Fly/Flip keybind is required.
 --
 -- fly_type = 0 is the Velocity mode used by this API build.
-local FALLEN_SHOT_ON_AIR_SPEED = 3
-local FALLEN_SHOT_ON_AIR_FLY_TYPE = 0
-
-local function FALLEN_SHOT_ON_AIR_SET_FEATURE(name, enabled)
+-- Keep this bridge global on purpose: the main chunk is already near Lua's
+-- top-level local-variable limit, so adding more top-level locals breaks loading.
+function FALLEN_SHOT_ON_AIR_SET_FEATURE(name, enabled)
     if not cheat or type(cheat.enable) ~= "function" then
         return
     end
@@ -28164,12 +28163,12 @@ function FALLEN_SHOT_ON_AIR_TICK()
         if cheat and cheat.mobility then
             pcall(function()
                 cheat.mobility.fly_speed =
-                    FALLEN_SHOT_ON_AIR_SPEED
+                    3
             end)
 
             pcall(function()
                 cheat.mobility.fly_type =
-                    FALLEN_SHOT_ON_AIR_FLY_TYPE
+                    0
             end)
         end
 
