@@ -171,9 +171,6 @@ local defaults = {
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
     menu_glow_strength = 100,
 
-    -- Glass style blur.
-    menu_glass_blur_enabled = true,
-
     -- Animated menu-background weather.
     menu_snow = false,
     menu_rain = false,
@@ -17901,8 +17898,8 @@ function FALLEN_APPLY_STYLE_COLOR()
         C.text_faint = { 0.355, 0.375, 0.445, 1.00 }
 
     else
-        -- Glass = the Default UI colors/layout with a frosted background.
-        -- Only the surface alpha is reduced so the blur can be seen.
+        -- Glass = the Default UI colors/layout with translucent surfaces.
+        -- The material comes only from alpha layering.
         S.menu_type = "glass"
 
         C.outer      = { 0.058, 0.063, 0.073, 0.84 }
@@ -17969,103 +17966,9 @@ function FALLEN_CHEAT_SET_FEATURE(
 end
 
 -- =========================================================
--- Glass blur
--- Same Default UI shell, one rounded blur draw underneath it.
--- IMPORTANT: when the menu is hidden we DO NOT call DrawBlur at all.
+-- Glass material
+-- Glass uses the normal translucent Fallen surfaces only.
 -- =========================================================
-
-FALLEN_GLASS_BLUR_LAST =
-    nil
-
-function FALLEN_CLEAR_GLASS_BLUR_LAST()
-    -- Drawing.DrawBlur is a per-render draw command.
-    -- Do not try to "clear" it with intensity = 0: on this API that can
-    -- leave the blur surface alive. Simply stop submitting the draw.
-    FALLEN_GLASS_BLUR_LAST =
-        nil
-end
-
-function FALLEN_DRAW_GLASS_BLUR(
-    x,
-    y,
-    w,
-    h,
-    rounding,
-    base_alpha
-)
-    if tostring(
-        S.menu_type
-        or "default"
-    ):lower() ~= "glass"
-        or S.menu_glass_blur_enabled ~= true
-    then
-        FALLEN_CLEAR_GLASS_BLUR_LAST()
-        return false
-    end
-
-    if not Drawing
-        or type(Drawing.DrawBlur) ~= "function"
-    then
-        return false
-    end
-
-    local open_alpha =
-        clamp(
-            tonumber(base_alpha)
-            or tonumber(MENU_RENDER_ALPHA)
-            or 0,
-            0,
-            1
-        )
-
-    -- When the menu animation reaches invisible, submit NOTHING.
-    if open_alpha <= 0.004 then
-        FALLEN_CLEAR_GLASS_BLUR_LAST()
-        return false
-    end
-
-    local bx =
-        FALLEN_UI_X(
-            x
-        )
-
-    local by =
-        FALLEN_UI_Y(
-            y
-        )
-
-    local bw =
-        FALLEN_UI_LEN(
-            w
-        )
-
-    local bh =
-        FALLEN_UI_LEN(
-            h
-        )
-
-    -- Slightly stronger clip than the 16px menu shell so the blur can never
-    -- poke through the outer rounded corners.
-    local br =
-        FALLEN_UI_LEN(
-            (rounding or 16)
-            + 3
-        )
-
-    -- ONE blur rectangle only. No strips, no stacked passes, no clear pass.
-    pcall(function()
-        Drawing.DrawBlur(
-            bx,
-            by,
-            bw,
-            bh,
-            br,
-            0.70 * open_alpha
-        )
-    end)
-
-    return true
-end
 
 
 function FALLEN_GLOW_COLOR()
@@ -18941,19 +18844,12 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         menu_type_lower == "gradient"
         or menu_type_lower == "blur"
 
-    local glass_selected =
-        menu_type_lower == "glass"
-
     local ph =
         385
         + (
             gradient_selected
             and 82
-            or (
-                glass_selected
-                and 41
-                or 0
-            )
+            or 0
         )
         + (
             A.secret_unlocked
@@ -19235,31 +19131,6 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
 
             weather_offset = 82
 
-        elseif glass_selected then
-            if shell_h > 246 then
-                line(
-                    px + 12,
-                    py + 203,
-                    px + pw - 12,
-                    py + 203,
-                    C.divider,
-                    1
-                )
-
-                toggle_row(
-                    mx,
-                    my,
-                    row_clicked,
-                    px + 8,
-                    py + 204,
-                    pw - 16,
-                    "Glass Blur",
-                    "menu_glass_blur_enabled",
-                    false
-                )
-            end
-
-            weather_offset = 41
         end
 
         -- Animated background weather.
@@ -23631,11 +23502,9 @@ hooks.on_render(function()
         clamp(A.menu_open, 0, 1)
 
     -- Once the closing animation is essentially invisible, stop drawing it.
-    -- No DrawBlur call is issued after this point.
     if A.menu_open <= 0.004
         and A.menu_open_target == 0
     then
-        FALLEN_CLEAR_GLASS_BLUR_LAST()
         return
     end
 
@@ -23779,7 +23648,6 @@ hooks.on_render(function()
     MENU_UI_ORIGIN_Y = wy
 
     -- Whole window rises gently into place on open and drops on close.
-    -- Drawing blur follows these exact coordinates every frame.
     wy =
         wy
         + (1 - MENU_RENDER_ALPHA) * 16
@@ -23887,12 +23755,7 @@ hooks.on_render(function()
         menu_texture_type == "gradient"
         or menu_texture_type == "blur"
 
-    local is_glass_menu =
-        menu_texture_type == "glass"
-
     if is_gradient_menu then
-        FALLEN_CLEAR_GLASS_BLUR_LAST()
-
         FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
             wx,
             wy,
@@ -23902,22 +23765,8 @@ hooks.on_render(function()
         )
 
     else
-        if is_glass_menu
-            and S.menu_glass_blur_enabled == true
-        then
-            -- Blur is part of the normal Default-style base.
-            FALLEN_DRAW_GLASS_BLUR(
-                wx,
-                wy,
-                WIN_W,
-                WIN_H,
-                OUTER_R,
-                menu_base_alpha
-            )
-        else
-            FALLEN_CLEAR_GLASS_BLUR_LAST()
-        end
-
+        -- Default / Ass / Glass use the same shell construction.
+        -- Glass differs only through its translucent palette values.
         -- SAME shell construction as Default: rounded left + rounded right.
         rounded_left_fill(
             wx,
