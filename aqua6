@@ -17901,23 +17901,24 @@ function FALLEN_APPLY_STYLE_COLOR()
         C.text_faint = { 0.355, 0.375, 0.445, 1.00 }
 
     else
-        -- Glass: softer transparency and lighter separation like the reference.
+        -- Glass = the Default UI colors/layout with a frosted background.
+        -- Only the surface alpha is reduced so the blur can be seen.
         S.menu_type = "glass"
 
-        C.outer      = { 0.060, 0.064, 0.075, 0.84 }
-        C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
-        C.content    = { 0.052, 0.055, 0.063, 0.74 }
+        C.outer      = { 0.058, 0.063, 0.073, 0.84 }
+        C.sidebar    = { 0.079, 0.082, 0.094, 0.80 }
+        C.content    = { 0.052, 0.055, 0.063, 0.78 }
 
-        C.card       = { 0.065, 0.069, 0.080, 0.66 }
-        C.card_hover = { 0.082, 0.087, 0.100, 0.76 }
-        C.selected   = { 0.130, 0.132, 0.145, 0.84 }
+        C.card       = { 0.055, 0.058, 0.067, 0.88 }
+        C.card_hover = { 0.073, 0.076, 0.087, 0.92 }
+        C.selected   = { 0.125, 0.126, 0.137, 0.92 }
 
-        C.border     = { 0.250, 0.260, 0.300, 0.10 }
-        C.divider    = { 0.260, 0.270, 0.310, 0.09 }
+        C.border     = { 0.210, 0.220, 0.250, 0.18 }
+        C.divider    = { 0.220, 0.230, 0.260, 0.15 }
 
-        C.text       = { 0.720, 0.730, 0.760, 1.00 }
-        C.text_dim   = { 0.505, 0.520, 0.575, 1.00 }
-        C.text_faint = { 0.335, 0.355, 0.425, 1.00 }
+        C.text       = { 0.700, 0.710, 0.740, 1.00 }
+        C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
+        C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
     end
 end
 
@@ -17973,54 +17974,200 @@ end
 -- No UIManager window/carrier, no recreation, no per-frame
 -- CreateWindow/RemoveElement calls.
 -- =========================================================
-FALLEN_GLASS_WINDOW_ID =
-    "fallen_lua_glass_base"
+-- =========================================================
+-- Glass blur
+-- Default menu shell + rounded Drawing.DrawBlur underneath.
+-- The rounded mask is built from non-overlapping strips so we
+-- do NOT rely on DrawBlur's own corner clipping.
+-- =========================================================
 
-FALLEN_GLASS_WINDOW_CREATED =
-    FALLEN_GLASS_WINDOW_CREATED
-    or false
+-- Clean up the carrier used by the previous broken build, if it still exists.
+pcall(function()
+    if UIManager then
+        if type(UIManager.SetWindowBlur) == "function" then
+            UIManager.SetWindowBlur(
+                "fallen_lua_glass_base",
+                false,
+                0.0,
+                12
+            )
+        end
 
-FALLEN_GLASS_WINDOW_RECT =
-    FALLEN_GLASS_WINDOW_RECT
+        if type(UIManager.RemoveElement) == "function" then
+            UIManager.RemoveElement(
+                "fallen_lua_glass_base"
+            )
+        end
+    end
+end)
+
+FALLEN_GLASS_BLUR_LAST =
+    FALLEN_GLASS_BLUR_LAST
     or nil
 
-function FALLEN_CLEAR_GLASS_BLUR_LAST()
-    if not UIManager
-        or FALLEN_GLASS_WINDOW_CREATED ~= true
+function FALLEN_DRAW_GLASS_BLUR_MASK(
+    x,
+    y,
+    w,
+    h,
+    radius,
+    intensity
+)
+    if not Drawing
+        or type(Drawing.DrawBlur) ~= "function"
     then
+        return false
+    end
+
+    intensity =
+        clamp(
+            tonumber(intensity) or 0,
+            0,
+            1
+        )
+
+    radius =
+        clamp(
+            tonumber(radius) or 0,
+            0,
+            math.min(w * 0.5, h * 0.5)
+        )
+
+    if radius <= 0.5 then
+        pcall(function()
+            Drawing.DrawBlur(
+                x,
+                y,
+                w,
+                h,
+                0,
+                intensity,
+                0,
+                0,
+                0,
+                0
+            )
+        end)
+
+        return true
+    end
+
+    -- Middle rectangle: full width, no overlap with top/bottom rounded bands.
+    local middle_h =
+        math.max(
+            0,
+            h - radius * 2
+        )
+
+    if middle_h > 0 then
+        pcall(function()
+            Drawing.DrawBlur(
+                x,
+                y + radius,
+                w,
+                middle_h,
+                0,
+                intensity,
+                0,
+                0,
+                0,
+                0
+            )
+        end)
+    end
+
+    -- Eight 2px-ish bands per rounded edge at the stock radius 16.
+    -- Each band uses the circle equation to keep every blur pixel INSIDE
+    -- the same rounded silhouette as the normal menu.
+    local strips =
+        8
+
+    local strip_h =
+        radius / strips
+
+    for i = 0, strips - 1 do
+        local sy =
+            i * strip_h
+
+        local dy =
+            radius - sy
+
+        local inside =
+            math.max(
+                0,
+                radius * radius
+                - dy * dy
+            )
+
+        local inset =
+            radius
+            - math.sqrt(
+                inside
+            )
+
+        local sw =
+            math.max(
+                0,
+                w - inset * 2
+            )
+
+        if sw > 0
+            and strip_h > 0
+        then
+            pcall(function()
+                Drawing.DrawBlur(
+                    x + inset,
+                    y + sy,
+                    sw,
+                    strip_h + 0.02,
+                    0,
+                    intensity,
+                    0,
+                    0,
+                    0,
+                    0
+                )
+            end)
+
+            pcall(function()
+                Drawing.DrawBlur(
+                    x + inset,
+                    y + h - sy - strip_h,
+                    sw,
+                    strip_h + 0.02,
+                    0,
+                    intensity,
+                    0,
+                    0,
+                    0,
+                    0
+                )
+            end)
+        end
+    end
+
+    return true
+end
+
+function FALLEN_CLEAR_GLASS_BLUR_LAST()
+    if not FALLEN_GLASS_BLUR_LAST then
         return
     end
 
-    -- Disable the acrylic first, hide the window, then remove it.
-    -- UIManager owns the blur lifecycle, so there is no stale DrawBlur
-    -- rectangle left behind after the custom menu closes.
-    pcall(function()
-        UIManager.SetWindowBlur(
-            FALLEN_GLASS_WINDOW_ID,
-            false,
-            0.0,
-            12
-        )
-    end)
+    local r =
+        FALLEN_GLASS_BLUR_LAST
 
-    pcall(function()
-        UIManager.SetElementVisible(
-            FALLEN_GLASS_WINDOW_ID,
-            false
-        )
-    end)
-
-    pcall(function()
-        UIManager.RemoveElement(
-            FALLEN_GLASS_WINDOW_ID
-        )
-    end)
-
-    FALLEN_GLASS_WINDOW_CREATED =
-        false
-
-    FALLEN_GLASS_WINDOW_RECT =
-        nil
+    -- Keep overwriting the last blur region with zero intensity every closed
+    -- frame. We intentionally keep LAST instead of clearing the table once,
+    -- because the blur backend may have a buffered frame.
+    FALLEN_DRAW_GLASS_BLUR_MASK(
+        r[1],
+        r[2],
+        r[3],
+        r[4],
+        r[5],
+        0
+    )
 end
 
 function FALLEN_DRAW_GLASS_BLUR(
@@ -18041,9 +18188,8 @@ function FALLEN_DRAW_GLASS_BLUR(
         return false
     end
 
-    if not UIManager
-        or type(UIManager.CreateWindow) ~= "function"
-        or type(UIManager.SetWindowBlur) ~= "function"
+    if not Drawing
+        or type(Drawing.DrawBlur) ~= "function"
     then
         return false
     end
@@ -18057,121 +18203,72 @@ function FALLEN_DRAW_GLASS_BLUR(
             1
         )
 
-    if open_alpha <= 0.004 then
-        FALLEN_CLEAR_GLASS_BLUR_LAST()
-        return false
-    end
-
-    -- UIManager windows use real screen coordinates.
     local bx =
-        snap(
-            FALLEN_UI_X(
-                x
-            )
+        FALLEN_UI_X(
+            x
         )
 
     local by =
-        snap(
-            FALLEN_UI_Y(
-                y
-            )
+        FALLEN_UI_Y(
+            y
         )
 
     local bw =
-        snap(
-            FALLEN_UI_LEN(
-                w
-            )
+        FALLEN_UI_LEN(
+            w
         )
 
     local bh =
-        snap(
-            FALLEN_UI_LEN(
-                h
-            )
+        FALLEN_UI_LEN(
+            h
         )
 
     local br =
-        math.max(
-            1,
-            snap(
-                FALLEN_UI_LEN(
-                    rounding
-                    or 12
-                )
-            )
+        FALLEN_UI_LEN(
+            rounding
+            or 16
         )
 
+    -- If the menu moved, erase the previous blur position first.
     local old =
-        FALLEN_GLASS_WINDOW_RECT
+        FALLEN_GLASS_BLUR_LAST
 
-    local rect_changed =
-        not old
-        or math.abs((old[1] or 0) - bx) > 0.5
-        or math.abs((old[2] or 0) - by) > 0.5
-        or math.abs((old[3] or 0) - bw) > 0.5
-        or math.abs((old[4] or 0) - bh) > 0.5
-        or math.abs((old[5] or 0) - br) > 0.5
-
-    if FALLEN_GLASS_WINDOW_CREATED ~= true
-        or rect_changed
+    if old
+        and (
+            math.abs((old[1] or 0) - bx) > 0.25
+            or math.abs((old[2] or 0) - by) > 0.25
+            or math.abs((old[3] or 0) - bw) > 0.25
+            or math.abs((old[4] or 0) - bh) > 0.25
+        )
     then
-        if FALLEN_GLASS_WINDOW_CREATED == true then
-            FALLEN_CLEAR_GLASS_BLUR_LAST()
-        end
-
-        local created =
-            false
-
-        pcall(function()
-            -- Correct API order:
-            -- id, label, width, height, x, y
-            UIManager.CreateWindow(
-                FALLEN_GLASS_WINDOW_ID,
-                "",
-                bw,
-                bh,
-                bx,
-                by
-            )
-
-            created =
-                true
-        end)
-
-        if not created then
-            return false
-        end
-
-        FALLEN_GLASS_WINDOW_CREATED =
-            true
-
-        FALLEN_GLASS_WINDOW_RECT = {
-            bx,
-            by,
-            bw,
-            bh,
-            br,
-        }
+        FALLEN_DRAW_GLASS_BLUR_MASK(
+            old[1],
+            old[2],
+            old[3],
+            old[4],
+            old[5],
+            0
+        )
     end
 
-    pcall(function()
-        UIManager.SetElementVisible(
-            FALLEN_GLASS_WINDOW_ID,
-            true
-        )
-    end)
+    -- Same alpha as the menu animation.
+    -- At alpha 0 this actively submits a zero-blur rounded mask.
+    FALLEN_DRAW_GLASS_BLUR_MASK(
+        bx,
+        by,
+        bw,
+        bh,
+        br,
+        0.70 * open_alpha
+    )
 
-    -- This is now the actual Glass shell.
-    -- UIManager.SetWindowBlur owns the rounded clip and blur lifetime.
-    pcall(function()
-        UIManager.SetWindowBlur(
-            FALLEN_GLASS_WINDOW_ID,
-            true,
-            0.70 * open_alpha,
-            br
-        )
-    end)
+    FALLEN_GLASS_BLUR_LAST = {
+        bx,
+        by,
+        bw,
+        bh,
+        br,
+    }
 
     return true
 end
@@ -23886,16 +23983,11 @@ hooks.on_render(function()
     MENU_UI_ORIGIN_X = wx
     MENU_UI_ORIGIN_Y = wy
 
-    -- Default/Gradient keep the small vertical open/close motion.
-    -- Glass uses UIManager.SetWindowBlur as the actual shell, so keep its
-    -- rectangle fixed and animate it with the same alpha instead.
-    if tostring(S.menu_type or "glass"):lower() ~= "glass"
-        or S.menu_glass_blur_enabled ~= true
-    then
-        wy =
-            wy
-            + (1 - MENU_RENDER_ALPHA) * 16
-    end
+    -- Whole window rises gently into place on open and drops on close.
+    -- Drawing blur follows these exact coordinates every frame.
+    wy =
+        wy
+        + (1 - MENU_RENDER_ALPHA) * 16
 
     -- Snap the menu root to integer pixels so the Drawing text stays crisp.
     wx = snap(wx)
@@ -24014,22 +24106,24 @@ hooks.on_render(function()
             menu_base_alpha
         )
 
-    elseif is_glass_menu
-        and S.menu_glass_blur_enabled == true
-    then
-        -- Glass uses DrawBlur AS THE MENU SHELL, not behind another opaque base.
-        FALLEN_DRAW_GLASS_BLUR(
-            wx,
-            wy,
-            WIN_W,
-            WIN_H,
-            OUTER_R,
-            menu_base_alpha
-        )
-
     else
-        FALLEN_CLEAR_GLASS_BLUR_LAST()
+        if is_glass_menu
+            and S.menu_glass_blur_enabled == true
+        then
+            -- Blur is part of the normal Default-style base.
+            FALLEN_DRAW_GLASS_BLUR(
+                wx,
+                wy,
+                WIN_W,
+                WIN_H,
+                OUTER_R,
+                menu_base_alpha
+            )
+        else
+            FALLEN_CLEAR_GLASS_BLUR_LAST()
+        end
 
+        -- SAME shell construction as Default: rounded left + rounded right.
         rounded_left_fill(
             wx,
             wy,
