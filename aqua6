@@ -6010,6 +6010,324 @@ function FALLEN_DRAW_SILENT_PART_DROPDOWN(
 end
 
 
+
+function FALLEN_SILENT_SLIDER_ROW(
+    mx,
+    my,
+    clicked,
+    lmb,
+    x,
+    y,
+    w,
+    label,
+    key,
+    minv,
+    maxv
+)
+    local h = 41
+
+    local row_hot =
+        row_hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            h
+        )
+
+    text(
+        x + 13,
+        y + 14,
+        label,
+        FALLEN_HOVER_TEXT(
+            "silent_slider:"
+                .. tostring(key),
+            row_hot,
+            C.text
+        )
+    )
+
+    local box_w = 58
+    local box_x =
+        x + w - box_w - 10
+
+    local box_y =
+        y + 8
+
+    local track_x =
+        x + 132
+
+    local track_w =
+        math.max(
+            54,
+            box_x - track_x - 12
+        )
+
+    local track_y =
+        y + 20
+
+    local current =
+        tonumber(S[key])
+        or minv
+
+    current =
+        clamp(
+            current,
+            minv,
+            maxv
+        )
+
+    if A.slider_target[key] == nil then
+        A.slider_target[key] =
+            current
+    end
+
+    if A.slider_visual[key] == nil then
+        A.slider_visual[key] =
+            current
+    end
+
+    if A.slider_knob[key] == nil then
+        A.slider_knob[key] =
+            1
+    end
+
+    local value_hot =
+        hover(
+            mx,
+            my,
+            box_x,
+            box_y,
+            box_w,
+            25
+        )
+
+    if clicked
+        and value_hot
+    then
+        A.active_slider =
+            nil
+
+        if A.numeric.active_key ~= key then
+            numeric_start(
+                key,
+                minv,
+                maxv,
+                "int"
+            )
+        end
+    end
+
+    local editing =
+        A.numeric.active_key == key
+
+    -- Much larger hitbox than the generic slider.
+    -- Any LMB hold on the slider area starts/continues drag.
+    local hit_x =
+        track_x - 14
+
+    local hit_y =
+        y + 4
+
+    local hit_w =
+        track_w + 28
+
+    local hit_h =
+        33
+
+    local slider_hot =
+        hover(
+            mx,
+            my,
+            hit_x,
+            hit_y,
+            hit_w,
+            hit_h
+        )
+
+    if lmb
+        and slider_hot
+        and not value_hot
+        and not editing
+        and not A.silent_part_dropdown_open
+    then
+        numeric_stop(true)
+
+        A.active_slider =
+            key
+    end
+
+    local active =
+        A.active_slider == key
+
+    if active then
+        if lmb then
+            local nt =
+                clamp(
+                    (mx - track_x)
+                    / track_w,
+                    0,
+                    1
+                )
+
+            local value =
+                minv
+                + (maxv - minv)
+                * nt
+
+            value =
+                math.floor(
+                    value + 0.5
+                )
+
+            S[key] =
+                value
+
+            A.slider_target[key] =
+                value
+
+            A.slider_visual[key] =
+                value
+
+            if type(FALLEN_SILENT_UI_VALUE_CHANGED)
+                == "function"
+            then
+                FALLEN_SILENT_UI_VALUE_CHANGED(
+                    key,
+                    value
+                )
+            end
+
+            current =
+                value
+        else
+            A.active_slider =
+                nil
+        end
+    elseif not editing then
+        -- No delayed state fighting the live value when not dragging.
+        A.slider_target[key] =
+            current
+    end
+
+    if editing then
+        current =
+            clamp(
+                tonumber(S[key])
+                or current,
+                minv,
+                maxv
+            )
+
+        A.slider_target[key] =
+            current
+
+        A.slider_visual[key] =
+            current
+    end
+
+    local visual =
+        tonumber(
+            A.slider_visual[key]
+        )
+        or current
+
+    if not active then
+        visual =
+            lerp(
+                visual,
+                current,
+                0.30
+            )
+    end
+
+    A.slider_visual[key] =
+        visual
+
+    local t =
+        clamp(
+            (visual - minv)
+            / (maxv - minv),
+            0,
+            1
+        )
+
+    rounded_fill(
+        track_x,
+        track_y,
+        track_w,
+        4,
+        2,
+        C.toggle_off
+    )
+
+    rounded_fill(
+        track_x,
+        track_y,
+        track_w * t,
+        4,
+        2,
+        C.accent
+    )
+
+    local knob_scale =
+        active
+        and 1.34
+        or (
+            slider_hot
+            and 1.12
+            or 1
+        )
+
+    local kr =
+        5 * knob_scale
+
+    local kx =
+        track_x
+        + track_w * t
+
+    rounded_fill(
+        kx - kr,
+        track_y + 2 - kr,
+        kr * 2,
+        kr * 2,
+        kr,
+        C.accent
+    )
+
+    rounded_fill(
+        box_x,
+        box_y,
+        box_w,
+        25,
+        6,
+        value_hot
+            and { 0.110, 0.115, 0.135, 1 }
+            or C.toggle_off
+    )
+
+    centered_text(
+        box_x + box_w * 0.5,
+        box_y + 7,
+        editing
+            and (
+                A.numeric.buffer ~= ""
+                and A.numeric.buffer
+                or "|"
+            )
+            or tostring(
+                math.floor(
+                    current + 0.5
+                )
+            ),
+        editing
+            and C.accent
+            or C.text
+    )
+end
+
+
 function FALLEN_DRAW_SILENT_AIM_PAGE(
     mx,
     my,
@@ -6254,7 +6572,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         11
     )
 
-    slider_row(
+    FALLEN_SILENT_SLIDER_ROW(
         mx,
         my,
         clicked,
@@ -6265,8 +6583,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         "Max Distance",
         "silent_max_dist",
         50,
-        3000,
-        "int"
+        3000
     )
 
     line(
@@ -6401,7 +6718,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         1
     )
 
-    slider_row(
+    FALLEN_SILENT_SLIDER_ROW(
         mx,
         my,
         clicked,
@@ -6412,8 +6729,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         "FOV",
         "silent_fov",
         10,
-        600,
-        "int"
+        600
     )
 
     -- Draw the dropdown last so it unfolds over the rows below it.
