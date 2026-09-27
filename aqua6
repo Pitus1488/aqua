@@ -6022,15 +6022,15 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
     if A.silent_distance_page_seen ~= true then
         A.silent_distance_force_sync =
             true
+
+        FALLEN_SILENT_SYNC_UI_FROM_LIVE()
+
+        A.silent_distance_force_sync =
+            false
+
+        A.silent_distance_page_seen =
+            true
     end
-
-    FALLEN_SILENT_SYNC_UI_FROM_LIVE()
-
-    A.silent_distance_force_sync =
-        false
-
-    A.silent_distance_page_seen =
-        true
 
     local gap = 16
     local left_w =
@@ -10507,6 +10507,43 @@ function FALLEN_SILENT_SET_ENABLED(
 
     FALLEN_SILENT_FORCE_HOLD()
 
+    if value == true
+        and cheat
+        and type(cheat.enable) == "function"
+    then
+        -- Key + HOLD mode are already written before this call.
+        -- With a real VK assigned, the master can be enabled without
+        -- intentionally using a toggle bind.
+        local bind_vk =
+            math.floor(
+                tonumber(S.silent_key)
+                or 0
+            )
+
+        if bind_vk > 0 then
+            pcall(function()
+                cheat.enable(
+                    "silent_aim",
+                    true
+                )
+            end)
+
+            -- cheat.enable may touch bind state, so immediately restore
+            -- the exact HOLD settings and clear any stale latch.
+            FALLEN_SILENT_WRITE_FIELD(
+                "key",
+                bind_vk
+            )
+
+            FALLEN_SILENT_FORCE_HOLD()
+
+            FALLEN_SILENT_WRITE_FIELD(
+                "enabled",
+                true
+            )
+        end
+    end
+
     -- Silent method stays Raycast.
     FALLEN_SILENT_WRITE_FIELD(
         "method",
@@ -10514,10 +10551,6 @@ function FALLEN_SILENT_SET_ENABLED(
     )
 
     if value ~= true then
-        FALLEN_SILENT_SET_MAGIC_BULLET(
-            false
-        )
-
         -- Explicit disable can safely use the master helper too.
         if cheat
             and type(cheat.enable) == "function"
@@ -10541,12 +10574,16 @@ function FALLEN_SILENT_SET_MAGIC_BULLET(
     value =
         value == true
 
+    -- Our menu is authoritative while it is open.
+    S.silent_magic_bullet =
+        value
+
     FALLEN_SILENT_WRITE_FIELD(
         "magic_bullet",
         value
     )
 
-    -- This feature name is documented too; keep master + section mirror aligned.
+    -- Keep the built-in feature master aligned too.
     if cheat
         and type(cheat.enable) == "function"
     then
@@ -10557,6 +10594,12 @@ function FALLEN_SILENT_SET_MAGIC_BULLET(
             )
         end)
     end
+
+    -- Mirror once more after the feature helper in case it rewrites the section.
+    FALLEN_SILENT_WRITE_FIELD(
+        "magic_bullet",
+        value
+    )
 end
 
 
@@ -11068,8 +11111,7 @@ function FALLEN_SILENT_APPLY_ALL_LIVE()
     )
 
     FALLEN_SILENT_SET_MAGIC_BULLET(
-        S.silent_enabled == true
-        and S.silent_magic_bullet == true
+        S.silent_magic_bullet == true
     )
 
     FALLEN_SILENT_FORCE_HOLD()
@@ -11101,10 +11143,6 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
             FALLEN_SILENT_APPLY_ALL_LIVE()
         else
             FALLEN_SILENT_SET_ENABLED(
-                false
-            )
-
-            FALLEN_SILENT_SET_MAGIC_BULLET(
                 false
             )
         end
@@ -11170,9 +11208,10 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
 
     if key == "silent_magic_bullet" then
         FALLEN_SILENT_SET_MAGIC_BULLET(
-            S.silent_enabled == true
-            and value == true
+            value == true
         )
+
+        return
     end
 end
 
