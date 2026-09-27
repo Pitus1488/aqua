@@ -17074,193 +17074,67 @@ function FALLEN_WORLD_DRAW_DYNAMIC_ICON(
     return true
 end
 
-WORLD_BODY_BAG_ICON_PAGE =
-    "https://dompic.com/i/faKBJwJM"
+WORLD_BODY_BAG_ICON_URL =
+    "https://iimg.su/i/W1t8Y8"
 
-WORLD_BODY_BAG_ICON_STATE =
-    WORLD_BODY_BAG_ICON_STATE
-    or {
-        resolved = false,
-        direct_url = nil,
-        handle = nil,
-        dead = false,
-    }
+WORLD_BODY_BAG_ICON_HANDLE =
+    WORLD_BODY_BAG_ICON_HANDLE
+    or nil
 
-function FALLEN_WORLD_RESOLVE_IMAGE_PAGE_URL(page_url)
-    if type(page_url) ~= "string"
-        or page_url == ""
-        or not Http
-        or type(Http.get) ~= "function"
-    then
-        return nil
-    end
-
-    local body = nil
-
-    pcall(function()
-        local ok, status, response =
-            Http.get(
-                page_url,
-                { timeout_ms = 7000 }
-            )
-
-        if ok
-            and status == 200
-            and type(response) == "string"
-            and response ~= ""
-        then
-            body = response
-        end
-    end)
-
-    if not body then
-        return nil
-    end
-
-    -- Dompic / image-host pages normally expose the actual image through
-    -- one of these metadata tags. Accept both attribute orders.
-    local direct =
-        body:match(
-            '<meta[^>]-property%s*=%s*["\']og:image["\'][^>]-content%s*=%s*["\']([^"\']+)' 
-        )
-        or body:match(
-            '<meta[^>]-content%s*=%s*["\']([^"\']+)["\'][^>]-property%s*=%s*["\']og:image["\']'
-        )
-        or body:match(
-            '<meta[^>]-name%s*=%s*["\']twitter:image["\'][^>]-content%s*=%s*["\']([^"\']+)'
-        )
-        or body:match(
-            '<meta[^>]-content%s*=%s*["\']([^"\']+)["\'][^>]-name%s*=%s*["\']twitter:image["\']'
-        )
-        or body:match(
-            '<link[^>]-rel%s*=%s*["\']image_src["\'][^>]-href%s*=%s*["\']([^"\']+)'
-        )
-        or body:match(
-            '<link[^>]-href%s*=%s*["\']([^"\']+)["\'][^>]-rel%s*=%s*["\']image_src["\']'
-        )
-
-    -- Last-resort common raw-image src patterns used by small image hosts.
-    if not direct then
-        direct =
-            body:match(
-                '<img[^>]-src%s*=%s*["\'](https?://[^"\']+%.[Pp][Nn][Gg][^"\']*)'
-            )
-            or body:match(
-                '<img[^>]-src%s*=%s*["\'](https?://[^"\']+%.[Jj][Pp][Ee]?[Gg][^"\']*)'
-            )
-            or body:match(
-                '<img[^>]-src%s*=%s*["\'](https?://[^"\']+%.[Ww][Ee][Bb][Pp][^"\']*)'
-            )
-    end
-
-    if type(direct) ~= "string"
-        or direct == ""
-    then
-        return nil
-    end
-
-    direct =
-        direct:gsub("&amp;", "&")
-
-    if direct:sub(1, 2) == "//" then
-        direct =
-            "https:"
-            .. direct
-    elseif direct:sub(1, 1) == "/" then
-        local origin =
-            page_url:match(
-                "^(https?://[^/]+)"
-            )
-
-        if origin then
-            direct =
-                origin
-                .. direct
-        end
-    end
-
-    return direct
-end
+WORLD_BODY_BAG_ICON_FAILED =
+    WORLD_BODY_BAG_ICON_FAILED
+    or false
 
 function FALLEN_WORLD_BODY_BAG_ICON()
-    local st =
-        WORLD_BODY_BAG_ICON_STATE
-
-    if not st.resolved then
-        st.resolved = true
-        st.direct_url =
-            FALLEN_WORLD_RESOLVE_IMAGE_PAGE_URL(
-                WORLD_BODY_BAG_ICON_PAGE
-            )
+    if WORLD_BODY_BAG_ICON_FAILED == true then
+        return nil
     end
 
-    -- Load only the resolved RAW image URL, never the Dompic landing page.
-    if st.direct_url
-        and not st.dead
-        and not st.handle
-        and type(LoadImage) == "function"
-    then
-        local ok, handle =
-            pcall(
-                LoadImage,
-                st.direct_url
-            )
-
-        if ok and handle then
-            st.handle = handle
-        else
-            st.dead = true
-        end
-    end
-
-    if st.handle
+    if WORLD_BODY_BAG_ICON_HANDLE
         and type(IsImageReady) == "function"
     then
         local ok, ready =
             pcall(
                 IsImageReady,
-                st.handle
+                WORLD_BODY_BAG_ICON_HANDLE
             )
 
         if ok and ready == true then
-            return st.handle
+            return WORLD_BODY_BAG_ICON_HANDLE
         end
     end
 
-    if st.handle
+    if WORLD_BODY_BAG_ICON_HANDLE
         and type(IsImageFailed) == "function"
     then
         local ok, failed =
             pcall(
                 IsImageFailed,
-                st.handle
+                WORLD_BODY_BAG_ICON_HANDLE
             )
 
         if ok and failed == true then
-            st.dead = true
-            st.handle = nil
+            WORLD_BODY_BAG_ICON_FAILED = true
+            WORLD_BODY_BAG_ICON_HANDLE = nil
+            return nil
         end
     end
 
-    -- Fallback to the already-existing huge Armor/item icon resolver.
-    -- It has its own URL chain/cache and does not perform a new HTTP page
-    -- request every frame.
-    if type(FALLEN_ARMOR_ICON) == "function" then
-        local fallback =
-            FALLEN_ARMOR_ICON(
-                "Body Bag"
+    if not WORLD_BODY_BAG_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        local ok, handle =
+            pcall(
+                LoadImage,
+                WORLD_BODY_BAG_ICON_URL
             )
 
-        if fallback then
-            return fallback
+        if ok and handle then
+            WORLD_BODY_BAG_ICON_HANDLE = handle
+        else
+            WORLD_BODY_BAG_ICON_FAILED = true
+            return nil
         end
-    end
-
-    if type(FALLEN_WEAPON_ICON) == "function" then
-        return
-            FALLEN_WEAPON_ICON(
-                "Body Bag"
-            )
     end
 
     return nil
