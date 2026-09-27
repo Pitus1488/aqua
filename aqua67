@@ -11345,8 +11345,8 @@ FALLEN_WEAPON_ITEMS = {
 }
 
 FALLEN_WEAPON_DIRECT_ICON_URLS = {
-["Yellow Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/db/Yellow_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164239",
-["Yellow Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/db/Yellow_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164239",
+["Yellow Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/db/Yellow_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164239&format=png",
+["Yellow Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/db/Yellow_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164239&format=png",
 ["Thread"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/0e/Thread.png/revision/latest?format=original",
 ["Tarp"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4d/Tarp.png/revision/latest?format=original",
 ["Tape"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/06/Tape.png/revision/latest?format=original",
@@ -11356,17 +11356,17 @@ FALLEN_WEAPON_DIRECT_ICON_URLS = {
 ["SMG Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/94/SMG_Receiver.png/revision/latest?format=original",
 ["Rope"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/b/b2/Rope.png/revision/latest?format=original",
 ["Rifle Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/8/80/Rifle_Receiver1.png/revision/latest?format=original",
-["Red Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Red_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164415",
-["Red Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Red_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164415",
+["Red Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Red_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164415&format=png",
+["Red Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Red_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164415&format=png",
 ["Raspberries"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/100?cb=20250108163842",
-["Purple Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/18/Purple_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164311",
-["Purple Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/18/Purple_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164311",
+["Purple Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/18/Purple_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164311&format=png",
+["Purple Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/18/Purple_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164311&format=png",
 ["Power cell"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/09/Power_Cell.png/revision/latest?format=original",
 ["Power Cell"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/09/Power_Cell.png/revision/latest?format=original",
 ["Pistol Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Pistol_Receiver.png/revision/latest?format=original",
 ["Pipe"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6e/Pipe.png/revision/latest?format=original",
-["Pink Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/19/Pink_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164341",
-["Pink Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/19/Pink_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164341",
+["Pink Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/19/Pink_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164341&format=png",
+["Pink Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/19/Pink_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164341&format=png",
 ["Milk"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4d/Milk.png/revision/latest?format=original",
 ["Metal Scraps"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/16/Metal_Scraps.png/revision/latest?format=original",
 ["Metal Plating"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/5c/Metal_Plating.png/revision/latest?format=original",
@@ -16975,10 +16975,10 @@ function FALLEN_DROPPED_ITEM_CLEAN_NAME(name)
 end
 
 FALLEN_KEYCARD_ICON_URLS = {
-    ["Yellow Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/db/Yellow_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164239",
-    ["Purple Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/18/Purple_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164311",
-    ["Pink Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/19/Pink_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164341",
-    ["Red Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Red_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164415",
+    ["Yellow Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/db/Yellow_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164239&format=png",
+    ["Purple Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/18/Purple_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164311&format=png",
+    ["Pink Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/19/Pink_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164341&format=png",
+    ["Red Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Red_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164415&format=png",
 }
 
 FALLEN_KEYCARD_ICON_ALIASES = {
@@ -17026,6 +17026,7 @@ function FALLEN_KEYCARD_ICON(name)
         st = {
             handle = nil,
             failed = false,
+            tried_png = true,
         }
         FALLEN_KEYCARD_ICON_CACHE[canonical] = st
 
