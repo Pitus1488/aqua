@@ -334,6 +334,8 @@ local defaults = {
     silent_sticky_aim = false,
     silent_max_dist = 1200,
     silent_target_part = "Head",
+    silent_key = 0,
+    silent_fov = 180,
     silent_magic_bullet = false,
 
     trigger_enabled = false,
@@ -478,6 +480,11 @@ local A = {
     silent_part_dropdown_last_t = nil,
     silent_distance_page_seen = false,
     silent_distance_force_sync = false,
+
+    -- Silent live keybind capture.
+    silent_bind_listening = false,
+    silent_bind_wait_release = false,
+    silent_bind_prev = {},
 
     aim_bind_listening = false,
     aim_bind_wait_release = false,
@@ -1641,6 +1648,112 @@ local function aim_bind_poll()
         A.aim_bind_prev[vk] = down
     end
 end
+
+
+function FALLEN_SILENT_BIND_CANCEL()
+    A.silent_bind_listening =
+        false
+
+    A.silent_bind_wait_release =
+        false
+
+    A.silent_bind_prev =
+        {}
+end
+
+
+function FALLEN_SILENT_BIND_START()
+    if numeric_stop then
+        numeric_stop(true)
+    end
+
+    A.silent_part_dropdown_open =
+        false
+
+    A.silent_bind_listening =
+        true
+
+    A.silent_bind_wait_release =
+        true
+
+    A.silent_bind_prev =
+        {}
+end
+
+
+function FALLEN_SILENT_BIND_POLL()
+    if not A.silent_bind_listening then
+        return
+    end
+
+    -- Ignore the Mouse1 press that opened the key capture.
+    if A.silent_bind_wait_release then
+        if not key_down(VK_LBUTTON)
+            and not key_down(VK_RBUTTON)
+        then
+            A.silent_bind_wait_release =
+                false
+
+            A.silent_bind_prev =
+                {}
+
+            for vk = 1, 255 do
+                A.silent_bind_prev[vk] =
+                    key_down(vk)
+            end
+        end
+
+        return
+    end
+
+    for vk = 1, 255 do
+        local down =
+            key_down(vk)
+
+        local was =
+            A.silent_bind_prev[vk]
+            == true
+
+        if down
+            and not was
+        then
+            -- Esc = cancel capture.
+            if vk == 0x1B then
+                FALLEN_SILENT_BIND_CANCEL()
+                return
+            end
+
+            -- Backspace/Delete = clear bind.
+            if vk == 0x08
+                or vk == 0x2E
+            then
+                S.silent_key =
+                    0
+
+                if type(FALLEN_SILENT_SET_KEY) == "function" then
+                    FALLEN_SILENT_SET_KEY(0)
+                end
+
+                FALLEN_SILENT_BIND_CANCEL()
+                return
+            end
+
+            S.silent_key =
+                vk
+
+            if type(FALLEN_SILENT_SET_KEY) == "function" then
+                FALLEN_SILENT_SET_KEY(vk)
+            end
+
+            FALLEN_SILENT_BIND_CANCEL()
+            return
+        end
+
+        A.silent_bind_prev[vk] =
+            down
+    end
+end
+
 
 numeric_stop = function(commit)
     local n = A.numeric
@@ -3300,6 +3413,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
 
         if aim_bind_cancel then
             aim_bind_cancel()
+            FALLEN_SILENT_BIND_CANCEL()
         end
 
         if numeric_stop then
@@ -5746,7 +5860,7 @@ function FALLEN_DRAW_SILENT_PART_DROPDOWN(
     local options = {
         "Head",
         "Torso",
-        "Feet",
+        "Closest",
     }
 
     local item_h = 27
@@ -5944,7 +6058,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         lx,
         cy + 25,
         left_w,
-        166,
+        220,
         11
     )
 
@@ -6023,6 +6137,102 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         false
     )
 
+    line(
+        lx + 12,
+        cy + 195,
+        lx + left_w - 12,
+        cy + 195,
+        C.divider,
+        1
+    )
+
+    -- Live Silent keybind.
+    row_hover(
+        mx,
+        my,
+        lx,
+        cy + 196,
+        left_w,
+        41
+    )
+
+    text(
+        lx + 13,
+        cy + 210,
+        "Keybind",
+        C.text
+    )
+
+    local silent_chip_w = 112
+    local silent_chip_h = 25
+
+    local silent_chip_x =
+        lx
+        + left_w
+        - silent_chip_w
+        - 12
+
+    local silent_chip_y =
+        cy + 204
+
+    local silent_chip_hot =
+        hover(
+            mx,
+            my,
+            silent_chip_x,
+            silent_chip_y,
+            silent_chip_w,
+            silent_chip_h
+        )
+
+    rounded_fill(
+        silent_chip_x,
+        silent_chip_y,
+        silent_chip_w,
+        silent_chip_h,
+        6,
+        silent_chip_hot
+            and { 0.110, 0.115, 0.135, 1 }
+            or C.toggle_off
+    )
+
+    if A.silent_bind_listening then
+        rounded_outline(
+            silent_chip_x,
+            silent_chip_y,
+            silent_chip_w,
+            silent_chip_h,
+            6,
+            alpha(
+                C.accent,
+                0.78
+            ),
+            1,
+            C.toggle_off
+        )
+    end
+
+    centered_text(
+        silent_chip_x
+            + silent_chip_w * 0.5,
+        silent_chip_y + 7,
+        A.silent_bind_listening
+            and "Press key..."
+            or aim_vk_name(
+                S.silent_key
+                or 0
+            ),
+        A.silent_bind_listening
+            and C.accent
+            or C.text
+    )
+
+    if clicked
+        and silent_chip_hot
+    then
+        FALLEN_SILENT_BIND_START()
+    end
+
     -- =====================================================
     -- SELECTION
     -- =====================================================
@@ -6036,7 +6246,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         rx,
         cy + 25,
         right_w,
-        84,
+        130,
         11
     )
 
@@ -6166,6 +6376,30 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
             dropdown_y,
             field_w
         )
+
+    line(
+        rx + 12,
+        cy + 113,
+        rx + right_w - 12,
+        cy + 113,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        clicked,
+        lmb,
+        rx,
+        cy + 114,
+        right_w,
+        "FOV",
+        "silent_fov",
+        10,
+        600,
+        "int"
+    )
 
     -- Click outside closes it, exactly like a normal settings dropdown.
     if clicked
@@ -9877,6 +10111,37 @@ function FALLEN_SILENT_FIND_LIVE_KEY(
         wanted = {
             "enabled",
         }
+    elseif purpose == "key" then
+        wanted = {
+            "key",
+            "aim_key",
+            "aimkey",
+            "silent_key",
+            "silentkey",
+            "hotkey",
+            "bind",
+            "keybind",
+        }
+    elseif purpose == "key_mode" then
+        wanted = {
+            "key_mode",
+            "keymode",
+            "bind_mode",
+            "bindmode",
+        }
+    elseif purpose == "fov" then
+        wanted = {
+            "fov",
+            "fov_size",
+            "fovsize",
+        }
+    elseif purpose == "fov_only" then
+        wanted = {
+            "fov_only",
+            "fovonly",
+            "use_fov",
+            "usefov",
+        }
     end
 
     if type(wanted) ~= "table" then
@@ -9899,6 +10164,14 @@ function FALLEN_SILENT_FIND_LIVE_KEY(
             return "sticky_aim"
         elseif purpose == "max_distance" then
             return "max_distance"
+        elseif purpose == "key" then
+            return "key"
+        elseif purpose == "key_mode" then
+            return "key_mode"
+        elseif purpose == "fov" then
+            return "fov"
+        elseif purpose == "fov_only" then
+            return "fov_only"
         end
 
         return nil
@@ -10517,8 +10790,11 @@ function FALLEN_SILENT_SET_TARGET_PART(
 
     if part == "Torso" then
         index = 1
-    elseif part == "Feet" then
+    elseif part == "Closest"
+        or part == "Feet"
+    then
         index = 2
+        part = "Closest"
     end
 
     S.silent_target_part =
@@ -10537,6 +10813,61 @@ function FALLEN_SILENT_SET_TARGET_PART(
     FALLEN_SILENT_WRITE_FIELD(
         "target_part",
         index
+    )
+end
+
+
+function FALLEN_SILENT_SET_KEY(
+    value
+)
+    local vk =
+        math.floor(
+            clamp(
+                tonumber(value)
+                or 0,
+                0,
+                255
+            )
+            + 0.5
+        )
+
+    S.silent_key =
+        vk
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "key",
+        vk
+    )
+end
+
+
+function FALLEN_SILENT_SET_FOV(
+    value
+)
+    local fov =
+        math.floor(
+            clamp(
+                tonumber(value)
+                or 180,
+                10,
+                600
+            )
+            + 0.5
+        )
+
+    S.silent_fov =
+        fov
+
+    -- fov is a real Silent Aim field; fov_only makes the value actually
+    -- constrain target selection in builds that expose the toggle.
+    FALLEN_SILENT_WRITE_FIELD(
+        "fov",
+        fov
+    )
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "fov_only",
+        true
     )
 end
 
@@ -10560,6 +10891,14 @@ function FALLEN_SILENT_APPLY_ALL_LIVE()
 
     FALLEN_SILENT_SET_TARGET_PART(
         S.silent_target_part
+    )
+
+    FALLEN_SILENT_SET_KEY(
+        S.silent_key
+    )
+
+    FALLEN_SILENT_SET_FOV(
+        S.silent_fov
     )
 
     FALLEN_SILENT_SET_MAGIC_BULLET(
@@ -10621,6 +10960,22 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
 
     if key == "silent_target_part" then
         FALLEN_SILENT_SET_TARGET_PART(
+            value
+        )
+
+        return
+    end
+
+    if key == "silent_fov" then
+        FALLEN_SILENT_SET_FOV(
+            value
+        )
+
+        return
+    end
+
+    if key == "silent_key" then
+        FALLEN_SILENT_SET_KEY(
             value
         )
 
@@ -10737,7 +11092,7 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
     if part ~= nil then
         if part == 2 then
             S.silent_target_part =
-                "Feet"
+                "Closest"
         elseif part == 1 then
             S.silent_target_part =
                 "Torso"
@@ -10748,6 +11103,68 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
 
         S.aim_target_part =
             S.silent_target_part
+    end
+
+    if not A.silent_bind_listening then
+        local live_key =
+            tonumber(
+                FALLEN_SILENT_READ_FIELD(
+                    "key"
+                )
+            )
+
+        if live_key ~= nil then
+            S.silent_key =
+                math.floor(
+                    clamp(
+                        live_key,
+                        0,
+                        255
+                    )
+                    + 0.5
+                )
+        end
+    end
+
+    local editing_fov =
+        A.active_slider == "silent_fov"
+        or (
+            A.numeric
+            and A.numeric.active_key
+                == "silent_fov"
+        )
+
+    local allow_fov_readback =
+        S.visible ~= true
+        or A.silent_distance_force_sync == true
+
+    if not editing_fov
+        and allow_fov_readback
+    then
+        local live_fov =
+            tonumber(
+                FALLEN_SILENT_READ_FIELD(
+                    "fov"
+                )
+            )
+
+        if live_fov then
+            live_fov =
+                clamp(
+                    live_fov,
+                    10,
+                    600
+                )
+
+            S.silent_fov =
+                live_fov
+
+            A.slider_target.silent_fov =
+                live_fov
+
+            A.slider_visual.silent_fov =
+                live_fov
+        end
     end
 
     local magic =
@@ -10773,7 +11190,9 @@ function FALLEN_SILENT_TARGET_PART_INDEX()
         return 0
     end
 
-    if part == "Feet" then
+    if part == "Closest"
+        or part == "Feet"
+    then
         return 2
     end
 
@@ -26879,6 +27298,7 @@ hooks.on_render(function()
     if rshift
         and not prev_rshift
         and not A.aim_bind_listening
+        and not A.silent_bind_listening
         and not A.config_input_focus
         and not A.color_input.focus
     then
@@ -26892,6 +27312,8 @@ hooks.on_render(function()
             A.aim_settings_anim = 0
             A.aim_part_dropdown_open = false
             A.aim_part_dropdown_anim = 0
+            A.silent_part_dropdown_open = false
+            A.silent_part_dropdown_anim = 0
 
             A.world_settings_open = false
             A.world_settings_anim = 0
@@ -26949,6 +27371,7 @@ hooks.on_render(function()
     -- Poll focused UI input.
     numeric_poll()
     aim_bind_poll()
+    FALLEN_SILENT_BIND_POLL()
     FALLEN_CONFIGS.input_poll()
     FALLEN_COLOR_INPUT_POLL()
 
