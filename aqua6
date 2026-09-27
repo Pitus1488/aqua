@@ -472,6 +472,13 @@ local A = {
     aim_part_dropdown_anim = 0,
     aim_part_dropdown_last_t = nil,
 
+    -- Silent Hit Part dropdown: same animated expansion style as Settings.
+    silent_part_dropdown_open = false,
+    silent_part_dropdown_anim = 0,
+    silent_part_dropdown_last_t = nil,
+    silent_distance_page_seen = false,
+    silent_distance_force_sync = false,
+
     aim_bind_listening = false,
     aim_bind_wait_release = false,
     aim_bind_prev = {},
@@ -3284,6 +3291,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
 
         A.aim_settings_open = false
         A.aim_part_dropdown_open = false
+        A.silent_part_dropdown_open = false
         A.fov_picker_open = false
         A.world_settings_open = false
         A.world_color_picker_open = false
@@ -5665,6 +5673,225 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
 end
 
 
+function FALLEN_SILENT_PART_DROPDOWN_STEP()
+    local now = tick()
+
+    if A.silent_part_dropdown_last_t == nil then
+        A.silent_part_dropdown_last_t =
+            now
+    end
+
+    local dt =
+        clamp(
+            now - A.silent_part_dropdown_last_t,
+            0,
+            0.05
+        )
+
+    A.silent_part_dropdown_last_t =
+        now
+
+    local target =
+        A.silent_part_dropdown_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.silent_part_dropdown_anim or 0)
+        and 16
+        or 12
+
+    A.silent_part_dropdown_anim =
+        exp_chase(
+            A.silent_part_dropdown_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if math.abs(
+        (A.silent_part_dropdown_anim or 0)
+        - target
+    ) < 0.0015 then
+        A.silent_part_dropdown_anim =
+            target
+    end
+
+    return
+        clamp(
+            A.silent_part_dropdown_anim or 0,
+            0,
+            1
+        )
+end
+
+
+function FALLEN_DRAW_SILENT_PART_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    local raw =
+        FALLEN_SILENT_PART_DROPDOWN_STEP()
+
+    if raw <= 0.004
+        and not A.silent_part_dropdown_open
+    then
+        return false
+    end
+
+    local options = {
+        "Head",
+        "Torso",
+        "Feet",
+    }
+
+    local item_h = 27
+
+    local full_h =
+        #options
+        * item_h
+
+    -- Same real downward unfold used by Settings dropdowns.
+    local visible_h =
+        full_h
+        * ease_out_cubic(raw)
+
+    local panel_h =
+        math.max(
+            2,
+            visible_h
+        )
+
+    FALLEN_POPUP_GLOW(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        0.95
+    )
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        { 0.050, 0.053, 0.062, 0.98 }
+    )
+
+    local panel_hot =
+        hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            panel_h
+        )
+
+    for i, option in ipairs(options) do
+        local iy =
+            y
+            + (i - 1)
+            * item_h
+
+        local reveal =
+            clamp(
+                (
+                    visible_h
+                    - (i - 1) * item_h
+                )
+                / item_h,
+                0,
+                1
+            )
+
+        if reveal > 0.12 then
+            local item_hot =
+                reveal > 0.92
+                and hover(
+                    mx,
+                    my,
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4
+                )
+
+            if item_hot then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4,
+                    5,
+                    { 0.105, 0.111, 0.132, 1 }
+                )
+            end
+
+            local selected =
+                tostring(
+                    S.silent_target_part
+                    or "Head"
+                )
+                == option
+
+            if selected then
+                rounded_fill(
+                    x + 4,
+                    iy + 3,
+                    3,
+                    item_h - 6,
+                    1,
+                    C.accent
+                )
+            end
+
+            text(
+                x + 12,
+                iy + 8,
+                option,
+                FALLEN_HOVER_TEXT(
+                    "silent_part_option:"
+                        .. tostring(option),
+                    item_hot,
+                    selected
+                        and C.text
+                        or C.text_dim
+                )
+            )
+
+            if clicked
+                and item_hot
+                and A.silent_part_dropdown_open
+            then
+                S.silent_target_part =
+                    option
+
+                if type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function" then
+                    FALLEN_SILENT_UI_VALUE_CHANGED(
+                        "silent_target_part",
+                        option
+                    )
+                end
+
+                A.silent_part_dropdown_open =
+                    false
+
+                return true
+            end
+        end
+    end
+
+    return panel_hot
+end
+
+
 function FALLEN_DRAW_SILENT_AIM_PAGE(
     mx,
     my,
@@ -5674,7 +5901,18 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
     cy,
     cw
 )
+    if A.silent_distance_page_seen ~= true then
+        A.silent_distance_force_sync =
+            true
+    end
+
     FALLEN_SILENT_SYNC_UI_FROM_LIVE()
+
+    A.silent_distance_force_sync =
+        false
+
+    A.silent_distance_page_seen =
+        true
 
     local gap = 16
     local left_w =
@@ -5826,21 +6064,118 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         1
     )
 
-    dropdown_row(
+    local part_row_x =
+        rx
+
+    local part_row_y =
+        cy + 73
+
+    local part_row_w =
+        right_w
+
+    row_hover(
         mx,
         my,
-        clicked,
-        rx,
-        cy + 73,
-        right_w,
-        "Hit Part",
-        "silent_target_part",
-        {
-            "Head",
-            "Torso",
-            "Feet",
-        }
+        part_row_x,
+        part_row_y,
+        part_row_w,
+        41
     )
+
+    text(
+        part_row_x + 13,
+        part_row_y + 14,
+        "Hit Part",
+        C.text
+    )
+
+    local field_w = 130
+    local field_h = 25
+
+    local field_x =
+        part_row_x
+        + part_row_w
+        - field_w
+        - 12
+
+    local field_y =
+        part_row_y
+        + 8
+
+    local field_hot =
+        hover(
+            mx,
+            my,
+            field_x,
+            field_y,
+            field_w,
+            field_h
+        )
+
+    rounded_fill(
+        field_x,
+        field_y,
+        field_w,
+        field_h,
+        6,
+        field_hot
+            and { 0.110, 0.115, 0.135, 1 }
+            or C.toggle_off
+    )
+
+    text(
+        field_x + 10,
+        field_y + 7,
+        tostring(
+            S.silent_target_part
+            or "Head"
+        ),
+        C.text
+    )
+
+    text(
+        field_x + field_w - 18,
+        field_y + 7,
+        A.silent_part_dropdown_open
+            and "^"
+            or "v",
+        C.text_dim
+    )
+
+    if clicked
+        and field_hot
+    then
+        A.silent_part_dropdown_open =
+            not A.silent_part_dropdown_open
+
+        numeric_stop(true)
+        A.active_slider = nil
+    end
+
+    local dropdown_y =
+        field_y
+        + field_h
+        + 5
+
+    local dropdown_hot =
+        FALLEN_DRAW_SILENT_PART_DROPDOWN(
+            mx,
+            my,
+            clicked,
+            field_x,
+            dropdown_y,
+            field_w
+        )
+
+    -- Click outside closes it, exactly like a normal settings dropdown.
+    if clicked
+        and A.silent_part_dropdown_open
+        and not field_hot
+        and not dropdown_hot
+    then
+        A.silent_part_dropdown_open =
+            false
+    end
 end
 
 
@@ -10139,11 +10474,14 @@ function FALLEN_SILENT_SET_MAX_DISTANCE(
     value
 )
     local distance =
-        clamp(
-            tonumber(value)
-            or 1200,
-            50,
-            3000
+        math.floor(
+            clamp(
+                tonumber(value)
+                or 1200,
+                50,
+                3000
+            )
+            + 0.5
         )
 
     S.silent_max_dist =
@@ -10350,7 +10688,16 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
                 == "silent_max_dist"
         )
 
-    if not editing_distance then
+    -- While the custom menu is open, our slider is authoritative.
+    -- Otherwise stock-cheat readback can arrive one frame later and
+    -- snap the knob back to an old endpoint during/after dragging.
+    local allow_distance_readback =
+        S.visible ~= true
+        or A.silent_distance_force_sync == true
+
+    if not editing_distance
+        and allow_distance_readback
+    then
         local distance =
             tonumber(
                 FALLEN_SHARED_AIM_READ(
