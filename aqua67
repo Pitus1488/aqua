@@ -21172,15 +21172,18 @@ end
 
 function FALLEN_WORLD_WEATHER_POPUP_STEP(kind)
     local is_rain = kind == "rain"
-    local open =
-        is_rain
-        and A.world_rain_settings_open == true
-        or A.world_thunder_settings_open == true
 
-    local last_t =
-        is_rain
-        and A.world_rain_settings_last_t
-        or A.world_thunder_settings_last_t
+    -- Rain and Thunder use fully independent open/animation state.
+    local open = false
+    local last_t = nil
+
+    if is_rain then
+        open = A.world_rain_settings_open == true
+        last_t = A.world_rain_settings_last_t
+    else
+        open = A.world_thunder_settings_open == true
+        last_t = A.world_thunder_settings_last_t
+    end
 
     local now_t = tick()
 
@@ -21196,13 +21199,13 @@ function FALLEN_WORLD_WEATHER_POPUP_STEP(kind)
         A.world_thunder_settings_last_t = now_t
     end
 
-    local current =
-        tonumber(
-            is_rain
-            and A.world_rain_settings_anim
-            or A.world_thunder_settings_anim
-        )
-        or 0
+    local current = 0
+
+    if is_rain then
+        current = tonumber(A.world_rain_settings_anim) or 0
+    else
+        current = tonumber(A.world_thunder_settings_anim) or 0
+    end
 
     local target = open and 1 or 0
     local speed =
@@ -22150,6 +22153,8 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
             not A.world_rain_settings_open
 
         A.world_thunder_settings_open = false
+        A.world_thunder_settings_anim = 0
+        A.world_thunder_settings_last_t = tick()
         A.bullet_tracer_style_open = false
         A.hit_effect_style_open = false
         numeric_stop(true)
@@ -22163,6 +22168,8 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
             not A.world_thunder_settings_open
 
         A.world_rain_settings_open = false
+        A.world_rain_settings_anim = 0
+        A.world_rain_settings_last_t = tick()
         A.bullet_tracer_style_open = false
         A.hit_effect_style_open = false
         numeric_stop(true)
@@ -28881,28 +28888,10 @@ function FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(center, radius)
     radius = clamp(tonumber(radius) or 28, 8, 300)
 
     local now_t = tick()
-    local old = A.world_rain_geo
-    local refresh = old == nil
 
-    if old then
-        local dx = center.X - (tonumber(old.cx) or center.X)
-        local dz = center.Z - (tonumber(old.cz) or center.Z)
-        local moved = math.sqrt(dx * dx + dz * dz)
-        local old_radius = tonumber(old.radius) or radius
-
-        -- Do NOT rebuild on a timer. The old age > 2.5 branch caused a
-        -- full Workspace descendant scan every few seconds and produced the
-        -- regular hitch the user could feel.
-        --
-        -- Rebuild only after meaningful movement or a large radius expansion.
-        if moved > 96
-            or radius > old_radius + 72
-        then
-            refresh = true
-        end
-    end
-
-    if not refresh then
+    -- One-time occlusion build only.
+    -- No timer, movement threshold, or radius-triggered Workspace rescan.
+    if A.world_rain_geo ~= nil then
         return
     end
 
@@ -28958,7 +28947,7 @@ function FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(center, radius)
     end
 
     local cell = 36
-    local pad = radius + 110
+    local pad = math.max(radius + 110, 520)
     local scan_x1 = center.X - pad
     local scan_x2 = center.X + pad
     local scan_z1 = center.Z - pad
@@ -29414,6 +29403,7 @@ function FALLEN_WORLD_RAIN_TICK()
     local target_amount = math.floor(clamp(tonumber(S.world_rain_amount) or 34, 12, 64) + 0.5)
 
     -- Geometry cache is used ONLY for wall occlusion now, never for ground hits.
+    -- It builds once and never automatically rescans Workspace.
     if S.world_rain_enabled == true or S.world_thunder_enabled == true then
         local thunder_radius = clamp(tonumber(S.world_thunder_radius) or 90, 8, 300)
         FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(
