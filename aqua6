@@ -335,6 +335,7 @@ local defaults = {
     silent_max_dist = 1200,
     silent_target_part = "Head",
     silent_key = 0,
+    silent_fov_enabled = true,
     silent_fov = 180,
     silent_magic_bullet = false,
 
@@ -3692,7 +3693,10 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
         S[key] = current
 
         if type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function"
-            and key == "silent_max_dist"
+            and (
+                key == "silent_max_dist"
+                or key == "silent_fov"
+            )
         then
             FALLEN_SILENT_UI_VALUE_CHANGED(
                 key,
@@ -6159,7 +6163,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
     text(
         lx + 13,
         cy + 210,
-        "Keybind",
+        "Keybind (Hold)",
         C.text
     )
 
@@ -6246,7 +6250,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         rx,
         cy + 25,
         right_w,
-        130,
+        171,
         11
     )
 
@@ -6367,21 +6371,32 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         + field_h
         + 5
 
-    local dropdown_hot =
-        FALLEN_DRAW_SILENT_PART_DROPDOWN(
-            mx,
-            my,
-            clicked,
-            field_x,
-            dropdown_y,
-            field_w
-        )
-
     line(
         rx + 12,
         cy + 113,
         rx + right_w - 12,
         cy + 113,
+        C.divider,
+        1
+    )
+
+    toggle_row(
+        mx,
+        my,
+        clicked,
+        rx,
+        cy + 114,
+        right_w,
+        "FOV Enabled",
+        "silent_fov_enabled",
+        false
+    )
+
+    line(
+        rx + 12,
+        cy + 154,
+        rx + right_w - 12,
+        cy + 154,
         C.divider,
         1
     )
@@ -6392,7 +6407,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         clicked,
         lmb,
         rx,
-        cy + 114,
+        cy + 155,
         right_w,
         "FOV",
         "silent_fov",
@@ -6400,6 +6415,17 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         600,
         "int"
     )
+
+    -- Draw the dropdown last so it unfolds over the rows below it.
+    local dropdown_hot =
+        FALLEN_DRAW_SILENT_PART_DROPDOWN(
+            mx,
+            my,
+            clicked,
+            field_x,
+            dropdown_y,
+            field_w
+        )
 
     -- Click outside closes it, exactly like a normal settings dropdown.
     if clicked
@@ -10358,6 +10384,84 @@ function FALLEN_SILENT_WRITE_FIELD(
 end
 
 
+function FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
+    if not cheat
+        or not cheat.keybinds
+    then
+        return
+    end
+
+    local kb =
+        cheat.keybinds
+
+    local key =
+        A.silent_toggle_latch_key
+
+    if not key
+        and type(kb._keys) == "function"
+    then
+        local ok, keys =
+            pcall(function()
+                return kb:_keys()
+            end)
+
+        if ok
+            and type(keys) == "table"
+        then
+            for _, raw_key in ipairs(keys) do
+                local raw =
+                    tostring(raw_key)
+
+                local normalized =
+                    FALLEN_SILENT_NORMALIZE_KEY(
+                        raw
+                    )
+
+                if string.find(
+                        normalized,
+                        "silent",
+                        1,
+                        true
+                    )
+                    and string.find(
+                        normalized,
+                        "toggled",
+                        1,
+                        true
+                    )
+                then
+                    key = raw
+                    A.silent_toggle_latch_key =
+                        raw
+                    break
+                end
+            end
+        end
+    end
+
+    -- Documented naming convention for keybind latches.
+    key =
+        key
+        or "silent_aim_toggled"
+
+    pcall(function()
+        kb[key] =
+            false
+    end)
+end
+
+
+function FALLEN_SILENT_FORCE_HOLD()
+    -- key_mode 0 = HOLD. Never allow Silent to remain in toggle mode.
+    FALLEN_SILENT_WRITE_FIELD(
+        "key_mode",
+        0
+    )
+
+    FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
+end
+
+
 function FALLEN_SILENT_SET_ENABLED(
     value
 )
@@ -10379,6 +10483,9 @@ function FALLEN_SILENT_SET_ENABLED(
         "enabled",
         value
     )
+
+    -- cheat.enable can latch a bind; immediately force real HOLD mode.
+    FALLEN_SILENT_FORCE_HOLD()
 
     -- Silent method stays Raycast.
     local sa =
@@ -10838,6 +10945,24 @@ function FALLEN_SILENT_SET_KEY(
         "key",
         vk
     )
+
+    FALLEN_SILENT_FORCE_HOLD()
+end
+
+
+function FALLEN_SILENT_SET_FOV_ENABLED(
+    value
+)
+    value =
+        value == true
+
+    S.silent_fov_enabled =
+        value
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "fov_only",
+        value
+    )
 end
 
 
@@ -10858,8 +10983,6 @@ function FALLEN_SILENT_SET_FOV(
     S.silent_fov =
         fov
 
-    -- fov is a real Silent Aim field; fov_only makes the value actually
-    -- constrain target selection in builds that expose the toggle.
     FALLEN_SILENT_WRITE_FIELD(
         "fov",
         fov
@@ -10867,7 +10990,7 @@ function FALLEN_SILENT_SET_FOV(
 
     FALLEN_SILENT_WRITE_FIELD(
         "fov_only",
-        true
+        S.silent_fov_enabled == true
     )
 end
 
@@ -10895,6 +11018,10 @@ function FALLEN_SILENT_APPLY_ALL_LIVE()
 
     FALLEN_SILENT_SET_KEY(
         S.silent_key
+    )
+
+    FALLEN_SILENT_SET_FOV_ENABLED(
+        S.silent_fov_enabled == true
     )
 
     FALLEN_SILENT_SET_FOV(
@@ -10960,6 +11087,14 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
 
     if key == "silent_target_part" then
         FALLEN_SILENT_SET_TARGET_PART(
+            value
+        )
+
+        return
+    end
+
+    if key == "silent_fov_enabled" then
+        FALLEN_SILENT_SET_FOV_ENABLED(
             value
         )
 
@@ -11124,6 +11259,16 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
                     + 0.5
                 )
         end
+    end
+
+    local live_fov_only =
+        FALLEN_SILENT_READ_FIELD(
+            "fov_only"
+        )
+
+    if live_fov_only ~= nil then
+        S.silent_fov_enabled =
+            live_fov_only == true
     end
 
     local editing_fov =
@@ -11348,11 +11493,18 @@ function FALLEN_SILENT_TICK()
         return
     end
 
-    -- Only enforce the fixed method continuously.
-    -- All user-facing values are written directly on UI interaction.
+    -- Fixed Raycast method + real HOLD keybind mode.
     pcall(function()
         sa.method =
             2
+    end)
+
+    FALLEN_SILENT_FORCE_HOLD()
+
+    -- Keep the explicit FOV switch pinned too.
+    pcall(function()
+        sa.fov_only =
+            S.silent_fov_enabled == true
     end)
 
     -- When the menu is closed, keep our UI cache following the stock cheat
