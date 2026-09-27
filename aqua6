@@ -2680,6 +2680,434 @@ end
 -- Small line icons
 -- =========================================================
 
+local function icon_aim(x, y, c)
+    -- Legacy vector crosshair retained ONLY for Silent Aim.
+    -- Uses Drawing primitives because the Lua API may not render symbols.
+    local cx = x + 7
+    local cy = y + 7
+
+    circle(cx, cy, 6, c, 1.1)
+    line(cx - 5, cy - 5, cx + 5, cy + 5, c, 1.1)
+    line(cx + 5, cy - 5, cx - 5, cy + 5, c, 1.1)
+end
+
+function FALLEN_ICON_GLOBE(x, y, c)
+    local cx = x + 8
+    local cy = y + 8
+    local r = 6
+
+    circle(cx, cy, r, c, 1.15)
+
+    -- Equator / meridian.
+    line(cx - 5, cy, cx + 5, cy, c, 1.0)
+    line(cx, cy - 5.5, cx, cy + 5.5, c, 1.0)
+
+    -- Simple curved-longitude impression.
+    line(cx - 3.6, cy - 4.3, cx - 1.8, cy, c, 0.9)
+    line(cx - 1.8, cy, cx - 3.6, cy + 4.3, c, 0.9)
+
+    line(cx + 3.6, cy - 4.3, cx + 1.8, cy, c, 0.9)
+    line(cx + 1.8, cy, cx + 3.6, cy + 4.3, c, 0.9)
+end
+
+function FALLEN_ICON_ARMOR(x, y, c)
+    -- Pixel-ish chestplate silhouette based on the reference image.
+    -- Drawn with lines so it scales cleanly with the menu.
+    line(x + 3,  y + 2,  x + 6,  y + 2,  c, 1.8)
+    line(x + 6,  y + 2,  x + 7,  y + 5,  c, 1.8)
+    line(x + 7,  y + 5,  x + 9,  y + 5,  c, 1.8)
+    line(x + 9,  y + 5,  x + 10, y + 2,  c, 1.8)
+    line(x + 10, y + 2,  x + 13, y + 2,  c, 1.8)
+
+    line(x + 3,  y + 2,  x + 1,  y + 5,  c, 1.8)
+    line(x + 1,  y + 5,  x + 3,  y + 7,  c, 1.8)
+    line(x + 3,  y + 7,  x + 4,  y + 14, c, 1.8)
+
+    line(x + 13, y + 2,  x + 15, y + 5,  c, 1.8)
+    line(x + 15, y + 5,  x + 13, y + 7,  c, 1.8)
+    line(x + 13, y + 7,  x + 12, y + 14, c, 1.8)
+
+    line(x + 4,  y + 14, x + 12, y + 14, c, 1.8)
+end
+
+function FALLEN_ICON_SECRET(x, y, c)
+    -- Small lock/keyhole icon. Pure line geometry keeps Gradient mode clean.
+    local cx = x + 8
+    local top = y + 2
+
+    -- Shackle.
+    line(cx - 4, top + 5, cx - 4, top + 3, c, 1.1)
+    line(cx - 4, top + 3, cx - 2, top + 1, c, 1.1)
+    line(cx - 2, top + 1, cx + 2, top + 1, c, 1.1)
+    line(cx + 2, top + 1, cx + 4, top + 3, c, 1.1)
+    line(cx + 4, top + 3, cx + 4, top + 5, c, 1.1)
+
+    -- Lock body.
+    line(cx - 5, top + 5, cx + 5, top + 5, c, 1.1)
+    line(cx - 5, top + 5, cx - 5, top + 13, c, 1.1)
+    line(cx + 5, top + 5, cx + 5, top + 13, c, 1.1)
+    line(cx - 5, top + 13, cx + 5, top + 13, c, 1.1)
+
+    circle_fill(cx, top + 9, 1.15, c)
+end
+
+function FALLEN_ICON_MISC(x, y, c)
+    -- Small utility/grid icon for Misc.
+    -- Pure lines only so translucent Gradient mode cannot turn the outline
+    -- into a filled square.
+    local x1 = x + 2
+    local y1 = y + 2
+    local x2 = x + 14
+    local y2 = y + 14
+    local r = 2.5
+
+    line(x1 + r, y1, x2 - r, y1, c, 1.05)
+    line(x1 + r, y2, x2 - r, y2, c, 1.05)
+    line(x1, y1 + r, x1, y2 - r, c, 1.05)
+    line(x2, y1 + r, x2, y2 - r, c, 1.05)
+
+    line(x1, y1 + r, x1 + r, y1, c, 1.05)
+    line(x2 - r, y1, x2, y1 + r, c, 1.05)
+    line(x2, y2 - r, x2 - r, y2, c, 1.05)
+    line(x1 + r, y2, x1, y2 - r, c, 1.05)
+
+    circle_fill(x + 6,  y + 6,  1.15, c)
+    circle_fill(x + 11, y + 6,  1.15, c)
+    circle_fill(x + 6,  y + 11, 1.15, c)
+    circle_fill(x + 11, y + 11, 1.15, c)
+end
+
+-- Misc sidebar image icon.
+_G.FALLEN_MISC_TAB_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-27-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-13-40-07-%281%29.fRH4W"
+
+_G.FALLEN_MISC_TAB_ICON_SOURCE =
+    _G.FALLEN_MISC_TAB_ICON_SOURCE
+    or nil
+
+_G.FALLEN_MISC_TAB_ICON_URL =
+    _G.FALLEN_MISC_TAB_ICON_URL
+    or nil
+
+_G.FALLEN_MISC_TAB_ICON_HANDLE =
+    _G.FALLEN_MISC_TAB_ICON_HANDLE
+    or nil
+
+function FALLEN_MISC_TAB_ICON_GET()
+    local page_url =
+        _G.FALLEN_MISC_TAB_ICON_PAGE_URL
+
+    if _G.FALLEN_MISC_TAB_ICON_SOURCE ~= page_url then
+        _G.FALLEN_MISC_TAB_ICON_SOURCE = page_url
+        _G.FALLEN_MISC_TAB_ICON_URL = nil
+        _G.FALLEN_MISC_TAB_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_MISC_TAB_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_MISC_TAB_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_MISC_TAB_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_MISC_TAB_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_MISC_TAB_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_MISC_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
+-- Silent sidebar image icon.
+_G.FALLEN_SILENT_TAB_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-27-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-13-37-10-%282%29.fRmkA"
+
+_G.FALLEN_SILENT_TAB_ICON_SOURCE =
+    _G.FALLEN_SILENT_TAB_ICON_SOURCE
+    or nil
+
+_G.FALLEN_SILENT_TAB_ICON_URL =
+    _G.FALLEN_SILENT_TAB_ICON_URL
+    or nil
+
+_G.FALLEN_SILENT_TAB_ICON_HANDLE =
+    _G.FALLEN_SILENT_TAB_ICON_HANDLE
+    or nil
+
+function FALLEN_SILENT_TAB_ICON_GET()
+    local page_url =
+        _G.FALLEN_SILENT_TAB_ICON_PAGE_URL
+
+    if _G.FALLEN_SILENT_TAB_ICON_SOURCE ~= page_url then
+        _G.FALLEN_SILENT_TAB_ICON_SOURCE = page_url
+        _G.FALLEN_SILENT_TAB_ICON_URL = nil
+        _G.FALLEN_SILENT_TAB_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_SILENT_TAB_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_SILENT_TAB_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_SILENT_TAB_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_SILENT_TAB_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_SILENT_TAB_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_SILENT_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
+-- Aimbot sidebar image icon.
+-- White source image: default is white; selected/hovered state can tint toward accent.
+_G.FALLEN_AIMBOT_TAB_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-27-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-13-30-21-%281%29.fRYJT"
+
+_G.FALLEN_AIMBOT_TAB_ICON_SOURCE =
+    _G.FALLEN_AIMBOT_TAB_ICON_SOURCE
+    or nil
+
+_G.FALLEN_AIMBOT_TAB_ICON_URL =
+    _G.FALLEN_AIMBOT_TAB_ICON_URL
+    or nil
+
+_G.FALLEN_AIMBOT_TAB_ICON_HANDLE =
+    _G.FALLEN_AIMBOT_TAB_ICON_HANDLE
+    or nil
+
+function FALLEN_AIMBOT_TAB_ICON_GET()
+    local page_url =
+        _G.FALLEN_AIMBOT_TAB_ICON_PAGE_URL
+
+    if _G.FALLEN_AIMBOT_TAB_ICON_SOURCE ~= page_url then
+        _G.FALLEN_AIMBOT_TAB_ICON_SOURCE = page_url
+        _G.FALLEN_AIMBOT_TAB_ICON_URL = nil
+        _G.FALLEN_AIMBOT_TAB_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_AIMBOT_TAB_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_AIMBOT_TAB_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_AIMBOT_TAB_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_AIMBOT_TAB_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_AIMBOT_TAB_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_AIMBOT_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
+-- Visuals sidebar image icon.
+-- White source image: tint now works correctly because white pixels can be
+-- multiplied to gray while inactive and accent-blue while selected.
+-- The fotovssylku page is resolved exactly like the loader image.
+_G.FALLEN_VISUALS_TAB_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/2c1e9ed0-c136-4589-a956-816156f82b39-%281%29.fRFN8"
+
+_G.FALLEN_VISUALS_TAB_ICON_SOURCE =
+    _G.FALLEN_VISUALS_TAB_ICON_SOURCE
+    or nil
+
+_G.FALLEN_VISUALS_TAB_ICON_URL =
+    _G.FALLEN_VISUALS_TAB_ICON_URL
+    or nil
+
+_G.FALLEN_VISUALS_TAB_ICON_HANDLE =
+    _G.FALLEN_VISUALS_TAB_ICON_HANDLE
+    or nil
+
+function FALLEN_VISUALS_TAB_ICON_GET()
+    local page_url =
+        _G.FALLEN_VISUALS_TAB_ICON_PAGE_URL
+
+    if _G.FALLEN_VISUALS_TAB_ICON_SOURCE ~= page_url then
+        _G.FALLEN_VISUALS_TAB_ICON_SOURCE = page_url
+        _G.FALLEN_VISUALS_TAB_ICON_URL = nil
+        _G.FALLEN_VISUALS_TAB_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_VISUALS_TAB_ICON_URL then
+        -- Resolver is defined later in the script together with the loader.
+        -- No legacy vector fallback is used for Visuals.
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_VISUALS_TAB_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_VISUALS_TAB_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_VISUALS_TAB_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_VISUALS_TAB_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_VISUALS_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+local ICONS = {
+    [4] = FALLEN_ICON_SECRET,
+}
+
+-- =========================================================
+-- Sidebar
+-- =========================================================
+
+function FALLEN_SECRET_BRAND_CLICK()
+    if A.secret_unlocked then
+        return
+    end
+
+    local now = tick()
+    local elapsed = now - (A.secret_brand_last_click or 0)
+
+    if elapsed <= 1.05 then
+        A.secret_brand_clicks = (A.secret_brand_clicks or 0) + 1
+    else
+        A.secret_brand_clicks = 1
+    end
+
+    A.secret_brand_last_click = now
+
+    if (A.secret_brand_clicks or 0) >= 3 then
+        A.secret_unlocked = true
+        A.secret_brand_clicks = 0
+    end
+end
+
+local TABS = {
+    { group = "AIMBOT", label = "Aimbot" },
+    { group = "VISUALS", label = "Visuals" },
+    { group = "COMMON", label = "Misc" },
+    { group = "SECRET", label = "Secret" },
+    { group = "AIMBOT", label = "Silent" },
+}
+
 local function sidebar_tab(mx, my, clicked, x, y, index)
     local w, h = 152, 35
     local active = S.tab == index
@@ -5208,7 +5636,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
     section_title(
         cx,
         cy,
-        "Silent"
+        "Silent Aim"
     )
 
     card(
@@ -5226,7 +5654,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         cx,
         cy + 32,
         cw,
-        "Silent",
+        "Silent Aim",
         "silent_enabled",
         false
     )
