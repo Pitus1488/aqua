@@ -226,6 +226,7 @@ local defaults = {
     world_plant_esp_enabled = false,
     world_base_esp_enabled = false,
     world_dropped_esp_enabled = false,
+    world_body_bag_esp_enabled = false,
 
     world_stone_node = false,
     world_metal_node = false,
@@ -246,7 +247,7 @@ local defaults = {
     world_max_dist = 500,
     world_show_names = true,
     world_show_distance = true,
-    world_show_icons = true,
+    world_show_icons = false,
     world_fade_distance = false,
     world_icon_size = 18,
 
@@ -271,6 +272,12 @@ local defaults = {
     world_color_dropped_item_s = 0.9500,
     world_color_dropped_item_v = 1.0000,
     world_color_dropped_item_alpha = 100,
+
+    -- Body Bag ESP tint. The body-bag PNG keeps its own image colors.
+    world_color_body_bag_h = 0.9500,
+    world_color_body_bag_s = 0.2600,
+    world_color_body_bag_v = 1.0000,
+    world_color_body_bag_alpha = 100,
 
     world_color_wool_plant_h = 0.0000,
     world_color_wool_plant_s = 0.0000,
@@ -6740,6 +6747,9 @@ local function draw_world_settings_popup(
     local is_drops =
         group == "drops"
 
+    local is_bodybag =
+        group == "bodybag"
+
     local title = "World ESP settings"
     local pw = 328
     local ph = 174
@@ -6760,6 +6770,10 @@ local function draw_world_settings_popup(
         ph = 43 + 11 * 41 + 8
     elseif is_drops then
         title = "Dropped Items settings"
+        pw = 306
+        ph = 92
+    elseif is_bodybag then
+        title = "Body Bag ESP settings"
         pw = 306
         ph = 92
     end
@@ -6954,14 +6968,16 @@ local function draw_world_settings_popup(
                 icons_row_y
                 + 11
 
+            -- Give the swatch its own padded hitbox. Clicking anywhere on/around
+            -- the color square must never fall through to the Show Icons toggle.
             local border_hot =
                 hover(
                     mx,
                     my,
-                    border_swatch_x,
-                    border_swatch_y,
-                    18,
-                    18
+                    border_swatch_x - 5,
+                    border_swatch_y - 5,
+                    28,
+                    28
                 )
 
             -- Important: the color swatch lives inside the row, so do NOT pass
@@ -7436,6 +7452,80 @@ local function draw_world_settings_popup(
         end
 
     -- =========================================================
+    -- BODY BAG settings.
+    -- Uses the same common name/distance/icon/glow controls as World ESP,
+    -- with its own tint here.
+    -- =========================================================
+    elseif is_bodybag then
+        local row_x = px + 8
+        local row_y = py + 39
+        local row_w = pw - 16
+
+        local color_prefix =
+            "world_color_body_bag"
+
+        local swatch_s = 18
+        local swatch_x =
+            row_x + row_w - swatch_s - 12
+        local swatch_y =
+            row_y + 11
+
+        local swatch_hot =
+            hover(
+                mx, my,
+                swatch_x - 5, swatch_y - 5,
+                swatch_s + 10, swatch_s + 10
+            )
+
+        text(
+            row_x + 13,
+            row_y + 14,
+            "Body Bag Color",
+            FALLEN_HOVER_TEXT(
+                "world_body_bag_color",
+                swatch_hot,
+                C.text
+            )
+        )
+
+        world_square_swatch(
+            swatch_x,
+            swatch_y,
+            swatch_s,
+            world_color_from_prefix(
+                color_prefix
+            )
+        )
+
+        if ui_clicked
+            and swatch_hot
+        then
+            FALLEN_COLOR_INPUT_STOP(true)
+
+            if A.world_color_picker_open
+                and A.world_color_picker_key == color_prefix
+            then
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+            else
+                A.world_color_picker_key = color_prefix
+                A.world_color_picker_open = true
+                A.world_color_picker_drag = nil
+                A.fov_picker_open = false
+                A.fov_picker_drag = nil
+            end
+
+            A.world_color_picker_anchor_x =
+                FALLEN_UI_X(swatch_x)
+            A.world_color_picker_anchor_y =
+                FALLEN_UI_Y(swatch_y)
+            A.world_color_picker_anchor_w =
+                FALLEN_UI_LEN(swatch_s)
+            A.world_color_picker_anchor_h =
+                FALLEN_UI_LEN(swatch_s)
+        end
+
+    -- =========================================================
     -- BASE item settings.
     -- =========================================================
     elseif is_bases
@@ -7581,7 +7671,7 @@ local function draw_visuals_page(
         cx,
         cy + 25,
         cw,
-        5 * 41 + 8,
+        6 * 41 + 8,
         11
     )
 
@@ -7600,6 +7690,7 @@ local function draw_visuals_page(
     local plant_y = node_y + 41
     local base_y = plant_y + 41
     local drops_y = base_y + 41
+    local bodybag_y = drops_y + 41
 
     local global_dots_x = cx + cw - 79
     local global_dots_y = global_y + 8
@@ -7611,12 +7702,15 @@ local function draw_visuals_page(
     local base_dots_y = base_y + 8
     local drops_dots_x = cx + cw - 79
     local drops_dots_y = drops_y + 8
+    local bodybag_dots_x = cx + cw - 79
+    local bodybag_dots_y = bodybag_y + 8
 
     local global_dots_hot = hover(mx, my, global_dots_x, global_dots_y, 27, 25)
     local node_dots_hot = hover(mx, my, node_dots_x, node_dots_y, 27, 25)
     local plant_dots_hot = hover(mx, my, plant_dots_x, plant_dots_y, 27, 25)
     local base_dots_hot = hover(mx, my, base_dots_x, base_dots_y, 27, 25)
     local drops_dots_hot = hover(mx, my, drops_dots_x, drops_dots_y, 27, 25)
+    local bodybag_dots_hot = hover(mx, my, bodybag_dots_x, bodybag_dots_y, 27, 25)
 
     -- GLOBAL MASTER.
     local old_global = S.world_esp_enabled == true
@@ -7654,6 +7748,14 @@ local function draw_visuals_page(
     local old_drops = S.world_dropped_esp_enabled == true
     toggle_row(mx, my, base_clicked and not drops_dots_hot, cx, drops_y, cw, "Dropped Items", "world_dropped_esp_enabled", true)
     if old_drops ~= (S.world_dropped_esp_enabled == true) then
+        _G.FALLEN_WORLD_FORCE_RESCAN = true
+    end
+    line(cx + 12, drops_y + 40, cx + cw - 12, drops_y + 40, C.divider, 1)
+
+    -- BODY BAG MASTER.
+    local old_bodybag = S.world_body_bag_esp_enabled == true
+    toggle_row(mx, my, base_clicked and not bodybag_dots_hot, cx, bodybag_y, cw, "Body Bag ESP", "world_body_bag_esp_enabled", true)
+    if old_bodybag ~= (S.world_body_bag_esp_enabled == true) then
         _G.FALLEN_WORLD_FORCE_RESCAN = true
     end
 
@@ -7727,6 +7829,20 @@ local function draw_visuals_page(
         A.fov_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
         if numeric_stop then numeric_stop(true) end
+
+    elseif rmb_clicked and bodybag_dots_hot then
+        if A.world_settings_open and A.world_settings_group == "bodybag" then
+            A.world_settings_open = false
+        else
+            A.world_settings_group = "bodybag"
+            A.world_settings_open = true
+        end
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+        A.fov_picker_open = false
+        A.fov_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
+        if numeric_stop then numeric_stop(true) end
     end
 
     local popup_dots_x = global_dots_x
@@ -7744,6 +7860,9 @@ local function draw_visuals_page(
     elseif A.world_settings_group == "drops" then
         popup_dots_x = drops_dots_x
         popup_dots_y = drops_dots_y
+    elseif A.world_settings_group == "bodybag" then
+        popup_dots_x = bodybag_dots_x
+        popup_dots_y = bodybag_dots_y
     end
 
     draw_world_settings_popup(
@@ -15841,6 +15960,7 @@ local WORLD_ESP = {
     entries = {},
     base_entries = {},
     drop_entries = {},
+    body_bag_entries = {},
     last_scan = -100,
 
     icons = {},
@@ -16200,6 +16320,16 @@ local function world_screen(pos)
     return screen
 end
 
+function FALLEN_WORLD_IS_BODY_BAG_NAME(name)
+    local s = string.lower(tostring(name or ""))
+    s = string.gsub(s, "%s*%(%s*clone%s*%)%s*$", "")
+    s = string.gsub(s, "[%s_%-]", "")
+
+    return
+        s == "bodybag"
+        or string.find(s, "bodybag", 1, true) ~= nil
+end
+
 local function world_refresh_cache(force)
     if S.world_esp_enabled ~= true then
         return
@@ -16409,6 +16539,7 @@ local function world_refresh_cache(force)
 
                 if item_name
                     and item_name ~= ""
+                    and not FALLEN_WORLD_IS_BODY_BAG_NAME(item_name)
                 then
                     drop_entries[#drop_entries + 1] = {
                         inst = model,
@@ -16421,6 +16552,93 @@ local function world_refresh_cache(force)
 
     WORLD_ESP.drop_entries =
         drop_entries
+
+    -- Body Bags can appear either directly in Workspace/Drops or in the
+    -- Bases/Loners loot hierarchy used by the supplied working ESP.
+    local body_bag_entries = {}
+    local body_bag_seen = {}
+
+    if S.world_body_bag_esp_enabled == true then
+        local function add_body_bag(inst, name)
+            if not inst
+                or not world_inst_valid(inst)
+            then
+                return
+            end
+
+            local key = nil
+            pcall(function()
+                key = tostring(inst.addr or inst)
+            end)
+            key = key or tostring(inst)
+
+            if body_bag_seen[key] then
+                return
+            end
+
+            body_bag_seen[key] = true
+            body_bag_entries[#body_bag_entries + 1] = {
+                inst = inst,
+                name = name or "Body Bag",
+            }
+        end
+
+        local drops = WORLD_ESP.folders.Drops
+        if drops
+            and world_inst_valid(drops)
+        then
+            for _, model in ipairs(world_children(drops)) do
+                if #body_bag_entries >= 180 then break end
+
+                local n = world_inst_name(model)
+                if FALLEN_WORLD_IS_BODY_BAG_NAME(n) then
+                    add_body_bag(model, n)
+                end
+            end
+        end
+
+        local bases = WORLD_ESP.folders.Bases
+        local loners = nil
+
+        if bases
+            and world_inst_valid(bases)
+        then
+            loners = world_find_child(bases, "Loners")
+        end
+
+        if loners
+            and world_inst_valid(loners)
+        then
+            for _, type_folder in ipairs(world_children(loners)) do
+                if #body_bag_entries >= 180 then break end
+
+                local type_name = world_inst_name(type_folder)
+
+                if FALLEN_WORLD_IS_BODY_BAG_NAME(type_name) then
+                    local children = world_children(type_folder)
+                    local added_child = false
+
+                    for _, model in ipairs(children) do
+                        if #body_bag_entries >= 180 then break end
+
+                        if world_part_pos(model, 0) then
+                            added_child = true
+                            add_body_bag(model, "Body Bag")
+                        end
+                    end
+
+                    if not added_child
+                        and world_part_pos(type_folder, 0)
+                    then
+                        add_body_bag(type_folder, "Body Bag")
+                    end
+                end
+            end
+        end
+    end
+
+    WORLD_ESP.body_bag_entries =
+        body_bag_entries
 end
 
 local function world_url_encode(s)
@@ -16856,6 +17074,99 @@ function FALLEN_WORLD_DRAW_DYNAMIC_ICON(
     return true
 end
 
+WORLD_BODY_BAG_ICON_CFG = {
+    id = "world_body_bag_icon",
+    direct_urls = {
+        -- User-supplied image first. If the host image loader rejects the
+        -- landing-page URL, the known Body Bag PNG below is the fallback.
+        "https://dompic.com/i/faKBJwJM",
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6d/Body_Bag.png/revision/latest?format=original",
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6d/Body_Bag.png/revision/latest",
+    },
+}
+
+function FALLEN_WORLD_BODY_BAG_ICON()
+    return world_load_direct_icon(
+        WORLD_BODY_BAG_ICON_CFG
+    )
+end
+
+function FALLEN_WORLD_DRAW_BODY_BAG(entry, my_pos)
+    if S.world_body_bag_esp_enabled ~= true
+        or not entry
+        or not world_inst_valid(entry.inst)
+    then
+        return
+    end
+
+    local pos = world_part_pos(entry.inst, 0)
+    if not pos then return end
+
+    local dist = world_distance_m(pos, my_pos)
+    if not dist then return end
+
+    local max_dist = clamp(tonumber(S.world_max_dist) or 500, 25, 2000)
+    if dist > max_dist then return end
+
+    local screen = world_screen(pos)
+    if not screen then return end
+
+    local col = world_color_from_prefix("world_color_body_bag")
+    local fade = col[4] or 1
+
+    if S.world_fade_distance == true
+        and max_dist > 0
+    then
+        fade = fade * clamp(1 - (dist / max_dist) * 0.78, 0.18, 1)
+    end
+
+    local text_y = screen.Y
+
+    if S.world_show_icons == true then
+        local handle = FALLEN_WORLD_BODY_BAG_ICON()
+
+        if handle then
+            local icon_size = clamp(tonumber(S.world_icon_size) or 18, 10, 48)
+
+            if FALLEN_WORLD_DRAW_DYNAMIC_ICON(
+                handle,
+                screen.X,
+                screen.Y - 18,
+                icon_size,
+                fade
+            ) then
+                text_y = screen.Y + 2
+            end
+        end
+    end
+
+    if S.world_show_names == true
+        and type(DrawTextWithOutline) == "function"
+    then
+        DrawTextWithOutline(
+            screen.X,
+            text_y,
+            "Body Bag",
+            col[1], col[2], col[3], fade,
+            0, 0, 0, fade
+        )
+    end
+
+    if S.world_show_distance == true
+        and type(DrawTextWithOutline) == "function"
+    then
+        local dy = S.world_show_names == true and 14 or 0
+
+        DrawTextWithOutline(
+            screen.X,
+            text_y + dy,
+            string.format("%.0fm", dist),
+            col[1], col[2], col[3], fade,
+            0, 0, 0, fade
+        )
+    end
+end
+
 function FALLEN_WORLD_DRAW_DROPPED_ITEM(entry, my_pos)
     if S.world_dropped_esp_enabled ~= true
         or not entry
@@ -17266,6 +17577,15 @@ local function world_esp_tick()
         WORLD_ESP.drop_entries or {}
     ) do
         FALLEN_WORLD_DRAW_DROPPED_ITEM(
+            entry,
+            my_pos
+        )
+    end
+
+    for _, entry in ipairs(
+        WORLD_ESP.body_bag_entries or {}
+    ) do
+        FALLEN_WORLD_DRAW_BODY_BAG(
             entry,
             my_pos
         )
