@@ -225,6 +225,7 @@ local defaults = {
     world_node_esp_enabled = false,
     world_plant_esp_enabled = false,
     world_base_esp_enabled = false,
+    world_dropped_esp_enabled = false,
 
     world_stone_node = false,
     world_metal_node = false,
@@ -264,6 +265,12 @@ local defaults = {
     world_color_phosphate_node_s = 0.7059,
     world_color_phosphate_node_v = 0.8500,
     world_color_phosphate_node_alpha = 100,
+
+    -- Dropped item text/icon tint. Icons themselves keep their PNG colors.
+    world_color_dropped_item_h = 0.1333,
+    world_color_dropped_item_s = 0.9500,
+    world_color_dropped_item_v = 1.0000,
+    world_color_dropped_item_alpha = 100,
 
     world_color_wool_plant_h = 0.0000,
     world_color_wool_plant_s = 0.0000,
@@ -6730,6 +6737,9 @@ local function draw_world_settings_popup(
     local is_bases =
         group == "bases"
 
+    local is_drops =
+        group == "drops"
+
     local title = "World ESP settings"
     local pw = 328
     local ph = 174
@@ -6748,6 +6758,10 @@ local function draw_world_settings_popup(
         title = "Base ESP settings"
         pw = 620
         ph = 43 + 11 * 41 + 8
+    elseif is_drops then
+        title = "Dropped Items settings"
+        pw = 306
+        ph = 92
     end
 
     local parent_alpha =
@@ -6928,18 +6942,6 @@ local function draw_world_settings_popup(
             local icons_row_w =
                 pw - 16
 
-            toggle_row(
-                mx,
-                my,
-                ui_clicked,
-                icons_row_x,
-                icons_row_y,
-                icons_row_w,
-                "Show Icons",
-                "world_show_icons",
-                false
-            )
-
             local border_prefix =
                 "world_icon_border"
 
@@ -6952,6 +6954,31 @@ local function draw_world_settings_popup(
                 icons_row_y
                 + 11
 
+            local border_hot =
+                hover(
+                    mx,
+                    my,
+                    border_swatch_x,
+                    border_swatch_y,
+                    18,
+                    18
+                )
+
+            -- Important: the color swatch lives inside the row, so do NOT pass
+            -- that click into toggle_row. Otherwise opening the picker also
+            -- flips Show Icons off/on.
+            toggle_row(
+                mx,
+                my,
+                ui_clicked and not border_hot,
+                icons_row_x,
+                icons_row_y,
+                icons_row_w,
+                "Show Icons",
+                "world_show_icons",
+                false
+            )
+
             local border_color =
                 world_color_from_prefix(
                     border_prefix
@@ -6963,16 +6990,6 @@ local function draw_world_settings_popup(
                 18,
                 border_color
             )
-
-            local border_hot =
-                hover(
-                    mx,
-                    my,
-                    border_swatch_x,
-                    border_swatch_y,
-                    18,
-                    18
-                )
 
             if ui_clicked
                 and border_hot
@@ -7345,6 +7362,80 @@ local function draw_world_settings_popup(
         end
 
     -- =========================================================
+    -- DROPPED ITEMS settings.
+    -- Common name/distance/icon/glow controls live in World ESP settings;
+    -- this popup keeps only the category color to stay compact.
+    -- =========================================================
+    elseif is_drops then
+        local row_x = px + 8
+        local row_y = py + 39
+        local row_w = pw - 16
+
+        local color_prefix =
+            "world_color_dropped_item"
+
+        local swatch_s = 18
+        local swatch_x =
+            row_x + row_w - swatch_s - 12
+        local swatch_y =
+            row_y + 11
+
+        local swatch_hot =
+            hover(
+                mx, my,
+                swatch_x, swatch_y,
+                swatch_s, swatch_s
+            )
+
+        text(
+            row_x + 13,
+            row_y + 14,
+            "Dropped Color",
+            FALLEN_HOVER_TEXT(
+                "world_dropped_color",
+                swatch_hot,
+                C.text
+            )
+        )
+
+        world_square_swatch(
+            swatch_x,
+            swatch_y,
+            swatch_s,
+            world_color_from_prefix(
+                color_prefix
+            )
+        )
+
+        if ui_clicked
+            and swatch_hot
+        then
+            FALLEN_COLOR_INPUT_STOP(true)
+
+            if A.world_color_picker_open
+                and A.world_color_picker_key == color_prefix
+            then
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+            else
+                A.world_color_picker_key = color_prefix
+                A.world_color_picker_open = true
+                A.world_color_picker_drag = nil
+                A.fov_picker_open = false
+                A.fov_picker_drag = nil
+            end
+
+            A.world_color_picker_anchor_x =
+                FALLEN_UI_X(swatch_x)
+            A.world_color_picker_anchor_y =
+                FALLEN_UI_Y(swatch_y)
+            A.world_color_picker_anchor_w =
+                FALLEN_UI_LEN(swatch_s)
+            A.world_color_picker_anchor_h =
+                FALLEN_UI_LEN(swatch_s)
+        end
+
+    -- =========================================================
     -- BASE item settings.
     -- =========================================================
     elseif is_bases
@@ -7490,7 +7581,7 @@ local function draw_visuals_page(
         cx,
         cy + 25,
         cw,
-        4 * 41 + 8,
+        5 * 41 + 8,
         11
     )
 
@@ -7504,319 +7595,155 @@ local function draw_visuals_page(
         clicked
         and not overlay_open
 
-    local global_y =
-        cy + 29
+    local global_y = cy + 29
+    local node_y = global_y + 41
+    local plant_y = node_y + 41
+    local base_y = plant_y + 41
+    local drops_y = base_y + 41
 
-    local node_y =
-        global_y + 41
+    local global_dots_x = cx + cw - 79
+    local global_dots_y = global_y + 8
+    local node_dots_x = cx + cw - 79
+    local node_dots_y = node_y + 8
+    local plant_dots_x = cx + cw - 79
+    local plant_dots_y = plant_y + 8
+    local base_dots_x = cx + cw - 79
+    local base_dots_y = base_y + 8
+    local drops_dots_x = cx + cw - 79
+    local drops_dots_y = drops_y + 8
 
-    local plant_y =
-        node_y + 41
+    local global_dots_hot = hover(mx, my, global_dots_x, global_dots_y, 27, 25)
+    local node_dots_hot = hover(mx, my, node_dots_x, node_dots_y, 27, 25)
+    local plant_dots_hot = hover(mx, my, plant_dots_x, plant_dots_y, 27, 25)
+    local base_dots_hot = hover(mx, my, base_dots_x, base_dots_y, 27, 25)
+    local drops_dots_hot = hover(mx, my, drops_dots_x, drops_dots_y, 27, 25)
 
-    local base_y =
-        plant_y + 41
-
-    local global_dots_x =
-        cx + cw - 79
-
-    local global_dots_y =
-        global_y + 8
-
-    local node_dots_x =
-        cx + cw - 79
-
-    local node_dots_y =
-        node_y + 8
-
-    local plant_dots_x =
-        cx + cw - 79
-
-    local plant_dots_y =
-        plant_y + 8
-
-    local base_dots_x =
-        cx + cw - 79
-
-    local base_dots_y =
-        base_y + 8
-
-    local global_dots_hot =
-        hover(
-            mx,
-            my,
-            global_dots_x,
-            global_dots_y,
-            27,
-            25
-        )
-
-    local node_dots_hot =
-        hover(
-            mx,
-            my,
-            node_dots_x,
-            node_dots_y,
-            27,
-            25
-        )
-
-    local plant_dots_hot =
-        hover(
-            mx,
-            my,
-            plant_dots_x,
-            plant_dots_y,
-            27,
-            25
-        )
-
-    local base_dots_hot =
-        hover(
-            mx,
-            my,
-            base_dots_x,
-            base_dots_y,
-            27,
-            25
-        )
-
-    -- ---------------------------------------------------------
     -- GLOBAL MASTER.
-    -- ---------------------------------------------------------
-    local old_global =
-        S.world_esp_enabled == true
-
-    toggle_row(
-        mx,
-        my,
-        base_clicked
-            and not global_dots_hot,
-        cx,
-        global_y,
-        cw,
-        "Enable World ESP",
-        "world_esp_enabled",
-        true
-    )
-
-    if old_global
-        ~= (S.world_esp_enabled == true)
-    then
+    local old_global = S.world_esp_enabled == true
+    toggle_row(mx, my, base_clicked and not global_dots_hot, cx, global_y, cw, "Enable World ESP", "world_esp_enabled", true)
+    if old_global ~= (S.world_esp_enabled == true) then
         _G.FALLEN_WORLD_FORCE_RESCAN = true
     end
+    line(cx + 12, global_y + 40, cx + cw - 12, global_y + 40, C.divider, 1)
 
-    line(
-        cx + 12,
-        global_y + 40,
-        cx + cw - 12,
-        global_y + 40,
-        C.divider,
-        1
-    )
-
-    -- ---------------------------------------------------------
     -- NODE MASTER.
-    -- ---------------------------------------------------------
-    local old_node =
-        S.world_node_esp_enabled == true
-
-    toggle_row(
-        mx,
-        my,
-        base_clicked
-            and not node_dots_hot,
-        cx,
-        node_y,
-        cw,
-        "Node ESP",
-        "world_node_esp_enabled",
-        true
-    )
-
-    if old_node
-        ~= (S.world_node_esp_enabled == true)
-    then
+    local old_node = S.world_node_esp_enabled == true
+    toggle_row(mx, my, base_clicked and not node_dots_hot, cx, node_y, cw, "Node ESP", "world_node_esp_enabled", true)
+    if old_node ~= (S.world_node_esp_enabled == true) then
         _G.FALLEN_WORLD_FORCE_RESCAN = true
     end
+    line(cx + 12, node_y + 40, cx + cw - 12, node_y + 40, C.divider, 1)
 
-    line(
-        cx + 12,
-        node_y + 40,
-        cx + cw - 12,
-        node_y + 40,
-        C.divider,
-        1
-    )
-
-    -- ---------------------------------------------------------
     -- PLANT MASTER.
-    -- ---------------------------------------------------------
-    local old_plant =
-        S.world_plant_esp_enabled == true
-
-    toggle_row(
-        mx,
-        my,
-        base_clicked
-            and not plant_dots_hot,
-        cx,
-        plant_y,
-        cw,
-        "Plant ESP",
-        "world_plant_esp_enabled",
-        true
-    )
-
-    if old_plant
-        ~= (S.world_plant_esp_enabled == true)
-    then
+    local old_plant = S.world_plant_esp_enabled == true
+    toggle_row(mx, my, base_clicked and not plant_dots_hot, cx, plant_y, cw, "Plant ESP", "world_plant_esp_enabled", true)
+    if old_plant ~= (S.world_plant_esp_enabled == true) then
         _G.FALLEN_WORLD_FORCE_RESCAN = true
     end
+    line(cx + 12, plant_y + 40, cx + cw - 12, plant_y + 40, C.divider, 1)
 
-    line(
-        cx + 12,
-        plant_y + 40,
-        cx + cw - 12,
-        plant_y + 40,
-        C.divider,
-        1
-    )
-
-    -- ---------------------------------------------------------
     -- BASE MASTER.
-    -- ---------------------------------------------------------
-    local old_base =
-        S.world_base_esp_enabled == true
+    local old_base = S.world_base_esp_enabled == true
+    toggle_row(mx, my, base_clicked and not base_dots_hot, cx, base_y, cw, "Base ESP", "world_base_esp_enabled", true)
+    if old_base ~= (S.world_base_esp_enabled == true) then
+        _G.FALLEN_WORLD_FORCE_RESCAN = true
+    end
+    line(cx + 12, base_y + 40, cx + cw - 12, base_y + 40, C.divider, 1)
 
-    toggle_row(
-        mx,
-        my,
-        base_clicked
-            and not base_dots_hot,
-        cx,
-        base_y,
-        cw,
-        "Base ESP",
-        "world_base_esp_enabled",
-        true
-    )
-
-    if old_base
-        ~= (S.world_base_esp_enabled == true)
-    then
+    -- DROPPED ITEMS MASTER.
+    local old_drops = S.world_dropped_esp_enabled == true
+    toggle_row(mx, my, base_clicked and not drops_dots_hot, cx, drops_y, cw, "Dropped Items", "world_dropped_esp_enabled", true)
+    if old_drops ~= (S.world_dropped_esp_enabled == true) then
         _G.FALLEN_WORLD_FORCE_RESCAN = true
     end
 
-    -- ---------------------------------------------------------
-    -- Aimbot-style RMB ellipsis popups.
-    -- Only one World popup can be open at a time.
-    -- ---------------------------------------------------------
-    if rmb_clicked
-        and global_dots_hot
-    then
-        if A.world_settings_open
-            and A.world_settings_group == "global"
-        then
+    -- Aimbot-style RMB ellipsis popups. Only one World popup at a time.
+    if rmb_clicked and global_dots_hot then
+        if A.world_settings_open and A.world_settings_group == "global" then
             A.world_settings_open = false
         else
             A.world_settings_group = "global"
             A.world_settings_open = true
         end
-
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
         A.fov_picker_open = false
         A.fov_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
+        if numeric_stop then numeric_stop(true) end
 
-        if numeric_stop then
-            numeric_stop(true)
-        end
-
-    elseif rmb_clicked
-        and node_dots_hot
-    then
-        if A.world_settings_open
-            and A.world_settings_group == "nodes"
-        then
+    elseif rmb_clicked and node_dots_hot then
+        if A.world_settings_open and A.world_settings_group == "nodes" then
             A.world_settings_open = false
         else
             A.world_settings_group = "nodes"
             A.world_settings_open = true
         end
-
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
         A.fov_picker_open = false
         A.fov_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
+        if numeric_stop then numeric_stop(true) end
 
-        if numeric_stop then
-            numeric_stop(true)
-        end
-
-    elseif rmb_clicked
-        and plant_dots_hot
-    then
-        if A.world_settings_open
-            and A.world_settings_group == "plants"
-        then
+    elseif rmb_clicked and plant_dots_hot then
+        if A.world_settings_open and A.world_settings_group == "plants" then
             A.world_settings_open = false
         else
             A.world_settings_group = "plants"
             A.world_settings_open = true
         end
-
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
         A.fov_picker_open = false
         A.fov_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
+        if numeric_stop then numeric_stop(true) end
 
-        if numeric_stop then
-            numeric_stop(true)
-        end
-
-    elseif rmb_clicked
-        and base_dots_hot
-    then
-        if A.world_settings_open
-            and A.world_settings_group == "bases"
-        then
+    elseif rmb_clicked and base_dots_hot then
+        if A.world_settings_open and A.world_settings_group == "bases" then
             A.world_settings_open = false
         else
             A.world_settings_group = "bases"
             A.world_settings_open = true
         end
-
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
         A.fov_picker_open = false
         A.fov_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
+        if numeric_stop then numeric_stop(true) end
 
-        if numeric_stop then
-            numeric_stop(true)
+    elseif rmb_clicked and drops_dots_hot then
+        if A.world_settings_open and A.world_settings_group == "drops" then
+            A.world_settings_open = false
+        else
+            A.world_settings_group = "drops"
+            A.world_settings_open = true
         end
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+        A.fov_picker_open = false
+        A.fov_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
+        if numeric_stop then numeric_stop(true) end
     end
 
-    local popup_dots_x =
-        global_dots_x
-
-    local popup_dots_y =
-        global_dots_y
+    local popup_dots_x = global_dots_x
+    local popup_dots_y = global_dots_y
 
     if A.world_settings_group == "nodes" then
         popup_dots_x = node_dots_x
         popup_dots_y = node_dots_y
-
     elseif A.world_settings_group == "plants" then
         popup_dots_x = plant_dots_x
         popup_dots_y = plant_dots_y
-
     elseif A.world_settings_group == "bases" then
         popup_dots_x = base_dots_x
         popup_dots_y = base_dots_y
+    elseif A.world_settings_group == "drops" then
+        popup_dots_x = drops_dots_x
+        popup_dots_y = drops_dots_y
     end
 
     draw_world_settings_popup(
@@ -15908,10 +15835,12 @@ local WORLD_ESP = {
         Nodes = nil,
         Plants = nil,
         Bases = nil,
+        Drops = nil,
     },
 
     entries = {},
     base_entries = {},
+    drop_entries = {},
     last_scan = -100,
 
     icons = {},
@@ -16310,6 +16239,7 @@ local function world_refresh_cache(force)
         "Nodes",
         "Plants",
         "Bases",
+        "Drops",
     }) do
         local folder =
             world_find_child(
@@ -16456,6 +16386,41 @@ local function world_refresh_cache(force)
 
     WORLD_ESP.base_entries =
         base_entries
+
+    -- Dropped items are direct children of Workspace/Drops in the supplied
+    -- working ESP. Their instance name is the actual item display name.
+    local drop_entries = {}
+
+    if S.world_dropped_esp_enabled == true then
+        local drops = WORLD_ESP.folders.Drops
+
+        if drops
+            and world_inst_valid(drops)
+        then
+            for _, model in ipairs(
+                world_children(drops)
+            ) do
+                if #drop_entries >= 260 then
+                    break
+                end
+
+                local item_name =
+                    world_inst_name(model)
+
+                if item_name
+                    and item_name ~= ""
+                then
+                    drop_entries[#drop_entries + 1] = {
+                        inst = model,
+                        name = item_name,
+                    }
+                end
+            end
+        end
+    end
+
+    WORLD_ESP.drop_entries =
+        drop_entries
 end
 
 local function world_url_encode(s)
@@ -16760,6 +16725,212 @@ local function world_resource_color(cfg)
         world_color_from_prefix(
             prefix
         )
+end
+
+function FALLEN_DROPPED_ITEM_CLEAN_NAME(name)
+    local s = tostring(name or "")
+
+    s = string.gsub(s, "%s*%(%s*[Cc][Ll][Oo][Nn][Ee]%s*%)%s*$", "")
+    s = string.gsub(s, "^%s+", "")
+    s = string.gsub(s, "%s+$", "")
+
+    return s
+end
+
+function FALLEN_DROPPED_ITEM_ICON(name)
+    local raw = FALLEN_DROPPED_ITEM_CLEAN_NAME(name)
+
+    if raw == "" then
+        return nil
+    end
+
+    -- Reuse the same massive item/weapon URL table already used by Armor ESP.
+    local handle = nil
+
+    if type(FALLEN_WEAPON_ICON) == "function" then
+        handle = FALLEN_WEAPON_ICON(raw)
+        if handle then return handle end
+    end
+
+    if type(FALLEN_ARMOR_ICON) == "function" then
+        handle = FALLEN_ARMOR_ICON(raw)
+        if handle then return handle end
+    end
+
+    -- A few drop model names carry category prefixes. The weapon resolver
+    -- already has aliases, but these extra candidates cover common model names.
+    local variants = {
+        string.gsub(raw, "^Dropped%s+", ""),
+        string.gsub(raw, "^Item%s+", ""),
+    }
+
+    for i = 1, #variants do
+        local candidate = variants[i]
+
+        if candidate ~= ""
+            and candidate ~= raw
+        then
+            if type(FALLEN_WEAPON_ICON) == "function" then
+                handle = FALLEN_WEAPON_ICON(candidate)
+                if handle then return handle end
+            end
+
+            if type(FALLEN_ARMOR_ICON) == "function" then
+                handle = FALLEN_ARMOR_ICON(candidate)
+                if handle then return handle end
+            end
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_WORLD_DRAW_DYNAMIC_ICON(
+    handle,
+    x,
+    y,
+    size,
+    alpha
+)
+    if not handle
+        or type(DrawImage) ~= "function"
+    then
+        return false
+    end
+
+    size = clamp(tonumber(size) or 18, 10, 48)
+    alpha = clamp(tonumber(alpha) or 1, 0, 1)
+
+    local radius = size * 0.5 + 3
+
+    FALLEN_WORLD_DRAW_ICON_GLOW(
+        x,
+        y,
+        radius,
+        alpha
+    )
+
+    if type(DrawCircleFilled) == "function"
+        and type(DrawCircle) == "function"
+    then
+        DrawCircleFilled(
+            x,
+            y,
+            radius,
+            0.02,
+            0.02,
+            0.03,
+            0.90 * alpha
+        )
+
+        local border =
+            world_color_from_prefix(
+                "world_icon_border"
+            )
+
+        DrawCircle(
+            x,
+            y,
+            radius,
+            border[1],
+            border[2],
+            border[3],
+            0.95 * alpha * (border[4] or 1),
+            1.4
+        )
+    end
+
+    DrawImage(
+        handle,
+        x - size * 0.5,
+        y - size * 0.5,
+        size,
+        size,
+        1,
+        1,
+        1,
+        alpha,
+        math.max(2, size * 0.16)
+    )
+
+    return true
+end
+
+function FALLEN_WORLD_DRAW_DROPPED_ITEM(entry, my_pos)
+    if S.world_dropped_esp_enabled ~= true
+        or not entry
+        or not world_inst_valid(entry.inst)
+    then
+        return
+    end
+
+    local pos = world_part_pos(entry.inst, 0)
+    if not pos then return end
+
+    local dist = world_distance_m(pos, my_pos)
+    if not dist then return end
+
+    local max_dist = clamp(tonumber(S.world_max_dist) or 500, 25, 2000)
+    if dist > max_dist then return end
+
+    local screen = world_screen(pos)
+    if not screen then return end
+
+    local col = world_color_from_prefix("world_color_dropped_item")
+    local fade = col[4] or 1
+
+    if S.world_fade_distance == true
+        and max_dist > 0
+    then
+        fade = fade * clamp(1 - (dist / max_dist) * 0.78, 0.18, 1)
+    end
+
+    local item_name = FALLEN_DROPPED_ITEM_CLEAN_NAME(entry.name)
+    local text_y = screen.Y
+
+    if S.world_show_icons == true then
+        local handle = FALLEN_DROPPED_ITEM_ICON(item_name)
+
+        if handle then
+            local icon_size = clamp(tonumber(S.world_icon_size) or 18, 10, 48)
+
+            if FALLEN_WORLD_DRAW_DYNAMIC_ICON(
+                handle,
+                screen.X,
+                screen.Y - 18,
+                icon_size,
+                fade
+            ) then
+                text_y = screen.Y + 2
+            end
+        end
+    end
+
+    if S.world_show_names == true
+        and type(DrawTextWithOutline) == "function"
+    then
+        DrawTextWithOutline(
+            screen.X,
+            text_y,
+            item_name,
+            col[1], col[2], col[3], fade,
+            0, 0, 0, fade
+        )
+    end
+
+    if S.world_show_distance == true
+        and type(DrawTextWithOutline) == "function"
+    then
+        local dy = S.world_show_names == true and 14 or 0
+
+        DrawTextWithOutline(
+            screen.X,
+            text_y + dy,
+            string.format("%.0fm", dist),
+            col[1], col[2], col[3], fade,
+            0, 0, 0, fade
+        )
+    end
 end
 
 local function world_draw_entry(
@@ -17086,6 +17257,15 @@ local function world_esp_tick()
         WORLD_ESP.base_entries
     ) do
         world_draw_base_entry(
+            entry,
+            my_pos
+        )
+    end
+
+    for _, entry in ipairs(
+        WORLD_ESP.drop_entries or {}
+    ) do
+        FALLEN_WORLD_DRAW_DROPPED_ITEM(
             entry,
             my_pos
         )
