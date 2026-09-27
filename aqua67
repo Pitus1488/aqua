@@ -121,9 +121,16 @@ local defaults = {
     world_rain_amount = 34,
     world_rain_radius = 28,
     world_rain_speed = 1.00,
-    world_rain_splash = true,
+    world_rain_wind_angle = 0.00,
+    world_rain_splash = false, -- legacy field; impacts are intentionally disabled
     world_thunder_enabled = false,
     world_thunder_rate = 1.00,
+    world_thunder_speed = 1.00,
+    world_thunder_brightness = 1.00,
+    world_thunder_thickness = 1.00,
+    world_thunder_branches = 3,
+    world_thunder_height = 82,
+    world_thunder_radius = 90,
 
     -- Bullet Tracers / Misc.
     bullet_tracer_enabled = false,
@@ -484,6 +491,9 @@ local A = {
     world_thunder_points = nil,
     world_thunder_branches = {},
     world_thunder_last_t = nil,
+    world_thunder_settings_open = false,
+    world_thunder_settings_anim = 0,
+    world_thunder_settings_last_t = nil,
 
     hit_effect_style_open = false,
     hit_effect_style_anim = 0,
@@ -21153,6 +21163,134 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
     return panel_hot
 end
 
+function FALLEN_DRAW_WORLD_THUNDER_SETTINGS_POPUP(mx, my, clicked, lmb, x, y)
+    local now_t = tick()
+
+    if A.world_thunder_settings_last_t == nil then
+        A.world_thunder_settings_last_t = now_t
+    end
+
+    local dt = clamp(
+        now_t - A.world_thunder_settings_last_t,
+        0,
+        0.05
+    )
+
+    A.world_thunder_settings_last_t = now_t
+
+    local target =
+        A.world_thunder_settings_open == true
+        and 1
+        or 0
+
+    A.world_thunder_settings_anim = exp_chase(
+        tonumber(A.world_thunder_settings_anim) or 0,
+        target,
+        target > 0 and 18 or 22,
+        dt
+    )
+
+    local anim = tonumber(A.world_thunder_settings_anim) or 0
+    if anim <= 0.01 then
+        return false
+    end
+
+    local w = 390
+    local h = 345
+    local panel_hot = hover(mx, my, x, y, w, h)
+
+    if clicked
+        and A.world_thunder_settings_open
+        and not panel_hot
+    then
+        A.world_thunder_settings_open = false
+        numeric_stop(true)
+    end
+
+    local parent_alpha = MENU_RENDER_ALPHA
+    MENU_RENDER_ALPHA = parent_alpha * smooth01(anim)
+
+    rounded_fill(
+        x - 7,
+        y - 7,
+        w + 14,
+        h + 14,
+        15,
+        { 0.000, 0.000, 0.000, 0.30 }
+    )
+
+    rounded_outline(
+        x,
+        y,
+        w,
+        h,
+        13,
+        C.border,
+        1,
+        C.content
+    )
+
+    text(
+        x + 15,
+        y + 13,
+        "Thunder Settings",
+        C.white
+    )
+
+    text(
+        x + 15,
+        y + 28,
+        "World lightning tuning",
+        C.text_dim
+    )
+
+    local close_hot = hover(mx, my, x + w - 39, y + 9, 27, 25)
+    rounded_fill(
+        x + w - 39,
+        y + 9,
+        27,
+        25,
+        6,
+        close_hot and C.card_hover or C.toggle_off
+    )
+    centered_text(
+        x + w - 25.5,
+        y + 16,
+        "x",
+        close_hot and C.white or C.text_dim
+    )
+
+    if clicked and close_hot then
+        A.world_thunder_settings_open = false
+        numeric_stop(true)
+    end
+
+    line(x + 12, y + 48, x + w - 12, y + 48, C.divider, 1)
+
+    local allow =
+        clicked
+        and A.world_thunder_settings_open == true
+        and not close_hot
+
+    slider_row(mx, my, allow, lmb, x, y + 49,  w, "Strike Rate",   "world_thunder_rate",       0.15, 4.00, "float")
+    line(x + 12, y + 89,  x + w - 12, y + 89,  C.divider, 1)
+    slider_row(mx, my, allow, lmb, x, y + 90,  w, "Bolt Speed",    "world_thunder_speed",      0.25, 3.00, "float")
+    line(x + 12, y + 130, x + w - 12, y + 130, C.divider, 1)
+    slider_row(mx, my, allow, lmb, x, y + 131, w, "Brightness",    "world_thunder_brightness", 0.20, 2.00, "float")
+    line(x + 12, y + 171, x + w - 12, y + 171, C.divider, 1)
+    slider_row(mx, my, allow, lmb, x, y + 172, w, "Thickness",     "world_thunder_thickness",  0.50, 3.00, "float")
+    line(x + 12, y + 212, x + w - 12, y + 212, C.divider, 1)
+    slider_row(mx, my, allow, lmb, x, y + 213, w, "Branches",      "world_thunder_branches",   0,    8,    "int")
+    line(x + 12, y + 253, x + w - 12, y + 253, C.divider, 1)
+    slider_row(mx, my, allow, lmb, x, y + 254, w, "Bolt Height",   "world_thunder_height",     30,   180,  "int")
+    line(x + 12, y + 294, x + w - 12, y + 294, C.divider, 1)
+    slider_row(mx, my, allow, lmb, x, y + 295, w, "Strike Radius", "world_thunder_radius",     8,    300,  "int")
+
+    MENU_RENDER_ALPHA = parent_alpha
+    return panel_hot
+end
+
+
 function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     mx,
     my,
@@ -21178,6 +21316,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         clicked
         and not dropdown_open
         and not A.world_color_picker_open
+        and not A.world_thunder_settings_open
 
     section_title(
         x,
@@ -21304,6 +21443,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     if clicked
         and style_box_hot
         and not A.world_color_picker_open
+        and not A.world_thunder_settings_open
     then
         A.bullet_tracer_style_open =
             not A.bullet_tracer_style_open
@@ -21598,6 +21738,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     if clicked
         and hit_style_box_hot
         and not A.world_color_picker_open
+        and not A.world_thunder_settings_open
     then
         A.hit_effect_style_open =
             not A.hit_effect_style_open
@@ -21609,7 +21750,8 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         numeric_stop(true)
     end
 
-    -- World Rain: 3D falling rain around the local player with impact splashes.
+    -- World Weather: rain falls through the whole visual volume and fades far
+    -- below the player. There is intentionally NO ground impact / splash logic.
     section_title(
         right_x,
         y + 145,
@@ -21636,107 +21778,43 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         false
     )
 
-    line(
-        right_x + 12,
-        y + 217,
-        right_x + right_w - 12,
-        y + 217,
-        C.divider,
-        1
-    )
+    line(right_x + 12, y + 217, right_x + right_w - 12, y + 217, C.divider, 1)
 
     slider_row(
-        mx,
-        my,
-        controls_clicked,
-        lmb,
-        right_x,
-        y + 218,
-        right_w,
-        "Rain Amount",
-        "world_rain_amount",
-        12,
-        64,
-        "int"
+        mx, my, controls_clicked, lmb,
+        right_x, y + 218, right_w,
+        "Rain Amount", "world_rain_amount",
+        12, 64, "int"
     )
 
-    line(
-        right_x + 12,
-        y + 258,
-        right_x + right_w - 12,
-        y + 258,
-        C.divider,
-        1
-    )
+    line(right_x + 12, y + 258, right_x + right_w - 12, y + 258, C.divider, 1)
 
     slider_row(
-        mx,
-        my,
-        controls_clicked,
-        lmb,
-        right_x,
-        y + 259,
-        right_w,
-        "Rain Radius",
-        "world_rain_radius",
-        8,
-        300,
-        "int"
+        mx, my, controls_clicked, lmb,
+        right_x, y + 259, right_w,
+        "Rain Radius", "world_rain_radius",
+        8, 300, "int"
     )
 
-    line(
-        right_x + 12,
-        y + 299,
-        right_x + right_w - 12,
-        y + 299,
-        C.divider,
-        1
-    )
+    line(right_x + 12, y + 299, right_x + right_w - 12, y + 299, C.divider, 1)
 
     slider_row(
-        mx,
-        my,
-        controls_clicked,
-        lmb,
-        right_x,
-        y + 300,
-        right_w,
-        "Rain Speed",
-        "world_rain_speed",
-        0.05,
-        2.50,
-        "float"
+        mx, my, controls_clicked, lmb,
+        right_x, y + 300, right_w,
+        "Rain Speed", "world_rain_speed",
+        0.03, 2.50, "float"
     )
 
-    line(
-        right_x + 12,
-        y + 340,
-        right_x + right_w - 12,
-        y + 340,
-        C.divider,
-        1
+    line(right_x + 12, y + 340, right_x + right_w - 12, y + 340, C.divider, 1)
+
+    slider_row(
+        mx, my, controls_clicked, lmb,
+        right_x, y + 341, right_w,
+        "Wind Angle", "world_rain_wind_angle",
+        -65, 65, "int"
     )
 
-    toggle_row(
-        mx,
-        my,
-        controls_clicked,
-        right_x,
-        y + 341,
-        right_w,
-        "Impact Splashes",
-        "world_rain_splash",
-        false
-    )
-
-    line(
-        right_x + 12,
-        y + 381,
-        right_x + right_w - 12,
-        y + 381,
-        C.divider,
-        1
-    )
+    line(right_x + 12, y + 381, right_x + right_w - 12, y + 381, C.divider, 1)
 
     toggle_row(
         mx,
@@ -21750,29 +21828,67 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         false
     )
 
-    line(
-        right_x + 12,
-        y + 422,
-        right_x + right_w - 12,
-        y + 422,
-        C.divider,
-        1
-    )
+    line(right_x + 12, y + 422, right_x + right_w - 12, y + 422, C.divider, 1)
 
-    slider_row(
+    local thunder_settings_y = y + 423
+    local thunder_settings_hot = row_hover(
         mx,
         my,
-        controls_clicked,
-        lmb,
         right_x,
-        y + 423,
+        thunder_settings_y,
         right_w,
-        "Thunder Rate",
-        "world_thunder_rate",
-        0.25,
-        3.00,
-        "float"
+        41
     )
+
+    text(
+        right_x + 13,
+        thunder_settings_y + 14,
+        "Thunder Settings",
+        FALLEN_HOVER_TEXT(
+            "thunder_settings_row",
+            thunder_settings_hot,
+            C.text
+        )
+    )
+
+    local thunder_button_w = 74
+    local thunder_button_x = right_x + right_w - thunder_button_w - 10
+    local thunder_button_y = thunder_settings_y + 8
+    local thunder_button_hot = hover(
+        mx,
+        my,
+        thunder_button_x,
+        thunder_button_y,
+        thunder_button_w,
+        25
+    )
+
+    rounded_fill(
+        thunder_button_x,
+        thunder_button_y,
+        thunder_button_w,
+        25,
+        6,
+        thunder_button_hot and C.card_hover or C.toggle_off
+    )
+
+    centered_text(
+        thunder_button_x + thunder_button_w * 0.5,
+        thunder_button_y + 7,
+        "Open",
+        thunder_button_hot and C.white or C.text_dim
+    )
+
+    if clicked
+        and thunder_settings_hot
+        and not A.world_thunder_settings_open
+        and not A.world_color_picker_open
+    then
+        A.world_thunder_settings_open = true
+        A.bullet_tracer_style_open = false
+        A.hit_effect_style_open = false
+        numeric_stop(true)
+    end
 
 
     local dropdown_hot =
@@ -21814,6 +21930,15 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     then
         A.hit_effect_style_open = false
     end
+
+    FALLEN_DRAW_WORLD_THUNDER_SETTINGS_POPUP(
+        mx,
+        my,
+        clicked,
+        lmb,
+        x + (w - 390) * 0.5,
+        y + 82
+    )
 
 
 end
@@ -28830,44 +28955,56 @@ function FALLEN_WORLD_RAIN_LINE3D(p1, p2, r, g, b, a, thickness, visibility_chec
     end
 end
 
-function FALLEN_WORLD_RAIN_NEW_DROP(center, fallback_ground, top_y, radius, fill_height)
+function FALLEN_WORLD_RAIN_WIND_RIGHT()
+    local rx = 1
+    local rz = 0
+
+    if aim and type(aim.get_camera_rotation) == "function" then
+        pcall(function()
+            local m = aim.get_camera_rotation()
+            if type(m) == "table" then
+                local x = tonumber(m[1])
+                local z = tonumber(m[3])
+
+                if x and z then
+                    local mag = math.sqrt(x * x + z * z)
+                    if mag > 0.0001 then
+                        rx = x / mag
+                        rz = z / mag
+                    end
+                end
+            end
+        end)
+    end
+
+    return rx, rz
+end
+
+function FALLEN_WORLD_RAIN_NEW_DROP(center, bottom_y, top_y, radius, fill_height)
     if not center then
         return nil
     end
 
     local angle = FALLEN_WEATHER_RAND(0, math.pi * 2)
     local dist = math.sqrt(FALLEN_WEATHER_RAND(0, 1)) * radius
-    local x = center.X + math.cos(angle) * dist
-    local z = center.Z + math.sin(angle) * dist
 
-    -- Cast from above the whole rain volume. This finds roofs, terrain made
-    -- from Parts/MeshParts, slopes and floors at this exact X/Z position.
-    local real_ground = FALLEN_WORLD_RAIN_GROUND_Y(
-        x,
-        z,
-        top_y + 18,
-        520
-    )
-
-    local has_ground = real_ground ~= nil
-    local ground_y = real_ground or (center.Y - 150)
-
-    local low_y = has_ground and (ground_y + 0.65) or (top_y - 42)
     local y = fill_height
-        and FALLEN_WEATHER_RAND(low_y, top_y + 3.5)
+        and FALLEN_WEATHER_RAND(bottom_y + 18, top_y + 3.5)
         or FALLEN_WEATHER_RAND(top_y, top_y + 5.0)
 
     return {
-        x = x,
+        x = center.X + math.cos(angle) * dist,
         y = y,
-        z = z,
-        ground_y = ground_y,
-        has_ground = has_ground,
-        vx = FALLEN_WEATHER_RAND(-1.9, -0.55),
-        vz = FALLEN_WEATHER_RAND(-0.55, 0.55),
+        z = center.Z + math.sin(angle) * dist,
+        bottom_y = bottom_y,
+        drift = FALLEN_WEATHER_RAND(-0.075, 0.075),
+        drift_side = FALLEN_WEATHER_RAND(-1, 1),
         speed_mul = FALLEN_WEATHER_RAND(0.82, 1.22),
         len = FALLEN_WEATHER_RAND(1.75, 3.15),
         a = FALLEN_WEATHER_RAND(0.38, 0.72),
+        wind_dx = 0,
+        wind_dz = 0,
+        fade = 1,
     }
 end
 
@@ -28908,16 +29045,16 @@ end
 function FALLEN_WORLD_RAIN_DRAW_DROP(p, alpha_value)
     local head = Vector3(p.x, p.y, p.z)
     local tail = Vector3(
-        p.x - p.vx * 0.055,
+        p.x - (p.wind_dx or 0) * (p.len or 2),
         p.y + p.len,
-        p.z - p.vz * 0.055
+        p.z - (p.wind_dz or 0) * (p.len or 2)
     )
 
     if not FALLEN_WORLD_RAIN_SEGMENT_VISIBLE(tail, head) then
         return
     end
 
-    local a = clamp((p.a or 0.5) * (alpha_value or 1), 0, 1)
+    local a = clamp((p.a or 0.5) * (alpha_value or 1) * (p.fade or 1), 0, 1)
 
     FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.34, 0.58, 0.94, a * 0.10, 4.4, true)
     FALLEN_WORLD_RAIN_LINE3D(tail, head, 0.50, 0.70, 0.98, a * 0.34, 2.0, true)
@@ -28951,9 +29088,8 @@ function FALLEN_WORLD_RAIN_TICK()
         A.world_rain_particles = {}
     end
 
-    if type(A.world_rain_splashes) ~= "table" then
-        A.world_rain_splashes = {}
-    end
+    -- Impacts are intentionally disabled in this version.
+    A.world_rain_splashes = {}
 
     local now_t = tick()
 
@@ -28978,41 +29114,32 @@ function FALLEN_WORLD_RAIN_TICK()
     if not center then
         if A.world_rain_alpha < 0.01 then
             A.world_rain_particles = {}
-            A.world_rain_splashes = {}
         end
         return
     end
 
     local radius = clamp(tonumber(S.world_rain_radius) or 28, 8, 300)
-    local speed_setting = clamp(tonumber(S.world_rain_speed) or 1, 0.05, 2.50)
+    local speed_setting = clamp(tonumber(S.world_rain_speed) or 1, 0.03, 2.50)
     local target_amount = math.floor(clamp(tonumber(S.world_rain_amount) or 34, 12, 64) + 0.5)
 
+    -- Geometry cache is used ONLY for wall occlusion now, never for ground hits.
     if S.world_rain_enabled == true or S.world_thunder_enabled == true then
-        FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(center, radius)
+        local thunder_radius = clamp(tonumber(S.world_thunder_radius) or 90, 8, 300)
+        FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(
+            center,
+            math.max(radius, thunder_radius)
+        )
     end
 
-    -- Center ground is now a real downward hit as well. Thunder uses this as
-    -- a fallback, but every rain drop has its own per-X/Z surface hit.
-    local center_ground = FALLEN_WORLD_RAIN_GROUND_Y(
-        center.X,
-        center.Z,
-        center.Y + 24,
-        360
-    )
-
-    if center_ground then
-        A.world_rain_ground_y = center_ground
-    end
-
-    local fallback_ground = center_ground or tonumber(A.world_rain_ground_y) or (center.Y - 3.05)
-    local top_y = fallback_ground + 17 + radius * 0.18
+    local top_y = center.Y + clamp(38 + radius * 0.10, 38, 70)
+    local bottom_y = center.Y - clamp(145 + radius * 0.25, 145, 220)
 
     if S.world_rain_enabled == true then
         while #A.world_rain_particles < target_amount do
             A.world_rain_particles[#A.world_rain_particles + 1] =
                 FALLEN_WORLD_RAIN_NEW_DROP(
                     center,
-                    fallback_ground,
+                    bottom_y,
                     top_y,
                     radius,
                     true
@@ -29024,33 +29151,40 @@ function FALLEN_WORLD_RAIN_TICK()
         table.remove(A.world_rain_particles)
     end
 
+    local right_x, right_z = FALLEN_WORLD_RAIN_WIND_RIGHT()
+    local wind_deg = clamp(tonumber(S.world_rain_wind_angle) or 0, -65, 65)
+    local wind_ratio = math.tan(math.rad(wind_deg))
+
     for i = #A.world_rain_particles, 1, -1 do
         local p = A.world_rain_particles[i]
 
         if not p then
             table.remove(A.world_rain_particles, i)
         else
-            local fall_speed = (3 + speed_setting * 40) * (p.speed_mul or 1)
+            local fall_speed = (1.6 + speed_setting * 39.5) * (p.speed_mul or 1)
 
-            p.x = p.x + (p.vx or 0) * dt
-            p.z = p.z + (p.vz or 0) * dt
+            -- Wind is camera-relative: negative = visually left, positive = right.
+            local side_noise = (p.drift or 0) * (p.drift_side or 1)
+            p.wind_dx = right_x * wind_ratio + right_z * side_noise
+            p.wind_dz = right_z * wind_ratio - right_x * side_noise
+
+            p.x = p.x + (p.wind_dx or 0) * fall_speed * dt
+            p.z = p.z + (p.wind_dz or 0) * fall_speed * dt
             p.y = p.y - fall_speed * dt
 
-            if p.y <= (p.ground_y or fallback_ground) then
-                if p.has_ground == true then
-                    FALLEN_WORLD_RAIN_SPLASH(
-                        p.x,
-                        p.ground_y,
-                        p.z,
-                        A.world_rain_alpha
-                    )
-                end
+            -- Fade only far below the player, then silently respawn at the top.
+            p.fade = clamp(
+                (p.y - (p.bottom_y or bottom_y)) / 34,
+                0,
+                1
+            )
 
+            if p.y <= (p.bottom_y or bottom_y) then
                 if S.world_rain_enabled == true then
                     A.world_rain_particles[i] =
                         FALLEN_WORLD_RAIN_NEW_DROP(
                             center,
-                            fallback_ground,
+                            bottom_y,
                             top_y,
                             radius,
                             false
@@ -29064,38 +29198,10 @@ function FALLEN_WORLD_RAIN_TICK()
         end
     end
 
-    for i = #A.world_rain_splashes, 1, -1 do
-        local p = A.world_rain_splashes[i]
-
-        p.life = (p.life or 0) - dt
-
-        if p.life <= 0 then
-            table.remove(A.world_rain_splashes, i)
-        else
-            p.x = p.x + (p.vx or 0) * dt
-            p.y = p.y + (p.vy or 0) * dt
-            p.z = p.z + (p.vz or 0) * dt
-            p.vy = (p.vy or 0) - 27 * dt
-
-            local life_a = clamp(
-                p.life / math.max(0.001, p.max_life or p.life),
-                0,
-                1
-            )
-
-            FALLEN_WORLD_RAIN_DRAW_SPLASH(
-                p,
-                life_a,
-                A.world_rain_alpha
-            )
-        end
-    end
-
     if S.world_rain_enabled ~= true
         and A.world_rain_alpha < 0.012
     then
         A.world_rain_particles = {}
-        A.world_rain_splashes = {}
     end
 end
 
@@ -29109,14 +29215,14 @@ end
 function FALLEN_WORLD_THUNDER_INTERVAL()
     local rate = clamp(
         tonumber(S.world_thunder_rate) or 1,
-        0.25,
-        3.00
+        0.15,
+        4.00
     )
 
     return clamp(
         FALLEN_WEATHER_RAND(3.2, 7.0) / rate,
-        0.85,
-        24.0
+        0.45,
+        32.0
     )
 end
 
@@ -29124,32 +29230,34 @@ function FALLEN_WORLD_THUNDER_NEW_POINT(x, y, z)
     return Vector3(x, y, z)
 end
 
-function FALLEN_WORLD_THUNDER_SPAWN(center, ground_y, radius)
+function FALLEN_WORLD_THUNDER_SPAWN(center, radius)
     if not center then
         return
     end
 
-    radius = clamp(tonumber(radius) or 28, 8, 300)
+    radius = clamp(
+        tonumber(radius) or 90,
+        8,
+        300
+    )
 
     local angle = FALLEN_WEATHER_RAND(0, math.pi * 2)
-    local dist = math.sqrt(FALLEN_WEATHER_RAND(0, 1)) * radius * 0.88
+    local dist = math.sqrt(FALLEN_WEATHER_RAND(0, 1)) * radius * 0.92
 
     local hit_x = center.X + math.cos(angle) * dist
     local hit_z = center.Z + math.sin(angle) * dist
+    local hit_y = center.Y - 3.1
 
-    local real_hit_y = FALLEN_WORLD_RAIN_GROUND_Y(
-        hit_x,
-        hit_z,
-        center.Y + 150,
-        620
+    local top_h = clamp(
+        tonumber(S.world_thunder_height) or 82,
+        30,
+        180
     )
-    ground_y = real_hit_y or ground_y
 
-    local top_h = clamp(48 + radius * 0.20, 48, 108)
     local top_x = hit_x + FALLEN_WEATHER_RAND(-18, 18)
     local top_z = hit_z + FALLEN_WEATHER_RAND(-18, 18)
 
-    local segments = math.random(12, 18)
+    local segments = math.floor(clamp(10 + top_h * 0.07, 12, 22) + 0.5)
     local points = {}
 
     for i = 0, segments do
@@ -29159,7 +29267,7 @@ function FALLEN_WORLD_THUNDER_SPAWN(center, ground_y, radius)
 
         local x = top_x + (hit_x - top_x) * t
         local z = top_z + (hit_z - top_z) * t
-        local y = ground_y + top_h * inv
+        local y = hit_y + top_h * inv
 
         if i > 0 and i < segments then
             x = x + FALLEN_WEATHER_RAND(-jitter, jitter)
@@ -29172,7 +29280,11 @@ function FALLEN_WORLD_THUNDER_SPAWN(center, ground_y, radius)
     end
 
     local branches = {}
-    local branch_count = math.random(2, 4)
+    local branch_count = math.floor(clamp(
+        tonumber(S.world_thunder_branches) or 3,
+        0,
+        8
+    ) + 0.5)
 
     for b = 1, branch_count do
         local start_index = math.random(3, math.max(3, segments - 3))
@@ -29189,8 +29301,6 @@ function FALLEN_WORLD_THUNDER_SPAWN(center, ground_y, radius)
             local bz = start.Z
 
             for j = 1, branch_len do
-                local spread = step * j
-
                 bx = bx
                     + math.cos(branch_angle) * step
                     + FALLEN_WEATHER_RAND(-1.7, 1.7)
@@ -29199,15 +29309,10 @@ function FALLEN_WORLD_THUNDER_SPAWN(center, ground_y, radius)
                     + math.sin(branch_angle) * step
                     + FALLEN_WEATHER_RAND(-1.7, 1.7)
 
-                by = by
-                    - FALLEN_WEATHER_RAND(1.2, 3.6)
+                by = by - FALLEN_WEATHER_RAND(1.2, 3.6)
 
                 branch[#branch + 1] =
-                    FALLEN_WORLD_THUNDER_NEW_POINT(
-                        bx,
-                        by,
-                        bz
-                    )
+                    FALLEN_WORLD_THUNDER_NEW_POINT(bx, by, bz)
             end
 
             branches[#branches + 1] = branch
@@ -29217,7 +29322,13 @@ function FALLEN_WORLD_THUNDER_SPAWN(center, ground_y, radius)
     A.world_thunder_points = points
     A.world_thunder_branches = branches
 
-    local life = FALLEN_WEATHER_RAND(0.20, 0.42)
+    local bolt_speed = clamp(
+        tonumber(S.world_thunder_speed) or 1,
+        0.25,
+        3.00
+    )
+
+    local life = FALLEN_WEATHER_RAND(0.20, 0.42) / bolt_speed
 
     A.world_thunder_life = life
     A.world_thunder_max_life = life
@@ -29229,8 +29340,20 @@ function FALLEN_WORLD_THUNDER_DRAW_PATH(points, alpha_value, branch_scale)
         return
     end
 
-    local a = clamp(tonumber(alpha_value) or 0, 0, 1)
-    local scale = tonumber(branch_scale) or 1
+    local brightness = clamp(
+        tonumber(S.world_thunder_brightness) or 1,
+        0.20,
+        2.00
+    )
+
+    local thickness = clamp(
+        tonumber(S.world_thunder_thickness) or 1,
+        0.50,
+        3.00
+    )
+
+    local a = clamp((tonumber(alpha_value) or 0) * brightness, 0, 1)
+    local scale = (tonumber(branch_scale) or 1) * thickness
 
     for i = 1, #points - 1 do
         local p1 = points[i]
@@ -29238,34 +29361,25 @@ function FALLEN_WORLD_THUNDER_DRAW_PATH(points, alpha_value, branch_scale)
 
         if FALLEN_WORLD_RAIN_SEGMENT_VISIBLE(p1, p2) then
             FALLEN_WORLD_RAIN_LINE3D(
-                p1,
-                p2,
-                0.28,
-                0.48,
-                1.00,
-                a * 0.08 * scale,
+                p1, p2,
+                0.28, 0.48, 1.00,
+                a * 0.08,
                 9.0 * scale,
                 true
             )
 
             FALLEN_WORLD_RAIN_LINE3D(
-                p1,
-                p2,
-                0.48,
-                0.70,
-                1.00,
-                a * 0.30 * scale,
+                p1, p2,
+                0.48, 0.70, 1.00,
+                a * 0.30,
                 4.2 * scale,
                 true
             )
 
             FALLEN_WORLD_RAIN_LINE3D(
-                p1,
-                p2,
-                0.92,
-                0.97,
-                1.00,
-                a * scale,
+                p1, p2,
+                0.92, 0.97, 1.00,
+                a,
                 1.25 * scale,
                 true
             )
@@ -29281,20 +29395,20 @@ function FALLEN_WORLD_THUNDER_FILL(x, y, w, h, r, g, b, a)
     if type(DrawBoxFilled) == "function" then
         pcall(
             DrawBoxFilled,
-            x,
-            y,
-            x + w,
-            y + h,
-            r,
-            g,
-            b,
-            a
+            x, y, x + w, y + h,
+            r, g, b, a
         )
     end
 end
 
 function FALLEN_WORLD_THUNDER_FLASH(alpha_value)
-    local a = clamp(tonumber(alpha_value) or 0, 0, 1)
+    local brightness = clamp(
+        tonumber(S.world_thunder_brightness) or 1,
+        0.20,
+        2.00
+    )
+
+    local a = clamp((tonumber(alpha_value) or 0) * brightness, 0, 1)
     if a <= 0.002 then
         return
     end
@@ -29321,29 +29435,10 @@ function FALLEN_WORLD_THUNDER_FLASH(alpha_value)
     local x2 = clamp(x + w, 0, sw)
     local y2 = clamp(y + h, 0, sh)
 
-    FALLEN_WORLD_THUNDER_FILL(
-        0, 0, sw, y,
-        0.72, 0.82, 1.00,
-        c_a
-    )
-
-    FALLEN_WORLD_THUNDER_FILL(
-        0, y2, sw, sh - y2,
-        0.72, 0.82, 1.00,
-        c_a
-    )
-
-    FALLEN_WORLD_THUNDER_FILL(
-        0, y, x, math.max(0, y2 - y),
-        0.72, 0.82, 1.00,
-        c_a
-    )
-
-    FALLEN_WORLD_THUNDER_FILL(
-        x2, y, sw - x2, math.max(0, y2 - y),
-        0.72, 0.82, 1.00,
-        c_a
-    )
+    FALLEN_WORLD_THUNDER_FILL(0, 0, sw, y, 0.72, 0.82, 1.00, c_a)
+    FALLEN_WORLD_THUNDER_FILL(0, y2, sw, sh - y2, 0.72, 0.82, 1.00, c_a)
+    FALLEN_WORLD_THUNDER_FILL(0, y, x, math.max(0, y2 - y), 0.72, 0.82, 1.00, c_a)
+    FALLEN_WORLD_THUNDER_FILL(x2, y, sw - x2, math.max(0, y2 - y), 0.72, 0.82, 1.00, c_a)
 end
 
 function FALLEN_WORLD_THUNDER_TICK()
@@ -29353,18 +29448,10 @@ function FALLEN_WORLD_THUNDER_TICK()
         A.world_thunder_last_t = now_t
     end
 
-    local dt = clamp(
-        now_t - A.world_thunder_last_t,
-        0,
-        0.05
-    )
-
+    local dt = clamp(now_t - A.world_thunder_last_t, 0, 0.05)
     A.world_thunder_last_t = now_t
 
-    local wanted =
-        S.world_thunder_enabled == true
-        and 1
-        or 0
+    local wanted = S.world_thunder_enabled == true and 1 or 0
 
     A.world_thunder_alpha = exp_chase(
         tonumber(A.world_thunder_alpha) or 0,
@@ -29374,80 +29461,66 @@ function FALLEN_WORLD_THUNDER_TICK()
     )
 
     local center = FALLEN_WORLD_RAIN_CENTER()
-
     if not center then
         return
     end
 
-    local ground_y =
-        tonumber(A.world_rain_ground_y)
-        or (center.Y - 3.05)
-
     local radius = clamp(
-        tonumber(S.world_rain_radius) or 28,
+        tonumber(S.world_thunder_radius) or 90,
         8,
         300
     )
 
     if S.world_thunder_enabled == true then
         if A.world_thunder_timer == nil then
-            A.world_thunder_timer =
-                FALLEN_WEATHER_RAND(0.35, 1.20)
+            A.world_thunder_timer = FALLEN_WEATHER_RAND(0.35, 1.20)
         end
 
-        A.world_thunder_timer =
-            A.world_thunder_timer - dt
+        A.world_thunder_timer = A.world_thunder_timer - dt
 
         if A.world_thunder_timer <= 0 then
-            FALLEN_WORLD_THUNDER_SPAWN(
-                center,
-                ground_y,
-                radius
-            )
-
-            A.world_thunder_timer =
-                FALLEN_WORLD_THUNDER_INTERVAL()
+            FALLEN_WORLD_THUNDER_SPAWN(center, radius)
+            A.world_thunder_timer = FALLEN_WORLD_THUNDER_INTERVAL()
         end
     elseif (A.world_thunder_alpha or 0) < 0.02 then
         A.world_thunder_timer = nil
     end
 
+    local bolt_speed = clamp(
+        tonumber(S.world_thunder_speed) or 1,
+        0.25,
+        3.00
+    )
+
     if (A.world_thunder_flash or 0) > 0 then
-        A.world_thunder_flash =
-            math.max(
-                0,
-                (A.world_thunder_flash or 0)
-                - dt * 5.8
-            )
+        A.world_thunder_flash = math.max(
+            0,
+            (A.world_thunder_flash or 0)
+                - dt * (3.0 + bolt_speed * 3.0)
+        )
 
         FALLEN_WORLD_THUNDER_FLASH(
             (A.world_thunder_flash or 0)
-            * (A.world_thunder_alpha or 0)
+                * (A.world_thunder_alpha or 0)
         )
     end
 
     if (A.world_thunder_life or 0) > 0
         and type(A.world_thunder_points) == "table"
     then
-        A.world_thunder_life =
-            math.max(
-                0,
-                (A.world_thunder_life or 0) - dt
-            )
+        A.world_thunder_life = math.max(
+            0,
+            (A.world_thunder_life or 0) - dt
+        )
 
         local life_t = clamp(
             (A.world_thunder_life or 0)
-            / math.max(
-                0.001,
-                tonumber(A.world_thunder_max_life) or 1
-            ),
+                / math.max(0.001, tonumber(A.world_thunder_max_life) or 1),
             0,
             1
         )
 
-        local a =
-            smooth01(life_t)
-            * (A.world_thunder_alpha or 0)
+        local a = smooth01(life_t) * (A.world_thunder_alpha or 0)
 
         FALLEN_WORLD_THUNDER_DRAW_PATH(
             A.world_thunder_points,
