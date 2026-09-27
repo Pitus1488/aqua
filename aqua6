@@ -482,6 +482,11 @@ local A = {
     world_rain_last_t = nil,
     world_rain_ground_y = nil,
 
+    -- World Rain settings popup (same animated ellipsis pattern as Aimbot).
+    world_rain_settings_open = false,
+    world_rain_settings_anim = 0,
+    world_rain_settings_last_t = nil,
+
     -- 3D World Thunderstorm runtime.
     world_thunder_alpha = 0,
     world_thunder_timer = nil,
@@ -19388,6 +19393,8 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             and not scale_dropdown_hot
         then
             A.menu_settings_open = false
+            A.world_rain_settings_open = false
+            A.world_thunder_settings_open = false
             A.menu_scale_dropdown_open = false
             A.menu_type_dropdown_open = false
             A.menu_type_dropdown_open = false
@@ -21163,131 +21170,420 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
     return panel_hot
 end
 
-function FALLEN_DRAW_WORLD_THUNDER_SETTINGS_POPUP(mx, my, clicked, lmb, x, y)
+function FALLEN_WORLD_WEATHER_POPUP_STEP(kind)
+    local is_rain = kind == "rain"
+    local open =
+        is_rain
+        and A.world_rain_settings_open == true
+        or A.world_thunder_settings_open == true
+
+    local last_t =
+        is_rain
+        and A.world_rain_settings_last_t
+        or A.world_thunder_settings_last_t
+
     local now_t = tick()
 
-    if A.world_thunder_settings_last_t == nil then
+    if last_t == nil then
+        last_t = now_t
+    end
+
+    local dt = clamp(now_t - last_t, 0, 0.05)
+
+    if is_rain then
+        A.world_rain_settings_last_t = now_t
+    else
         A.world_thunder_settings_last_t = now_t
     end
 
-    local dt = clamp(
-        now_t - A.world_thunder_settings_last_t,
-        0,
-        0.05
-    )
-
-    A.world_thunder_settings_last_t = now_t
-
-    local target =
-        A.world_thunder_settings_open == true
-        and 1
+    local current =
+        tonumber(
+            is_rain
+            and A.world_rain_settings_anim
+            or A.world_thunder_settings_anim
+        )
         or 0
 
-    A.world_thunder_settings_anim = exp_chase(
-        tonumber(A.world_thunder_settings_anim) or 0,
-        target,
-        target > 0 and 18 or 22,
-        dt
-    )
+    local target = open and 1 or 0
+    local speed =
+        target > current
+        and 15
+        or 11
 
-    local anim = tonumber(A.world_thunder_settings_anim) or 0
-    if anim <= 0.01 then
+    current =
+        exp_chase(
+            current,
+            target,
+            speed,
+            dt
+        )
+
+    if target == 0 and current < 0.028 then
+        current = 0
+    elseif target == 1 and current > 0.992 then
+        current = 1
+    end
+
+    if is_rain then
+        A.world_rain_settings_anim = current
+    else
+        A.world_thunder_settings_anim = current
+    end
+
+    return clamp(current, 0, 1)
+end
+
+
+function FALLEN_DRAW_WORLD_RAIN_SETTINGS_POPUP(
+    mx,
+    my,
+    clicked,
+    lmb,
+    dots_x,
+    dots_y
+)
+    local raw_anim =
+        FALLEN_WORLD_WEATHER_POPUP_STEP("rain")
+
+    if raw_anim <= 0.001
+        and not A.world_rain_settings_open
+    then
         return false
     end
 
-    local w = 390
-    local h = 345
-    local panel_hot = hover(mx, my, x, y, w, h)
+    local parent_alpha = MENU_RENDER_ALPHA
+    local popup_fade =
+        ease_out_cubic(
+            clamp(raw_anim, 0, 1)
+        )
 
-    if clicked
+    MENU_RENDER_ALPHA =
+        parent_alpha
+        * popup_fade
+
+    local anim =
+        A.world_rain_settings_open
+        and ease_out_cubic(raw_anim)
+        or ease_in_out_cubic(raw_anim)
+
+    local pw = 300
+    local ph = 199
+
+    local base_px =
+        dots_x
+        - pw
+        + 28
+
+    local base_py =
+        dots_y
+        + 31
+
+    local retract =
+        1 - anim
+
+    local px =
+        snap(
+            base_px
+            + retract * 14
+        )
+
+    local py =
+        snap(
+            base_py
+            - retract * 34
+        )
+
+    local shell_h =
+        math.max(
+            28,
+            ph
+            - retract * 58
+        )
+
+    local interactive =
+        raw_anim > 0.96
+        and A.world_rain_settings_open
+
+    local ui_clicked =
+        clicked
+        and interactive
+
+    FALLEN_POPUP_GLOW(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        1
+    )
+
+    rounded_fill(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        { 0.062, 0.066, 0.077, 1 }
+    )
+
+    text(
+        px + 13,
+        py + 12,
+        "Rain settings",
+        C.text
+    )
+
+    if shell_h > 39 then
+        line(
+            px + 12,
+            py + 34,
+            px + pw - 12,
+            py + 34,
+            C.divider,
+            1
+        )
+    end
+
+    if raw_anim > 0.34 then
+        slider_row(
+            mx, my, ui_clicked, lmb,
+            px, py + 35, pw,
+            "Rain Amount",
+            "world_rain_amount",
+            12, 64, "int"
+        )
+
+        line(
+            px + 12,
+            py + 75,
+            px + pw - 12,
+            py + 75,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx, my, ui_clicked, lmb,
+            px, py + 76, pw,
+            "Rain Radius",
+            "world_rain_radius",
+            8, 300, "int"
+        )
+
+        line(
+            px + 12,
+            py + 116,
+            px + pw - 12,
+            py + 116,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx, my, ui_clicked, lmb,
+            px, py + 117, pw,
+            "Rain Speed",
+            "world_rain_speed",
+            0.03, 2.50, "float"
+        )
+
+        line(
+            px + 12,
+            py + 157,
+            px + pw - 12,
+            py + 157,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx, my, ui_clicked, lmb,
+            px, py + 158, pw,
+            "Wind Angle",
+            "world_rain_wind_angle",
+            -65, 65, "int"
+        )
+    end
+
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            shell_h
+        )
+
+    if interactive
+        and clicked
+        and not popup_hot
+    then
+        A.world_rain_settings_open = false
+        numeric_stop(true)
+    end
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+
+    return popup_hot
+end
+
+
+function FALLEN_DRAW_WORLD_THUNDER_SETTINGS_POPUP(
+    mx,
+    my,
+    clicked,
+    lmb,
+    dots_x,
+    dots_y
+)
+    local raw_anim =
+        FALLEN_WORLD_WEATHER_POPUP_STEP("thunder")
+
+    if raw_anim <= 0.001
+        and not A.world_thunder_settings_open
+    then
+        return false
+    end
+
+    local parent_alpha = MENU_RENDER_ALPHA
+    local popup_fade =
+        ease_out_cubic(
+            clamp(raw_anim, 0, 1)
+        )
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+        * popup_fade
+
+    local anim =
+        A.world_thunder_settings_open
+        and ease_out_cubic(raw_anim)
+        or ease_in_out_cubic(raw_anim)
+
+    local pw = 300
+    local ph = 322
+
+    local base_px =
+        dots_x
+        - pw
+        + 28
+
+    local base_py =
+        dots_y
+        + 31
+
+    local retract =
+        1 - anim
+
+    local px =
+        snap(
+            base_px
+            + retract * 14
+        )
+
+    local py =
+        snap(
+            base_py
+            - retract * 34
+        )
+
+    local shell_h =
+        math.max(
+            28,
+            ph
+            - retract * 76
+        )
+
+    local interactive =
+        raw_anim > 0.96
         and A.world_thunder_settings_open
-        and not panel_hot
+
+    local ui_clicked =
+        clicked
+        and interactive
+
+    FALLEN_POPUP_GLOW(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        1
+    )
+
+    rounded_fill(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        { 0.062, 0.066, 0.077, 1 }
+    )
+
+    text(
+        px + 13,
+        py + 12,
+        "Thunder settings",
+        C.text
+    )
+
+    if shell_h > 39 then
+        line(
+            px + 12,
+            py + 34,
+            px + pw - 12,
+            py + 34,
+            C.divider,
+            1
+        )
+    end
+
+    if raw_anim > 0.24 then
+        slider_row(mx, my, ui_clicked, lmb, px, py + 35,  pw, "Strike Rate",   "world_thunder_rate",       0.15, 4.00, "float")
+        line(px + 12, py + 75,  px + pw - 12, py + 75,  C.divider, 1)
+
+        slider_row(mx, my, ui_clicked, lmb, px, py + 76,  pw, "Bolt Speed",    "world_thunder_speed",      0.25, 3.00, "float")
+        line(px + 12, py + 116, px + pw - 12, py + 116, C.divider, 1)
+
+        slider_row(mx, my, ui_clicked, lmb, px, py + 117, pw, "Brightness",    "world_thunder_brightness", 0.20, 2.00, "float")
+        line(px + 12, py + 157, px + pw - 12, py + 157, C.divider, 1)
+
+        slider_row(mx, my, ui_clicked, lmb, px, py + 158, pw, "Thickness",     "world_thunder_thickness",  0.50, 3.00, "float")
+        line(px + 12, py + 198, px + pw - 12, py + 198, C.divider, 1)
+
+        slider_row(mx, my, ui_clicked, lmb, px, py + 199, pw, "Branches",      "world_thunder_branches",   0,    8,    "int")
+        line(px + 12, py + 239, px + pw - 12, py + 239, C.divider, 1)
+
+        slider_row(mx, my, ui_clicked, lmb, px, py + 240, pw, "Bolt Height",   "world_thunder_height",     30,   180,  "int")
+        line(px + 12, py + 280, px + pw - 12, py + 280, C.divider, 1)
+
+        slider_row(mx, my, ui_clicked, lmb, px, py + 281, pw, "Strike Radius", "world_thunder_radius",     8,    300,  "int")
+    end
+
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            shell_h
+        )
+
+    if interactive
+        and clicked
+        and not popup_hot
     then
         A.world_thunder_settings_open = false
         numeric_stop(true)
     end
 
-    local parent_alpha = MENU_RENDER_ALPHA
-    MENU_RENDER_ALPHA = parent_alpha * smooth01(anim)
+    MENU_RENDER_ALPHA =
+        parent_alpha
 
-    rounded_fill(
-        x - 7,
-        y - 7,
-        w + 14,
-        h + 14,
-        15,
-        { 0.000, 0.000, 0.000, 0.30 }
-    )
-
-    rounded_outline(
-        x,
-        y,
-        w,
-        h,
-        13,
-        C.border,
-        1,
-        C.content
-    )
-
-    text(
-        x + 15,
-        y + 13,
-        "Thunder Settings",
-        C.white
-    )
-
-    text(
-        x + 15,
-        y + 28,
-        "World lightning tuning",
-        C.text_dim
-    )
-
-    local close_hot = hover(mx, my, x + w - 39, y + 9, 27, 25)
-    rounded_fill(
-        x + w - 39,
-        y + 9,
-        27,
-        25,
-        6,
-        close_hot and C.card_hover or C.toggle_off
-    )
-    centered_text(
-        x + w - 25.5,
-        y + 16,
-        "x",
-        close_hot and C.white or C.text_dim
-    )
-
-    if clicked and close_hot then
-        A.world_thunder_settings_open = false
-        numeric_stop(true)
-    end
-
-    line(x + 12, y + 48, x + w - 12, y + 48, C.divider, 1)
-
-    local allow =
-        clicked
-        and A.world_thunder_settings_open == true
-        and not close_hot
-
-    slider_row(mx, my, allow, lmb, x, y + 49,  w, "Strike Rate",   "world_thunder_rate",       0.15, 4.00, "float")
-    line(x + 12, y + 89,  x + w - 12, y + 89,  C.divider, 1)
-    slider_row(mx, my, allow, lmb, x, y + 90,  w, "Bolt Speed",    "world_thunder_speed",      0.25, 3.00, "float")
-    line(x + 12, y + 130, x + w - 12, y + 130, C.divider, 1)
-    slider_row(mx, my, allow, lmb, x, y + 131, w, "Brightness",    "world_thunder_brightness", 0.20, 2.00, "float")
-    line(x + 12, y + 171, x + w - 12, y + 171, C.divider, 1)
-    slider_row(mx, my, allow, lmb, x, y + 172, w, "Thickness",     "world_thunder_thickness",  0.50, 3.00, "float")
-    line(x + 12, y + 212, x + w - 12, y + 212, C.divider, 1)
-    slider_row(mx, my, allow, lmb, x, y + 213, w, "Branches",      "world_thunder_branches",   0,    8,    "int")
-    line(x + 12, y + 253, x + w - 12, y + 253, C.divider, 1)
-    slider_row(mx, my, allow, lmb, x, y + 254, w, "Bolt Height",   "world_thunder_height",     30,   180,  "int")
-    line(x + 12, y + 294, x + w - 12, y + 294, C.divider, 1)
-    slider_row(mx, my, allow, lmb, x, y + 295, w, "Strike Radius", "world_thunder_radius",     8,    300,  "int")
-
-    MENU_RENDER_ALPHA = parent_alpha
-    return panel_hot
+    return popup_hot
 end
 
 
@@ -21296,6 +21592,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     my,
     clicked,
     lmb,
+    rmb_clicked,
     x,
     y,
     w
@@ -21312,11 +21609,17 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         or (A.hit_effect_style_anim or 0) > 0.02
 
 
+    local weather_popup_open =
+        A.world_rain_settings_open
+        or (A.world_rain_settings_anim or 0) > 0.02
+        or A.world_thunder_settings_open
+        or (A.world_thunder_settings_anim or 0) > 0.02
+
     local controls_clicked =
         clicked
         and not dropdown_open
         and not A.world_color_picker_open
-        and not A.world_thunder_settings_open
+        and not weather_popup_open
 
     section_title(
         x,
@@ -21444,6 +21747,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         and style_box_hot
         and not A.world_color_picker_open
         and not A.world_thunder_settings_open
+        and not A.world_rain_settings_open
     then
         A.bullet_tracer_style_open =
             not A.bullet_tracer_style_open
@@ -21739,6 +22043,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         and hit_style_box_hot
         and not A.world_color_picker_open
         and not A.world_thunder_settings_open
+        and not A.world_rain_settings_open
     then
         A.hit_effect_style_open =
             not A.hit_effect_style_open
@@ -21750,8 +22055,8 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         numeric_stop(true)
     end
 
-    -- World Weather: rain falls through the whole visual volume and fades far
-    -- below the player. There is intentionally NO ground impact / splash logic.
+    -- World Weather: compact master rows. Settings live behind the Aimbot-style
+    -- ellipsis popups and open ONLY with RMB on the three dots.
     section_title(
         right_x,
         y + 145,
@@ -21762,129 +22067,102 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         right_x,
         y + 170,
         right_w,
-        297,
+        101,
         11
     )
+
+    local rain_dots_x =
+        right_x
+        + right_w
+        - 79
+
+    local rain_dots_y =
+        y + 185
+
+    local rain_dots_hot =
+        hover(
+            mx,
+            my,
+            rain_dots_x,
+            rain_dots_y,
+            27,
+            25
+        )
 
     toggle_row(
         mx,
         my,
-        controls_clicked,
+        controls_clicked
+            and not rain_dots_hot,
         right_x,
         y + 177,
         right_w,
         "World Rain",
         "world_rain_enabled",
-        false
+        true
     )
 
-    line(right_x + 12, y + 217, right_x + right_w - 12, y + 217, C.divider, 1)
-
-    slider_row(
-        mx, my, controls_clicked, lmb,
-        right_x, y + 218, right_w,
-        "Rain Amount", "world_rain_amount",
-        12, 64, "int"
+    line(
+        right_x + 12,
+        y + 217,
+        right_x + right_w - 12,
+        y + 217,
+        C.divider,
+        1
     )
 
-    line(right_x + 12, y + 258, right_x + right_w - 12, y + 258, C.divider, 1)
+    local thunder_dots_x =
+        right_x
+        + right_w
+        - 79
 
-    slider_row(
-        mx, my, controls_clicked, lmb,
-        right_x, y + 259, right_w,
-        "Rain Radius", "world_rain_radius",
-        8, 300, "int"
-    )
+    local thunder_dots_y =
+        y + 226
 
-    line(right_x + 12, y + 299, right_x + right_w - 12, y + 299, C.divider, 1)
-
-    slider_row(
-        mx, my, controls_clicked, lmb,
-        right_x, y + 300, right_w,
-        "Rain Speed", "world_rain_speed",
-        0.03, 2.50, "float"
-    )
-
-    line(right_x + 12, y + 340, right_x + right_w - 12, y + 340, C.divider, 1)
-
-    slider_row(
-        mx, my, controls_clicked, lmb,
-        right_x, y + 341, right_w,
-        "Wind Angle", "world_rain_wind_angle",
-        -65, 65, "int"
-    )
-
-    line(right_x + 12, y + 381, right_x + right_w - 12, y + 381, C.divider, 1)
+    local thunder_dots_hot =
+        hover(
+            mx,
+            my,
+            thunder_dots_x,
+            thunder_dots_y,
+            27,
+            25
+        )
 
     toggle_row(
         mx,
         my,
-        controls_clicked,
+        controls_clicked
+            and not thunder_dots_hot,
         right_x,
-        y + 382,
+        y + 218,
         right_w,
         "Thunderstorm",
         "world_thunder_enabled",
-        false
+        true
     )
 
-    line(right_x + 12, y + 422, right_x + right_w - 12, y + 422, C.divider, 1)
-
-    local thunder_settings_y = y + 423
-    local thunder_settings_hot = row_hover(
-        mx,
-        my,
-        right_x,
-        thunder_settings_y,
-        right_w,
-        41
-    )
-
-    text(
-        right_x + 13,
-        thunder_settings_y + 14,
-        "Thunder Settings",
-        FALLEN_HOVER_TEXT(
-            "thunder_settings_row",
-            thunder_settings_hot,
-            C.text
-        )
-    )
-
-    local thunder_button_w = 74
-    local thunder_button_x = right_x + right_w - thunder_button_w - 10
-    local thunder_button_y = thunder_settings_y + 8
-    local thunder_button_hot = hover(
-        mx,
-        my,
-        thunder_button_x,
-        thunder_button_y,
-        thunder_button_w,
-        25
-    )
-
-    rounded_fill(
-        thunder_button_x,
-        thunder_button_y,
-        thunder_button_w,
-        25,
-        6,
-        thunder_button_hot and C.card_hover or C.toggle_off
-    )
-
-    centered_text(
-        thunder_button_x + thunder_button_w * 0.5,
-        thunder_button_y + 7,
-        "Open",
-        thunder_button_hot and C.white or C.text_dim
-    )
-
-    if clicked
-        and thunder_settings_hot
-        and not A.world_thunder_settings_open
+    if rmb_clicked
+        and rain_dots_hot
         and not A.world_color_picker_open
     then
-        A.world_thunder_settings_open = true
+        A.world_rain_settings_open =
+            not A.world_rain_settings_open
+
+        A.world_thunder_settings_open = false
+        A.bullet_tracer_style_open = false
+        A.hit_effect_style_open = false
+        numeric_stop(true)
+    end
+
+    if rmb_clicked
+        and thunder_dots_hot
+        and not A.world_color_picker_open
+    then
+        A.world_thunder_settings_open =
+            not A.world_thunder_settings_open
+
+        A.world_rain_settings_open = false
         A.bullet_tracer_style_open = false
         A.hit_effect_style_open = false
         numeric_stop(true)
@@ -21931,13 +22209,22 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         A.hit_effect_style_open = false
     end
 
+    FALLEN_DRAW_WORLD_RAIN_SETTINGS_POPUP(
+        mx,
+        my,
+        clicked,
+        lmb,
+        rain_dots_x,
+        rain_dots_y
+    )
+
     FALLEN_DRAW_WORLD_THUNDER_SETTINGS_POPUP(
         mx,
         my,
         clicked,
         lmb,
-        x + (w - 390) * 0.5,
-        y + 82
+        thunder_dots_x,
+        thunder_dots_y
     )
 
 
@@ -25064,6 +25351,7 @@ hooks.on_render(function()
                 my,
                 page_clicked,
                 lmb,
+                page_rmb_clicked,
                 page_x,
                 page_y,
                 page_w
@@ -28597,15 +28885,18 @@ function FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(center, radius)
     local refresh = old == nil
 
     if old then
-        local age = now_t - (tonumber(old.time) or -100)
         local dx = center.X - (tonumber(old.cx) or center.X)
         local dz = center.Z - (tonumber(old.cz) or center.Z)
         local moved = math.sqrt(dx * dx + dz * dz)
         local old_radius = tonumber(old.radius) or radius
 
-        if age > 2.5
-            or moved > 32
-            or math.abs(old_radius - radius) > 24
+        -- Do NOT rebuild on a timer. The old age > 2.5 branch caused a
+        -- full Workspace descendant scan every few seconds and produced the
+        -- regular hitch the user could feel.
+        --
+        -- Rebuild only after meaningful movement or a large radius expansion.
+        if moved > 96
+            or radius > old_radius + 72
         then
             refresh = true
         end
