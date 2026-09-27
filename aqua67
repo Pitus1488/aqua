@@ -10394,12 +10394,7 @@ function FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
     local kb =
         cheat.keybinds
 
-    local key =
-        A.silent_toggle_latch_key
-
-    if not key
-        and type(kb._keys) == "function"
-    then
+    if type(kb._keys) == "function" then
         local ok, keys =
             pcall(function()
                 return kb:_keys()
@@ -10417,35 +10412,58 @@ function FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
                         raw
                     )
 
-                if string.find(
+                local is_silent =
+                    string.find(
                         normalized,
                         "silent",
                         1,
                         true
-                    )
-                    and string.find(
+                    ) ~= nil
+
+                local is_latch =
+                    string.find(
                         normalized,
                         "toggled",
                         1,
                         true
-                    )
+                    ) ~= nil
+                    or string.find(
+                        normalized,
+                        "active",
+                        1,
+                        true
+                    ) ~= nil
+
+                if is_silent
+                    and is_latch
                 then
-                    key = raw
-                    A.silent_toggle_latch_key =
-                        raw
-                    break
+                    pcall(function()
+                        kb[raw] =
+                            false
+                    end)
                 end
             end
         end
     end
 
-    -- Documented naming convention for keybind latches.
-    key =
-        key
-        or "silent_aim_toggled"
+    -- Common fallbacks in case this build omits _keys().
+    pcall(function()
+        kb.silent_aim_toggled =
+            false
+    end)
 
     pcall(function()
-        kb[key] =
+        kb.silent_toggled =
+            false
+    end)
+
+    pcall(function()
+        kb.silent_aim_active =
+            false
+    end)
+
+    pcall(function()
+        kb.silent_active =
             false
     end)
 end
@@ -10468,35 +10486,52 @@ function FALLEN_SILENT_SET_ENABLED(
     value =
         value == true
 
-    if cheat
-        and type(cheat.enable) == "function"
-    then
-        pcall(function()
-            cheat.enable(
-                "silent_aim",
-                value
-            )
-        end)
+    S.silent_enabled =
+        value
+
+    local sa =
+        FALLEN_SILENT_SECTION()
+
+    if not sa then
+        return
     end
 
+    -- IMPORTANT:
+    -- Do NOT call cheat.enable("silent_aim", true) here.
+    -- cheat.enable may latch a keybind into toggle/active state.
+    -- The live section itself is writable and acts like the stock menu.
     FALLEN_SILENT_WRITE_FIELD(
         "enabled",
         value
     )
 
-    -- cheat.enable can latch a bind; immediately force real HOLD mode.
     FALLEN_SILENT_FORCE_HOLD()
 
     -- Silent method stays Raycast.
-    local sa =
-        FALLEN_SILENT_LIVE_SECTION()
+    FALLEN_SILENT_WRITE_FIELD(
+        "method",
+        2
+    )
 
-    if sa then
-        pcall(function()
-            sa.method =
-                2
-        end)
+    if value ~= true then
+        FALLEN_SILENT_SET_MAGIC_BULLET(
+            false
+        )
+
+        -- Explicit disable can safely use the master helper too.
+        if cheat
+            and type(cheat.enable) == "function"
+        then
+            pcall(function()
+                cheat.enable(
+                    "silent_aim",
+                    false
+                )
+            end)
+        end
     end
+
+    FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
 end
 
 
@@ -10996,9 +11031,13 @@ end
 
 
 function FALLEN_SILENT_APPLY_ALL_LIVE()
-    FALLEN_SILENT_SET_ENABLED(
-        S.silent_enabled == true
+    -- Bind and HOLD mode first, master enabled last.
+    -- This prevents the stock cheat from ever seeing enabled=true with key=0.
+    FALLEN_SILENT_SET_KEY(
+        S.silent_key
     )
+
+    FALLEN_SILENT_FORCE_HOLD()
 
     FALLEN_SILENT_SET_TEAM_CHECK(
         S.silent_team_check == true
@@ -11016,10 +11055,6 @@ function FALLEN_SILENT_APPLY_ALL_LIVE()
         S.silent_target_part
     )
 
-    FALLEN_SILENT_SET_KEY(
-        S.silent_key
-    )
-
     FALLEN_SILENT_SET_FOV_ENABLED(
         S.silent_fov_enabled == true
     )
@@ -11028,10 +11063,16 @@ function FALLEN_SILENT_APPLY_ALL_LIVE()
         S.silent_fov
     )
 
+    FALLEN_SILENT_SET_ENABLED(
+        S.silent_enabled == true
+    )
+
     FALLEN_SILENT_SET_MAGIC_BULLET(
         S.silent_enabled == true
         and S.silent_magic_bullet == true
     )
+
+    FALLEN_SILENT_FORCE_HOLD()
 end
 
 
@@ -11046,13 +11087,23 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
         )
 
     if key == "silent_enabled" then
-        FALLEN_SILENT_SET_ENABLED(
-            value == true
-        )
-
         if value == true then
+            FALLEN_SILENT_SET_KEY(
+                S.silent_key
+            )
+
+            FALLEN_SILENT_FORCE_HOLD()
+
+            FALLEN_SILENT_SET_ENABLED(
+                true
+            )
+
             FALLEN_SILENT_APPLY_ALL_LIVE()
         else
+            FALLEN_SILENT_SET_ENABLED(
+                false
+            )
+
             FALLEN_SILENT_SET_MAGIC_BULLET(
                 false
             )
@@ -11127,23 +11178,15 @@ end
 
 
 function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
-    -- Master remains a Silent Aim feature.
-    if cheat
-        and type(cheat.is_enabled) == "function"
-    then
-        local ok, enabled =
-            pcall(function()
-                return cheat.is_enabled(
-                    "silent_aim"
-                )
-            end)
+    -- Read the section's real checkbox state directly.
+    local live_enabled =
+        FALLEN_SILENT_READ_FIELD(
+            "enabled"
+        )
 
-        if ok
-            and enabled ~= nil
-        then
-            S.silent_enabled =
-                enabled == true
-        end
+    if live_enabled ~= nil then
+        S.silent_enabled =
+            live_enabled == true
     end
 
     -- These four values are shared with the built-in Aimbot selector.
@@ -11500,6 +11543,81 @@ function FALLEN_SILENT_TICK()
     end)
 
     FALLEN_SILENT_FORCE_HOLD()
+
+    -- HOLD means the stock keybind state must follow the physical key only.
+    -- Never leave any stale toggle/active latch behind.
+    local bind_vk =
+        math.floor(
+            tonumber(S.silent_key)
+            or 0
+        )
+
+    local physically_down =
+        false
+
+    if bind_vk > 0 then
+        physically_down =
+            key_down(bind_vk)
+            == true
+    end
+
+    if cheat
+        and cheat.keybinds
+        and type(cheat.keybinds._keys) == "function"
+    then
+        local ok_keys, bind_keys =
+            pcall(function()
+                return cheat.keybinds:_keys()
+            end)
+
+        if ok_keys
+            and type(bind_keys) == "table"
+        then
+            for _, raw_key in ipairs(bind_keys) do
+                local raw =
+                    tostring(raw_key)
+
+                local normalized =
+                    FALLEN_SILENT_NORMALIZE_KEY(
+                        raw
+                    )
+
+                if string.find(
+                        normalized,
+                        "silent",
+                        1,
+                        true
+                    )
+                then
+                    if string.find(
+                            normalized,
+                            "toggled",
+                            1,
+                            true
+                        )
+                    then
+                        pcall(function()
+                            cheat.keybinds[raw] =
+                                false
+                        end)
+                    elseif string.find(
+                            normalized,
+                            "active",
+                            1,
+                            true
+                        )
+                    then
+                        -- active is documented as live/overwritten each frame;
+                        -- write the actual physical HOLD state here as well.
+                        pcall(function()
+                            cheat.keybinds[raw] =
+                                physically_down
+                        end)
+                    end
+                end
+            end
+        end
+    end
 
     -- Keep the explicit FOV switch pinned too.
     pcall(function()
