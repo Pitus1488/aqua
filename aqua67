@@ -2807,10 +2807,11 @@ function FALLEN_ICON_MISC(x, y, c)
 end
 
 -- Visuals sidebar image icon.
--- The supplied fotovssylku link is an image PAGE, so reuse the same resolver
--- as the loader and cache the final image handle once.
+-- White source image: tint now works correctly because white pixels can be
+-- multiplied to gray while inactive and accent-blue while selected.
+-- The fotovssylku page is resolved exactly like the loader image.
 _G.FALLEN_VISUALS_TAB_ICON_PAGE_URL =
-    "https://fotovssylku.ru/i/%D0%BA%D0%B0%D1%80%D1%82%D0%B8%D0%BD%D0%B0-%281%29.fRdjo"
+    "https://fotovssylku.ru/i/2c1e9ed0-c136-4589-a956-816156f82b39-%281%29.fRFN8"
 
 _G.FALLEN_VISUALS_TAB_ICON_SOURCE =
     _G.FALLEN_VISUALS_TAB_ICON_SOURCE
@@ -3000,9 +3001,9 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
 
     local icon = ICONS[index]
 
-    -- Visuals uses the supplied image icon. The image is tinted with the
-    -- same sidebar color interpolation: gray while inactive, accent-blue
-    -- while selected. If it is not ready yet, fall back to the old vector icon.
+    -- Visuals uses the WHITE source image. Since the source pixels are white,
+    -- DrawImage RGB multiplication now produces real gray -> accent-blue
+    -- interpolation instead of leaving a black source black.
     if index == 2
         and type(DrawImage) == "function"
     then
