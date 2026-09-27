@@ -9834,31 +9834,390 @@ function FALLEN_SILENT_SET_TARGET_PART(
 end
 
 
+function FALLEN_SHARED_AIM_SECTION()
+    if not cheat then
+        return nil
+    end
+
+    return cheat.aimbot
+end
+
+
+function FALLEN_SHARED_AIM_KEYS()
+    local section =
+        FALLEN_SHARED_AIM_SECTION()
+
+    if not section
+        or type(section._keys) ~= "function"
+    then
+        return nil
+    end
+
+    local ok, keys =
+        pcall(function()
+            return section:_keys()
+        end)
+
+    if ok
+        and type(keys) == "table"
+    then
+        return keys
+    end
+
+    return nil
+end
+
+
+function FALLEN_SHARED_AIM_FIND_KEY(
+    purpose
+)
+    A.silent_shared_aim_keys =
+        A.silent_shared_aim_keys
+        or {}
+
+    if A.silent_shared_aim_keys[purpose] then
+        return A.silent_shared_aim_keys[purpose]
+    end
+
+    local aliases = nil
+
+    if purpose == "team_check" then
+        aliases = {
+            "team_check",
+            "teamcheck",
+        }
+    elseif purpose == "sticky" then
+        aliases = {
+            "sticky_aim",
+            "stickyaim",
+            "sticky",
+            "target_lock",
+            "targetlock",
+            "lock_target",
+            "locktarget",
+        }
+    elseif purpose == "max_distance" then
+        aliases = {
+            "max_distance",
+            "maxdistance",
+            "max_dist",
+            "maxdist",
+            "distance",
+            "target_distance",
+            "targetdistance",
+            "max_range",
+            "maxrange",
+            "range",
+        }
+    elseif purpose == "target_part" then
+        aliases = {
+            "target_part",
+            "targetpart",
+            "hit_part",
+            "hitpart",
+        }
+    end
+
+    if type(aliases) ~= "table" then
+        return nil
+    end
+
+    local keys =
+        FALLEN_SHARED_AIM_KEYS()
+
+    -- Documented exact names first.
+    if type(keys) ~= "table" then
+        if purpose == "team_check" then
+            return "team_check"
+        elseif purpose == "target_part" then
+            return "target_part"
+        elseif purpose == "sticky" then
+            return "sticky_aim"
+        elseif purpose == "max_distance" then
+            return "max_distance"
+        end
+
+        return nil
+    end
+
+    for _, alias in ipairs(aliases) do
+        local an =
+            FALLEN_SILENT_NORMALIZE_KEY(
+                alias
+            )
+
+        for _, key in ipairs(keys) do
+            local raw =
+                tostring(key)
+
+            if FALLEN_SILENT_NORMALIZE_KEY(raw) == an then
+                A.silent_shared_aim_keys[purpose] =
+                    raw
+
+                return raw
+            end
+        end
+    end
+
+    -- Semantic fallback for builds whose field names differ.
+    for _, key in ipairs(keys) do
+        local raw =
+            tostring(key)
+
+        local kn =
+            FALLEN_SILENT_NORMALIZE_KEY(
+                raw
+            )
+
+        local matched = false
+
+        if purpose == "sticky" then
+            matched =
+                string.find(
+                    kn,
+                    "sticky",
+                    1,
+                    true
+                ) ~= nil
+                or (
+                    string.find(
+                        kn,
+                        "target",
+                        1,
+                        true
+                    )
+                    and string.find(
+                        kn,
+                        "lock",
+                        1,
+                        true
+                    )
+                )
+        elseif purpose == "max_distance" then
+            matched =
+                (
+                    string.find(
+                        kn,
+                        "dist",
+                        1,
+                        true
+                    ) ~= nil
+                )
+                or (
+                    string.find(
+                        kn,
+                        "range",
+                        1,
+                        true
+                    ) ~= nil
+                )
+        end
+
+        if matched then
+            A.silent_shared_aim_keys[purpose] =
+                raw
+
+            return raw
+        end
+    end
+
+    return nil
+end
+
+
+function FALLEN_SHARED_AIM_READ(
+    purpose
+)
+    local section =
+        FALLEN_SHARED_AIM_SECTION()
+
+    if not section then
+        return nil
+    end
+
+    local key =
+        FALLEN_SHARED_AIM_FIND_KEY(
+            purpose
+        )
+
+    if not key then
+        return nil
+    end
+
+    local ok, value =
+        pcall(function()
+            return section[key]
+        end)
+
+    if ok then
+        return value
+    end
+
+    return nil
+end
+
+
+function FALLEN_SHARED_AIM_WRITE(
+    purpose,
+    value
+)
+    local section =
+        FALLEN_SHARED_AIM_SECTION()
+
+    if not section then
+        return false
+    end
+
+    local key =
+        FALLEN_SHARED_AIM_FIND_KEY(
+            purpose
+        )
+
+    if not key then
+        return false
+    end
+
+    local ok =
+        pcall(function()
+            section[key] =
+                value
+        end)
+
+    return ok == true
+end
+
+
+function FALLEN_SILENT_SET_TEAM_CHECK(
+    value
+)
+    value =
+        value == true
+
+    S.silent_team_check =
+        value
+
+    -- This is a shared Aimbot selector in the stock cheat.
+    FALLEN_SHARED_AIM_WRITE(
+        "team_check",
+        value
+    )
+
+    -- Mirror into silent_aim too when this build exposes the same field.
+    FALLEN_SILENT_WRITE_FIELD(
+        "team_check",
+        value
+    )
+end
+
+
+function FALLEN_SILENT_SET_STICKY(
+    value
+)
+    value =
+        value == true
+
+    S.silent_sticky_aim =
+        value
+
+    -- Keep our normal Aimbot state in sync because this selector is shared.
+    S.sticky_aim =
+        value
+
+    FALLEN_SHARED_AIM_WRITE(
+        "sticky",
+        value
+    )
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "sticky",
+        value
+    )
+end
+
+
+function FALLEN_SILENT_SET_MAX_DISTANCE(
+    value
+)
+    local distance =
+        clamp(
+            tonumber(value)
+            or 1200,
+            50,
+            3000
+        )
+
+    S.silent_max_dist =
+        distance
+
+    -- Shared selection distance used by the built-in aim system.
+    S.aim_max_dist =
+        distance
+
+    FALLEN_SHARED_AIM_WRITE(
+        "max_distance",
+        distance
+    )
+
+    -- Mirror to silent section too if available.
+    FALLEN_SILENT_WRITE_FIELD(
+        "max_distance",
+        distance
+    )
+end
+
+
+function FALLEN_SILENT_SET_TARGET_PART(
+    value
+)
+    local part =
+        tostring(
+            value
+            or "Head"
+        )
+
+    local index = 0
+
+    if part == "Torso" then
+        index = 1
+    elseif part == "Feet" then
+        index = 2
+    end
+
+    S.silent_target_part =
+        part
+
+    -- Keep our Aimbot popup and the built-in shared selector aligned.
+    S.aim_target_part =
+        part
+
+    FALLEN_SHARED_AIM_WRITE(
+        "target_part",
+        index
+    )
+
+    -- Some builds also expose target_part inside silent_aim; mirror it.
+    FALLEN_SILENT_WRITE_FIELD(
+        "target_part",
+        index
+    )
+end
+
+
 function FALLEN_SILENT_APPLY_ALL_LIVE()
     FALLEN_SILENT_SET_ENABLED(
         S.silent_enabled == true
     )
 
-    FALLEN_SILENT_WRITE_FIELD(
-        "team_check",
+    FALLEN_SILENT_SET_TEAM_CHECK(
         S.silent_team_check == true
     )
 
-    FALLEN_SILENT_WRITE_FIELD(
-        "sticky",
+    FALLEN_SILENT_SET_STICKY(
         S.silent_sticky_aim == true
     )
 
-    FALLEN_SILENT_WRITE_FIELD(
-        "max_distance",
-        clamp(
-            tonumber(
-                S.silent_max_dist
-            )
-            or 1200,
-            50,
-            3000
-        )
+    FALLEN_SILENT_SET_MAX_DISTANCE(
+        S.silent_max_dist
     )
 
     FALLEN_SILENT_SET_TARGET_PART(
@@ -9888,7 +10247,6 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
         )
 
         if value == true then
-            -- Enabling Silent reapplies every knob immediately to the stock cheat.
             FALLEN_SILENT_APPLY_ALL_LIVE()
         else
             FALLEN_SILENT_SET_MAGIC_BULLET(
@@ -9900,32 +10258,24 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
     end
 
     if key == "silent_team_check" then
-        FALLEN_SILENT_WRITE_FIELD(
-            "team_check",
-            value == true
+        FALLEN_SILENT_SET_TEAM_CHECK(
+            value
         )
 
         return
     end
 
     if key == "silent_sticky_aim" then
-        FALLEN_SILENT_WRITE_FIELD(
-            "sticky",
-            value == true
+        FALLEN_SILENT_SET_STICKY(
+            value
         )
 
         return
     end
 
     if key == "silent_max_dist" then
-        FALLEN_SILENT_WRITE_FIELD(
-            "max_distance",
-            clamp(
-                tonumber(value)
-                or 1200,
-                50,
-                3000
-            )
+        FALLEN_SILENT_SET_MAX_DISTANCE(
+            value
         )
 
         return
@@ -9949,22 +10299,7 @@ end
 
 
 function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
-    local sa =
-        FALLEN_SILENT_LIVE_SECTION()
-
-    if not sa then
-        return
-    end
-
-    -- Do not fight the user while the max-distance slider/input is active.
-    local editing_distance =
-        A.active_slider == "silent_max_dist"
-        or (
-            A.numeric
-            and A.numeric.active_key
-                == "silent_max_dist"
-        )
-
+    -- Master remains a Silent Aim feature.
     if cheat
         and type(cheat.is_enabled) == "function"
     then
@@ -9981,20 +10316,11 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
             S.silent_enabled =
                 enabled == true
         end
-    else
-        local live_enabled =
-            FALLEN_SILENT_READ_FIELD(
-                "enabled"
-            )
-
-        if live_enabled ~= nil then
-            S.silent_enabled =
-                live_enabled == true
-        end
     end
 
+    -- These four values are shared with the built-in Aimbot selector.
     local team =
-        FALLEN_SILENT_READ_FIELD(
+        FALLEN_SHARED_AIM_READ(
             "team_check"
         )
 
@@ -10004,19 +10330,30 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
     end
 
     local sticky =
-        FALLEN_SILENT_READ_FIELD(
+        FALLEN_SHARED_AIM_READ(
             "sticky"
         )
 
     if sticky ~= nil then
         S.silent_sticky_aim =
             sticky == true
+
+        S.sticky_aim =
+            sticky == true
     end
+
+    local editing_distance =
+        A.active_slider == "silent_max_dist"
+        or (
+            A.numeric
+            and A.numeric.active_key
+                == "silent_max_dist"
+        )
 
     if not editing_distance then
         local distance =
             tonumber(
-                FALLEN_SILENT_READ_FIELD(
+                FALLEN_SHARED_AIM_READ(
                     "max_distance"
                 )
             )
@@ -10032,6 +10369,9 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
             S.silent_max_dist =
                 distance
 
+            S.aim_max_dist =
+                distance
+
             A.slider_target.silent_max_dist =
                 distance
 
@@ -10042,7 +10382,7 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
 
     local part =
         tonumber(
-            FALLEN_SILENT_READ_FIELD(
+            FALLEN_SHARED_AIM_READ(
                 "target_part"
             )
         )
@@ -10058,6 +10398,9 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
             S.silent_target_part =
                 "Head"
         end
+
+        S.aim_target_part =
+            S.silent_target_part
     end
 
     local magic =
