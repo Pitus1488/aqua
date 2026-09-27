@@ -1655,6 +1655,13 @@ numeric_stop = function(commit)
             S[n.active_key] = value
             A.slider_target[n.active_key] = value
             A.slider_visual[n.active_key] = value
+
+            if type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function" then
+                FALLEN_SILENT_UI_VALUE_CHANGED(
+                    n.active_key,
+                    value
+                )
+            end
         end
     elseif n.original ~= nil then
         S[n.active_key] = n.original
@@ -1713,6 +1720,13 @@ local function numeric_apply_buffer()
 
         S[n.active_key] = clamped
         A.slider_target[n.active_key] = clamped
+
+        if type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function" then
+            FALLEN_SILENT_UI_VALUE_CHANGED(
+                n.active_key,
+                clamped
+            )
+        end
     end
 end
 
@@ -3394,6 +3408,13 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     if clicked and hot then
         value = not value
         S[key] = value
+
+        if type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function" then
+            FALLEN_SILENT_UI_VALUE_CHANGED(
+                key,
+                value
+            )
+        end
     end
 
     local target = value and 1 or 0
@@ -3547,6 +3568,15 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
         end
 
         S[key] = current
+
+        if type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function"
+            and key == "silent_max_dist"
+        then
+            FALLEN_SILENT_UI_VALUE_CHANGED(
+                key,
+                current
+            )
+        end
     end
 
     local visual = A.slider_visual[key]
@@ -3672,6 +3702,13 @@ local function dropdown_row(mx, my, clicked, x, y, w, label, key, options)
         cur = cur + 1
         if cur > #options then cur = 1 end
         S[key] = options[cur]
+
+        if type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function" then
+            FALLEN_SILENT_UI_VALUE_CHANGED(
+                key,
+                S[key]
+            )
+        end
     end
 end
 
@@ -5637,6 +5674,8 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
     cy,
     cw
 )
+    FALLEN_SILENT_SYNC_UI_FROM_LIVE()
+
     local gap = 16
     local left_w =
         math.floor(
@@ -9355,6 +9394,684 @@ local function fap_find_target(cross, cam)
 end
 
 
+
+function FALLEN_SILENT_NORMALIZE_KEY(
+    value
+)
+    local out =
+        string.lower(
+            tostring(
+                value
+                or ""
+            )
+        )
+
+    return string.gsub(
+        out,
+        "[^%w]",
+        ""
+    )
+end
+
+
+function FALLEN_SILENT_LIVE_SECTION()
+    if not cheat then
+        return nil
+    end
+
+    return cheat.silent_aim
+end
+
+
+function FALLEN_SILENT_SECTION_KEYS()
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa
+        or type(sa._keys) ~= "function"
+    then
+        return nil
+    end
+
+    local ok, keys =
+        pcall(function()
+            return sa:_keys()
+        end)
+
+    if ok
+        and type(keys) == "table"
+    then
+        return keys
+    end
+
+    return nil
+end
+
+
+function FALLEN_SILENT_KEY_TYPE(
+    key
+)
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa
+        or not key
+        or type(sa._type) ~= "function"
+    then
+        return nil
+    end
+
+    local ok, value =
+        pcall(function()
+            return sa:_type(key)
+        end)
+
+    if ok then
+        return tostring(
+            value
+            or ""
+        )
+    end
+
+    return nil
+end
+
+
+function FALLEN_SILENT_FIND_LIVE_KEY(
+    purpose
+)
+    A.silent_live_keys =
+        A.silent_live_keys
+        or {}
+
+    local cached =
+        A.silent_live_keys[purpose]
+
+    if cached then
+        return cached
+    end
+
+    local keys =
+        FALLEN_SILENT_SECTION_KEYS()
+
+    local wanted = nil
+
+    if purpose == "sticky" then
+        wanted = {
+            "sticky_aim",
+            "stickyaim",
+            "sticky",
+            "sticky_target",
+            "stickytarget",
+            "target_lock",
+            "targetlock",
+            "lock_target",
+            "locktarget",
+        }
+    elseif purpose == "max_distance" then
+        wanted = {
+            "max_distance",
+            "maxdistance",
+            "max_dist",
+            "maxdist",
+            "target_distance",
+            "targetdistance",
+            "distance",
+            "max_range",
+            "maxrange",
+            "range",
+        }
+    elseif purpose == "team_check" then
+        wanted = {
+            "team_check",
+            "teamcheck",
+        }
+    elseif purpose == "target_part" then
+        wanted = {
+            "target_part",
+            "targetpart",
+            "hit_part",
+            "hitpart",
+        }
+    elseif purpose == "magic_bullet" then
+        wanted = {
+            "magic_bullet",
+            "magicbullet",
+        }
+    elseif purpose == "enabled" then
+        wanted = {
+            "enabled",
+        }
+    end
+
+    if type(wanted) ~= "table" then
+        return nil
+    end
+
+    -- _keys() is the preferred source of truth. If this build does not
+    -- expose it for some reason, fall back to the documented/common field
+    -- names and let the protected assignment decide whether the field exists.
+    if type(keys) ~= "table" then
+        if purpose == "enabled" then
+            return "enabled"
+        elseif purpose == "team_check" then
+            return "team_check"
+        elseif purpose == "target_part" then
+            return "target_part"
+        elseif purpose == "magic_bullet" then
+            return "magic_bullet"
+        elseif purpose == "sticky" then
+            return "sticky_aim"
+        elseif purpose == "max_distance" then
+            return "max_distance"
+        end
+
+        return nil
+    end
+
+    -- Exact/alias pass first.
+    for _, candidate in ipairs(wanted) do
+        local cn =
+            FALLEN_SILENT_NORMALIZE_KEY(
+                candidate
+            )
+
+        for _, key in ipairs(keys) do
+            local kn =
+                FALLEN_SILENT_NORMALIZE_KEY(
+                    key
+                )
+
+            if kn == cn then
+                A.silent_live_keys[purpose] =
+                    tostring(key)
+
+                return tostring(key)
+            end
+        end
+    end
+
+    -- Semantic fallback, still constrained to real keys from _keys().
+    for _, key in ipairs(keys) do
+        local raw =
+            tostring(key)
+
+        local kn =
+            FALLEN_SILENT_NORMALIZE_KEY(
+                raw
+            )
+
+        local match = false
+
+        if purpose == "sticky" then
+            match =
+                string.find(
+                    kn,
+                    "sticky",
+                    1,
+                    true
+                ) ~= nil
+                or (
+                    string.find(
+                        kn,
+                        "target",
+                        1,
+                        true
+                    )
+                    and string.find(
+                        kn,
+                        "lock",
+                        1,
+                        true
+                    )
+                )
+        elseif purpose == "max_distance" then
+            match =
+                (
+                    string.find(
+                        kn,
+                        "max",
+                        1,
+                        true
+                    )
+                    and (
+                        string.find(
+                            kn,
+                            "dist",
+                            1,
+                            true
+                        )
+                        or string.find(
+                            kn,
+                            "range",
+                            1,
+                            true
+                        )
+                    )
+                )
+                or kn == "distance"
+                or kn == "range"
+        end
+
+        if match then
+            local field_type =
+                FALLEN_SILENT_KEY_TYPE(
+                    raw
+                )
+
+            if purpose == "sticky" then
+                if field_type == nil
+                    or field_type == ""
+                    or field_type == "bool"
+                then
+                    A.silent_live_keys[purpose] =
+                        raw
+
+                    return raw
+                end
+            elseif purpose == "max_distance" then
+                if field_type == nil
+                    or field_type == ""
+                    or field_type == "int"
+                    or field_type == "float"
+                then
+                    A.silent_live_keys[purpose] =
+                        raw
+
+                    return raw
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+
+function FALLEN_SILENT_READ_FIELD(
+    purpose
+)
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa then
+        return nil
+    end
+
+    local key =
+        FALLEN_SILENT_FIND_LIVE_KEY(
+            purpose
+        )
+
+    if not key then
+        return nil
+    end
+
+    local ok, value =
+        pcall(function()
+            return sa[key]
+        end)
+
+    if ok then
+        return value
+    end
+
+    return nil
+end
+
+
+function FALLEN_SILENT_WRITE_FIELD(
+    purpose,
+    value
+)
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa then
+        return false
+    end
+
+    local key =
+        FALLEN_SILENT_FIND_LIVE_KEY(
+            purpose
+        )
+
+    if not key then
+        return false
+    end
+
+    local ok =
+        pcall(function()
+            sa[key] =
+                value
+        end)
+
+    return ok == true
+end
+
+
+function FALLEN_SILENT_SET_ENABLED(
+    value
+)
+    value =
+        value == true
+
+    if cheat
+        and type(cheat.enable) == "function"
+    then
+        pcall(function()
+            cheat.enable(
+                "silent_aim",
+                value
+            )
+        end)
+    end
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "enabled",
+        value
+    )
+
+    -- Silent method stays Raycast.
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if sa then
+        pcall(function()
+            sa.method =
+                2
+        end)
+    end
+end
+
+
+function FALLEN_SILENT_SET_MAGIC_BULLET(
+    value
+)
+    value =
+        value == true
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "magic_bullet",
+        value
+    )
+
+    -- This feature name is documented too; keep master + section mirror aligned.
+    if cheat
+        and type(cheat.enable) == "function"
+    then
+        pcall(function()
+            cheat.enable(
+                "magic_bullet",
+                value
+            )
+        end)
+    end
+end
+
+
+function FALLEN_SILENT_SET_TARGET_PART(
+    value
+)
+    local part =
+        tostring(
+            value
+            or "Head"
+        )
+
+    local index = 0
+
+    if part == "Torso" then
+        index = 1
+    elseif part == "Feet" then
+        index = 2
+    end
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "target_part",
+        index
+    )
+end
+
+
+function FALLEN_SILENT_APPLY_ALL_LIVE()
+    FALLEN_SILENT_SET_ENABLED(
+        S.silent_enabled == true
+    )
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "team_check",
+        S.silent_team_check == true
+    )
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "sticky",
+        S.silent_sticky_aim == true
+    )
+
+    FALLEN_SILENT_WRITE_FIELD(
+        "max_distance",
+        clamp(
+            tonumber(
+                S.silent_max_dist
+            )
+            or 1200,
+            50,
+            3000
+        )
+    )
+
+    FALLEN_SILENT_SET_TARGET_PART(
+        S.silent_target_part
+    )
+
+    FALLEN_SILENT_SET_MAGIC_BULLET(
+        S.silent_enabled == true
+        and S.silent_magic_bullet == true
+    )
+end
+
+
+function FALLEN_SILENT_UI_VALUE_CHANGED(
+    key,
+    value
+)
+    key =
+        tostring(
+            key
+            or ""
+        )
+
+    if key == "silent_enabled" then
+        FALLEN_SILENT_SET_ENABLED(
+            value == true
+        )
+
+        if value == true then
+            -- Enabling Silent reapplies every knob immediately to the stock cheat.
+            FALLEN_SILENT_APPLY_ALL_LIVE()
+        else
+            FALLEN_SILENT_SET_MAGIC_BULLET(
+                false
+            )
+        end
+
+        return
+    end
+
+    if key == "silent_team_check" then
+        FALLEN_SILENT_WRITE_FIELD(
+            "team_check",
+            value == true
+        )
+
+        return
+    end
+
+    if key == "silent_sticky_aim" then
+        FALLEN_SILENT_WRITE_FIELD(
+            "sticky",
+            value == true
+        )
+
+        return
+    end
+
+    if key == "silent_max_dist" then
+        FALLEN_SILENT_WRITE_FIELD(
+            "max_distance",
+            clamp(
+                tonumber(value)
+                or 1200,
+                50,
+                3000
+            )
+        )
+
+        return
+    end
+
+    if key == "silent_target_part" then
+        FALLEN_SILENT_SET_TARGET_PART(
+            value
+        )
+
+        return
+    end
+
+    if key == "silent_magic_bullet" then
+        FALLEN_SILENT_SET_MAGIC_BULLET(
+            S.silent_enabled == true
+            and value == true
+        )
+    end
+end
+
+
+function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa then
+        return
+    end
+
+    -- Do not fight the user while the max-distance slider/input is active.
+    local editing_distance =
+        A.active_slider == "silent_max_dist"
+        or (
+            A.numeric
+            and A.numeric.active_key
+                == "silent_max_dist"
+        )
+
+    if cheat
+        and type(cheat.is_enabled) == "function"
+    then
+        local ok, enabled =
+            pcall(function()
+                return cheat.is_enabled(
+                    "silent_aim"
+                )
+            end)
+
+        if ok
+            and enabled ~= nil
+        then
+            S.silent_enabled =
+                enabled == true
+        end
+    else
+        local live_enabled =
+            FALLEN_SILENT_READ_FIELD(
+                "enabled"
+            )
+
+        if live_enabled ~= nil then
+            S.silent_enabled =
+                live_enabled == true
+        end
+    end
+
+    local team =
+        FALLEN_SILENT_READ_FIELD(
+            "team_check"
+        )
+
+    if team ~= nil then
+        S.silent_team_check =
+            team == true
+    end
+
+    local sticky =
+        FALLEN_SILENT_READ_FIELD(
+            "sticky"
+        )
+
+    if sticky ~= nil then
+        S.silent_sticky_aim =
+            sticky == true
+    end
+
+    if not editing_distance then
+        local distance =
+            tonumber(
+                FALLEN_SILENT_READ_FIELD(
+                    "max_distance"
+                )
+            )
+
+        if distance then
+            distance =
+                clamp(
+                    distance,
+                    50,
+                    3000
+                )
+
+            S.silent_max_dist =
+                distance
+
+            A.slider_target.silent_max_dist =
+                distance
+
+            A.slider_visual.silent_max_dist =
+                distance
+        end
+    end
+
+    local part =
+        tonumber(
+            FALLEN_SILENT_READ_FIELD(
+                "target_part"
+            )
+        )
+
+    if part ~= nil then
+        if part == 2 then
+            S.silent_target_part =
+                "Feet"
+        elseif part == 1 then
+            S.silent_target_part =
+                "Torso"
+        else
+            S.silent_target_part =
+                "Head"
+        end
+    end
+
+    local magic =
+        FALLEN_SILENT_READ_FIELD(
+            "magic_bullet"
+        )
+
+    if magic ~= nil then
+        S.silent_magic_bullet =
+            magic == true
+    end
+end
+
+
 function FALLEN_SILENT_TARGET_PART_INDEX()
     local part =
         tostring(
@@ -9515,106 +10232,29 @@ end
 
 
 function FALLEN_SILENT_TICK()
-    if not cheat
-        or not cheat.silent_aim
-    then
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa then
         return
     end
 
-    local sa =
-        cheat.silent_aim
-
-    local enabled =
-        S.silent_enabled == true
-
-    local magic_enabled =
-        enabled
-        and S.silent_magic_bullet == true
-
-    -- Main Silent master.
-    if A.silent_api_last_enabled ~= enabled then
-        pcall(function()
-            cheat.enable(
-                "silent_aim",
-                enabled
-            )
-        end)
-
-        A.silent_api_last_enabled =
-            enabled
-    end
-
-    -- Magic Bullet is gated by the Silent master.
-    if A.silent_api_last_magic_enabled ~= magic_enabled then
-        pcall(function()
-            cheat.enable(
-                "magic_bullet",
-                magic_enabled
-            )
-        end)
-
-        A.silent_api_last_magic_enabled =
-            magic_enabled
-    end
-
-    pcall(function()
-        sa.enabled =
-            enabled
-    end)
-
-    -- Keep Raycast as the fixed Silent method.
+    -- Only enforce the fixed method continuously.
+    -- All user-facing values are written directly on UI interaction.
     pcall(function()
         sa.method =
             2
     end)
 
-    pcall(function()
-        sa.team_check =
-            S.silent_team_check == true
-    end)
-
-    pcall(function()
-        sa.sticky_aim =
-            S.silent_sticky_aim == true
-    end)
-
-    pcall(function()
-        sa.target_part =
-            FALLEN_SILENT_TARGET_PART_INDEX()
-    end)
-
-    FALLEN_SILENT_APPLY_MAX_DISTANCE(
-        sa,
-        S.silent_max_dist
-    )
-
-    pcall(function()
-        sa.magic_bullet =
-            magic_enabled
-    end)
-
-    -- User requested only the controls above. Do not inherit the normal
-    -- Aimbot's prediction setting into Silent.
-    pcall(function()
-        sa.prediction =
-            false
-    end)
-
-    -- Do not constrain Silent by the normal Aimbot FOV panel.
-    pcall(function()
-        sa.fov_only =
-            false
-    end)
-
-    -- Re-pin Raycast after all section writes.
-    pcall(function()
-        sa.method =
-            2
-    end)
+    -- When the menu is closed, keep our UI cache following the stock cheat
+    -- instead of overwriting the stock cheat with stale S.* values.
+    if not S.visible then
+        FALLEN_SILENT_SYNC_UI_FROM_LIVE()
+    end
 end
 
--- Silent Aim bridge must run continuously; the UI toggles only mutate S.*.
--- This pushes those values into the built-in cheat mirror every frame.
+-- Silent Aim bridge only keeps Raycast pinned and mirrors external cheat changes.
+-- UI controls themselves write directly into cheat.silent_aim / cheat.enable.
 hooks.on_render(function()
     if _G.FallenMenuReady ~= true then
         return
