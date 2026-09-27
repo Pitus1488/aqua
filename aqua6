@@ -2806,6 +2806,79 @@ function FALLEN_ICON_MISC(x, y, c)
     circle_fill(x + 11, y + 11, 1.15, c)
 end
 
+-- Aimbot sidebar image icon.
+-- White source image: default is white; selected/hovered state can tint toward accent.
+_G.FALLEN_AIMBOT_TAB_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-27-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-13-30-21-%281%29.fRYJT"
+
+_G.FALLEN_AIMBOT_TAB_ICON_SOURCE =
+    _G.FALLEN_AIMBOT_TAB_ICON_SOURCE
+    or nil
+
+_G.FALLEN_AIMBOT_TAB_ICON_URL =
+    _G.FALLEN_AIMBOT_TAB_ICON_URL
+    or nil
+
+_G.FALLEN_AIMBOT_TAB_ICON_HANDLE =
+    _G.FALLEN_AIMBOT_TAB_ICON_HANDLE
+    or nil
+
+function FALLEN_AIMBOT_TAB_ICON_GET()
+    local page_url =
+        _G.FALLEN_AIMBOT_TAB_ICON_PAGE_URL
+
+    if _G.FALLEN_AIMBOT_TAB_ICON_SOURCE ~= page_url then
+        _G.FALLEN_AIMBOT_TAB_ICON_SOURCE = page_url
+        _G.FALLEN_AIMBOT_TAB_ICON_URL = nil
+        _G.FALLEN_AIMBOT_TAB_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_AIMBOT_TAB_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_AIMBOT_TAB_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_AIMBOT_TAB_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_AIMBOT_TAB_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_AIMBOT_TAB_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_AIMBOT_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
 -- Visuals sidebar image icon.
 -- White source image: tint now works correctly because white pixels can be
 -- multiplied to gray while inactive and accent-blue while selected.
@@ -3001,23 +3074,50 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
 
     local icon = ICONS[index]
 
-    -- Visuals uses the WHITE source image. Since the source pixels are white,
-    -- DrawImage RGB multiplication now produces real gray -> accent-blue
-    -- interpolation instead of leaving a black source black.
-    if index == 2
+    -- Aimbot / Visuals use white-source image icons.
+    -- Default = pure white; active state blends toward the menu accent.
+    if (index == 1 or index == 2)
         and type(DrawImage) == "function"
     then
-        local visual_handle =
-            FALLEN_VISUALS_TAB_ICON_GET()
+        ic =
+            mix_color(
+                { 1, 1, 1, 1 },
+                C.accent,
+                a
+            )
 
-        if visual_handle then
+        -- Slight hover response while still keeping inactive icons white.
+        if hot
+            and not active
+        then
+            ic =
+                mix_color(
+                    ic,
+                    C.accent,
+                    0.16
+                )
+        end
+
+        ic[4] = 1
+
+        local image_handle = nil
+
+        if index == 1 then
+            image_handle =
+                FALLEN_AIMBOT_TAB_ICON_GET()
+        else
+            image_handle =
+                FALLEN_VISUALS_TAB_ICON_GET()
+        end
+
+        if image_handle then
             pcall(
                 DrawImage,
-                visual_handle,
-                FALLEN_UI_X(x + 11),
-                FALLEN_UI_Y(y + 9),
-                FALLEN_UI_LEN(18),
-                FALLEN_UI_LEN(18),
+                image_handle,
+                FALLEN_UI_X(x + 10),
+                FALLEN_UI_Y(y + 8),
+                FALLEN_UI_LEN(20),
+                FALLEN_UI_LEN(20),
                 ic[1],
                 ic[2],
                 ic[3],
