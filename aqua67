@@ -330,6 +330,10 @@ local defaults = {
     world_icon_glow_alpha = 70,
 
     silent_enabled = false,
+    silent_team_check = true,
+    silent_sticky_aim = false,
+    silent_max_dist = 1200,
+    silent_target_part = "Head",
     silent_magic_bullet = false,
 
     trigger_enabled = false,
@@ -5633,17 +5637,37 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
     cy,
     cw
 )
+    local gap = 16
+    local left_w =
+        math.floor(
+            cw * 0.49
+        )
+
+    local right_w =
+        cw
+        - left_w
+        - gap
+
+    local lx = cx
+    local rx =
+        cx
+        + left_w
+        + gap
+
+    -- =====================================================
+    -- MAIN
+    -- =====================================================
     section_title(
-        cx,
+        lx,
         cy,
-        "Silent Aim"
+        "MAIN"
     )
 
     card(
-        cx,
+        lx,
         cy + 25,
-        cw,
-        101,
+        left_w,
+        166,
         11
     )
 
@@ -5651,18 +5675,18 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         mx,
         my,
         clicked,
-        cx,
+        lx,
         cy + 32,
-        cw,
-        "Silent Aim",
+        left_w,
+        "Enabled",
         "silent_enabled",
         false
     )
 
     line(
-        cx + 12,
+        lx + 12,
         cy + 72,
-        cx + cw - 12,
+        lx + left_w - 12,
         cy + 72,
         C.divider,
         1
@@ -5672,14 +5696,112 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         mx,
         my,
         clicked,
-        cx,
+        lx,
         cy + 73,
-        cw,
+        left_w,
+        "Team Check",
+        "silent_team_check",
+        false
+    )
+
+    line(
+        lx + 12,
+        cy + 113,
+        lx + left_w - 12,
+        cy + 113,
+        C.divider,
+        1
+    )
+
+    toggle_row(
+        mx,
+        my,
+        clicked,
+        lx,
+        cy + 114,
+        left_w,
+        "Sticky Aim",
+        "silent_sticky_aim",
+        false
+    )
+
+    line(
+        lx + 12,
+        cy + 154,
+        lx + left_w - 12,
+        cy + 154,
+        C.divider,
+        1
+    )
+
+    toggle_row(
+        mx,
+        my,
+        clicked,
+        lx,
+        cy + 155,
+        left_w,
         "Magic Bullet",
         "silent_magic_bullet",
         false
     )
 
+    -- =====================================================
+    -- SELECTION
+    -- =====================================================
+    section_title(
+        rx,
+        cy,
+        "SELECTION"
+    )
+
+    card(
+        rx,
+        cy + 25,
+        right_w,
+        84,
+        11
+    )
+
+    slider_row(
+        mx,
+        my,
+        clicked,
+        lmb,
+        rx,
+        cy + 32,
+        right_w,
+        "Max Distance",
+        "silent_max_dist",
+        50,
+        3000,
+        "int"
+    )
+
+    line(
+        rx + 12,
+        cy + 72,
+        rx + right_w - 12,
+        cy + 72,
+        C.divider,
+        1
+    )
+
+    dropdown_row(
+        mx,
+        my,
+        clicked,
+        rx,
+        cy + 73,
+        right_w,
+        "Hit Part",
+        "silent_target_part",
+        {
+            "Head",
+            "Torso",
+            "Feet",
+        }
+    )
 end
 
 
@@ -9236,7 +9358,7 @@ end
 function FALLEN_SILENT_TARGET_PART_INDEX()
     local part =
         tostring(
-            S.aim_target_part
+            S.silent_target_part
             or "Head"
         )
 
@@ -9244,9 +9366,115 @@ function FALLEN_SILENT_TARGET_PART_INDEX()
         return 0
     end
 
-    -- Built-in silent aim exposes Head / Torso / Feet.
-    -- Our torso/root variants map to Torso.
+    if part == "Feet" then
+        return 2
+    end
+
     return 1
+end
+
+
+function FALLEN_SILENT_APPLY_MAX_DISTANCE(
+    sa,
+    value
+)
+    if not sa then
+        return
+    end
+
+    local distance =
+        clamp(
+            tonumber(value)
+            or 1200,
+            50,
+            3000
+        )
+
+    -- Use the section's documented introspection instead of assuming
+    -- an undocumented field name. Cache the matching live key once found.
+    local cached_key =
+        A.silent_max_distance_key
+
+    if cached_key then
+        pcall(function()
+            sa[cached_key] =
+                distance
+        end)
+
+        return
+    end
+
+    if type(sa._keys) ~= "function" then
+        return
+    end
+
+    local ok, keys =
+        pcall(function()
+            return sa:_keys()
+        end)
+
+    if not ok
+        or type(keys) ~= "table"
+    then
+        return
+    end
+
+    for _, key in ipairs(keys) do
+        local raw =
+            tostring(key)
+
+        local normalized =
+            string.lower(raw)
+
+        normalized =
+            string.gsub(
+                normalized,
+                "[^%w]",
+                ""
+            )
+
+        local looks_like_distance =
+            (
+                string.find(
+                    normalized,
+                    "max",
+                    1,
+                    true
+                )
+                and string.find(
+                    normalized,
+                    "dist",
+                    1,
+                    true
+                )
+            )
+            or (
+                string.find(
+                    normalized,
+                    "max",
+                    1,
+                    true
+                )
+                and string.find(
+                    normalized,
+                    "range",
+                    1,
+                    true
+                )
+            )
+
+        if looks_like_distance then
+            A.silent_max_distance_key =
+                raw
+
+            pcall(function()
+                sa[raw] =
+                    distance
+            end)
+
+            return
+        end
+    end
 end
 
 function FALLEN_SILENT_PRED_CALLBACK(target, pos, cam)
@@ -9296,27 +9524,14 @@ function FALLEN_SILENT_TICK()
     local sa =
         cheat.silent_aim
 
-    local silent_enabled =
+    local enabled =
         S.silent_enabled == true
 
     local magic_enabled =
-        S.silent_magic_bullet == true
+        enabled
+        and S.silent_magic_bullet == true
 
-    -- Magic Bullet is part of the Silent Aim runtime.
-    -- Keep the Silent Aim master alive while either control needs it.
-    local enabled =
-        silent_enabled
-        or magic_enabled
-
-    local fov =
-        clamp(
-            tonumber(S.aim_fov_size)
-            or 50,
-            10,
-            600
-        )
-
-    -- Exact new API master toggle.
+    -- Main Silent master.
     if A.silent_api_last_enabled ~= enabled then
         pcall(function()
             cheat.enable(
@@ -9329,8 +9544,7 @@ function FALLEN_SILENT_TICK()
             enabled
     end
 
-    -- Magic Bullet also has its own master feature in the host API.
-    -- Toggle it explicitly so the custom menu mirrors the built-in menu.
+    -- Magic Bullet is gated by the Silent master.
     if A.silent_api_last_magic_enabled ~= magic_enabled then
         pcall(function()
             cheat.enable(
@@ -9343,36 +9557,25 @@ function FALLEN_SILENT_TICK()
             magic_enabled
     end
 
-    -- Keep the live mirror synchronized too.
     pcall(function()
         sa.enabled =
             enabled
     end)
 
-    -- Silent Aim is ALWAYS Raycast.
+    -- Keep Raycast as the fixed Silent method.
     pcall(function()
         sa.method =
             2
     end)
 
-    -- Keep the section field synchronized as well as its master feature.
     pcall(function()
-        sa.magic_bullet =
-            magic_enabled
-    end)
-
-    -- Use the exact same FOV setting as our Aimbot/FOV panel.
-    pcall(function()
-        sa.fov_only = true
-    end)
-
-    pcall(function()
-        sa.fov = fov
+        sa.team_check =
+            S.silent_team_check == true
     end)
 
     pcall(function()
         sa.sticky_aim =
-            S.sticky_aim == true
+            S.silent_sticky_aim == true
     end)
 
     pcall(function()
@@ -9380,27 +9583,30 @@ function FALLEN_SILENT_TICK()
             FALLEN_SILENT_TARGET_PART_INDEX()
     end)
 
+    FALLEN_SILENT_APPLY_MAX_DISTANCE(
+        sa,
+        S.silent_max_dist
+    )
+
+    pcall(function()
+        sa.magic_bullet =
+            magic_enabled
+    end)
+
+    -- User requested only the controls above. Do not inherit the normal
+    -- Aimbot's prediction setting into Silent.
     pcall(function()
         sa.prediction =
-            S.aim_auto_prediction == true
+            false
     end)
 
+    -- Do not constrain Silent by the normal Aimbot FOV panel.
     pcall(function()
-        sa.prediction_callback =
-            FALLEN_SILENT_PRED_CALLBACK
+        sa.fov_only =
+            false
     end)
 
-    pcall(function()
-        sa.predict_callback =
-            FALLEN_SILENT_PRED_CALLBACK
-    end)
-
-    pcall(function()
-        sa.pred_callback =
-            FALLEN_SILENT_PRED_CALLBACK
-    end)
-
-    -- Re-pin Raycast last in case another field write touches method.
+    -- Re-pin Raycast after all section writes.
     pcall(function()
         sa.method =
             2
