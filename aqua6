@@ -29260,7 +29260,7 @@ function FALLEN_WORLD_RAIN_WIND_RIGHT()
     return rx, rz
 end
 
-function FALLEN_WORLD_RAIN_NEW_DROP(center, bottom_y, top_y, radius, fill_height)
+function FALLEN_WORLD_RAIN_NEW_DROP(center, bottom_y, top_y, radius, fill_height, fade_start_y)
     if not center then
         return nil
     end
@@ -29268,8 +29268,13 @@ function FALLEN_WORLD_RAIN_NEW_DROP(center, bottom_y, top_y, radius, fill_height
     local angle = FALLEN_WEATHER_RAND(0, math.pi * 2)
     local dist = math.sqrt(FALLEN_WEATHER_RAND(0, 1)) * radius
 
+    -- Initial fill never starts inside the fade zone.
+    local lowest_spawn_y =
+        tonumber(fade_start_y)
+        or (center.Y - 100)
+
     local y = fill_height
-        and FALLEN_WEATHER_RAND(bottom_y + 18, top_y + 3.5)
+        and FALLEN_WEATHER_RAND(lowest_spawn_y + 4, top_y + 3.5)
         or FALLEN_WEATHER_RAND(top_y, top_y + 5.0)
 
     return {
@@ -29277,6 +29282,7 @@ function FALLEN_WORLD_RAIN_NEW_DROP(center, bottom_y, top_y, radius, fill_height
         y = y,
         z = center.Z + math.sin(angle) * dist,
         bottom_y = bottom_y,
+        fade_start_y = lowest_spawn_y,
         drift = FALLEN_WEATHER_RAND(-0.075, 0.075),
         drift_side = FALLEN_WEATHER_RAND(-1, 1),
         speed_mul = FALLEN_WEATHER_RAND(0.82, 1.22),
@@ -29413,7 +29419,11 @@ function FALLEN_WORLD_RAIN_TICK()
     end
 
     local top_y = center.Y + clamp(38 + radius * 0.10, 38, 70)
-    local bottom_y = center.Y - clamp(145 + radius * 0.25, 145, 220)
+
+    -- Rain stays fully visible all the way to 100 studs BELOW the player.
+    -- Only after that point does it enter a short disappearance zone.
+    local fade_start_y = center.Y - 100
+    local bottom_y = center.Y - 118
 
     if S.world_rain_enabled == true then
         while #A.world_rain_particles < target_amount do
@@ -29423,7 +29433,8 @@ function FALLEN_WORLD_RAIN_TICK()
                     bottom_y,
                     top_y,
                     radius,
-                    true
+                    true,
+                    fade_start_y
                 )
         end
     end
@@ -29453,12 +29464,26 @@ function FALLEN_WORLD_RAIN_TICK()
             p.z = p.z + (p.wind_dz or 0) * fall_speed * dt
             p.y = p.y - fall_speed * dt
 
-            -- Fade only far below the player, then silently respawn at the top.
-            p.fade = clamp(
-                (p.y - (p.bottom_y or bottom_y)) / 34,
-                0,
-                1
-            )
+            -- Full opacity until 100 studs below the player's current level.
+            -- Then fade only during the final ~18 studs before respawn.
+            local drop_fade_start =
+                tonumber(p.fade_start_y)
+                or fade_start_y
+
+            local drop_bottom =
+                tonumber(p.bottom_y)
+                or bottom_y
+
+            if p.y >= drop_fade_start then
+                p.fade = 1
+            else
+                p.fade = clamp(
+                    (p.y - drop_bottom)
+                    / math.max(1, drop_fade_start - drop_bottom),
+                    0,
+                    1
+                )
+            end
 
             if p.y <= (p.bottom_y or bottom_y) then
                 if S.world_rain_enabled == true then
@@ -29468,7 +29493,8 @@ function FALLEN_WORLD_RAIN_TICK()
                             bottom_y,
                             top_y,
                             radius,
-                            false
+                            false,
+                            fade_start_y
                         )
                 else
                     table.remove(A.world_rain_particles, i)
