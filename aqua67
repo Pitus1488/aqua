@@ -11345,7 +11345,8 @@ FALLEN_WEAPON_ITEMS = {
 }
 
 FALLEN_WEAPON_DIRECT_ICON_URLS = {
-["Yellow Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/a/a2/Yellow_Keycard.png/revision/latest?format=original",
+["Yellow Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/db/Yellow_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164239",
+["Yellow Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/db/Yellow_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164239",
 ["Thread"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/0e/Thread.png/revision/latest?format=original",
 ["Tarp"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4d/Tarp.png/revision/latest?format=original",
 ["Tape"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/06/Tape.png/revision/latest?format=original",
@@ -11355,14 +11356,17 @@ FALLEN_WEAPON_DIRECT_ICON_URLS = {
 ["SMG Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/9/94/SMG_Receiver.png/revision/latest?format=original",
 ["Rope"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/b/b2/Rope.png/revision/latest?format=original",
 ["Rifle Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/8/80/Rifle_Receiver1.png/revision/latest?format=original",
-["Red Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4e/Red_Keycard.png/revision/latest?format=original",
+["Red Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Red_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164415",
+["Red Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Red_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164415",
 ["Raspberries"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Raspberries.png/revision/latest/scale-to-width-down/100?cb=20250108163842",
-["Purple Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/8/87/Purple_Keycard.png/revision/latest?format=original",
+["Purple Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/18/Purple_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164311",
+["Purple Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/18/Purple_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164311",
 ["Power cell"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/09/Power_Cell.png/revision/latest?format=original",
 ["Power Cell"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/0/09/Power_Cell.png/revision/latest?format=original",
 ["Pistol Receiver"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Pistol_Receiver.png/revision/latest?format=original",
 ["Pipe"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/6e/Pipe.png/revision/latest?format=original",
-["Pink Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/6/68/Pink_Keycard.png/revision/latest?format=original",
+["Pink Card"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/19/Pink_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164341",
+["Pink Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/19/Pink_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164341",
 ["Milk"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/4/4d/Milk.png/revision/latest?format=original",
 ["Metal Scraps"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/16/Metal_Scraps.png/revision/latest?format=original",
 ["Metal Plating"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/5/5c/Metal_Plating.png/revision/latest?format=original",
@@ -11554,6 +11558,11 @@ FALLEN_WEAPON_DIRECT_ICON_URLS = {
 }
 
 FALLEN_WEAPON_DIRECT_ALIASES = {
+["YellowKeycard"] = "Yellow Keycard",
+["PurpleKeycard"] = "Purple Keycard",
+["PinkKeycard"] = "Pink Keycard",
+["RedKeycard"] = "Red Keycard",
+
 ["Blueberries"] = "Blueberry",
 ["Cactus Flesh"] = "Cactus flesh",
 ["Cactusflesh"] = "Cactus flesh",
@@ -17075,21 +17084,20 @@ function FALLEN_WORLD_DRAW_DYNAMIC_ICON(
 end
 
 WORLD_BODY_BAG_ICON_URL =
-    "https://iimg.su/i/W1t8Y8"
+    "https://fotovssylku.ru/i/54543543-%281%29.fRVHo"
+
+WORLD_BODY_BAG_ICON_RESOLVED_URL =
+    WORLD_BODY_BAG_ICON_RESOLVED_URL
+    or nil
 
 WORLD_BODY_BAG_ICON_HANDLE =
     WORLD_BODY_BAG_ICON_HANDLE
     or nil
 
 WORLD_BODY_BAG_ICON_FAILED =
-    WORLD_BODY_BAG_ICON_FAILED
-    or false
+    false
 
 function FALLEN_WORLD_BODY_BAG_ICON()
-    if WORLD_BODY_BAG_ICON_FAILED == true then
-        return nil
-    end
-
     if WORLD_BODY_BAG_ICON_HANDLE
         and type(IsImageReady) == "function"
     then
@@ -17120,13 +17128,31 @@ function FALLEN_WORLD_BODY_BAG_ICON()
         end
     end
 
+    if WORLD_BODY_BAG_ICON_FAILED == true then
+        return nil
+    end
+
+    if not WORLD_BODY_BAG_ICON_RESOLVED_URL then
+        -- Same exact page->image resolver already used by the loader.
+        -- Wait until that global helper exists, then resolve this source once.
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        WORLD_BODY_BAG_ICON_RESOLVED_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(
+                WORLD_BODY_BAG_ICON_URL
+            )
+            or WORLD_BODY_BAG_ICON_URL
+    end
+
     if not WORLD_BODY_BAG_ICON_HANDLE
         and type(LoadImage) == "function"
     then
         local ok, handle =
             pcall(
                 LoadImage,
-                WORLD_BODY_BAG_ICON_URL
+                WORLD_BODY_BAG_ICON_RESOLVED_URL
             )
 
         if ok and handle then
