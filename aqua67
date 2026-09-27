@@ -10496,75 +10496,47 @@ function FALLEN_SILENT_SET_ENABLED(
         return
     end
 
-    -- IMPORTANT:
-    -- Do NOT call cheat.enable("silent_aim", true) here.
-    -- cheat.enable may latch a keybind into toggle/active state.
-    -- The live section itself is writable and acts like the stock menu.
+    -- Make sure the selected bind is present before touching the master.
+    FALLEN_SILENT_SET_KEY(
+        S.silent_key
+    )
+
+    FALLEN_SILENT_FORCE_HOLD()
+
+    -- THIS is the real stock feature master.
+    if cheat
+        and type(cheat.enable) == "function"
+    then
+        pcall(function()
+            cheat.enable(
+                "silent_aim",
+                value
+            )
+        end)
+    end
+
+    -- cheat.enable can alter keybind state; restore the known-good HOLD setup
+    -- immediately after changing the master.
+    FALLEN_SILENT_SET_KEY(
+        S.silent_key
+    )
+
+    FALLEN_SILENT_FORCE_HOLD()
+
     FALLEN_SILENT_WRITE_FIELD(
         "enabled",
         value
     )
 
-    FALLEN_SILENT_FORCE_HOLD()
-
-    if value == true
-        and cheat
-        and type(cheat.enable) == "function"
-    then
-        -- Key + HOLD mode are already written before this call.
-        -- With a real VK assigned, the master can be enabled without
-        -- intentionally using a toggle bind.
-        local bind_vk =
-            math.floor(
-                tonumber(S.silent_key)
-                or 0
-            )
-
-        if bind_vk > 0 then
-            pcall(function()
-                cheat.enable(
-                    "silent_aim",
-                    true
-                )
-            end)
-
-            -- cheat.enable may touch bind state, so immediately restore
-            -- the exact HOLD settings and clear any stale latch.
-            FALLEN_SILENT_WRITE_FIELD(
-                "key",
-                bind_vk
-            )
-
-            FALLEN_SILENT_FORCE_HOLD()
-
-            FALLEN_SILENT_WRITE_FIELD(
-                "enabled",
-                true
-            )
-        end
-    end
-
-    -- Silent method stays Raycast.
     FALLEN_SILENT_WRITE_FIELD(
         "method",
         2
     )
 
-    if value ~= true then
-        -- Explicit disable can safely use the master helper too.
-        if cheat
-            and type(cheat.enable) == "function"
-        then
-            pcall(function()
-                cheat.enable(
-                    "silent_aim",
-                    false
-                )
-            end)
-        end
-    end
-
     FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
+
+    A.silent_api_last_enabled =
+        value
 end
 
 
@@ -10574,28 +10546,9 @@ function FALLEN_SILENT_SET_MAGIC_BULLET(
     value =
         value == true
 
-    -- Our menu is authoritative while it is open.
     S.silent_magic_bullet =
         value
 
-    FALLEN_SILENT_WRITE_FIELD(
-        "magic_bullet",
-        value
-    )
-
-    -- Keep the built-in feature master aligned too.
-    if cheat
-        and type(cheat.enable) == "function"
-    then
-        pcall(function()
-            cheat.enable(
-                "magic_bullet",
-                value
-            )
-        end)
-    end
-
-    -- Mirror once more after the feature helper in case it rewrites the section.
     FALLEN_SILENT_WRITE_FIELD(
         "magic_bullet",
         value
@@ -11111,7 +11064,8 @@ function FALLEN_SILENT_APPLY_ALL_LIVE()
     )
 
     FALLEN_SILENT_SET_MAGIC_BULLET(
-        S.silent_magic_bullet == true
+        S.silent_enabled == true
+        and S.silent_magic_bullet == true
     )
 
     FALLEN_SILENT_FORCE_HOLD()
@@ -11129,23 +11083,9 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
         )
 
     if key == "silent_enabled" then
-        if value == true then
-            FALLEN_SILENT_SET_KEY(
-                S.silent_key
-            )
-
-            FALLEN_SILENT_FORCE_HOLD()
-
-            FALLEN_SILENT_SET_ENABLED(
-                true
-            )
-
-            FALLEN_SILENT_APPLY_ALL_LIVE()
-        else
-            FALLEN_SILENT_SET_ENABLED(
-                false
-            )
-        end
+        FALLEN_SILENT_SET_ENABLED(
+            value == true
+        )
 
         return
     end
@@ -11217,14 +11157,19 @@ end
 
 
 function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
-    -- IMPORTANT:
-    -- silent_enabled is OUR master checkbox state.
-    -- Do not read sa.enabled back into it here: in HOLD mode some builds
-    -- expose sa.enabled as the current bind-active state, so while the key
-    -- is released it becomes false and instantly flips our menu switch OFF.
-    --
-    -- The switch is changed only by our menu via FALLEN_SILENT_SET_ENABLED().
-    -- HOLD/keybind behavior below remains untouched.
+    -- Enabled is custom-menu authoritative while our menu is open.
+    -- Only import the stock value when the custom menu is closed.
+    if not S.visible then
+        local live_enabled =
+            FALLEN_SILENT_READ_FIELD(
+                "enabled"
+            )
+
+        if live_enabled ~= nil then
+            S.silent_enabled =
+                live_enabled == true
+        end
+    end
 
     -- These four values are shared with the built-in Aimbot selector.
     local team =
@@ -11392,14 +11337,16 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
         end
     end
 
-    local magic =
-        FALLEN_SILENT_READ_FIELD(
-            "magic_bullet"
-        )
+    if not S.visible then
+        local magic =
+            FALLEN_SILENT_READ_FIELD(
+                "magic_bullet"
+            )
 
-    if magic ~= nil then
-        S.silent_magic_bullet =
-            magic == true
+        if magic ~= nil then
+            S.silent_magic_bullet =
+                magic == true
+        end
     end
 end
 
@@ -11654,6 +11601,20 @@ function FALLEN_SILENT_TICK()
                 end
             end
         end
+    end
+
+    -- While our custom menu is open, our switches are authoritative.
+    -- This does NOT change HOLD active-state behavior.
+    if S.visible then
+        pcall(function()
+            sa.enabled =
+                S.silent_enabled == true
+        end)
+
+        pcall(function()
+            sa.magic_bullet =
+                S.silent_magic_bullet == true
+        end)
     end
 
     -- Keep the explicit FOV switch pinned too.
