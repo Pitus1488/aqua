@@ -11622,6 +11622,16 @@ FALLEN_WEAPON_DIRECT_ALIASES = {
 
 FALLEN_WEAPON_ICON_CACHE = FALLEN_WEAPON_ICON_CACHE or {}
 
+-- Do not let stale keycard handles survive from older script versions.
+FALLEN_WEAPON_ICON_CACHE["Yellow Keycard"] = nil
+FALLEN_WEAPON_ICON_CACHE["Purple Keycard"] = nil
+FALLEN_WEAPON_ICON_CACHE["Pink Keycard"] = nil
+FALLEN_WEAPON_ICON_CACHE["Red Keycard"] = nil
+FALLEN_WEAPON_ICON_CACHE["Yellow Card"] = nil
+FALLEN_WEAPON_ICON_CACHE["Purple Card"] = nil
+FALLEN_WEAPON_ICON_CACHE["Pink Card"] = nil
+FALLEN_WEAPON_ICON_CACHE["Red Card"] = nil
+
 FALLEN_ARMOR_ICON_CACHE = FALLEN_ARMOR_ICON_CACHE or {}
 FALLEN_ARMOR_TARGET_CACHE = FALLEN_ARMOR_TARGET_CACHE or {}
 
@@ -16964,6 +16974,92 @@ function FALLEN_DROPPED_ITEM_CLEAN_NAME(name)
     return s
 end
 
+FALLEN_KEYCARD_ICON_URLS = {
+    ["Yellow Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/d/db/Yellow_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164239",
+    ["Purple Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/18/Purple_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164311",
+    ["Pink Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/1/19/Pink_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164341",
+    ["Red Keycard"] = "https://static.wikia.nocookie.net/fallen-survival-new/images/f/f1/Red_Keycard.webp/revision/latest/scale-to-width-down/55?cb=20250108164415",
+}
+
+FALLEN_KEYCARD_ICON_ALIASES = {
+    ["Yellow Keycard"] = "Yellow Keycard",
+    ["YellowKeycard"] = "Yellow Keycard",
+    ["Yellow Card"] = "Yellow Keycard",
+
+    ["Purple Keycard"] = "Purple Keycard",
+    ["PurpleKeycard"] = "Purple Keycard",
+    ["Purple Card"] = "Purple Keycard",
+
+    ["Pink Keycard"] = "Pink Keycard",
+    ["PinkKeycard"] = "Pink Keycard",
+    ["Pink Card"] = "Pink Keycard",
+
+    ["Red Keycard"] = "Red Keycard",
+    ["RedKeycard"] = "Red Keycard",
+    ["Red Card"] = "Red Keycard",
+}
+
+-- Fresh on every script load on purpose. This prevents an old weapon handle
+-- (for example P250) from surviving in a shared cache and being reused here.
+FALLEN_KEYCARD_ICON_CACHE = {}
+
+function FALLEN_KEYCARD_ICON(name)
+    if type(LoadImage) ~= "function" then
+        return nil, false
+    end
+
+    local raw = FALLEN_DROPPED_ITEM_CLEAN_NAME(name)
+    local canonical = FALLEN_KEYCARD_ICON_ALIASES[raw]
+
+    if not canonical then
+        return nil, false
+    end
+
+    local url = FALLEN_KEYCARD_ICON_URLS[canonical]
+    if not url then
+        return nil, true
+    end
+
+    local st = FALLEN_KEYCARD_ICON_CACHE[canonical]
+
+    if not st then
+        st = {
+            handle = nil,
+            failed = false,
+        }
+        FALLEN_KEYCARD_ICON_CACHE[canonical] = st
+
+        local ok, handle = pcall(LoadImage, url)
+        if ok and handle then
+            st.handle = handle
+        else
+            st.failed = true
+        end
+    end
+
+    if st.failed then
+        return nil, true
+    end
+
+    if st.handle and type(IsImageReady) == "function" then
+        local ok, ready = pcall(IsImageReady, st.handle)
+        if ok and ready == true then
+            return st.handle, true
+        end
+    end
+
+    if st.handle and type(IsImageFailed) == "function" then
+        local ok, failed = pcall(IsImageFailed, st.handle)
+        if ok and failed == true then
+            st.failed = true
+            st.handle = nil
+            return nil, true
+        end
+    end
+
+    return nil, true
+end
+
 function FALLEN_DROPPED_ITEM_ICON(name)
     local raw = FALLEN_DROPPED_ITEM_CLEAN_NAME(name)
 
@@ -16971,7 +17067,15 @@ function FALLEN_DROPPED_ITEM_ICON(name)
         return nil
     end
 
-    -- Reuse the same massive item/weapon URL table already used by Armor ESP.
+    -- Keycards bypass the huge Armor/weapon resolver completely.
+    -- This prevents fuzzy aliases or stale weapon handles from ever turning
+    -- a card into P250/AK/etc.
+    local keycard_handle, is_keycard = FALLEN_KEYCARD_ICON(raw)
+    if is_keycard then
+        return keycard_handle
+    end
+
+    -- Reuse the same massive item/weapon URL table for everything else.
     local handle = nil
 
     if type(FALLEN_WEAPON_ICON) == "function" then
