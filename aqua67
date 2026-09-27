@@ -220,7 +220,11 @@ local defaults = {
     menu_glow_alpha = 100,
 
     -- Visuals / Resource ESP
+    -- Legacy global master is synchronized from the three compact groups below.
     world_esp_enabled = false,
+    world_node_esp_enabled = false,
+    world_plant_esp_enabled = false,
+    world_base_esp_enabled = false,
 
     world_stone_node = false,
     world_metal_node = false,
@@ -540,6 +544,7 @@ local A = {
     world_settings_open = false,
     world_settings_anim = 0,
     world_settings_last_t = nil,
+    world_settings_group = nil,
 
     -- Reusable HSV picker for resource colors and icon border.
     world_color_picker_key = nil,
@@ -5968,6 +5973,8 @@ local function resource_toggle_row(
 
     if clicked and hot then
         S[key] = not S[key]
+
+        _G.FALLEN_WORLD_FORCE_RESCAN = true
     end
 
 end
@@ -6705,6 +6712,44 @@ local function draw_world_settings_popup(
         return
     end
 
+    local group =
+        tostring(
+            A.world_settings_group
+            or "nodes"
+        )
+
+    local is_nodes = group == "nodes"
+    local is_plants = group == "plants"
+    local is_bases = group == "bases"
+
+    local title =
+        is_nodes
+        and "Node ESP settings"
+        or (
+            is_plants
+            and "Plant ESP settings"
+            or "Base ESP settings"
+        )
+
+    local row_count =
+        is_nodes
+        and 3
+        or (
+            is_plants
+            and 7
+            or 11
+        )
+
+    local pw =
+        is_bases
+        and 620
+        or 328
+
+    local ph =
+        43
+        + row_count * 41
+        + 8
+
     local parent_alpha =
         MENU_RENDER_ALPHA
 
@@ -6720,9 +6765,6 @@ local function draw_world_settings_popup(
         and ease_out_cubic(raw)
         or ease_in_out_cubic(raw)
 
-    local pw = 306
-    local ph = 455
-
     local base_px =
         dots_x
         - pw
@@ -6732,7 +6774,8 @@ local function draw_world_settings_popup(
         dots_y
         + 31
 
-    local retract = 1 - anim
+    local retract =
+        1 - anim
 
     local px =
         snap(
@@ -6760,8 +6803,16 @@ local function draw_world_settings_popup(
     local ui_clicked =
         clicked
         and interactive
+        and not A.world_color_picker_open
 
-    FALLEN_POPUP_GLOW(px, py, pw, shell_h, 11, 1)
+    FALLEN_POPUP_GLOW(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        1
+    )
 
     rounded_fill(
         px,
@@ -6775,7 +6826,7 @@ local function draw_world_settings_popup(
     text(
         px + 13,
         py + 12,
-        "Resource ESP settings",
+        title,
         C.text
     )
 
@@ -6790,388 +6841,161 @@ local function draw_world_settings_popup(
         )
     end
 
-    if shell_h > 78 then
-        slider_row(
-            mx,
-            my,
-            ui_clicked,
-            lmb,
-            px + 8,
-            py + 39,
-            pw - 16,
-            "Max Distance",
-            "world_max_dist",
-            25,
-            2000,
-            "int"
-        )
-    end
+    if is_nodes then
+        for i = 1, 3 do
+            local item =
+                WORLD_UI_ITEMS[i]
 
-    if shell_h > 119 then
-        line(
-            px + 12,
-            py + 79,
-            px + pw - 12,
-            py + 79,
-            C.divider,
-            1
-        )
+            local iy =
+                py
+                + 39
+                + (i - 1) * 41
 
-        toggle_row(
-            mx,
-            my,
-            ui_clicked,
-            px + 8,
-            py + 80,
-            pw - 16,
-            "Show Names",
-            "world_show_names",
-            false
-        )
-    end
-
-    if shell_h > 160 then
-        line(
-            px + 12,
-            py + 120,
-            px + pw - 12,
-            py + 120,
-            C.divider,
-            1
-        )
-
-        toggle_row(
-            mx,
-            my,
-            ui_clicked,
-            px + 8,
-            py + 121,
-            pw - 16,
-            "Show Distance",
-            "world_show_distance",
-            false
-        )
-    end
-
-    if shell_h > 201 then
-        line(
-            px + 12,
-            py + 161,
-            px + pw - 12,
-            py + 161,
-            C.divider,
-            1
-        )
-
-        local icons_row_x = px + 8
-        local icons_row_y = py + 162
-        local icons_row_w = pw - 16
-
-        toggle_row(
-            mx,
-            my,
-            ui_clicked,
-            icons_row_x,
-            icons_row_y,
-            icons_row_w,
-            "Show Icons",
-            "world_show_icons",
-            false
-        )
-
-        -- Editable icon-ring color.
-        local border_prefix = "world_icon_border"
-
-        local border_swatch_x =
-            icons_row_x
-            + icons_row_w
-            - 82
-
-        local border_swatch_y =
-            icons_row_y + 11
-
-        local border_color =
-            world_color_from_prefix(
-                border_prefix
-            )
-
-        world_square_swatch(
-            border_swatch_x,
-            border_swatch_y,
-            18,
-            border_color
-        )
-
-        local border_hot =
-            hover(
-                mx,
-                my,
-                border_swatch_x,
-                border_swatch_y,
-                18,
-                18
-            )
-
-        if ui_clicked and border_hot then
-            FALLEN_COLOR_INPUT_STOP(true)
-
-            if A.world_color_picker_open
-                and A.world_color_picker_key == border_prefix
+            if item
+                and shell_h > (iy - py + 10)
             then
-                A.world_color_picker_open = false
-                A.world_color_picker_drag = nil
-            else
-                A.world_color_picker_key = border_prefix
-                A.world_color_picker_open = true
-                A.world_color_picker_drag = nil
-                A.fov_picker_open = false
-                A.fov_picker_drag = nil
+                resource_toggle_row(
+                    mx,
+                    my,
+                    ui_clicked,
+                    px + 8,
+                    iy,
+                    pw - 16,
+                    item
+                )
+
+                if i < 3 then
+                    line(
+                        px + 20,
+                        iy + 40,
+                        px + pw - 20,
+                        iy + 40,
+                        C.divider,
+                        1
+                    )
+                end
             end
-
-            A.world_color_picker_anchor_x =
-                FALLEN_UI_X(border_swatch_x)
-
-            A.world_color_picker_anchor_y =
-                FALLEN_UI_Y(border_swatch_y)
-
-            A.world_color_picker_anchor_w =
-                FALLEN_UI_LEN(18)
-
-            A.world_color_picker_anchor_h =
-                FALLEN_UI_LEN(18)
         end
-    end
+    elseif is_plants then
+        -- WORLD_UI_ITEMS 4..10 are all plants / berries / wool.
+        for i = 4, 10 do
+            local item =
+                WORLD_UI_ITEMS[i]
 
-    if shell_h > 242 then
-        line(
-            px + 12,
-            py + 202,
-            px + pw - 12,
-            py + 202,
-            C.divider,
-            1
-        )
+            local row_index =
+                i - 4
 
-        toggle_row(
-            mx,
-            my,
-            ui_clicked,
-            px + 8,
-            py + 203,
-            pw - 16,
-            "Fade by Distance",
-            "world_fade_distance",
-            false
-        )
-    end
+            local iy =
+                py
+                + 39
+                + row_index * 41
 
-    if shell_h > 283 then
-        line(
-            px + 12,
-            py + 243,
-            px + pw - 12,
-            py + 243,
-            C.divider,
-            1
-        )
+            if item
+                and shell_h > (iy - py + 10)
+            then
+                resource_toggle_row(
+                    mx,
+                    my,
+                    ui_clicked,
+                    px + 8,
+                    iy,
+                    pw - 16,
+                    item
+                )
 
-        slider_row(
-            mx,
-            my,
-            ui_clicked,
-            lmb,
-            px + 8,
-            py + 244,
-            pw - 16,
-            "Icon Size",
-            "world_icon_size",
-            10,
-            48,
-            "int"
-        )
-    end
-
-    if shell_h > 324 then
-        line(
-            px + 12,
-            py + 284,
-            px + pw - 12,
-            py + 284,
-            C.divider,
-            1
-        )
-
-        toggle_row(
-            mx,
-            my,
-            ui_clicked,
-            px + 8,
-            py + 285,
-            pw - 16,
-            "Icon Glow",
-            "world_icon_glow_enabled",
-            false
-        )
-    end
-
-    if shell_h > 365 then
-        line(
-            px + 12,
-            py + 325,
-            px + pw - 12,
-            py + 325,
-            C.divider,
-            1
-        )
-
-        slider_row(
-            mx,
-            my,
-            ui_clicked,
-            lmb,
-            px + 8,
-            py + 326,
-            pw - 16,
-            "Glow Strength",
-            "world_icon_glow_strength",
-            0,
-            100,
-            "int"
-        )
-    end
-
-    if shell_h > 406 then
-        line(
-            px + 12,
-            py + 366,
-            px + pw - 12,
-            py + 366,
-            C.divider,
-            1
-        )
-
-        slider_row(
-            mx,
-            my,
-            ui_clicked,
-            lmb,
-            px + 8,
-            py + 367,
-            pw - 16,
-            "Glow Spread",
-            "world_icon_glow_spread",
-            1,
-            20,
-            "int"
-        )
-    end
-
-    if shell_h > 447 then
-        line(
-            px + 12,
-            py + 407,
-            px + pw - 12,
-            py + 407,
-            C.divider,
-            1
-        )
-
-        local glow_row_x =
-            px + 8
-
-        local glow_row_y =
-            py + 408
-
-        local glow_row_w =
+                if i < 10 then
+                    line(
+                        px + 20,
+                        iy + 40,
+                        px + pw - 20,
+                        iy + 40,
+                        C.divider,
+                        1
+                    )
+                end
+            end
+        end
+    elseif is_bases
+        and type(WORLD_BASE_ITEMS) == "table"
+        and type(world_base_compact_row) == "function"
+    then
+        local gap = 12
+        local inner_w =
             pw - 16
 
-        local glow_hot =
-            row_hover(
-                mx,
-                my,
-                glow_row_x,
-                glow_row_y,
-                glow_row_w,
-                41
+        local col_w =
+            math.floor(
+                (inner_w - gap) * 0.5
             )
 
-        text(
-            glow_row_x + 13,
-            glow_row_y + 14,
-            "Glow Color",
-            FALLEN_HOVER_TEXT(
-                "world_icon_glow_color",
-                glow_hot,
-                C.text
-            )
-        )
+        local left_x =
+            px + 8
 
-        local glow_prefix =
-            "world_icon_glow"
+        local right_x =
+            left_x
+            + col_w
+            + gap
 
-        local glow_swatch_s =
-            18
+        -- 22 base objects -> 11 rows per column, no scrolling needed.
+        for row = 1, 11 do
+            local iy =
+                py
+                + 39
+                + (row - 1) * 41
 
-        local glow_swatch_x =
-            glow_row_x
-            + glow_row_w
-            - glow_swatch_s
-            - 12
+            local left_cfg =
+                WORLD_BASE_ITEMS[row]
 
-        local glow_swatch_y =
-            glow_row_y + 11
+            local right_cfg =
+                WORLD_BASE_ITEMS[row + 11]
 
-        local glow_color =
-            world_color_from_prefix(
-                glow_prefix
-            )
-
-        world_square_swatch(
-            glow_swatch_x,
-            glow_swatch_y,
-            glow_swatch_s,
-            glow_color
-        )
-
-        local glow_swatch_hot =
-            hover(
-                mx,
-                my,
-                glow_swatch_x,
-                glow_swatch_y,
-                glow_swatch_s,
-                glow_swatch_s
-            )
-
-        if ui_clicked
-            and glow_swatch_hot
-        then
-            FALLEN_COLOR_INPUT_STOP(true)
-
-            if A.world_color_picker_open
-                and A.world_color_picker_key == glow_prefix
+            if left_cfg
+                and shell_h > (iy - py + 10)
             then
-                A.world_color_picker_open = false
-                A.world_color_picker_drag = nil
-            else
-                A.world_color_picker_key = glow_prefix
-                A.world_color_picker_open = true
-                A.world_color_picker_drag = nil
-                A.fov_picker_open = false
-                A.fov_picker_drag = nil
+                world_base_compact_row(
+                    mx,
+                    my,
+                    ui_clicked,
+                    left_x,
+                    iy,
+                    col_w,
+                    left_cfg
+                )
             end
 
-            A.world_color_picker_anchor_x =
-                FALLEN_UI_X(glow_swatch_x)
+            if right_cfg
+                and shell_h > (iy - py + 10)
+            then
+                world_base_compact_row(
+                    mx,
+                    my,
+                    ui_clicked,
+                    right_x,
+                    iy,
+                    col_w,
+                    right_cfg
+                )
+            end
 
-            A.world_color_picker_anchor_y =
-                FALLEN_UI_Y(glow_swatch_y)
+            if row < 11 then
+                line(
+                    left_x + 12,
+                    iy + 40,
+                    left_x + col_w - 12,
+                    iy + 40,
+                    C.divider,
+                    1
+                )
 
-            A.world_color_picker_anchor_w =
-                FALLEN_UI_LEN(glow_swatch_s)
-
-            A.world_color_picker_anchor_h =
-                FALLEN_UI_LEN(glow_swatch_s)
+                line(
+                    right_x + 12,
+                    iy + 40,
+                    right_x + col_w - 12,
+                    iy + 40,
+                    C.divider,
+                    1
+                )
+            end
         end
     end
 
@@ -7218,6 +7042,7 @@ local function draw_visuals_page(
     cy,
     cw
 )
+    -- Old per-base tuning popup is no longer part of the compact World page.
     A.base_box_settings_open = false
     A.base_box_settings_anim = 0
     A.base_box_settings_id = nil
@@ -7228,399 +7053,254 @@ local function draw_visuals_page(
         "World ESP"
     )
 
-    -- Master row
     card(
         cx,
         cy + 25,
         cw,
-        49,
+        3 * 41 + 8,
         11
     )
-
-    local row_y = cy + 29
 
     local overlay_open =
         A.world_settings_open
         or (A.world_settings_anim or 0) > 0.02
         or A.world_color_picker_open == true
         or (A.world_color_picker_anim or 0) > 0.02
- 
 
     local base_clicked =
         clicked
         and not overlay_open
 
-    local dots_x =
-        cx
-        + cw
-        - 79
+    local node_y =
+        cy + 29
 
-    local dots_y =
-        row_y
-        + 8
+    local plant_y =
+        node_y + 41
 
-    local dots_left_hot =
+    local base_y =
+        plant_y + 41
+
+    local node_dots_x =
+        cx + cw - 79
+
+    local node_dots_y =
+        node_y + 8
+
+    local plant_dots_x =
+        cx + cw - 79
+
+    local plant_dots_y =
+        plant_y + 8
+
+    local base_dots_x =
+        cx + cw - 79
+
+    local base_dots_y =
+        base_y + 8
+
+    local node_dots_hot =
         hover(
             mx,
             my,
-            dots_x,
-            dots_y,
+            node_dots_x,
+            node_dots_y,
             27,
             25
         )
+
+    local plant_dots_hot =
+        hover(
+            mx,
+            my,
+            plant_dots_x,
+            plant_dots_y,
+            27,
+            25
+        )
+
+    local base_dots_hot =
+        hover(
+            mx,
+            my,
+            base_dots_x,
+            base_dots_y,
+            27,
+            25
+        )
+
+    local old_node =
+        S.world_node_esp_enabled == true
 
     toggle_row(
         mx,
         my,
         base_clicked
-            and not dots_left_hot,
+            and not node_dots_hot,
         cx,
-        row_y,
+        node_y,
         cw,
-        "Resource ESP",
-        "world_esp_enabled",
+        "Node ESP",
+        "world_node_esp_enabled",
         true
     )
 
-    local master_hot =
-        hover(
-            mx,
-            my,
-            cx,
-            row_y,
-            cw,
-            41
-        )
-
-    if rmb_clicked
-        and master_hot
+    if old_node
+        ~= (S.world_node_esp_enabled == true)
     then
-        A.world_settings_open =
-            not A.world_settings_open
-
-        if A.world_settings_open then
-            A.aim_settings_open = false
-            A.fov_picker_open = false
-            A.world_color_picker_open = false
-            A.world_color_picker_drag = nil
-            A.base_box_settings_open = false
-
-            if numeric_stop then
-                numeric_stop(true)
-            end
-        end
+        _G.FALLEN_WORLD_FORCE_RESCAN = true
     end
 
-    local gap = 16
-    local col_w =
-        math.floor(
-            (cw - gap) * 0.5
-        )
-
-    local left_x = cx
-    local right_x = cx + col_w + gap
-    local cards_y = cy + 94
-
-    -- Ores / material harvestables
-    section_title(
-        left_x,
-        cards_y,
-        "Ores & Materials"
+    line(
+        cx + 12,
+        node_y + 40,
+        cx + cw - 12,
+        node_y + 40,
+        C.divider,
+        1
     )
 
-    card(
-        left_x,
-        cards_y + 25,
-        col_w,
-        5 * 41 + 8,
-        11
-    )
+    local old_plant =
+        S.world_plant_esp_enabled == true
 
-    local left_items = {
-        WORLD_UI_ITEMS[1],
-        WORLD_UI_ITEMS[2],
-        WORLD_UI_ITEMS[3],
-        WORLD_UI_ITEMS[4],
-        WORLD_UI_ITEMS[7],
-    }
-
-    for i, item in ipairs(left_items) do
-        local iy =
-            cards_y
-            + 29
-            + (i - 1) * 41
-
-        resource_toggle_row(
-            mx,
-            my,
-            base_clicked,
-            left_x,
-            iy,
-            col_w,
-            item
-        )
-
-        if i < #left_items then
-            line(
-                left_x + 12,
-                iy + 40,
-                left_x + col_w - 12,
-                iy + 40,
-                C.divider,
-                1
-            )
-        end
-    end
-
-    -- Plants / berries
-    section_title(
-        right_x,
-        cards_y,
-        "Plants & Berries"
-    )
-
-    card(
-        right_x,
-        cards_y + 25,
-        col_w,
-        5 * 41 + 8,
-        11
-    )
-
-    local right_items = {
-        WORLD_UI_ITEMS[5],
-        WORLD_UI_ITEMS[6],
-        WORLD_UI_ITEMS[8],
-        WORLD_UI_ITEMS[9],
-        WORLD_UI_ITEMS[10],
-    }
-
-    for i, item in ipairs(right_items) do
-        local iy =
-            cards_y
-            + 29
-            + (i - 1) * 41
-
-        resource_toggle_row(
-            mx,
-            my,
-            base_clicked,
-            right_x,
-            iy,
-            col_w,
-            item
-        )
-
-        if i < #right_items then
-            line(
-                right_x + 12,
-                iy + 40,
-                right_x + col_w - 12,
-                iy + 40,
-                C.divider,
-                1
-            )
-        end
-    end
-
-    -- Base / House: independent smooth scrolling on left and right.
-    local base_section_y =
-        cards_y
-        + 25
-        + 5 * 41
-        + 25
-
-    section_title(
+    toggle_row(
+        mx,
+        my,
+        base_clicked
+            and not plant_dots_hot,
         cx,
-        base_section_y,
-        "Base / House ESP"
+        plant_y,
+        cw,
+        "Plant ESP",
+        "world_plant_esp_enabled",
+        true
     )
 
-    local base_card_y =
-        base_section_y + 25
+    if old_plant
+        ~= (S.world_plant_esp_enabled == true)
+    then
+        _G.FALLEN_WORLD_FORCE_RESCAN = true
+    end
 
-    local base_visible_rows = 5
-    local base_row_h = 41
-    local base_card_h =
-        base_visible_rows * base_row_h + 8
-
-    local left_total = 11
-    local right_total =
-        math.max(
-            0,
-            #WORLD_BASE_ITEMS - left_total
-        )
-
-    card(
-        left_x,
-        base_card_y,
-        col_w,
-        base_card_h,
-        11
+    line(
+        cx + 12,
+        plant_y + 40,
+        cx + cw - 12,
+        plant_y + 40,
+        C.divider,
+        1
     )
 
-    card(
-        right_x,
-        base_card_y,
-        col_w,
-        base_card_h,
-        11
-    )
+    local old_base =
+        S.world_base_esp_enabled == true
 
-    local left_scroll =
-        world_base_column_scroll_step(
-            "left",
-            mx,
-            my,
-            base_clicked,
-            lmb,
-            left_x,
-            base_card_y,
-            col_w,
-            base_card_h,
-            base_visible_rows,
-            left_total
-        )
-
-    local right_scroll =
-        world_base_column_scroll_step(
-            "right",
-            mx,
-            my,
-            base_clicked,
-            lmb,
-            right_x,
-            base_card_y,
-            col_w,
-            base_card_h,
-            base_visible_rows,
-            right_total
-        )
-
-    local left_row_clicked =
+    toggle_row(
+        mx,
+        my,
         base_clicked
-        and hover(
-            mx,
-            my,
-            left_x,
-            base_card_y,
-            col_w,
-            base_card_h
-        )
+            and not base_dots_hot,
+        cx,
+        base_y,
+        cw,
+        "Base ESP",
+        "world_base_esp_enabled",
+        true
+    )
 
-    local right_row_clicked =
-        base_clicked
-        and hover(
-            mx,
-            my,
-            right_x,
-            base_card_y,
-            col_w,
-            base_card_h
-        )
+    if old_base
+        ~= (S.world_base_esp_enabled == true)
+    then
+        _G.FALLEN_WORLD_FORCE_RESCAN = true
+    end
 
-    for i = 1, left_total do
-        local by =
-            base_card_y
-            + 4
-            + ((i - 1) - left_scroll) * base_row_h
+    -- Open settings ONLY with RMB directly on the three dots.
+    if rmb_clicked
+        and node_dots_hot
+    then
+        if A.world_settings_open
+            and A.world_settings_group == "nodes"
+        then
+            A.world_settings_open = false
+        else
+            A.world_settings_group = "nodes"
+            A.world_settings_open = true
+        end
 
-        local row_alpha =
-            world_base_row_clip_alpha(
-                by,
-                base_card_y,
-                base_card_h
-            )
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+        A.fov_picker_open = false
+        A.fov_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
 
-        if row_alpha > 0.008 then
-            local cfg =
-                WORLD_BASE_ITEMS[i]
+        if numeric_stop then
+            numeric_stop(true)
+        end
+    elseif rmb_clicked
+        and plant_dots_hot
+    then
+        if A.world_settings_open
+            and A.world_settings_group == "plants"
+        then
+            A.world_settings_open = false
+        else
+            A.world_settings_group = "plants"
+            A.world_settings_open = true
+        end
 
-            if cfg then
-                local old_alpha =
-                    MENU_RENDER_ALPHA
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+        A.fov_picker_open = false
+        A.fov_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
 
-                MENU_RENDER_ALPHA =
-                    old_alpha
-                    * row_alpha
+        if numeric_stop then
+            numeric_stop(true)
+        end
+    elseif rmb_clicked
+        and base_dots_hot
+    then
+        if A.world_settings_open
+            and A.world_settings_group == "bases"
+        then
+            A.world_settings_open = false
+        else
+            A.world_settings_group = "bases"
+            A.world_settings_open = true
+        end
 
-                world_base_compact_row(
-                    mx,
-                    my,
-                    left_row_clicked
-                        and row_alpha > 0.72,
-                    left_x,
-                    by,
-                    col_w,
-                    cfg
-                )
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+        A.fov_picker_open = false
+        A.fov_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
 
-                MENU_RENDER_ALPHA =
-                    old_alpha
-            end
+        if numeric_stop then
+            numeric_stop(true)
         end
     end
 
-    for i = 1, right_total do
-        local by =
-            base_card_y
-            + 4
-            + ((i - 1) - right_scroll) * base_row_h
+    local popup_dots_x =
+        node_dots_x
 
-        local row_alpha =
-            world_base_row_clip_alpha(
-                by,
-                base_card_y,
-                base_card_h
-            )
+    local popup_dots_y =
+        node_dots_y
 
-        if row_alpha > 0.008 then
-            local cfg =
-                WORLD_BASE_ITEMS[
-                    left_total + i
-                ]
-
-            if cfg then
-                local old_alpha =
-                    MENU_RENDER_ALPHA
-
-                MENU_RENDER_ALPHA =
-                    old_alpha
-                    * row_alpha
-
-                world_base_compact_row(
-                    mx,
-                    my,
-                    right_row_clicked
-                        and row_alpha > 0.72,
-                    right_x,
-                    by,
-                    col_w,
-                    cfg
-                )
-
-                MENU_RENDER_ALPHA =
-                    old_alpha
-            end
-        end
+    if A.world_settings_group == "plants" then
+        popup_dots_x = plant_dots_x
+        popup_dots_y = plant_dots_y
+    elseif A.world_settings_group == "bases" then
+        popup_dots_x = base_dots_x
+        popup_dots_y = base_dots_y
     end
 
-    -- Rows are virtually clipped by alpha fading before they reach
-    -- the card edges. No opaque/translucent masks are drawn here, which
-    -- keeps both Default and Glass styles clean.
-
-    -- Render settings first, then the reusable color picker on top.
     draw_world_settings_popup(
         mx,
         my,
         clicked,
         lmb,
-        dots_x,
-        dots_y
+        popup_dots_x,
+        popup_dots_y
     )
-
 end
-
 
 local function draw_simple_page(mx, my, clicked, cx, cy, cw, title, state_key)
     section_title(cx, cy, title)
@@ -16065,11 +15745,21 @@ local function world_screen(pos)
 end
 
 local function world_refresh_cache(force)
+    S.world_esp_enabled =
+        S.world_node_esp_enabled == true
+        or S.world_plant_esp_enabled == true
+        or S.world_base_esp_enabled == true
+
     if S.world_esp_enabled ~= true then
         return
     end
 
     local now = tick()
+
+    if _G.FALLEN_WORLD_FORCE_RESCAN == true then
+        force = true
+        _G.FALLEN_WORLD_FORCE_RESCAN = false
+    end
 
     if not force
         and now - WORLD_ESP.last_scan < 1.75
@@ -16112,12 +15802,23 @@ local function world_refresh_cache(force)
     local entries = {}
 
     for _, cfg in ipairs(WORLD_RESOURCES) do
+        local category_enabled =
+            (
+                cfg.folder == "Nodes"
+                and S.world_node_esp_enabled == true
+            )
+            or (
+                cfg.folder == "Plants"
+                and S.world_plant_esp_enabled == true
+            )
+
         local folder =
             WORLD_ESP.folders[
                 cfg.folder
             ]
 
-        if folder
+        if category_enabled
+            and folder
             and world_inst_valid(folder)
         then
             for _, model in ipairs(
@@ -16147,7 +15848,9 @@ local function world_refresh_cache(force)
 
     local base_entries = {}
 
-    if world_any_base_enabled() then
+    if S.world_base_esp_enabled == true
+        and world_any_base_enabled()
+    then
         local bases =
             WORLD_ESP.folders.Bases
 
@@ -16549,6 +16252,18 @@ local function world_draw_entry(
         return
     end
 
+    if entry.cfg.folder == "Nodes"
+        and S.world_node_esp_enabled ~= true
+    then
+        return
+    end
+
+    if entry.cfg.folder == "Plants"
+        and S.world_plant_esp_enabled ~= true
+    then
+        return
+    end
+
     local pos =
         world_part_pos(
             entry.inst,
@@ -16706,6 +16421,7 @@ function world_draw_base_entry(
         or not entry.cfg
         or not world_inst_valid(entry.inst)
         or not world_base_enabled(entry.cfg)
+        or S.world_base_esp_enabled ~= true
     then
         return
     end
@@ -16820,6 +16536,11 @@ function world_draw_base_entry(
 end
 
 local function world_esp_tick()
+    S.world_esp_enabled =
+        S.world_node_esp_enabled == true
+        or S.world_plant_esp_enabled == true
+        or S.world_base_esp_enabled == true
+
     if _G.FallenMenuReady ~= true
         or S.world_esp_enabled ~= true
     then
