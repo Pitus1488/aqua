@@ -1423,6 +1423,59 @@ local function rounded_outline(x, y, w, h, r, c, thickness, inner_color)
     end
 end
 
+
+local function FALLEN_DRAW_CENTER_SEAM(x, y, h)
+    -- Visual seam between the left sidebar and the right content area.
+    -- Old version used a plain straight line.
+    -- This version uses a rounded capsule so the separator has the same
+    -- rounded top/bottom feeling as the reference screenshot.
+    local inset = 11
+    local seam_h =
+        h - inset * 2
+
+    if seam_h <= 2 then
+        return
+    end
+
+    local seam_w = 10
+    local seam_x =
+        x - math.floor(seam_w * 0.5)
+
+    local seam_y =
+        y + inset
+
+    -- Soft dark body.
+    rounded_fill(
+        seam_x,
+        seam_y,
+        seam_w,
+        seam_h,
+        5,
+        { 0.020, 0.024, 0.032, 0.34 }
+    )
+
+    -- Very subtle inner body so the divider does not look flat.
+    rounded_fill(
+        seam_x + 2,
+        seam_y + 2,
+        seam_w - 4,
+        seam_h - 4,
+        4,
+        { 0.090, 0.096, 0.112, 0.14 }
+    )
+
+    -- Real separator highlight in the middle.
+    line(
+        x,
+        seam_y + 4,
+        x,
+        seam_y + seam_h - 4,
+        C.divider,
+        1
+    )
+end
+
+
 local function text(x, y, s, c)
     local sx =
         FALLEN_UI_X(x)
@@ -10420,16 +10473,22 @@ function FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
                         true
                     ) ~= nil
 
-                local is_toggle_latch =
+                local is_latch =
                     string.find(
                         normalized,
                         "toggled",
                         1,
                         true
                     ) ~= nil
+                    or string.find(
+                        normalized,
+                        "active",
+                        1,
+                        true
+                    ) ~= nil
 
                 if is_silent
-                    and is_toggle_latch
+                    and is_latch
                 then
                     pcall(function()
                         kb[raw] =
@@ -10440,7 +10499,7 @@ function FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
         end
     end
 
-    -- Common toggle-latch fallbacks only.
+    -- Common fallbacks in case this build omits _keys().
     pcall(function()
         kb.silent_aim_toggled =
             false
@@ -10448,6 +10507,16 @@ function FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
 
     pcall(function()
         kb.silent_toggled =
+            false
+    end)
+
+    pcall(function()
+        kb.silent_aim_active =
+            false
+    end)
+
+    pcall(function()
+        kb.silent_active =
             false
     end)
 end
@@ -11512,9 +11581,80 @@ function FALLEN_SILENT_TICK()
 
     FALLEN_SILENT_FORCE_HOLD()
 
-    -- HOLD state is owned by the stock cheat.
-    -- We only clear toggle latches; never write *_active ourselves.
-    FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
+    -- HOLD means the stock keybind state must follow the physical key only.
+    -- Never leave any stale toggle/active latch behind.
+    local bind_vk =
+        math.floor(
+            tonumber(S.silent_key)
+            or 0
+        )
+
+    local physically_down =
+        false
+
+    if bind_vk > 0 then
+        physically_down =
+            key_down(bind_vk)
+            == true
+    end
+
+    if cheat
+        and cheat.keybinds
+        and type(cheat.keybinds._keys) == "function"
+    then
+        local ok_keys, bind_keys =
+            pcall(function()
+                return cheat.keybinds:_keys()
+            end)
+
+        if ok_keys
+            and type(bind_keys) == "table"
+        then
+            for _, raw_key in ipairs(bind_keys) do
+                local raw =
+                    tostring(raw_key)
+
+                local normalized =
+                    FALLEN_SILENT_NORMALIZE_KEY(
+                        raw
+                    )
+
+                if string.find(
+                        normalized,
+                        "silent",
+                        1,
+                        true
+                    )
+                then
+                    if string.find(
+                            normalized,
+                            "toggled",
+                            1,
+                            true
+                        )
+                    then
+                        pcall(function()
+                            cheat.keybinds[raw] =
+                                false
+                        end)
+                    elseif string.find(
+                            normalized,
+                            "active",
+                            1,
+                            true
+                        )
+                    then
+                        -- active is documented as live/overwritten each frame;
+                        -- write the actual physical HOLD state here as well.
+                        pcall(function()
+                            cheat.keybinds[raw] =
+                                physically_down
+                        end)
+                    end
+                end
+            end
+        end
+    end
 
     -- While our custom menu is open, our switches are authoritative.
     -- This does NOT change HOLD active-state behavior.
@@ -27844,8 +27984,12 @@ hooks.on_render(function()
         return
     end
 
-    -- Vertical divider.
-    line(wx + SIDEBAR_W, wy + 12, wx + SIDEBAR_W, wy + WIN_H - 12, C.divider, 1)
+    -- Rounded separator between sidebar and content.
+    FALLEN_DRAW_CENTER_SEAM(
+        wx + SIDEBAR_W,
+        wy,
+        WIN_H
+    )
 
     -- Brand. PRO badge intentionally removed.
     text(wx + 26, wy + 27, "Fallen-lua", C.text)
