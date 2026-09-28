@@ -10420,22 +10420,16 @@ function FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
                         true
                     ) ~= nil
 
-                local is_latch =
+                local is_toggle_latch =
                     string.find(
                         normalized,
                         "toggled",
                         1,
                         true
                     ) ~= nil
-                    or string.find(
-                        normalized,
-                        "active",
-                        1,
-                        true
-                    ) ~= nil
 
                 if is_silent
-                    and is_latch
+                    and is_toggle_latch
                 then
                     pcall(function()
                         kb[raw] =
@@ -10446,7 +10440,7 @@ function FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
         end
     end
 
-    -- Common fallbacks in case this build omits _keys().
+    -- Common toggle-latch fallbacks only.
     pcall(function()
         kb.silent_aim_toggled =
             false
@@ -10454,16 +10448,6 @@ function FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
 
     pcall(function()
         kb.silent_toggled =
-            false
-    end)
-
-    pcall(function()
-        kb.silent_aim_active =
-            false
-    end)
-
-    pcall(function()
-        kb.silent_active =
             false
     end)
 end
@@ -11528,80 +11512,9 @@ function FALLEN_SILENT_TICK()
 
     FALLEN_SILENT_FORCE_HOLD()
 
-    -- HOLD means the stock keybind state must follow the physical key only.
-    -- Never leave any stale toggle/active latch behind.
-    local bind_vk =
-        math.floor(
-            tonumber(S.silent_key)
-            or 0
-        )
-
-    local physically_down =
-        false
-
-    if bind_vk > 0 then
-        physically_down =
-            key_down(bind_vk)
-            == true
-    end
-
-    if cheat
-        and cheat.keybinds
-        and type(cheat.keybinds._keys) == "function"
-    then
-        local ok_keys, bind_keys =
-            pcall(function()
-                return cheat.keybinds:_keys()
-            end)
-
-        if ok_keys
-            and type(bind_keys) == "table"
-        then
-            for _, raw_key in ipairs(bind_keys) do
-                local raw =
-                    tostring(raw_key)
-
-                local normalized =
-                    FALLEN_SILENT_NORMALIZE_KEY(
-                        raw
-                    )
-
-                if string.find(
-                        normalized,
-                        "silent",
-                        1,
-                        true
-                    )
-                then
-                    if string.find(
-                            normalized,
-                            "toggled",
-                            1,
-                            true
-                        )
-                    then
-                        pcall(function()
-                            cheat.keybinds[raw] =
-                                false
-                        end)
-                    elseif string.find(
-                            normalized,
-                            "active",
-                            1,
-                            true
-                        )
-                    then
-                        -- active is documented as live/overwritten each frame;
-                        -- write the actual physical HOLD state here as well.
-                        pcall(function()
-                            cheat.keybinds[raw] =
-                                physically_down
-                        end)
-                    end
-                end
-            end
-        end
-    end
+    -- HOLD state is owned by the stock cheat.
+    -- We only clear toggle latches; never write *_active ourselves.
+    FALLEN_SILENT_CLEAR_TOGGLE_LATCH()
 
     -- While our custom menu is open, our switches are authoritative.
     -- This does NOT change HOLD active-state behavior.
