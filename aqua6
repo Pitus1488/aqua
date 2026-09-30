@@ -194,6 +194,9 @@ local defaults = {
     menu_lightning = false,
     menu_dark_background = false,
 
+    -- Neverlose-style active keybind list.
+    keybinds_list_enabled = false,
+
     -- Custom profile avatar editor.
     avatar_display_size = 38,
     avatar_crop_zoom = 1.00,
@@ -676,6 +679,12 @@ local A = {
     menu_settings_open = false,
     menu_settings_anim = 0,
     menu_settings_last_t = nil,
+
+    -- Neverlose-style active keybind window.
+    keybinds_panel_anim = 0,
+    keybinds_panel_last_t = nil,
+    keybinds_item_anim = {},
+    keybinds_item_last_t = nil,
 
     gear_hover_anim = 0,
     gear_hover_last_t = nil,
@@ -6341,10 +6350,39 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
         end
     end
 
-    -- IMPORTANT:
-    -- LMB outside does NOT close this popup.
-    -- Silent FOV settings are opened/closed only by repeated RMB
-    -- on the Silent FOV row.
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            shell_h
+        )
+
+    local dots_hot =
+        hover(
+            mx,
+            my,
+            dots_x,
+            dots_y,
+            27,
+            25
+        )
+
+    -- Same behavior as the Aimbot FOV popup:
+    -- repeated RMB on the FOV row toggles it,
+    -- while LMB on empty space outside closes it.
+    if interactive
+        and clicked
+        and not popup_hot
+        and not dots_hot
+        and not A.world_color_picker_open
+    then
+        A.silent_fov_settings_open =
+            false
+    end
+
     MENU_RENDER_ALPHA =
         parent_menu_alpha
 end
@@ -23960,7 +23998,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or menu_type_lower == "blur"
 
     local ph =
-        385
+        426
         + (
             gradient_selected
             and 82
@@ -24357,15 +24395,16 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
-        -- Secret setting is completely absent until the hidden brand gesture.
-        if A.secret_unlocked
-            and shell_h > 410 + weather_offset
-        then
+        local keybinds_y =
+            py + 368
+            + weather_offset
+
+        if shell_h > 410 + weather_offset then
             line(
                 px + 12,
-                py + 367 + weather_offset,
+                keybinds_y - 1,
                 px + pw - 12,
-                py + 367 + weather_offset,
+                keybinds_y - 1,
                 C.divider,
                 1
             )
@@ -24375,7 +24414,33 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 368 + weather_offset,
+                keybinds_y,
+                pw - 16,
+                "Keybinds",
+                "keybinds_list_enabled",
+                false
+            )
+        end
+
+        -- Secret setting is completely absent until the hidden brand gesture.
+        if A.secret_unlocked
+            and shell_h > 451 + weather_offset
+        then
+            line(
+                px + 12,
+                py + 408 + weather_offset,
+                px + pw - 12,
+                py + 408 + weather_offset,
+                C.divider,
+                1
+            )
+
+            toggle_row(
+                mx,
+                my,
+                row_clicked,
+                px + 8,
+                py + 409 + weather_offset,
                 pw - 16,
                 "???",
                 "secret_enabled",
@@ -24448,6 +24513,378 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or scale_dropdown_hot
         or type_dropdown_hot
 end
+
+
+-- =========================================================
+-- Neverlose-style active Keybinds window
+-- =========================================================
+
+function FALLEN_KEYBINDS_STEP()
+    local now =
+        tick()
+
+    if A.keybinds_panel_last_t == nil then
+        A.keybinds_panel_last_t =
+            now
+    end
+
+    local dt =
+        clamp(
+            now - A.keybinds_panel_last_t,
+            0,
+            0.05
+        )
+
+    A.keybinds_panel_last_t =
+        now
+
+    local target =
+        S.keybinds_list_enabled == true
+        and 1
+        or 0
+
+    A.keybinds_panel_anim =
+        exp_chase(
+            A.keybinds_panel_anim or 0,
+            target,
+            target > (A.keybinds_panel_anim or 0)
+                and 12
+                or 9,
+            dt
+        )
+
+    if target == 0
+        and (A.keybinds_panel_anim or 0) < 0.015
+    then
+        A.keybinds_panel_anim =
+            0
+    elseif target == 1
+        and (A.keybinds_panel_anim or 0) > 0.992
+    then
+        A.keybinds_panel_anim =
+            1
+    end
+
+    return
+        clamp(
+            A.keybinds_panel_anim or 0,
+            0,
+            1
+        ),
+        dt
+end
+
+
+function FALLEN_KEYBINDS_ACTIVE_ITEMS()
+    local items = {}
+
+    local aim_vk =
+        math.floor(
+            tonumber(S.aim_hold_key)
+            or 0
+        )
+
+    local aim_active =
+        S.aim_enabled == true
+        and (
+            aim_vk <= 0
+            or key_down(aim_vk)
+        )
+
+    items[#items + 1] = {
+        id = "aimbot",
+        name = "Aimbot",
+        active = aim_active,
+        mode = aim_vk <= 0
+            and "[always]"
+            or "[hold]",
+        key = aim_vk_name(aim_vk),
+    }
+
+    local silent_vk =
+        math.floor(
+            tonumber(S.silent_key)
+            or 0
+        )
+
+    local silent_active =
+        S.silent_enabled == true
+        and (
+            silent_vk <= 0
+            or key_down(silent_vk)
+        )
+
+    items[#items + 1] = {
+        id = "silent_aim",
+        name = "Silent Aim",
+        active = silent_active,
+        mode = silent_vk <= 0
+            and "[always]"
+            or "[hold]",
+        key = aim_vk_name(silent_vk),
+    }
+
+    return items
+end
+
+
+function FALLEN_DRAW_KEYBINDS_LIST()
+    local panel_anim, dt =
+        FALLEN_KEYBINDS_STEP()
+
+    if panel_anim <= 0.002
+        and S.keybinds_list_enabled ~= true
+    then
+        return
+    end
+
+    local items =
+        FALLEN_KEYBINDS_ACTIVE_ITEMS()
+
+    local visible_rows = {}
+
+    for _, item in ipairs(items) do
+        local id =
+            tostring(item.id)
+
+        local current =
+            tonumber(
+                A.keybinds_item_anim[id]
+            )
+            or 0
+
+        local target =
+            item.active == true
+            and 1
+            or 0
+
+        current =
+            exp_chase(
+                current,
+                target,
+                target > current
+                    and 16
+                    or 11,
+                dt
+            )
+
+        if target == 0
+            and current < 0.012
+        then
+            current = 0
+        elseif target == 1
+            and current > 0.992
+        then
+            current = 1
+        end
+
+        A.keybinds_item_anim[id] =
+            current
+
+        if current > 0.01 then
+            item.anim =
+                current
+
+            visible_rows[
+                #visible_rows + 1
+            ] =
+                item
+        end
+    end
+
+    local sw, sh =
+        screen_size()
+
+    local panel_w = 214
+    local header_h = 31
+    local row_h = 27
+
+    local rows_h = 0
+
+    for _, item in ipairs(visible_rows) do
+        rows_h =
+            rows_h
+            + row_h
+            * ease_out_cubic(
+                item.anim
+            )
+    end
+
+    local panel_h =
+        header_h
+        + rows_h
+
+    local open_ease =
+        ease_out_cubic(
+            panel_anim
+        )
+
+    local x =
+        sw
+        - panel_w
+        - 24
+        + (1 - open_ease) * 18
+
+    local y =
+        84
+
+    local old_alpha =
+        MENU_RENDER_ALPHA
+
+    local old_transform =
+        MENU_UI_TRANSFORM_ACTIVE
+
+    MENU_RENDER_ALPHA =
+        open_ease
+
+    MENU_UI_TRANSFORM_ACTIVE =
+        false
+
+    -- Soft Neverlose-like dark floating card.
+    FALLEN_POPUP_GLOW(
+        x,
+        y,
+        panel_w,
+        panel_h,
+        8,
+        0.65
+    )
+
+    rounded_fill(
+        x,
+        y,
+        panel_w,
+        panel_h,
+        8,
+        { 0.035, 0.038, 0.046, 0.94 }
+    )
+
+    rounded_fill(
+        x + 1,
+        y + 1,
+        panel_w - 2,
+        header_h - 1,
+        7,
+        { 0.052, 0.056, 0.067, 0.97 }
+    )
+
+    -- Thin accent rail, Neverlose-style.
+    rounded_fill(
+        x + 10,
+        y + header_h - 2,
+        panel_w - 20,
+        2,
+        1,
+        C.accent
+    )
+
+    text(
+        x + 13,
+        y + 10,
+        "Keybinds",
+        C.text
+    )
+
+    local row_y =
+        y + header_h
+
+    for _, item in ipairs(visible_rows) do
+        local a =
+            ease_out_cubic(
+                item.anim
+            )
+
+        local h =
+            row_h
+            * a
+
+        if h > 1 then
+            local slide =
+                (1 - a) * 10
+
+            line(
+                x + 10,
+                row_y,
+                x + panel_w - 10,
+                row_y,
+                alpha(
+                    C.divider,
+                    0.72 * a
+                ),
+                1
+            )
+
+            circle_fill(
+                x + 15 + slide,
+                row_y + 13,
+                2.5,
+                alpha(
+                    C.accent,
+                    a
+                )
+            )
+
+            text(
+                x + 24 + slide,
+                row_y + 8,
+                item.name,
+                alpha(
+                    C.text,
+                    a
+                )
+            )
+
+            -- Neverlose keybind lists emphasize the mode on the right.
+            text(
+                x + panel_w - 53,
+                row_y + 8,
+                item.mode,
+                alpha(
+                    C.text_dim,
+                    a
+                )
+            )
+
+            -- Small key hint next to the mode.
+            if item.key
+                and item.key ~= "None"
+            then
+                local key_text =
+                    tostring(item.key)
+
+                if #key_text > 7 then
+                    key_text =
+                        string.sub(
+                            key_text,
+                            1,
+                            7
+                        )
+                end
+
+                text(
+                    x + panel_w - 103,
+                    row_y + 8,
+                    key_text,
+                    alpha(
+                        C.text_faint,
+                        a * 0.88
+                    )
+                )
+            end
+        end
+
+        row_y =
+            row_y
+            + h
+    end
+
+    MENU_RENDER_ALPHA =
+        old_alpha
+
+    MENU_UI_TRANSFORM_ACTIVE =
+        old_transform
+end
+
 
 -- =========================================================
 -- Animated menu-background weather
@@ -30873,6 +31310,24 @@ hooks.on_render(function()
         end
     end
 end)
+
+
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    if S.keybinds_list_enabled ~= true
+        and (A.keybinds_panel_anim or 0) <= 0.002
+    then
+        return
+    end
+
+    pcall(
+        FALLEN_DRAW_KEYBINDS_LIST
+    )
+end)
+
 
 print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA1)")
 
