@@ -3158,6 +3158,78 @@ function FALLEN_WORLD_TAB_ICON_GET()
 end
 
 
+-- Custom Armor nested-tab image icon.
+_G.FALLEN_ARMOR_TAB_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-30-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-19-44-16-%281%29.Q8McN"
+
+_G.FALLEN_ARMOR_TAB_ICON_SOURCE =
+    _G.FALLEN_ARMOR_TAB_ICON_SOURCE
+    or nil
+
+_G.FALLEN_ARMOR_TAB_ICON_URL =
+    _G.FALLEN_ARMOR_TAB_ICON_URL
+    or nil
+
+_G.FALLEN_ARMOR_TAB_ICON_HANDLE =
+    _G.FALLEN_ARMOR_TAB_ICON_HANDLE
+    or nil
+
+function FALLEN_ARMOR_TAB_ICON_GET()
+    local page_url =
+        _G.FALLEN_ARMOR_TAB_ICON_PAGE_URL
+
+    if _G.FALLEN_ARMOR_TAB_ICON_SOURCE ~= page_url then
+        _G.FALLEN_ARMOR_TAB_ICON_SOURCE = page_url
+        _G.FALLEN_ARMOR_TAB_ICON_URL = nil
+        _G.FALLEN_ARMOR_TAB_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_ARMOR_TAB_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_ARMOR_TAB_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_ARMOR_TAB_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_ARMOR_TAB_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_ARMOR_TAB_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_ARMOR_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
 -- Misc sidebar image icon.
 _G.FALLEN_MISC_TAB_ICON_PAGE_URL =
     "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-27-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-13-40-07-%281%29.fRH4W"
@@ -3580,17 +3652,21 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
                 a
             )
 
-        -- Small gray hover lift while inactive.
-        if hot
-            and not active
-        then
-            ic =
-                mix_color(
-                    ic,
-                    C.text,
-                    0.10
-                )
-        end
+        -- Use the SAME hover progress as the tab text:
+        -- smoothly brighten toward white and grow a little.
+        local icon_hover =
+            clamp(
+                tonumber(col[5]) or 0,
+                0,
+                1
+            )
+
+        ic =
+            mix_color(
+                ic,
+                C.white,
+                icon_hover
+            )
 
         ic[4] = 1
 
@@ -3637,6 +3713,10 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
                     20
                     * transform_scale
                     * requested_icon_scale
+                    * (
+                        1
+                        + 0.12 * icon_hover
+                    )
                     + 0.5
                 )
 
@@ -30701,6 +30781,13 @@ hooks.on_render(function()
         if world_icon_handle
             and type(DrawImage) == "function"
         then
+            local world_icon_hover =
+                clamp(
+                    tonumber(world_col[5]) or 0,
+                    0,
+                    1
+                )
+
             local world_icon_col =
                 (
                     S.tab == 2
@@ -30709,13 +30796,42 @@ hooks.on_render(function()
                     and C.accent
                     or C.text_dim
 
+            world_icon_col =
+                mix_color(
+                    world_icon_col,
+                    C.white,
+                    world_icon_hover
+                )
+
+            local world_icon_size =
+                18
+                * (
+                    1
+                    + 0.12 * world_icon_hover
+                )
+
+            local world_icon_px =
+                FALLEN_UI_LEN(
+                    world_icon_size
+                )
+
+            local world_icon_cx =
+                FALLEN_UI_X(
+                    child_x + 19
+                )
+
+            local world_icon_cy =
+                FALLEN_UI_Y(
+                    world_y + 16
+                )
+
             pcall(
                 DrawImage,
                 world_icon_handle,
-                FALLEN_UI_X(child_x + 9),
-                FALLEN_UI_Y(world_y + 6),
-                FALLEN_UI_LEN(20),
-                FALLEN_UI_LEN(20),
+                world_icon_cx - world_icon_px * 0.5,
+                world_icon_cy - world_icon_px * 0.5,
+                world_icon_px,
+                world_icon_px,
                 world_icon_col[1],
                 world_icon_col[2],
                 world_icon_col[3],
@@ -30760,16 +30876,70 @@ hooks.on_render(function()
                     or C.text_dim
             )
 
-        FALLEN_ICON_ARMOR(
-            child_x + 10,
-            armor_y + 7,
-            (
-                S.tab == 2
-                and (tonumber(S.visuals_subtab) or 0) == 2
+        local armor_icon_handle =
+            FALLEN_ARMOR_TAB_ICON_GET()
+
+        if armor_icon_handle
+            and type(DrawImage) == "function"
+        then
+            local armor_icon_hover =
+                clamp(
+                    tonumber(armor_col[5]) or 0,
+                    0,
+                    1
+                )
+
+            local armor_icon_col =
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 0) == 2
+                )
+                    and C.accent
+                    or C.text_dim
+
+            armor_icon_col =
+                mix_color(
+                    armor_icon_col,
+                    C.white,
+                    armor_icon_hover
+                )
+
+            local armor_icon_size =
+                18
+                * (
+                    1
+                    + 0.12 * armor_icon_hover
+                )
+
+            local armor_icon_px =
+                FALLEN_UI_LEN(
+                    armor_icon_size
+                )
+
+            local armor_icon_cx =
+                FALLEN_UI_X(
+                    child_x + 19
+                )
+
+            local armor_icon_cy =
+                FALLEN_UI_Y(
+                    armor_y + 16
+                )
+
+            pcall(
+                DrawImage,
+                armor_icon_handle,
+                armor_icon_cx - armor_icon_px * 0.5,
+                armor_icon_cy - armor_icon_px * 0.5,
+                armor_icon_px,
+                armor_icon_px,
+                armor_icon_col[1],
+                armor_icon_col[2],
+                armor_icon_col[3],
+                MENU_RENDER_ALPHA,
+                0
             )
-                and C.accent
-                or C.text_dim
-        )
+        end
 
         text(
             child_x + 36,
