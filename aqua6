@@ -3512,7 +3512,6 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.aim_settings_open = false
         A.aim_part_dropdown_open = false
         A.silent_part_dropdown_open = false
-        A.fov_settings_open = false
         A.fov_picker_open = false
         A.world_settings_open = false
         A.world_color_picker_open = false
@@ -3803,7 +3802,6 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
             and (
                 key == "silent_max_dist"
                 or key == "silent_fov"
-                or key == "aim_fov_size"
             )
         then
             FALLEN_SILENT_UI_VALUE_CHANGED(
@@ -6488,8 +6486,8 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         1
     )
 
-    -- Shared Aimbot FOV block.
-    -- This is the SAME state/popup used on the Aimbot page.
+    -- Silent uses our CUSTOM Aim FOV visual/settings.
+    -- Only this FOV Enabled switch talks to the built-in Silent FOV gate.
     local silent_fov_dots_x =
         rx + right_w - 79
 
@@ -6506,7 +6504,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
             25
         )
 
-    local fov_overlay_open =
+    local silent_fov_overlay_open =
         A.fov_settings_open
         or (A.fov_settings_anim or 0) > 0.02
         or A.world_color_picker_open == true
@@ -6514,7 +6512,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
 
     local silent_fov_clicked =
         clicked
-        and not fov_overlay_open
+        and not silent_fov_overlay_open
 
     toggle_row(
         mx,
@@ -6524,20 +6522,10 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         rx,
         cy + 114,
         right_w,
-        "Aim FOV",
-        "aim_fov_enabled",
+        "FOV Enabled",
+        "silent_fov_enabled",
         true
     )
-
-    local silent_fov_row_hot =
-        hover(
-            mx,
-            my,
-            rx,
-            cy + 114,
-            right_w,
-            41
-        )
 
     if silent_fov_clicked
         and silent_fov_dots_hot
@@ -6563,6 +6551,10 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         1
     )
 
+    local custom_fov_before =
+        tonumber(S.aim_fov_size)
+        or 50
+
     slider_row(
         mx,
         my,
@@ -6577,6 +6569,21 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         600,
         "int"
     )
+
+    local custom_fov_after =
+        tonumber(S.aim_fov_size)
+        or custom_fov_before
+
+    if math.abs(
+        custom_fov_after
+        - custom_fov_before
+    ) > 0.0001
+    then
+        -- Only Silent receives the custom FOV radius.
+        FALLEN_SILENT_SET_FOV(
+            custom_fov_after
+        )
+    end
 
     -- Draw the dropdown last so it unfolds over the rows below it.
     local dropdown_hot =
@@ -6599,6 +6606,8 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
             false
     end
 
+    -- SAME custom FOV popup as our Aimbot:
+    -- Glow / Strength / Spread / Glow Color / Filled FOV.
     FALLEN_DRAW_FOV_SETTINGS_POPUP(
         mx,
         my,
@@ -11562,9 +11571,8 @@ function FALLEN_SILENT_SET_FOV_ENABLED(
     S.silent_fov_enabled =
         value
 
-    -- Keep our own Aimbot FOV checkbox state aligned too.
-    S.aim_fov_enabled =
-        value
+    -- Do not touch S.aim_fov_enabled here.
+    -- That belongs to our custom Aimbot/FOV visual only.
 
     local changed_any =
         false
@@ -11620,27 +11628,19 @@ function FALLEN_SILENT_SET_FOV(
         math.floor(
             clamp(
                 tonumber(value)
-                or 180,
+                or tonumber(S.aim_fov_size)
+                or 50,
                 10,
                 600
             )
             + 0.5
         )
 
+    -- Silent uses OUR custom Aimbot FOV radius.
+    -- Do not write anything into cheat.aimbot here.
     S.silent_fov =
         fov
 
-    -- Same value is shared by the Aimbot FOV UI.
-    S.aim_fov_size =
-        fov
-
-    A.slider_target.aim_fov_size =
-        fov
-
-    A.slider_visual.aim_fov_size =
-        fov
-
-    -- Silent target FOV.
     local sa =
         FALLEN_SILENT_LIVE_SECTION()
 
@@ -11651,29 +11651,8 @@ function FALLEN_SILENT_SET_FOV(
         end)
     end
 
-    -- Built-in "Aimbot FOV" value.
-    local aimbot =
-        FALLEN_SHARED_AIM_SECTION()
-
-    if aimbot then
-        local fov_key =
-            FALLEN_SHARED_AIM_FIND_KEY(
-                "fov"
-            )
-
-        if fov_key then
-            pcall(function()
-                aimbot[fov_key] =
-                    fov
-            end)
-        else
-            pcall(function()
-                aimbot.fov =
-                    fov
-            end)
-        end
-    end
-
+    -- The real built-in FOV gate is still controlled only from the
+    -- Silent tab's FOV Enabled switch.
     FALLEN_SILENT_SET_FOV_ENABLED(
         S.silent_fov_enabled == true
     )
@@ -11710,7 +11689,7 @@ function FALLEN_SILENT_APPLY_ALL_LIVE()
     )
 
     FALLEN_SILENT_SET_FOV(
-        S.silent_fov
+        S.aim_fov_size
     )
 
     FALLEN_SILENT_SET_ENABLED(
@@ -11770,22 +11749,6 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
 
     if key == "silent_target_part" then
         FALLEN_SILENT_SET_TARGET_PART(
-            value
-        )
-
-        return
-    end
-
-    if key == "aim_fov_enabled" then
-        FALLEN_SILENT_SET_FOV_ENABLED(
-            value
-        )
-
-        return
-    end
-
-    if key == "aim_fov_size" then
-        FALLEN_SILENT_SET_FOV(
             value
         )
 
@@ -11965,9 +11928,6 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
     if live_fov_enabled ~= nil then
         S.silent_fov_enabled =
             live_fov_enabled == true
-
-        S.aim_fov_enabled =
-            S.silent_fov_enabled
     else
         local live_fov_only =
             FALLEN_SILENT_READ_FIELD(
@@ -11977,9 +11937,6 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
         if live_fov_only ~= nil then
             S.silent_fov_enabled =
                 live_fov_only == true
-
-            S.aim_fov_enabled =
-                S.silent_fov_enabled
         end
     end
 
@@ -11998,48 +11955,24 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
     if not editing_fov
         and allow_fov_readback
     then
-        local live_fov =
-            tonumber(
-                FALLEN_SHARED_AIM_READ(
-                    "fov"
-                )
+        -- Our custom Aim FOV radius is authoritative.
+        -- Never let the stock Aimbot FOV overwrite it.
+        local custom_fov =
+            clamp(
+                tonumber(S.aim_fov_size)
+                or 50,
+                10,
+                600
             )
 
-        if not live_fov then
-            live_fov =
-                tonumber(
-                    FALLEN_SILENT_READ_FIELD(
-                        "fov"
-                    )
-                )
-        end
+        S.silent_fov =
+            custom_fov
 
-        if live_fov then
-            live_fov =
-                clamp(
-                    live_fov,
-                    10,
-                    600
-                )
+        A.slider_target.silent_fov =
+            custom_fov
 
-            S.silent_fov =
-                live_fov
-
-            S.aim_fov_size =
-                live_fov
-
-            A.slider_target.silent_fov =
-                live_fov
-
-            A.slider_visual.silent_fov =
-                live_fov
-
-            A.slider_target.aim_fov_size =
-                live_fov
-
-            A.slider_visual.aim_fov_size =
-                live_fov
-        end
+        A.slider_visual.silent_fov =
+            custom_fov
     end
 
     if not S.visible then
@@ -12322,10 +12255,30 @@ function FALLEN_SILENT_TICK()
         end)
     end
 
-    -- Keep the explicit FOV switch pinned through the real field name.
+    -- Keep the explicit Silent FOV gate pinned.
     FALLEN_SILENT_SET_FOV_ENABLED(
         S.silent_fov_enabled == true
     )
+
+    -- Silent Aim follows OUR custom Aimbot FOV radius.
+    local shared_custom_fov =
+        math.floor(
+            clamp(
+                tonumber(S.aim_fov_size)
+                or 50,
+                10,
+                600
+            )
+            + 0.5
+        )
+
+    S.silent_fov =
+        shared_custom_fov
+
+    pcall(function()
+        sa.fov =
+            shared_custom_fov
+    end)
 
     -- When the menu is closed, keep our UI cache following the stock cheat
     -- instead of overwriting the stock cheat with stale S.* values.
