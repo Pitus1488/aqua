@@ -12862,7 +12862,28 @@ function FALLEN_SILENT_TICK()
 end
 
 function FALLEN_CUSTOM_FOV_CENTER()
-    -- Prefer the game's real crosshair position.
+    -- Use the SAME mouse_pos() helper that the Fallen menu/weather already uses.
+    -- It returns the mouse in the same client-space coordinates as Drawing.
+    if type(mouse_pos) == "function" then
+        local ok, mx, my =
+            pcall(
+                mouse_pos
+            )
+
+        if ok then
+            mx =
+                tonumber(mx)
+
+            my =
+                tonumber(my)
+
+            if mx and my then
+                return mx, my
+            end
+        end
+    end
+
+    -- Fallback: game crosshair position.
     if type(crosshair_pos) == "function" then
         local ok, c =
             pcall(
@@ -12882,36 +12903,6 @@ function FALLEN_CUSTOM_FOV_CENTER()
                     c.Y
                     or c.y
                     or c[2]
-                )
-
-            if x and y then
-                return x, y
-            end
-        end
-    end
-
-    -- Fallback to the physical mouse position.
-    if Windows
-        and type(Windows.GetMousePos) == "function"
-    then
-        local ok, m =
-            pcall(
-                Windows.GetMousePos
-            )
-
-        if ok and m then
-            local x =
-                tonumber(
-                    m.X
-                    or m.x
-                    or m[1]
-                )
-
-            local y =
-                tonumber(
-                    m.Y
-                    or m.y
-                    or m[2]
                 )
 
             if x and y then
