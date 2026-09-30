@@ -28009,9 +28009,13 @@ hooks.on_render(function()
         local split_overlap =
             OUTER_R
 
-        if menu_texture_type == "glass" then
-            -- Glass uses the old flat inner split.
-            -- Only the OUTER menu corners are rounded.
+        if menu_texture_type == "glass"
+            or menu_texture_type == "ass"
+        then
+            -- Glass / Ass use a clean FLAT inner split.
+            -- No overlap at the center, so translucent sidebar pixels
+            -- cannot stack over the opaque content and create a dark stripe.
+            -- Only the OUTER window corners remain rounded.
             rounded_left_fill(
                 wx,
                 wy,
@@ -28030,7 +28034,7 @@ hooks.on_render(function()
                 C.content
             )
         else
-            -- Other styles keep the real rounded inner transition.
+            -- Opaque styles can keep the rounded inner transition.
             rounded_right_fill(
                 wx + SIDEBAR_W - split_overlap,
                 wy,
@@ -28066,7 +28070,8 @@ hooks.on_render(function()
         return
     end
 
-    -- Glass keeps the original flat separator.
+    -- Glass keeps its subtle original separator.
+    -- Ass intentionally has NO center line: just a clean flat join.
     if menu_texture_type == "glass" then
         line(
             wx + SIDEBAR_W,
