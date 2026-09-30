@@ -10860,6 +10860,23 @@ function FALLEN_SHARED_AIM_FIND_KEY(
             "hit_part",
             "hitpart",
         }
+    elseif purpose == "show_fov" then
+        aliases = {
+            "show_fov",
+            "showfov",
+            "fov_enabled",
+            "fovenabled",
+            "aimbot_fov",
+            "aimbotfov",
+        }
+    elseif purpose == "fov" then
+        aliases = {
+            "fov",
+            "fov_size",
+            "fovsize",
+            "aimbot_fov_size",
+            "aimbotfovsize",
+        }
     end
 
     if type(aliases) ~= "table" then
@@ -10879,6 +10896,10 @@ function FALLEN_SHARED_AIM_FIND_KEY(
             return "sticky_aim"
         elseif purpose == "max_distance" then
             return "max_distance"
+        elseif purpose == "show_fov" then
+            return "show_fov"
+        elseif purpose == "fov" then
+            return "fov"
         end
 
         return nil
@@ -10954,6 +10975,52 @@ function FALLEN_SHARED_AIM_FIND_KEY(
                         1,
                         true
                     ) ~= nil
+                )
+        elseif purpose == "show_fov" then
+            matched =
+                string.find(
+                    kn,
+                    "fov",
+                    1,
+                    true
+                ) ~= nil
+                and (
+                    string.find(
+                        kn,
+                        "show",
+                        1,
+                        true
+                    ) ~= nil
+                    or string.find(
+                        kn,
+                        "enable",
+                        1,
+                        true
+                    ) ~= nil
+                )
+        elseif purpose == "fov" then
+            matched =
+                kn == "fov"
+                or kn == "fovsize"
+                or (
+                    string.find(
+                        kn,
+                        "fov",
+                        1,
+                        true
+                    ) ~= nil
+                    and string.find(
+                        kn,
+                        "show",
+                        1,
+                        true
+                    ) == nil
+                    and string.find(
+                        kn,
+                        "enable",
+                        1,
+                        true
+                    ) == nil
                 )
         end
 
@@ -11186,29 +11253,50 @@ function FALLEN_SILENT_SET_FOV_ENABLED(
     S.silent_fov_enabled =
         value
 
+    -- Built-in menu calls this "Aimbot FOV".
+    -- The documented Aimbot section exposes show_fov.
+    local aimbot =
+        FALLEN_SHARED_AIM_SECTION()
+
+    if aimbot then
+        local show_key =
+            FALLEN_SHARED_AIM_FIND_KEY(
+                "show_fov"
+            )
+
+        if show_key then
+            pcall(function()
+                aimbot[show_key] =
+                    value
+            end)
+        else
+            -- Exact documented fallback.
+            pcall(function()
+                aimbot.show_fov =
+                    value
+            end)
+        end
+    end
+
+    -- Keep a Silent-specific FOV gate aligned too if this build exposes one.
     local sa =
         FALLEN_SILENT_LIVE_SECTION()
 
-    if not sa then
-        return false
+    if sa then
+        local silent_gate =
+            FALLEN_SILENT_FIND_LIVE_KEY(
+                "fov_only"
+            )
+
+        if silent_gate then
+            pcall(function()
+                sa[silent_gate] =
+                    value
+            end)
+        end
     end
 
-    local key =
-        FALLEN_SILENT_FIND_LIVE_KEY(
-            "fov_only"
-        )
-
-    if not key then
-        return false
-    end
-
-    local ok =
-        pcall(function()
-            sa[key] =
-                value
-        end)
-
-    return ok == true
+    return true
 end
 
 
@@ -11229,18 +11317,40 @@ function FALLEN_SILENT_SET_FOV(
     S.silent_fov =
         fov
 
+    -- Silent target FOV.
     local sa =
         FALLEN_SILENT_LIVE_SECTION()
 
     if sa then
-        -- fov is a documented Silent Aim field: write it directly.
         pcall(function()
             sa.fov =
                 fov
         end)
     end
 
-    -- Keep the discovered FOV-enable bool aligned, if this API build has one.
+    -- Built-in "Aimbot FOV" value.
+    local aimbot =
+        FALLEN_SHARED_AIM_SECTION()
+
+    if aimbot then
+        local fov_key =
+            FALLEN_SHARED_AIM_FIND_KEY(
+                "fov"
+            )
+
+        if fov_key then
+            pcall(function()
+                aimbot[fov_key] =
+                    fov
+            end)
+        else
+            pcall(function()
+                aimbot.fov =
+                    fov
+            end)
+        end
+    end
+
     FALLEN_SILENT_SET_FOV_ENABLED(
         S.silent_fov_enabled == true
     )
@@ -11507,14 +11617,25 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
         end
     end
 
-    local live_fov_only =
-        FALLEN_SILENT_READ_FIELD(
-            "fov_only"
+    -- Follow the built-in Aimbot FOV switch.
+    local live_fov_enabled =
+        FALLEN_SHARED_AIM_READ(
+            "show_fov"
         )
 
-    if live_fov_only ~= nil then
+    if live_fov_enabled ~= nil then
         S.silent_fov_enabled =
-            live_fov_only == true
+            live_fov_enabled == true
+    else
+        local live_fov_only =
+            FALLEN_SILENT_READ_FIELD(
+                "fov_only"
+            )
+
+        if live_fov_only ~= nil then
+            S.silent_fov_enabled =
+                live_fov_only == true
+        end
     end
 
     local editing_fov =
@@ -11534,10 +11655,19 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
     then
         local live_fov =
             tonumber(
-                FALLEN_SILENT_READ_FIELD(
+                FALLEN_SHARED_AIM_READ(
                     "fov"
                 )
             )
+
+        if not live_fov then
+            live_fov =
+                tonumber(
+                    FALLEN_SILENT_READ_FIELD(
+                        "fov"
+                    )
+                )
+        end
 
         if live_fov then
             live_fov =
