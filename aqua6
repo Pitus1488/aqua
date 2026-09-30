@@ -3375,12 +3375,12 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
             col
         )
 
-    -- Sidebar icons use grayscale only.
-    -- Inactive = darker gray, selected = lighter gray.
+    -- Sidebar icons:
+    -- inactive = gray, selected = menu accent blue.
     local ic =
         mix_color(
-            C.text_faint,
             C.text_dim,
+            C.accent,
             a
         )
 
@@ -3391,27 +3391,27 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
 
     local icon = ICONS[index]
 
-    -- Aimbot / Visuals / Misc / Silent use white-source image icons,
-    -- but the source is tinted into the same gray palette as all other icons.
+    -- Raster sidebar icons use the same behavior:
+    -- gray normally, accent blue on the selected tab.
     if (index == 1 or index == 2 or index == 3 or index == 5)
         and type(DrawImage) == "function"
     then
         ic =
             mix_color(
-                C.text_faint,
                 C.text_dim,
+                C.accent,
                 a
             )
 
-        -- Hover only brightens within gray; no white/blue tint.
+        -- Small gray hover lift while inactive.
         if hot
             and not active
         then
             ic =
                 mix_color(
                     ic,
-                    C.text_dim,
-                    0.30
+                    C.text,
+                    0.10
                 )
         end
 
@@ -28010,9 +28010,17 @@ hooks.on_render(function()
             OUTER_R
 
         if menu_texture_type == "glass" then
-            -- Glass must not double-blend at the inner rounded edge.
-            -- Content starts exactly at the split, so the sidebar's
-            -- top-right / bottom-right cutout is genuinely transparent.
+            -- Glass uses the old flat inner split.
+            -- Only the OUTER menu corners are rounded.
+            rounded_left_fill(
+                wx,
+                wy,
+                SIDEBAR_W,
+                WIN_H,
+                OUTER_R,
+                C.sidebar
+            )
+
             rounded_right_fill(
                 wx + SIDEBAR_W,
                 wy,
@@ -28022,7 +28030,7 @@ hooks.on_render(function()
                 C.content
             )
         else
-            -- Opaque/default styles can safely underlap.
+            -- Other styles keep the real rounded inner transition.
             rounded_right_fill(
                 wx + SIDEBAR_W - split_overlap,
                 wy,
@@ -28031,16 +28039,16 @@ hooks.on_render(function()
                 OUTER_R,
                 C.content
             )
-        end
 
-        rounded_fill(
-            wx,
-            wy,
-            SIDEBAR_W,
-            WIN_H,
-            OUTER_R,
-            C.sidebar
-        )
+            rounded_fill(
+                wx,
+                wy,
+                SIDEBAR_W,
+                WIN_H,
+                OUTER_R,
+                C.sidebar
+            )
+        end
     end
 
     -- Let the base become mostly visible before layered controls/cards fade in.
@@ -28056,6 +28064,18 @@ hooks.on_render(function()
     if detail_alpha <= 0.002 then
         MENU_UI_TRANSFORM_ACTIVE = false
         return
+    end
+
+    -- Glass keeps the original flat separator.
+    if menu_texture_type == "glass" then
+        line(
+            wx + SIDEBAR_W,
+            wy + 12,
+            wx + SIDEBAR_W,
+            wy + WIN_H - 12,
+            C.divider,
+            1
+        )
     end
 
     -- Brand. PRO badge intentionally removed.
