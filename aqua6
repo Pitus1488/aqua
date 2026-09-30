@@ -24758,7 +24758,7 @@ end
 
 
 -- =========================================================
--- Neverlose-style active Keybinds window
+-- Keybinds window reproduced from supplied Neverlose Source.lua
 -- =========================================================
 
 function FALLEN_KEYBINDS_STEP()
@@ -24905,17 +24905,17 @@ function FALLEN_DRAW_KEYBINDS_LIST()
                 current,
                 target,
                 target > current
-                    and 16
-                    or 11,
+                    and 18
+                    or 13,
                 dt
             )
 
         if target == 0
-            and current < 0.012
+            and current < 0.01
         then
             current = 0
         elseif target == 1
-            and current > 0.992
+            and current > 0.995
         then
             current = 1
         end
@@ -24937,38 +24937,32 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     local sw, sh =
         screen_size()
 
-    local panel_w = 214
-    local header_h = 31
-    local row_h = 27
+    -- Exact proportions from the supplied Neverlose Source.lua:
+    -- ToggledFrame ~= 151x166 at ~0.8% / 4.2% of the screen.
+    local panel_w = 151
+    local panel_h = 166
 
-    local rows_h = 0
+    local x =
+        math.floor(
+            sw * 0.00789993443
+            + 0.5
+        )
 
-    for _, item in ipairs(visible_rows) do
-        rows_h =
-            rows_h
-            + row_h
-            * ease_out_cubic(
-                item.anim
-            )
-    end
-
-    local panel_h =
-        header_h
-        + rows_h
+    local y =
+        math.floor(
+            sh * 0.0419753082
+            + 0.5
+        )
 
     local open_ease =
         ease_out_cubic(
             panel_anim
         )
 
-    local x =
-        sw
-        - panel_w
-        - 24
-        + (1 - open_ease) * 18
-
-    local y =
-        84
+    -- Small source-like entrance; final position remains the source position.
+    x =
+        x
+        - (1 - open_ease) * 8
 
     local old_alpha =
         MENU_RENDER_ALPHA
@@ -24982,53 +24976,26 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     MENU_UI_TRANSFORM_ACTIVE =
         false
 
-    -- Soft Neverlose-like dark floating card.
-    FALLEN_POPUP_GLOW(
-        x,
-        y,
-        panel_w,
-        panel_h,
-        8,
-        0.65
-    )
-
+    -- Source:
+    -- BackgroundColor3 = RGB(0,28,56)
+    -- BackgroundTransparency = 0.6
+    -- UICorner radius = 5
     rounded_fill(
         x,
         y,
         panel_w,
         panel_h,
-        8,
-        { 0.035, 0.038, 0.046, 0.94 }
-    )
-
-    rounded_fill(
-        x + 1,
-        y + 1,
-        panel_w - 2,
-        header_h - 1,
-        7,
-        { 0.052, 0.056, 0.067, 0.97 }
-    )
-
-    -- Thin accent rail, Neverlose-style.
-    rounded_fill(
-        x + 10,
-        y + header_h - 2,
-        panel_w - 20,
-        2,
-        1,
-        C.accent
-    )
-
-    text(
-        x + 13,
-        y + 10,
-        "Keybinds",
-        C.text
+        5,
+        {
+            0 / 255,
+            28 / 255,
+            56 / 255,
+            0.40
+        }
     )
 
     local row_y =
-        y + header_h
+        y
 
     for _, item in ipairs(visible_rows) do
         local a =
@@ -25036,88 +25003,68 @@ function FALLEN_DRAW_KEYBINDS_LIST()
                 item.anim
             )
 
-        local h =
-            row_h
-            * a
+        -- Source ToggledText is 143x21 and centered by UIListLayout.
+        local row_h =
+            21 * a
 
-        if h > 1 then
+        if row_h > 1 then
+            local row_x =
+                x + 4
+
             local slide =
-                (1 - a) * 10
+                (1 - a) * 7
 
-            line(
-                x + 10,
-                row_y,
-                x + panel_w - 10,
-                row_y,
-                alpha(
-                    C.divider,
-                    0.72 * a
-                ),
-                1
-            )
-
-            circle_fill(
-                x + 15 + slide,
-                row_y + 13,
-                2.5,
-                alpha(
-                    C.accent,
-                    a
+            local name_text =
+                tostring(
+                    item.name
+                    or ""
                 )
+
+            local base_x =
+                row_x
+                + slide
+
+            local ty =
+                row_y
+                + 4
+
+            -- Source text: "Name | ON", white + green ON.
+            text(
+                base_x,
+                ty,
+                name_text .. " |",
+                {
+                    1,
+                    1,
+                    1,
+                    a
+                }
             )
+
+            -- Approximate the RichText green ON from the original source.
+            local name_w =
+                text_width(
+                    name_text .. " |"
+                )
 
             text(
-                x + 24 + slide,
-                row_y + 8,
-                item.name,
-                alpha(
-                    C.text,
+                base_x
+                    + name_w
+                    + 4,
+                ty,
+                "ON",
+                {
+                    50 / 255,
+                    1,
+                    50 / 255,
                     a
-                )
+                }
             )
-
-            -- Neverlose keybind lists emphasize the mode on the right.
-            text(
-                x + panel_w - 53,
-                row_y + 8,
-                item.mode,
-                alpha(
-                    C.text_dim,
-                    a
-                )
-            )
-
-            -- Small key hint next to the mode.
-            if item.key
-                and item.key ~= "None"
-            then
-                local key_text =
-                    tostring(item.key)
-
-                if #key_text > 7 then
-                    key_text =
-                        string.sub(
-                            key_text,
-                            1,
-                            7
-                        )
-                end
-
-                text(
-                    x + panel_w - 103,
-                    row_y + 8,
-                    key_text,
-                    alpha(
-                        C.text_faint,
-                        a * 0.88
-                    )
-                )
-            end
         end
 
         row_y =
             row_y
-            + h
+            + row_h
     end
 
     MENU_RENDER_ALPHA =
