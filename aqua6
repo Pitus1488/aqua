@@ -10269,10 +10269,22 @@ function FALLEN_SILENT_FIND_LIVE_KEY(
         }
     elseif purpose == "fov_only" then
         wanted = {
+            "fov_enabled",
+            "fovenabled",
+            "enabled_fov",
+            "enabledfov",
             "fov_only",
             "fovonly",
             "use_fov",
             "usefov",
+            "fov_check",
+            "fovcheck",
+            "check_fov",
+            "checkfov",
+            "limit_fov",
+            "limitfov",
+            "fov_limit",
+            "fovlimit",
         }
     end
 
@@ -10303,7 +10315,33 @@ function FALLEN_SILENT_FIND_LIVE_KEY(
         elseif purpose == "fov" then
             return "fov"
         elseif purpose == "fov_only" then
-            return "fov_only"
+            local sa =
+                FALLEN_SILENT_LIVE_SECTION()
+
+            if sa then
+                local probes = {
+                    "fov_enabled",
+                    "fov_only",
+                    "use_fov",
+                    "fov_check",
+                    "fov_limit",
+                }
+
+                for _, probe in ipairs(probes) do
+                    local ok_probe, probe_value =
+                        pcall(function()
+                            return sa[probe]
+                        end)
+
+                    if ok_probe
+                        and type(probe_value) == "boolean"
+                    then
+                        return probe
+                    end
+                end
+            end
+
+            return nil
         end
 
         return nil
@@ -10391,6 +10429,50 @@ function FALLEN_SILENT_FIND_LIVE_KEY(
                 )
                 or kn == "distance"
                 or kn == "range"
+        elseif purpose == "fov_only" then
+            local has_fov =
+                string.find(
+                    kn,
+                    "fov",
+                    1,
+                    true
+                ) ~= nil
+
+            local has_toggle_word =
+                string.find(
+                    kn,
+                    "enable",
+                    1,
+                    true
+                ) ~= nil
+                or string.find(
+                    kn,
+                    "only",
+                    1,
+                    true
+                ) ~= nil
+                or string.find(
+                    kn,
+                    "use",
+                    1,
+                    true
+                ) ~= nil
+                or string.find(
+                    kn,
+                    "check",
+                    1,
+                    true
+                ) ~= nil
+                or string.find(
+                    kn,
+                    "limit",
+                    1,
+                    true
+                ) ~= nil
+
+            match =
+                has_fov
+                and has_toggle_word
         end
 
         if match then
@@ -10414,6 +10496,16 @@ function FALLEN_SILENT_FIND_LIVE_KEY(
                     or field_type == ""
                     or field_type == "int"
                     or field_type == "float"
+                then
+                    A.silent_live_keys[purpose] =
+                        raw
+
+                    return raw
+                end
+            elseif purpose == "fov_only" then
+                if field_type == nil
+                    or field_type == ""
+                    or field_type == "bool"
                 then
                     A.silent_live_keys[purpose] =
                         raw
@@ -11094,10 +11186,29 @@ function FALLEN_SILENT_SET_FOV_ENABLED(
     S.silent_fov_enabled =
         value
 
-    FALLEN_SILENT_WRITE_FIELD(
-        "fov_only",
-        value
-    )
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa then
+        return false
+    end
+
+    local key =
+        FALLEN_SILENT_FIND_LIVE_KEY(
+            "fov_only"
+        )
+
+    if not key then
+        return false
+    end
+
+    local ok =
+        pcall(function()
+            sa[key] =
+                value
+        end)
+
+    return ok == true
 end
 
 
@@ -11118,13 +11229,19 @@ function FALLEN_SILENT_SET_FOV(
     S.silent_fov =
         fov
 
-    FALLEN_SILENT_WRITE_FIELD(
-        "fov",
-        fov
-    )
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
 
-    FALLEN_SILENT_WRITE_FIELD(
-        "fov_only",
+    if sa then
+        -- fov is a documented Silent Aim field: write it directly.
+        pcall(function()
+            sa.fov =
+                fov
+        end)
+    end
+
+    -- Keep the discovered FOV-enable bool aligned, if this API build has one.
+    FALLEN_SILENT_SET_FOV_ENABLED(
         S.silent_fov_enabled == true
     )
 end
@@ -11721,11 +11838,10 @@ function FALLEN_SILENT_TICK()
         end)
     end
 
-    -- Keep the explicit FOV switch pinned too.
-    pcall(function()
-        sa.fov_only =
-            S.silent_fov_enabled == true
-    end)
+    -- Keep the explicit FOV switch pinned through the real field name.
+    FALLEN_SILENT_SET_FOV_ENABLED(
+        S.silent_fov_enabled == true
+    )
 
     -- When the menu is closed, keep our UI cache following the stock cheat
     -- instead of overwriting the stock cheat with stale S.* values.
@@ -11764,6 +11880,15 @@ hooks.on_render(function()
         end
     end
 end)
+
+
+FALLEN_BT = FALLEN_BT or {
+    items = {},
+    last_error = 0,
+    last_shot = 0,
+    local_name = nil,
+    local_name_scan = 0,
+}
 
 
 function FALLEN_BT_LOCAL_NAME()
@@ -13450,8 +13575,14 @@ hooks.on_render(function()
     )
 
     if not ok then
+        FALLEN_BT =
+            FALLEN_BT
+            or {}
+
         FALLEN_BT.last_error =
-            FALLEN_BT.last_error
+            tonumber(
+                FALLEN_BT.last_error
+            )
             or 0
 
         if tick() - FALLEN_BT.last_error > 2 then
