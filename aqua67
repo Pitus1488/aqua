@@ -10731,10 +10731,7 @@ local function fap_find_target(cross, cam)
                         + dy * dy
                     )
 
-                if (
-                    S.aim_fov_enabled ~= true
-                    or sd <= fov
-                )
+                if sd <= fov
                     and sd < best_sd
                 then
                     best_sd = sd
@@ -10753,6 +10750,251 @@ local function fap_find_target(cross, cam)
 
     return best
 end
+
+
+function FALLEN_CUSTOM_AIMBOT_TICK()
+    -- This is OUR custom Aimbot runtime.
+    -- Never enable or depend on cheat.aimbot here.
+    if S.aim_enabled ~= true then
+        fap_clear_lock()
+        return
+    end
+
+    -- Hold-bind behavior from the original custom Aimbot.
+    if not fap_hold_down() then
+        fap_clear_lock()
+        return
+    end
+
+    if not aim
+        or type(aim.world_to_screen) ~= "function"
+        or type(aim.get_camera_position) ~= "function"
+    then
+        fap_clear_lock()
+        return
+    end
+
+    -- Auto Prediction actually updates weapon-specific speed/gravity.
+    -- When the toggle is OFF, fap_refresh_weapon() resets to the
+    -- neutral/default prediction values and fap_predict() returns raw pos.
+    fap_refresh_weapon()
+
+    local cam = nil
+
+    pcall(function()
+        cam =
+            aim.get_camera_position()
+    end)
+
+    if not cam then
+        fap_clear_lock()
+        return
+    end
+
+    -- Use the same cursor-space origin as our visible custom FOV.
+    local mx, my = nil, nil
+
+    if type(mouse_pos) == "function" then
+        pcall(function()
+            mx, my =
+                mouse_pos()
+        end)
+    end
+
+    if not mx
+        or not my
+    then
+        pcall(function()
+            if type(crosshair_pos) == "function" then
+                local c =
+                    crosshair_pos()
+
+                if c then
+                    mx =
+                        c.X
+                        or c.x
+                        or c[1]
+
+                    my =
+                        c.Y
+                        or c.y
+                        or c[2]
+                end
+            end
+        end)
+    end
+
+    mx =
+        tonumber(mx)
+
+    my =
+        tonumber(my)
+
+    if not mx
+        or not my
+    then
+        fap_clear_lock()
+        return
+    end
+
+    local cross = {
+        X = mx,
+        Y = my,
+    }
+
+    local target =
+        fap_find_target(
+            cross,
+            cam
+        )
+
+    if not target then
+        fap_clear_lock()
+        return
+    end
+
+    local base_pos =
+        fap_target_pos(
+            target
+        )
+
+    if not base_pos then
+        fap_clear_lock()
+        return
+    end
+
+    local target_pos =
+        fap_predict(
+            target,
+            base_pos,
+            cam
+        )
+        or base_pos
+
+    if not target_pos then
+        fap_clear_lock()
+        return
+    end
+
+    -- Make sure the final predicted point is on screen before snapping.
+    local screen = nil
+
+    pcall(function()
+        screen =
+            aim.world_to_screen(
+                target_pos
+            )
+    end)
+
+    if not screen
+        or screen.visible == false
+    then
+        fap_clear_lock()
+        return
+    end
+
+    -- Keep runtime target state alive for the existing hit/tracer/target effects.
+    FAP.current_target_addr =
+        target.address
+
+    FAP.current_target_name =
+        target.name
+        or target.display_name
+        or target.Name
+
+    FAP.current_target_pos = {
+        X = target_pos.X,
+        Y = target_pos.Y,
+        Z = target_pos.Z,
+    }
+
+    FAP.current_target_health =
+        tonumber(
+            target.health
+        )
+
+    FAP.current_auto_prediction =
+        S.aim_auto_prediction == true
+
+    FAP.current_prediction_time =
+        tonumber(
+            target_pos.time
+        )
+        or 0
+
+    FAP.current_prediction_gravity =
+        S.aim_auto_prediction == true
+        and (
+            tonumber(FAP.gravity)
+            or 0
+        )
+        or 0
+
+    FAP.current_prediction_speed =
+        S.aim_auto_prediction == true
+        and (
+            tonumber(FAP.bullet_speed)
+            or 0
+        )
+        or 0
+
+    FAP.current_target_seen =
+        tick()
+
+    -- Original custom Aimbot behavior: rotate the camera directly
+    -- toward the selected/predicted world point.
+    if type(aim.look_at_matrix) == "function"
+        and type(aim.set_camera_rotation) == "function"
+    then
+        local mat = nil
+
+        pcall(function()
+            mat =
+                aim.look_at_matrix(
+                    cam,
+                    target_pos
+                )
+        end)
+
+        if mat then
+            pcall(function()
+                aim.set_camera_rotation(
+                    mat
+                )
+            end)
+
+            return
+        end
+    end
+
+    -- Compatibility fallback for API builds without look_at_matrix.
+    -- This still moves toward the same predicted screen point.
+    if type(aim.move_mouse) == "function" then
+        pcall(function()
+            aim.move_mouse({
+                X = screen.X,
+                Y = screen.Y,
+            })
+        end)
+    end
+end
+
+
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    local ok =
+        pcall(
+            FALLEN_CUSTOM_AIMBOT_TICK
+        )
+
+    if not ok then
+        -- Never spam the console from an aim render callback.
+        fap_clear_lock()
+    end
+end)
 
 
 
