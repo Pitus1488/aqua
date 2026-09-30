@@ -92,7 +92,7 @@ local defaults = {
     aim_target_part = "Head",
 
     -- Aim FOV
-    aim_fov_enabled = true,
+    aim_fov_enabled = false,
     aim_fov_size = 50,
 
     -- HSV picker state. Saturation 0 = white by default.
@@ -337,7 +337,7 @@ local defaults = {
     silent_key = 0,
 
     -- Silent FOV is independent from our custom Aimbot FOV.
-    silent_fov_enabled = true,
+    silent_fov_enabled = false,
     silent_fov = 180,
 
     -- Silent FOV visual/color.
@@ -12197,8 +12197,14 @@ function FALLEN_SILENT_SET_FOV(
         end)
     end
 
-    -- Do not write any numeric FOV into cheat.aimbot.
-    -- Our Aimbot is custom; only Silent receives this radius.
+    -- Our Aimbot remains custom and is NOT enabled/controlled here.
+    -- The stock Aimbot FOV number is touched only as a visual radius mirror.
+    if S.silent_fov_enabled == true then
+        FALLEN_SYNC_STOCK_FOV_VISUAL(
+            fov,
+            FALLEN_SILENT_FOV_COLOR()
+        )
+    end
 
     FALLEN_SILENT_SET_FOV_ENABLED(
         S.silent_fov_enabled == true
@@ -12839,12 +12845,184 @@ function FALLEN_SILENT_TICK()
             silent_runtime_fov
     end)
 
+    -- Make the built-in FOV visual match OUR Silent FOV exactly:
+    -- same radius and same color picker value.
+    if S.silent_fov_enabled == true then
+        FALLEN_SYNC_STOCK_FOV_VISUAL(
+            silent_runtime_fov,
+            FALLEN_SILENT_FOV_COLOR()
+        )
+    end
+
     -- When the menu is closed, keep our UI cache following the stock cheat
     -- instead of overwriting the stock cheat with stale S.* values.
     if not S.visible then
         FALLEN_SILENT_SYNC_UI_FROM_LIVE()
     end
 end
+
+function FALLEN_CUSTOM_FOV_CENTER()
+    -- Prefer the game's real crosshair position.
+    if type(crosshair_pos) == "function" then
+        local ok, c =
+            pcall(
+                crosshair_pos
+            )
+
+        if ok and c then
+            local x =
+                tonumber(
+                    c.X
+                    or c.x
+                    or c[1]
+                )
+
+            local y =
+                tonumber(
+                    c.Y
+                    or c.y
+                    or c[2]
+                )
+
+            if x and y then
+                return x, y
+            end
+        end
+    end
+
+    -- Fallback to the physical mouse position.
+    if Windows
+        and type(Windows.GetMousePos) == "function"
+    then
+        local ok, m =
+            pcall(
+                Windows.GetMousePos
+            )
+
+        if ok and m then
+            local x =
+                tonumber(
+                    m.X
+                    or m.x
+                    or m[1]
+                )
+
+            local y =
+                tonumber(
+                    m.Y
+                    or m.y
+                    or m[2]
+                )
+
+            if x and y then
+                return x, y
+            end
+        end
+    end
+
+    -- Last fallback: screen center.
+    local dims = nil
+
+    pcall(function()
+        dims =
+            ScreenSize()
+    end)
+
+    if dims then
+        local sw =
+            tonumber(
+                dims.Width
+                or dims.X
+            )
+
+        local sh =
+            tonumber(
+                dims.Height
+                or dims.Y
+            )
+
+        if sw and sh then
+            return
+                sw * 0.5,
+                sh * 0.5
+        end
+    end
+
+    return nil, nil
+end
+
+
+function FALLEN_SYNC_STOCK_FOV_VISUAL(
+    radius,
+    color
+)
+    -- This ONLY synchronizes the stock FOV VISUAL.
+    -- It does not enable cheat.aimbot and does not touch its aim logic.
+    radius =
+        math.floor(
+            clamp(
+                tonumber(radius)
+                or 180,
+                10,
+                600
+            )
+            + 0.5
+        )
+
+    color =
+        color
+        or { 1, 1, 1, 1 }
+
+    -- The stock FOV circle uses the Aimbot FOV size field for drawing.
+    if cheat
+        and cheat.aimbot
+    then
+        pcall(function()
+            cheat.aimbot.fov =
+                radius
+        end)
+    end
+
+    -- FOV color lives in esp_colors according to the custom API.
+    if cheat
+        and cheat.esp_colors
+    then
+        local rgba = {
+            clamp(
+                tonumber(color[1]) or 1,
+                0,
+                1
+            ),
+            clamp(
+                tonumber(color[2]) or 1,
+                0,
+                1
+            ),
+            clamp(
+                tonumber(color[3]) or 1,
+                0,
+                1
+            ),
+            clamp(
+                tonumber(color[4]) or 1,
+                0,
+                1
+            ),
+        }
+
+        pcall(function()
+            cheat.esp_colors.fov =
+                rgba
+        end)
+
+        -- Some builds use the same color for the aim/FOV line.
+        pcall(function()
+            cheat.esp_colors.aim_line =
+                rgba
+        end)
+    end
+end
+
 
 function FALLEN_DRAW_ONE_CUSTOM_FOV(
     enabled,
@@ -12862,40 +13040,14 @@ function FALLEN_DRAW_ONE_CUSTOM_FOV(
         return
     end
 
-    local dims = nil
+    local cx, cy =
+        FALLEN_CUSTOM_FOV_CENTER()
 
-    pcall(function()
-        dims =
-            ScreenSize()
-    end)
-
-    if not dims then
-        return
-    end
-
-    local sw =
-        tonumber(
-            dims.Width
-            or dims.X
-        )
-
-    local sh =
-        tonumber(
-            dims.Height
-            or dims.Y
-        )
-
-    if not sw
-        or not sh
+    if not cx
+        or not cy
     then
         return
     end
-
-    local cx =
-        sw * 0.5
-
-    local cy =
-        sh * 0.5
 
     radius =
         clamp(
