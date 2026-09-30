@@ -11244,6 +11244,250 @@ function FALLEN_SILENT_SET_KEY(
 end
 
 
+function FALLEN_FOV_BOOL_FIELD_IS_CANDIDATE(
+    section,
+    raw_key
+)
+    local raw =
+        tostring(
+            raw_key
+            or ""
+        )
+
+    local kn =
+        FALLEN_SILENT_NORMALIZE_KEY(
+            raw
+        )
+
+    if string.find(
+        kn,
+        "fov",
+        1,
+        true
+    ) == nil
+    then
+        return false
+    end
+
+    -- Do not touch presentation/detail booleans that are not the master FOV switch.
+    local reject_words = {
+        "color",
+        "glow",
+        "filled",
+        "fill",
+        "rainbow",
+        "gradient",
+        "style",
+        "alpha",
+    }
+
+    for _, word in ipairs(reject_words) do
+        if string.find(
+            kn,
+            word,
+            1,
+            true
+        ) ~= nil
+        then
+            return false
+        end
+    end
+
+    local field_type = nil
+
+    if section
+        and type(section._type) == "function"
+    then
+        local ok_type, t =
+            pcall(function()
+                return section:_type(
+                    raw
+                )
+            end)
+
+        if ok_type then
+            field_type =
+                tostring(
+                    t
+                    or ""
+                ):lower()
+        end
+    end
+
+    if field_type ~= nil
+        and field_type ~= ""
+        and field_type ~= "bool"
+    then
+        return false
+    end
+
+    -- If _type is unavailable, verify the live value is actually boolean.
+    if field_type == nil
+        or field_type == ""
+    then
+        local ok_value, current =
+            pcall(function()
+                return section[raw]
+            end)
+
+        if ok_value
+            and current ~= nil
+            and type(current) ~= "boolean"
+        then
+            return false
+        end
+    end
+
+    local toggle_words = {
+        "show",
+        "enable",
+        "enabled",
+        "use",
+        "check",
+        "draw",
+        "visible",
+        "limit",
+        "only",
+        "active",
+    }
+
+    for _, word in ipairs(toggle_words) do
+        if string.find(
+            kn,
+            word,
+            1,
+            true
+        ) ~= nil
+        then
+            return true
+        end
+    end
+
+    -- Some builds may simply expose a boolean named "aimbot_fov".
+    return
+        kn == "aimbotfov"
+        or kn == "silentfov"
+        or kn == "fov"
+end
+
+
+function FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
+    section,
+    value,
+    section_name
+)
+    if not section then
+        return {}
+    end
+
+    local changed = {}
+
+    local keys = nil
+
+    if type(section._keys) == "function" then
+        local ok_keys, out =
+            pcall(function()
+                return section:_keys()
+            end)
+
+        if ok_keys
+            and type(out) == "table"
+        then
+            keys = out
+        end
+    end
+
+    if type(keys) == "table" then
+        for _, raw_key in ipairs(keys) do
+            local raw =
+                tostring(raw_key)
+
+            if FALLEN_FOV_BOOL_FIELD_IS_CANDIDATE(
+                section,
+                raw
+            )
+            then
+                local ok_write =
+                    pcall(function()
+                        section[raw] =
+                            value
+                    end)
+
+                if ok_write then
+                    changed[
+                        #changed + 1
+                    ] =
+                        tostring(
+                            section_name
+                            or "section"
+                        )
+                        .. "."
+                        .. raw
+                end
+            end
+        end
+    end
+
+    return changed
+end
+
+
+function FALLEN_FOV_DEBUG_FOUND_FIELDS(
+    value
+)
+    -- Print only on explicit UI interaction, never from the render tick.
+    local found = {}
+
+    local aimbot =
+        FALLEN_SHARED_AIM_SECTION()
+
+    local a_keys =
+        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
+            aimbot,
+            value,
+            "aimbot"
+        )
+
+    for _, name in ipairs(a_keys) do
+        found[#found + 1] =
+            name
+    end
+
+    local silent =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    local s_keys =
+        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
+            silent,
+            value,
+            "silent_aim"
+        )
+
+    for _, name in ipairs(s_keys) do
+        found[#found + 1] =
+            name
+    end
+
+    if #found > 0 then
+        print(
+            "[Fallen-lua FOV] "
+            .. tostring(value)
+            .. " -> "
+            .. table.concat(
+                found,
+                ", "
+            )
+        )
+    else
+        print(
+            "[Fallen-lua FOV] no boolean FOV field found"
+        )
+    end
+
+    return found
+end
+
+
 function FALLEN_SILENT_SET_FOV_ENABLED(
     value
 )
@@ -11253,47 +11497,51 @@ function FALLEN_SILENT_SET_FOV_ENABLED(
     S.silent_fov_enabled =
         value
 
-    -- Built-in menu calls this "Aimbot FOV".
-    -- The documented Aimbot section exposes show_fov.
+    -- Keep our own Aimbot FOV checkbox state aligned too.
+    S.aim_fov_enabled =
+        value
+
+    local changed_any =
+        false
+
     local aimbot =
         FALLEN_SHARED_AIM_SECTION()
 
-    if aimbot then
-        local show_key =
-            FALLEN_SHARED_AIM_FIND_KEY(
-                "show_fov"
-            )
+    local a_fields =
+        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
+            aimbot,
+            value,
+            "aimbot"
+        )
 
-        if show_key then
-            pcall(function()
-                aimbot[show_key] =
-                    value
-            end)
-        else
-            -- Exact documented fallback.
-            pcall(function()
-                aimbot.show_fov =
-                    value
-            end)
-        end
+    if #a_fields > 0 then
+        changed_any =
+            true
     end
 
-    -- Keep a Silent-specific FOV gate aligned too if this build exposes one.
-    local sa =
+    local silent =
         FALLEN_SILENT_LIVE_SECTION()
 
-    if sa then
-        local silent_gate =
-            FALLEN_SILENT_FIND_LIVE_KEY(
-                "fov_only"
-            )
+    local s_fields =
+        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
+            silent,
+            value,
+            "silent_aim"
+        )
 
-        if silent_gate then
-            pcall(function()
-                sa[silent_gate] =
-                    value
-            end)
-        end
+    if #s_fields > 0 then
+        changed_any =
+            true
+    end
+
+    -- Documented fallback for builds where _keys() is unavailable.
+    if not changed_any
+        and aimbot
+    then
+        pcall(function()
+            aimbot.show_fov =
+                value
+        end)
     end
 
     return true
@@ -11456,6 +11704,10 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
     if key == "silent_fov_enabled" then
         FALLEN_SILENT_SET_FOV_ENABLED(
             value
+        )
+
+        FALLEN_FOV_DEBUG_FOUND_FIELDS(
+            value == true
         )
 
         return
