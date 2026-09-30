@@ -3014,6 +3014,150 @@ function FALLEN_ICON_MISC(x, y, c)
     circle_fill(x + 11, y + 11, 1.15, c)
 end
 
+-- Custom large brand image replacing the visible "Fallen-lua" title.
+_G.FALLEN_BRAND_IMAGE_PAGE_URL =
+    "https://fotovssylku.ru/i/6e2b034a-8d40-4fc0-b6bf-90909e3024ea-%281%29.Q8CyS"
+
+_G.FALLEN_BRAND_IMAGE_SOURCE =
+    _G.FALLEN_BRAND_IMAGE_SOURCE
+    or nil
+
+_G.FALLEN_BRAND_IMAGE_URL =
+    _G.FALLEN_BRAND_IMAGE_URL
+    or nil
+
+_G.FALLEN_BRAND_IMAGE_HANDLE =
+    _G.FALLEN_BRAND_IMAGE_HANDLE
+    or nil
+
+function FALLEN_BRAND_IMAGE_GET()
+    local page_url =
+        _G.FALLEN_BRAND_IMAGE_PAGE_URL
+
+    if _G.FALLEN_BRAND_IMAGE_SOURCE ~= page_url then
+        _G.FALLEN_BRAND_IMAGE_SOURCE = page_url
+        _G.FALLEN_BRAND_IMAGE_URL = nil
+        _G.FALLEN_BRAND_IMAGE_HANDLE = nil
+    end
+
+    if not _G.FALLEN_BRAND_IMAGE_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_BRAND_IMAGE_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_BRAND_IMAGE_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_BRAND_IMAGE_HANDLE =
+                LoadImage(
+                    _G.FALLEN_BRAND_IMAGE_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_BRAND_IMAGE_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
+-- Custom World nested-tab image icon.
+_G.FALLEN_WORLD_TAB_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-30-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-19-38-32-%281%29.Q85L8"
+
+_G.FALLEN_WORLD_TAB_ICON_SOURCE =
+    _G.FALLEN_WORLD_TAB_ICON_SOURCE
+    or nil
+
+_G.FALLEN_WORLD_TAB_ICON_URL =
+    _G.FALLEN_WORLD_TAB_ICON_URL
+    or nil
+
+_G.FALLEN_WORLD_TAB_ICON_HANDLE =
+    _G.FALLEN_WORLD_TAB_ICON_HANDLE
+    or nil
+
+function FALLEN_WORLD_TAB_ICON_GET()
+    local page_url =
+        _G.FALLEN_WORLD_TAB_ICON_PAGE_URL
+
+    if _G.FALLEN_WORLD_TAB_ICON_SOURCE ~= page_url then
+        _G.FALLEN_WORLD_TAB_ICON_SOURCE = page_url
+        _G.FALLEN_WORLD_TAB_ICON_URL = nil
+        _G.FALLEN_WORLD_TAB_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_WORLD_TAB_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_WORLD_TAB_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_WORLD_TAB_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_WORLD_TAB_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_WORLD_TAB_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_WORLD_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
 -- Misc sidebar image icon.
 _G.FALLEN_MISC_TAB_ICON_PAGE_URL =
     "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-27-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-13-40-07-%281%29.fRH4W"
@@ -30163,8 +30307,28 @@ hooks.on_render(function()
         )
     end
 
-    -- Brand. PRO badge intentionally removed.
-    text(wx + 26, wy + 27, "Fallen-lua", C.text)
+    -- Brand image. Replaces the old visible "Fallen-lua" text.
+    -- Large on purpose; easy to tune later without touching the sidebar layout.
+    local brand_handle =
+        FALLEN_BRAND_IMAGE_GET()
+
+    if brand_handle
+        and type(DrawImage) == "function"
+    then
+        pcall(
+            DrawImage,
+            brand_handle,
+            FALLEN_UI_X(wx + 16),
+            FALLEN_UI_Y(wy + 12),
+            FALLEN_UI_LEN(140),
+            FALLEN_UI_LEN(48),
+            1,
+            1,
+            1,
+            MENU_RENDER_ALPHA,
+            0
+        )
+    end
 
     -- Hidden gesture: three quick clicks on the brand reveal the ??? setting.
     -- The hitbox has no hover color, cursor effect, glow, tooltip, or other hint.
@@ -30172,10 +30336,10 @@ hooks.on_render(function()
         and hover(
             mx,
             my,
-            wx + 16,
-            wy + 14,
-            122,
-            38
+            wx + 14,
+            wy + 10,
+            144,
+            52
         )
     then
         FALLEN_SECRET_BRAND_CLICK()
@@ -30531,16 +30695,34 @@ hooks.on_render(function()
                     or C.text_dim
             )
 
-        FALLEN_ICON_GLOBE(
-            child_x + 10,
-            world_y + 7,
-            (
-                S.tab == 2
-                and (tonumber(S.visuals_subtab) or 0) == 1
+        local world_icon_handle =
+            FALLEN_WORLD_TAB_ICON_GET()
+
+        if world_icon_handle
+            and type(DrawImage) == "function"
+        then
+            local world_icon_col =
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 0) == 1
+                )
+                    and C.accent
+                    or C.text_dim
+
+            pcall(
+                DrawImage,
+                world_icon_handle,
+                FALLEN_UI_X(child_x + 9),
+                FALLEN_UI_Y(world_y + 6),
+                FALLEN_UI_LEN(20),
+                FALLEN_UI_LEN(20),
+                world_icon_col[1],
+                world_icon_col[2],
+                world_icon_col[3],
+                MENU_RENDER_ALPHA,
+                0
             )
-                and C.accent
-                or C.text_dim
-        )
+        end
 
         text(
             child_x + 36,
