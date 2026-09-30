@@ -3363,10 +3363,12 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
             col
         )
 
+    -- Sidebar icons use grayscale only.
+    -- Inactive = darker gray, selected = lighter gray.
     local ic =
         mix_color(
+            C.text_faint,
             C.text_dim,
-            C.accent,
             a
         )
 
@@ -3377,27 +3379,27 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
 
     local icon = ICONS[index]
 
-    -- Aimbot / Visuals / Misc / Silent use white-source image icons.
-    -- Default = pure white; active state blends toward the menu accent.
+    -- Aimbot / Visuals / Misc / Silent use white-source image icons,
+    -- but the source is tinted into the same gray palette as all other icons.
     if (index == 1 or index == 2 or index == 3 or index == 5)
         and type(DrawImage) == "function"
     then
         ic =
             mix_color(
-                { 1, 1, 1, 1 },
-                C.accent,
+                C.text_faint,
+                C.text_dim,
                 a
             )
 
-        -- Slight hover response while still keeping inactive icons white.
+        -- Hover only brightens within gray; no white/blue tint.
         if hot
             and not active
         then
             ic =
                 mix_color(
                     ic,
-                    C.accent,
-                    0.16
+                    C.text_dim,
+                    0.30
                 )
         end
 
@@ -27947,25 +27949,32 @@ hooks.on_render(function()
         )
 
     else
-        -- Default / Ass / Glass use the same shell construction.
-        -- Glass differs only through its translucent palette values.
-        -- SAME shell construction as Default: rounded left + rounded right.
-        rounded_left_fill(
+        -- Default / Ass / Glass:
+        -- REAL rounded transition between sidebar and content.
+        --
+        -- The content extends underneath the sidebar by OUTER_R pixels.
+        -- Then the sidebar is drawn as a fully rounded panel on top.
+        -- This makes the sidebar's top-right and bottom-right corners
+        -- genuinely curved, with the content visible behind the curves.
+        local split_overlap =
+            OUTER_R
+
+        rounded_right_fill(
+            wx + SIDEBAR_W - split_overlap,
+            wy,
+            WIN_W - SIDEBAR_W + split_overlap,
+            WIN_H,
+            OUTER_R,
+            C.content
+        )
+
+        rounded_fill(
             wx,
             wy,
             SIDEBAR_W,
             WIN_H,
             OUTER_R,
             C.sidebar
-        )
-
-        rounded_right_fill(
-            wx + SIDEBAR_W,
-            wy,
-            WIN_W - SIDEBAR_W,
-            WIN_H,
-            OUTER_R,
-            C.content
         )
     end
 
@@ -27983,13 +27992,6 @@ hooks.on_render(function()
         MENU_UI_TRANSFORM_ACTIVE = false
         return
     end
-
-    -- Rounded separator between sidebar and content.
-    FALLEN_DRAW_CENTER_SEAM(
-        wx + SIDEBAR_W,
-        wy,
-        WIN_H
-    )
 
     -- Brand. PRO badge intentionally removed.
     text(wx + 26, wy + 27, "Fallen-lua", C.text)
