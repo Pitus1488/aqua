@@ -3512,6 +3512,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.aim_settings_open = false
         A.aim_part_dropdown_open = false
         A.silent_part_dropdown_open = false
+        A.fov_settings_open = false
         A.fov_picker_open = false
         A.world_settings_open = false
         A.world_color_picker_open = false
@@ -3802,6 +3803,7 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
             and (
                 key == "silent_max_dist"
                 or key == "silent_fov"
+                or key == "aim_fov_size"
             )
         then
             FALLEN_SILENT_UI_VALUE_CHANGED(
@@ -6486,17 +6488,71 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         1
     )
 
+    -- Shared Aimbot FOV block.
+    -- This is the SAME state/popup used on the Aimbot page.
+    local silent_fov_dots_x =
+        rx + right_w - 79
+
+    local silent_fov_dots_y =
+        cy + 122
+
+    local silent_fov_dots_hot =
+        hover(
+            mx,
+            my,
+            silent_fov_dots_x,
+            silent_fov_dots_y,
+            27,
+            25
+        )
+
+    local fov_overlay_open =
+        A.fov_settings_open
+        or (A.fov_settings_anim or 0) > 0.02
+        or A.world_color_picker_open == true
+        or (A.world_color_picker_anim or 0) > 0.02
+
+    local silent_fov_clicked =
+        clicked
+        and not fov_overlay_open
+
     toggle_row(
         mx,
         my,
-        clicked,
+        silent_fov_clicked
+            and not silent_fov_dots_hot,
         rx,
         cy + 114,
         right_w,
-        "FOV Enabled",
-        "silent_fov_enabled",
-        false
+        "Aim FOV",
+        "aim_fov_enabled",
+        true
     )
+
+    local silent_fov_row_hot =
+        hover(
+            mx,
+            my,
+            rx,
+            cy + 114,
+            right_w,
+            41
+        )
+
+    if silent_fov_clicked
+        and silent_fov_dots_hot
+    then
+        A.fov_settings_open =
+            not A.fov_settings_open
+
+        A.aim_settings_open =
+            false
+
+        A.silent_part_dropdown_open =
+            false
+
+        numeric_stop(true)
+    end
 
     line(
         rx + 12,
@@ -6510,13 +6566,13 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
     slider_row(
         mx,
         my,
-        clicked,
+        silent_fov_clicked,
         lmb,
         rx,
         cy + 155,
         right_w,
-        "FOV",
-        "silent_fov",
+        "FOV Size",
+        "aim_fov_size",
         10,
         600,
         "int"
@@ -6542,6 +6598,15 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         A.silent_part_dropdown_open =
             false
     end
+
+    FALLEN_DRAW_FOV_SETTINGS_POPUP(
+        mx,
+        my,
+        clicked,
+        lmb,
+        silent_fov_dots_x,
+        silent_fov_dots_y
+    )
 end
 
 
@@ -11565,6 +11630,16 @@ function FALLEN_SILENT_SET_FOV(
     S.silent_fov =
         fov
 
+    -- Same value is shared by the Aimbot FOV UI.
+    S.aim_fov_size =
+        fov
+
+    A.slider_target.aim_fov_size =
+        fov
+
+    A.slider_visual.aim_fov_size =
+        fov
+
     -- Silent target FOV.
     local sa =
         FALLEN_SILENT_LIVE_SECTION()
@@ -11701,13 +11776,25 @@ function FALLEN_SILENT_UI_VALUE_CHANGED(
         return
     end
 
-    if key == "silent_fov_enabled" then
+    if key == "aim_fov_enabled" then
         FALLEN_SILENT_SET_FOV_ENABLED(
             value
         )
 
-        FALLEN_FOV_DEBUG_FOUND_FIELDS(
-            value == true
+        return
+    end
+
+    if key == "aim_fov_size" then
+        FALLEN_SILENT_SET_FOV(
+            value
+        )
+
+        return
+    end
+
+    if key == "silent_fov_enabled" then
+        FALLEN_SILENT_SET_FOV_ENABLED(
+            value
         )
 
         return
@@ -11878,6 +11965,9 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
     if live_fov_enabled ~= nil then
         S.silent_fov_enabled =
             live_fov_enabled == true
+
+        S.aim_fov_enabled =
+            S.silent_fov_enabled
     else
         local live_fov_only =
             FALLEN_SILENT_READ_FIELD(
@@ -11887,6 +11977,9 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
         if live_fov_only ~= nil then
             S.silent_fov_enabled =
                 live_fov_only == true
+
+            S.aim_fov_enabled =
+                S.silent_fov_enabled
         end
     end
 
@@ -11932,10 +12025,19 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
             S.silent_fov =
                 live_fov
 
+            S.aim_fov_size =
+                live_fov
+
             A.slider_target.silent_fov =
                 live_fov
 
             A.slider_visual.silent_fov =
+                live_fov
+
+            A.slider_target.aim_fov_size =
+                live_fov
+
+            A.slider_visual.aim_fov_size =
                 live_fov
         end
     end
