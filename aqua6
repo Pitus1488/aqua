@@ -24409,10 +24409,10 @@ FALLEN_GRENADE_ICON_URLS =
         "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e8/Military_Grenade.png",
     }
 
-FALLEN_GRENADE_FUSE_TIME = 4.0
--- Compensate only for the gap between the actual VFX spawn frame and our first scan/render.
--- The visible countdown still represents the full 4.0-second fuse from the real VFX appearance.
-FALLEN_GRENADE_SPAWN_SYNC = 0.075
+FALLEN_GRENADE_FUSE_TIME = 3.0
+-- Timer origin is the exact first frame where the thrown grenade is seen as a direct child of Workspace/VFX.
+-- Image loading is completely independent from this timestamp.
+FALLEN_GRENADE_SPAWN_SYNC = 0.0
 
 function FALLEN_GRENADE_INSTANCE_KEY(inst)
     if not inst then
@@ -24584,18 +24584,16 @@ function FALLEN_GRENADE_SCAN_VFX_ROOT(
             then
                 seen[key] = true
 
-                entries[#entries + 1] = {
-                    inst = inst,
-                    key = key,
-                    name = name,
-                }
-
                 local track =
                     WORLD_ESP.grenade_tracks[key]
 
                 if not track then
+                    -- IMPORTANT: this timestamp is created immediately when the
+                    -- grenade first exists DIRECTLY in Workspace/VFX. It does
+                    -- not depend on icon loading, WorldToScreen or drawing.
                     track = {
-                        born = now - FALLEN_GRENADE_SPAWN_SYNC,
+                        spawned_at = now,
+                        born = now, -- backward-compatible alias
                         last_seen = now,
                         points = {},
                         inst = inst,
@@ -24603,9 +24601,26 @@ function FALLEN_GRENADE_SCAN_VFX_ROOT(
 
                     WORLD_ESP.grenade_tracks[key] = track
                 else
+                    if track.spawned_at == nil then
+                        track.spawned_at =
+                            tonumber(track.born)
+                            or now
+                    end
+
+                    track.born = track.spawned_at
                     track.last_seen = now
                     track.inst = inst
                 end
+
+                entries[#entries + 1] = {
+                    inst = inst,
+                    key = key,
+                    name = name,
+                    -- Copy the immutable VFX-spawn timestamp into the entry too.
+                    -- Even if the PNG becomes ready a second later, countdown
+                    -- progress is already one second into the four-second fuse.
+                    spawned_at = track.spawned_at,
+                }
             end
         end
     end
@@ -25041,8 +25056,16 @@ function FALLEN_GRENADE_DRAW(entry, my_pos)
         WORLD_ESP.grenade_tracks[key]
 
     if not track then
+        -- Fallback only. Normally the track is created by the VFX scanner
+        -- before this draw function is ever reached. Preserve entry.spawned_at
+        -- so rendering can never restart the grenade timer.
+        local spawned_at =
+            tonumber(entry.spawned_at)
+            or now
+
         track = {
-            born = now - FALLEN_GRENADE_SPAWN_SYNC,
+            spawned_at = spawned_at,
+            born = spawned_at,
             last_seen = now,
             points = {},
             inst = entry.inst,
@@ -25051,6 +25074,17 @@ function FALLEN_GRENADE_DRAW(entry, my_pos)
         WORLD_ESP.grenade_tracks[key] = track
     end
 
+    if track.spawned_at == nil then
+        track.spawned_at =
+            tonumber(entry.spawned_at)
+            or tonumber(track.born)
+            or now
+    end
+
+    -- Never move this timestamp forward. The timer belongs to the thrown VFX
+    -- instance, not to the moment the image handle becomes ready.
+    entry.spawned_at = track.spawned_at
+    track.born = track.spawned_at
     track.last_seen = now
     track.inst = entry.inst
 
@@ -25090,15 +25124,19 @@ function FALLEN_GRENADE_DRAW(entry, my_pos)
         return
     end
 
-    local handle =
-        FALLEN_GRENADE_ICON_GET()
-
-    if not handle then
-        return
-    end
+    -- Fuse progress is calculated BEFORE touching the image handle.
+    -- Therefore a slow PNG load can never restart or delay the 4-second timer.
+    local spawned_at =
+        tonumber(track.spawned_at)
+        or tonumber(entry.spawned_at)
+        or tonumber(track.born)
+        or now
 
     local elapsed =
-        now - (track.born or now)
+        math.max(
+            0,
+            now - spawned_at
+        )
 
     local remaining =
         clamp(
@@ -25108,6 +25146,13 @@ function FALLEN_GRENADE_DRAW(entry, my_pos)
             0,
             1
         )
+
+    local handle =
+        FALLEN_GRENADE_ICON_GET()
+
+    if not handle then
+        return
+    end
 
     local icon_size =
         clamp(
