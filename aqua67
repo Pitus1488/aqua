@@ -35996,6 +35996,286 @@ function FALLEN_LOADER_RESOLVE_IMAGE_URL(url)
     return resolved
 end
 
+-- =========================================================
+-- Startup image preloader
+-- Starts loading every known UI / ESP / item image as soon as the Lua starts.
+-- Drawing.LoadImage caches by URL, so the normal render code later reuses the
+-- already requested texture instead of beginning the download on first hover.
+-- =========================================================
+
+_G.FALLEN_IMAGE_PRELOAD_HANDLES =
+    _G.FALLEN_IMAGE_PRELOAD_HANDLES
+    or {}
+
+_G.FALLEN_IMAGE_PRELOAD_STARTED = false
+_G.FALLEN_IMAGE_PRELOAD_DONE = false
+
+function FALLEN_PRELOAD_IMAGE_URL(url)
+    if type(url) ~= "string"
+        or url == ""
+        or type(LoadImage) ~= "function"
+    then
+        return nil
+    end
+
+    local cached =
+        _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
+
+    if cached then
+        return cached
+    end
+
+    local ok, handle =
+        pcall(
+            LoadImage,
+            url
+        )
+
+    if ok and handle then
+        _G.FALLEN_IMAGE_PRELOAD_HANDLES[url] =
+            handle
+
+        return handle
+    end
+
+    return nil
+end
+
+function FALLEN_PRELOAD_URL_TABLE(value, seen)
+    if type(value) == "string" then
+        FALLEN_PRELOAD_IMAGE_URL(value)
+        return
+    end
+
+    if type(value) ~= "table" then
+        return
+    end
+
+    seen = seen or {}
+
+    if seen[value] then
+        return
+    end
+
+    seen[value] = true
+
+    for _, child in pairs(value) do
+        if type(child) == "string" then
+            FALLEN_PRELOAD_IMAGE_URL(child)
+        elseif type(child) == "table" then
+            FALLEN_PRELOAD_URL_TABLE(
+                child,
+                seen
+            )
+        end
+    end
+end
+
+function FALLEN_PRELOAD_ALL_IMAGES_NOW()
+    if _G.FALLEN_IMAGE_PRELOAD_DONE == true then
+        return
+    end
+
+    -- First queue every direct image URL. LoadImage itself is asynchronous,
+    -- so this launches the downloads immediately without waiting for a tab,
+    -- ESP object, weapon or armor item to become visible.
+    pcall(
+        FALLEN_PRELOAD_URL_TABLE,
+        FALLEN_ARMOR_ICON_URLS
+    )
+
+    pcall(
+        FALLEN_PRELOAD_URL_TABLE,
+        FALLEN_WEAPON_ICON_URLS
+    )
+
+    pcall(
+        FALLEN_PRELOAD_URL_TABLE,
+        FALLEN_WEAPON_DIRECT_ICON_URLS
+    )
+
+    pcall(
+        FALLEN_PRELOAD_URL_TABLE,
+        FALLEN_KEYCARD_ICON_URLS
+    )
+
+    pcall(
+        FALLEN_PRELOAD_URL_TABLE,
+        FALLEN_GRENADE_ICON_URLS
+    )
+
+    -- Resource / plant icons use local WORLD_UI_ITEMS and normally load only
+    -- when World ESP asks for them. Queue every URL here at boot instead.
+    pcall(function()
+        if type(WORLD_UI_ITEMS) == "table" then
+            for _, cfg in ipairs(WORLD_UI_ITEMS) do
+                if cfg and type(cfg.direct_urls) == "table" then
+                    FALLEN_PRELOAD_URL_TABLE(
+                        cfg.direct_urls
+                    )
+                end
+            end
+        end
+    end)
+
+    -- Prime the actual runtime caches too, so later getters already own the
+    -- same cached handles rather than creating their state on first draw.
+    pcall(function()
+        if type(FALLEN_ARMOR_ICON_URLS) == "table"
+            and type(FALLEN_ARMOR_ICON) == "function"
+        then
+            for name, _ in pairs(FALLEN_ARMOR_ICON_URLS) do
+                pcall(
+                    FALLEN_ARMOR_ICON,
+                    name
+                )
+            end
+        end
+    end)
+
+    pcall(function()
+        if type(FALLEN_WEAPON_DIRECT_ICON_URLS) == "table"
+            and type(FALLEN_WEAPON_ICON) == "function"
+        then
+            for name, _ in pairs(FALLEN_WEAPON_DIRECT_ICON_URLS) do
+                pcall(
+                    FALLEN_WEAPON_ICON,
+                    name
+                )
+            end
+        end
+    end)
+
+    pcall(function()
+        if type(FALLEN_KEYCARD_ICON_URLS) == "table"
+            and type(FALLEN_KEYCARD_ICON) == "function"
+        then
+            for name, _ in pairs(FALLEN_KEYCARD_ICON_URLS) do
+                pcall(
+                    FALLEN_KEYCARD_ICON,
+                    name
+                )
+            end
+        end
+    end)
+
+    pcall(function()
+        if type(WORLD_UI_ITEMS) == "table"
+            and type(world_load_direct_icon) == "function"
+        then
+            for _, cfg in ipairs(WORLD_UI_ITEMS) do
+                pcall(
+                    world_load_direct_icon,
+                    cfg
+                )
+            end
+        end
+    end)
+
+    -- These use custom page -> direct-image resolution. Do this in the preload
+    -- worker so all sidebar/nested-tab pictures are requested before the menu
+    -- becomes interactive.
+    local getters = {
+        FALLEN_BRAND_IMAGE_GET,
+        FALLEN_AIMBOT_TAB_ICON_GET,
+        FALLEN_VISUALS_TAB_ICON_GET,
+        FALLEN_MISC_TAB_ICON_GET,
+        FALLEN_SILENT_TAB_ICON_GET,
+        FALLEN_WORLD_TAB_ICON_GET,
+        FALLEN_ARMOR_TAB_ICON_GET,
+        FALLEN_HOTKEYS_ICON_GET,
+        FALLEN_WORLD_BODY_BAG_ICON,
+        FALLEN_GRENADE_ICON_GET,
+    }
+
+    for _, getter in ipairs(getters) do
+        if type(getter) == "function" then
+            pcall(getter)
+        end
+    end
+
+    -- Custom/local avatar and the Roblox profile headshot are also started at
+    -- boot rather than waiting for the first fully rendered menu frame.
+    if type(FALLEN_CUSTOM_AVATAR_LOAD) == "function" then
+        pcall(
+            FALLEN_CUSTOM_AVATAR_LOAD
+        )
+    end
+
+    if type(update_profile) == "function" then
+        pcall(
+            update_profile
+        )
+    end
+
+    _G.FALLEN_IMAGE_PRELOAD_DONE = true
+end
+
+function FALLEN_START_IMAGE_PRELOAD()
+    if _G.FALLEN_IMAGE_PRELOAD_STARTED == true then
+        return
+    end
+
+    _G.FALLEN_IMAGE_PRELOAD_STARTED = true
+
+    local create =
+        thread
+        and (
+            thread.create
+            or thread.Create
+        )
+
+    local stop =
+        thread
+        and (
+            thread.stop
+            or thread.Stop
+        )
+
+    if type(create) == "function" then
+        local worker_id = nil
+
+        local function worker()
+            if _G.FALLEN_IMAGE_PRELOAD_DONE ~= true then
+                pcall(
+                    FALLEN_PRELOAD_ALL_IMAGES_NOW
+                )
+            end
+
+            if worker_id
+                and type(stop) == "function"
+            then
+                pcall(
+                    stop,
+                    worker_id
+                )
+            end
+        end
+
+        local ok, id =
+            pcall(
+                create,
+                worker,
+                25
+            )
+
+        if ok and id then
+            worker_id = id
+            _G.FALLEN_IMAGE_PRELOAD_WORKER = id
+            return
+        end
+    end
+
+    -- API builds without thread.* still preload immediately. Direct image
+    -- downloads remain asynchronous inside Drawing.LoadImage.
+    pcall(
+        FALLEN_PRELOAD_ALL_IMAGES_NOW
+    )
+end
+
+-- Start immediately during Lua initialization, before the loader/menu is used.
+FALLEN_START_IMAGE_PRELOAD()
+
 do
     -- Loader state is deliberately block-scoped.
     -- Its render callback captures these locals, while they stop consuming
