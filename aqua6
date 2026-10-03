@@ -115,8 +115,7 @@ local defaults = {
     misc_fly_enabled = false,
     misc_upside_down_enabled = false,
     misc_shot_on_air_enabled = false,
-    misc_desync_depth = 5,
-    misc_underground_desync_key = 0,
+    misc_fps_enabled = false,
 
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
@@ -375,7 +374,6 @@ local defaults = {
 
     trigger_enabled = false,
     visuals_enabled = false,
-    visual_desync_skeleton = false,
     world_enabled = false,
     character_enabled = false,
     npc_enabled = false,
@@ -546,26 +544,10 @@ local A = {
     secret_desync_module = nil,
     secret_desync_last_state = nil,
 
-    -- Misc underground Service-side Desync one-shot.
-    misc_underground_desync_stage = 0,
-    misc_underground_desync_time = 0,
-    misc_underground_desync_original = nil,
-    misc_underground_desync_hrp = nil,
-    misc_underground_desync_button_hot = false,
-    misc_underground_desync_method_found = false,
-    misc_underground_desync_target_y = nil,
-    misc_underground_desync_confirm_frames = 0,
-    misc_underground_desync_post_frames = 0,
-
-    -- Guaranteed return-to-origin stage.
-    misc_underground_return_confirm_frames = 0,
-    misc_underground_return_started = 0,
-
-    -- Underground Desync custom keybind capture / edge state.
-    misc_underground_bind_listening = false,
-    misc_underground_bind_wait_release = false,
-    misc_underground_bind_prev = {},
-    misc_underground_hotkey_prev = false,
+    -- Misc FPS FastFlags runtime.
+    misc_fps_last_state = false,
+    misc_fps_original = {},
+    misc_fps_applied = {},
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -1933,100 +1915,6 @@ numeric_stop = function(commit)
     n.replace_on_type = false
     n.original = nil
 end
-
-function FALLEN_MISC_UNDERGROUND_BIND_CANCEL()
-    A.misc_underground_bind_listening =
-        false
-
-    A.misc_underground_bind_wait_release =
-        false
-
-    A.misc_underground_bind_prev =
-        {}
-end
-
-
-function FALLEN_MISC_UNDERGROUND_BIND_START()
-    if numeric_stop then
-        numeric_stop(true)
-    end
-
-    A.misc_underground_bind_listening =
-        true
-
-    A.misc_underground_bind_wait_release =
-        true
-
-    A.misc_underground_bind_prev =
-        {}
-end
-
-
-function FALLEN_MISC_UNDERGROUND_BIND_POLL()
-    if not A.misc_underground_bind_listening then
-        return
-    end
-
-    -- Ignore the click used to open key capture.
-    if A.misc_underground_bind_wait_release then
-        if not key_down(VK_LBUTTON)
-            and not key_down(VK_RBUTTON)
-        then
-            A.misc_underground_bind_wait_release =
-                false
-
-            A.misc_underground_bind_prev =
-                {}
-
-            for vk = 1, 255 do
-                A.misc_underground_bind_prev[vk] =
-                    key_down(vk)
-            end
-        end
-
-        return
-    end
-
-    for vk = 1, 255 do
-        local down =
-            key_down(vk)
-
-        local was =
-            A.misc_underground_bind_prev[vk]
-            == true
-
-        if down
-            and not was
-        then
-            -- Esc = cancel.
-            if vk == 0x1B then
-                FALLEN_MISC_UNDERGROUND_BIND_CANCEL()
-                return
-            end
-
-            -- Backspace/Delete = clear.
-            if vk == 0x08
-                or vk == 0x2E
-            then
-                S.misc_underground_desync_key =
-                    0
-
-                FALLEN_MISC_UNDERGROUND_BIND_CANCEL()
-                return
-            end
-
-            S.misc_underground_desync_key =
-                vk
-
-            FALLEN_MISC_UNDERGROUND_BIND_CANCEL()
-            return
-        end
-
-        A.misc_underground_bind_prev[vk] =
-            down
-    end
-end
-
 
 local function numeric_start(key, minv, maxv, fmt)
     local current = tonumber(S[key]) or minv
@@ -25402,25 +25290,6 @@ function FALLEN_HOTKEYS_ITEM_ROWS()
         }
     end
 
-    local desync_vk =
-        math.floor(
-            tonumber(
-                S.misc_underground_desync_key
-            )
-            or 0
-        )
-
-    if desync_vk > 0 then
-        rows[#rows + 1] = {
-            id = "custom_desync",
-            label = "Desync",
-            icon = "misc",
-            active =
-                FALLEN_MISC_CUSTOM_DESYNC_IS_ON()
-                == true,
-        }
-    end
-
     return rows
 end
 
@@ -25665,9 +25534,6 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
     elseif row.icon == "silent" then
         item_icon =
             FALLEN_SILENT_TAB_ICON_GET()
-    elseif row.icon == "misc" then
-        item_icon =
-            FALLEN_MISC_TAB_ICON_GET()
     end
 
     local text_x =
@@ -28799,33 +28665,6 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         numeric_stop(true)
     end
 
-
-    section_title(
-        right_x,
-        y + 295,
-        "Desync Visual"
-    )
-
-    card(
-        right_x,
-        y + 320,
-        right_w,
-        60,
-        11
-    )
-
-    toggle_row(
-        mx,
-        my,
-        controls_clicked,
-        right_x,
-        y + 327,
-        right_w,
-        "Server Skeleton",
-        "visual_desync_skeleton",
-        false
-    )
-
     if rmb_clicked
         and thunder_dots_hot
         and not A.world_color_picker_open
@@ -30760,610 +30599,6 @@ function FALLEN_DRAW_AVATAR_EDITOR(
 end
 
 -- =========================================================
--- Visual Desync: frozen server-anchor skeleton
---
--- The API does not expose a separate authoritative server transform.
--- For our custom FastFlag Desync, the best deterministic server anchor is the
--- exact point where PhysicsSenderMaxBandwidthBps is switched to 0.
--- We capture the local skeleton pose before the underground TP, then draw that
--- pose translated onto the frozen server anchor while the flag remains 0.
--- =========================================================
-
-function FALLEN_VISUAL_DESYNC_NORMALIZE_BONE_NAME(
-    name
-)
-    local s =
-        string.lower(
-            tostring(
-                name or ""
-            )
-        )
-
-    s =
-        string.gsub(
-            s,
-            "[%s_%-]",
-            ""
-        )
-
-    return s
-end
-
-
-function FALLEN_VISUAL_DESYNC_CAPTURE_POSE(
-    origin
-)
-    if not origin
-        or origin.X == nil
-        or origin.Y == nil
-        or origin.Z == nil
-    then
-        return false
-    end
-
-    local pose = {}
-    local count = 0
-
-    -- Preferred path: the player cache already exposes bones specifically for
-    -- skeleton ESP. Store bone offsets, not absolute client positions.
-    if players
-        and type(players.get_local) == "function"
-    then
-        local me = nil
-
-        pcall(function()
-            me =
-                players.get_local()
-        end)
-
-        if me
-            and type(me.bones) == "table"
-        then
-            local base =
-                me.position
-
-            if not base
-                or base.X == nil
-                or base.Y == nil
-                or base.Z == nil
-            then
-                base =
-                    origin
-            end
-
-            for _, bone in ipairs(me.bones) do
-                local name =
-                    bone
-                    and (
-                        bone.name
-                        or bone.Name
-                    )
-
-                local p =
-                    bone
-                    and (
-                        bone.position
-                        or bone.Position
-                        or bone.pos
-                    )
-
-                if name
-                    and p
-                    and p.X ~= nil
-                    and p.Y ~= nil
-                    and p.Z ~= nil
-                then
-                    local key =
-                        FALLEN_VISUAL_DESYNC_NORMALIZE_BONE_NAME(
-                            name
-                        )
-
-                    if key ~= "" then
-                        pose[key] = {
-                            X =
-                                tonumber(p.X)
-                                - tonumber(base.X),
-
-                            Y =
-                                tonumber(p.Y)
-                                - tonumber(base.Y),
-
-                            Z =
-                                tonumber(p.Z)
-                                - tonumber(base.Z),
-                        }
-
-                        count =
-                            count + 1
-                    end
-                end
-            end
-        end
-    end
-
-    -- Fallback: directly read local character body parts.
-    if count < 3
-        and rbx
-        and type(rbx.local_character) == "function"
-    then
-        local character = nil
-
-        pcall(function()
-            character =
-                rbx.local_character()
-        end)
-
-        if character then
-            local parts = {}
-
-            pcall(function()
-                local normal =
-                    character:find_descendants_of_class(
-                        "Part"
-                    )
-                    or {}
-
-                for _, part in ipairs(normal) do
-                    parts[#parts + 1] =
-                        part
-                end
-
-                local mesh =
-                    character:find_descendants_of_class(
-                        "MeshPart"
-                    )
-                    or {}
-
-                for _, part in ipairs(mesh) do
-                    parts[#parts + 1] =
-                        part
-                end
-            end)
-
-            for _, part in ipairs(parts) do
-                local name = nil
-                local p = nil
-
-                pcall(function()
-                    name =
-                        part:get_name()
-
-                    p =
-                        part:get_position()
-                end)
-
-                if name
-                    and p
-                    and p.X ~= nil
-                    and p.Y ~= nil
-                    and p.Z ~= nil
-                then
-                    local key =
-                        FALLEN_VISUAL_DESYNC_NORMALIZE_BONE_NAME(
-                            name
-                        )
-
-                    if key ~= "" then
-                        pose[key] = {
-                            X =
-                                tonumber(p.X)
-                                - tonumber(origin.X),
-
-                            Y =
-                                tonumber(p.Y)
-                                - tonumber(origin.Y),
-
-                            Z =
-                                tonumber(p.Z)
-                                - tonumber(origin.Z),
-                        }
-
-                        count =
-                            count + 1
-                    end
-                end
-            end
-        end
-    end
-
-    if count < 3 then
-        A.visual_desync_server_pose =
-            nil
-
-        return false
-    end
-
-    A.visual_desync_server_pose =
-        pose
-
-    return true
-end
-
-
-function FALLEN_VISUAL_DESYNC_SET_SERVER_ANCHOR(
-    x,
-    y,
-    z
-)
-    A.visual_desync_server_anchor = {
-        X = tonumber(x) or 0,
-        Y = tonumber(y) or 0,
-        Z = tonumber(z) or 0,
-    }
-end
-
-
-function FALLEN_VISUAL_DESYNC_CLEAR()
-    A.visual_desync_server_anchor =
-        nil
-
-    A.visual_desync_server_pose =
-        nil
-end
-
-
-function FALLEN_VISUAL_DESYNC_WORLD_BONE(
-    key
-)
-    local anchor =
-        A.visual_desync_server_anchor
-
-    local pose =
-        A.visual_desync_server_pose
-
-    if not anchor
-        or type(pose) ~= "table"
-    then
-        return nil
-    end
-
-    local rel =
-        pose[
-            FALLEN_VISUAL_DESYNC_NORMALIZE_BONE_NAME(
-                key
-            )
-        ]
-
-    if not rel then
-        return nil
-    end
-
-    return
-        Vector3(
-            anchor.X + rel.X,
-            anchor.Y + rel.Y,
-            anchor.Z + rel.Z
-        )
-end
-
-
-function FALLEN_VISUAL_DESYNC_PROJECT(
-    p
-)
-    if not p then
-        return nil
-    end
-
-    local s = nil
-
-    if aim
-        and type(aim.world_to_screen) == "function"
-    then
-        pcall(function()
-            s =
-                aim.world_to_screen(
-                    p
-                )
-        end)
-    end
-
-    if not s
-        and rbx
-        and type(rbx.world_to_screen) == "function"
-    then
-        pcall(function()
-            s =
-                rbx.world_to_screen(
-                    p
-                )
-        end)
-    end
-
-    if not s then
-        return nil
-    end
-
-    local x =
-        tonumber(
-            s.X
-            or s.x
-            or s[1]
-        )
-
-    local y =
-        tonumber(
-            s.Y
-            or s.y
-            or s[2]
-        )
-
-    local visible =
-        s.visible
-
-    if visible == nil then
-        visible =
-            s.Visible
-    end
-
-    if not x
-        or not y
-        or x < -10000
-        or y < -10000
-        or visible == false
-    then
-        return nil
-    end
-
-    return {
-        X = x,
-        Y = y,
-    }
-end
-
-
-function FALLEN_VISUAL_DESYNC_DRAW_LINK(
-    a_name,
-    b_name,
-    color
-)
-    local a =
-        FALLEN_VISUAL_DESYNC_PROJECT(
-            FALLEN_VISUAL_DESYNC_WORLD_BONE(
-                a_name
-            )
-        )
-
-    local b =
-        FALLEN_VISUAL_DESYNC_PROJECT(
-            FALLEN_VISUAL_DESYNC_WORLD_BONE(
-                b_name
-            )
-        )
-
-    if not a
-        or not b
-        or type(DrawLine) ~= "function"
-    then
-        return false
-    end
-
-    -- Thin black outline keeps the ghost readable through bright terrain.
-    DrawLine(
-        a.X,
-        a.Y,
-        b.X,
-        b.Y,
-        0,
-        0,
-        0,
-        0.72,
-        3.0
-    )
-
-    DrawLine(
-        a.X,
-        a.Y,
-        b.X,
-        b.Y,
-        color[1],
-        color[2],
-        color[3],
-        color[4] or 1,
-        1.35
-    )
-
-    return true
-end
-
-
-function FALLEN_VISUAL_DESYNC_DRAW()
-    if _G.FallenMenuReady ~= true
-        or S.visual_desync_skeleton ~= true
-        or FALLEN_MISC_CUSTOM_DESYNC_IS_ON() ~= true
-        or not A.visual_desync_server_anchor
-        or not A.visual_desync_server_pose
-    then
-        return
-    end
-
-    local c = {
-        C.accent[1],
-        C.accent[2],
-        C.accent[3],
-        0.88,
-    }
-
-    local pose =
-        A.visual_desync_server_pose
-
-    local has_r15 =
-        pose.uppertorso ~= nil
-        or pose.lowertorso ~= nil
-
-    if has_r15 then
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "Head",
-            "UpperTorso",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "UpperTorso",
-            "LowerTorso",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "LowerTorso",
-            "HumanoidRootPart",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "UpperTorso",
-            "LeftUpperArm",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "LeftUpperArm",
-            "LeftLowerArm",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "LeftLowerArm",
-            "LeftHand",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "UpperTorso",
-            "RightUpperArm",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "RightUpperArm",
-            "RightLowerArm",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "RightLowerArm",
-            "RightHand",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "LowerTorso",
-            "LeftUpperLeg",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "LeftUpperLeg",
-            "LeftLowerLeg",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "LeftLowerLeg",
-            "LeftFoot",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "LowerTorso",
-            "RightUpperLeg",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "RightUpperLeg",
-            "RightLowerLeg",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "RightLowerLeg",
-            "RightFoot",
-            c
-        )
-    else
-        -- R6.
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "Head",
-            "Torso",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "Torso",
-            "Left Arm",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "Torso",
-            "Right Arm",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "Torso",
-            "Left Leg",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "Torso",
-            "Right Leg",
-            c
-        )
-
-        FALLEN_VISUAL_DESYNC_DRAW_LINK(
-            "Torso",
-            "HumanoidRootPart",
-            c
-        )
-    end
-
-    -- Head marker.
-    local head =
-        FALLEN_VISUAL_DESYNC_PROJECT(
-            FALLEN_VISUAL_DESYNC_WORLD_BONE(
-                "Head"
-            )
-        )
-
-    if head
-        and type(DrawCircle) == "function"
-    then
-        DrawCircle(
-            head.X,
-            head.Y,
-            3.25,
-            0,
-            0,
-            0,
-            0.72,
-            3.0
-        )
-
-        DrawCircle(
-            head.X,
-            head.Y,
-            3.25,
-            c[1],
-            c[2],
-            c[3],
-            c[4],
-            1.25
-        )
-    end
-end
-
-
--- Draw world-space ghost before the menu so the menu remains on top.
-hooks.on_render(function()
-    pcall(
-        FALLEN_VISUAL_DESYNC_DRAW
-    )
-end)
-
-
--- =========================================================
 -- Render
 -- =========================================================
 
@@ -31452,7 +30687,6 @@ hooks.on_render(function()
     numeric_poll()
     aim_bind_poll()
     FALLEN_SILENT_BIND_POLL()
-    FALLEN_MISC_UNDERGROUND_BIND_POLL()
     FALLEN_CONFIGS.input_poll()
     FALLEN_COLOR_INPUT_POLL()
 
@@ -32809,7 +32043,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            147,
+            101,
             11
         )
 
@@ -32834,102 +32068,17 @@ hooks.on_render(function()
             1
         )
 
-        slider_row(
+        toggle_row(
             mx,
             my,
             page_clicked,
-            lmb,
             page_x,
             page_y + 73,
             page_w,
-            "Depth",
-            "misc_desync_depth",
-            1,
-            50,
-            "int"
+            "FPS",
+            "misc_fps_enabled",
+            false
         )
-
-        line(
-            page_x + 12,
-            page_y + 113,
-            page_x + page_w - 12,
-            page_y + 113,
-            C.divider,
-            1
-        )
-
-        row_hover(
-            mx,
-            my,
-            page_x,
-            page_y + 114,
-            page_w,
-            41
-        )
-
-        text(
-            page_x + 13,
-            page_y + 128,
-            "Underground Desync Key",
-            C.text
-        )
-
-        A.misc_underground_desync_button_hot =
-            hover(
-                mx,
-                my,
-                page_x + page_w - 126,
-                page_y + 122,
-                112,
-                25
-            )
-
-        rounded_fill(
-            page_x + page_w - 126,
-            page_y + 122,
-            112,
-            25,
-            6,
-            A.misc_underground_desync_button_hot
-                and { 0.110, 0.115, 0.135, 1 }
-                or C.toggle_off
-        )
-
-        if A.misc_underground_bind_listening then
-            rounded_outline(
-                page_x + page_w - 126,
-                page_y + 122,
-                112,
-                25,
-                6,
-                alpha(
-                    C.accent,
-                    0.78
-                ),
-                1,
-                C.toggle_off
-            )
-        end
-
-        centered_text(
-            page_x + page_w - 70,
-            page_y + 129,
-            A.misc_underground_bind_listening
-                and "Press key..."
-                or aim_vk_name(
-                    S.misc_underground_desync_key
-                    or 0
-                ),
-            A.misc_underground_bind_listening
-                and C.accent
-                or C.text
-        )
-
-        if page_clicked
-            and A.misc_underground_desync_button_hot
-        then
-            FALLEN_MISC_UNDERGROUND_BIND_START()
-        end
     elseif S.tab == 4
         and A.secret_unlocked
         and S.secret_enabled == true
@@ -37429,22 +36578,303 @@ hooks.on_render(function()
 end)
 
 -- =========================================================
--- Misc: Underground -> custom FastFlag Desync -> exact return
--- PhysicsSenderMaxBandwidthBps:
---   OFF/default = 38760
---   ON          = 0
+-- Misc FPS FastFlags
 --
--- IMPORTANT:
--- This does NOT touch cheat.desync, its checkbox, method, or keybind state.
+-- The user bundle is kept by ORIGINAL Roblox flag name below.
+-- This API exposes FFlag-style globals only when a matching memory.offsets
+-- entry exists. Prefixes (FFlag/DFInt/etc.) are stripped when resolving the
+-- runtime offset. Unknown flags are skipped instead of writing a guessed addr.
+-- FString globals are deliberately not raw-written because this API does not
+-- document the in-memory string layout for those globals.
 -- =========================================================
 
-function FALLEN_MISC_CUSTOM_DESYNC_ADDRESS()
+function FALLEN_MISC_FPS_FLAG_SPECS()
+    return {
+        {
+            name = "FFlagHandleAltEnterFullscreenManually",
+            kind = "bool",
+            value = false,
+        },
+        {
+            name = "FLogNetwork",
+            kind = "i32",
+            value = 7,
+        },
+        {
+            name = "DFIntTaskSchedulerTargetFps",
+            kind = "f32",
+            value = 360,
+        },
+        {
+            name = "FFlagDebugForceFutureIsBrightPhase3",
+            kind = "bool",
+            value = true,
+        },
+        {
+            name = "FFlagDisableNewIGMinDUA",
+            kind = "bool",
+            value = true,
+        },
+        {
+            name = "FFlagFixGraphicsQuality",
+            kind = "bool",
+            value = true,
+        },
+        {
+            name = "FStringPartTexturePackTablePre2022",
+            kind = "string",
+            value = "",
+        },
+        {
+            name = "FStringTerrainMaterialTable2022",
+            kind = "string",
+            value = "",
+        },
+        {
+            name = "FStringTerrainMaterialTablePre2022",
+            kind = "string",
+            value = "",
+        },
+        {
+            name = "FStringPartTexturePackTable2022",
+            kind = "string",
+            value = "",
+        },
+        {
+            name = "FIntDebugForceMSAASamples",
+            kind = "i32",
+            value = 1,
+        },
+        {
+            name = "DFFlagTextureQualityOverrideEnabled",
+            kind = "bool",
+            value = true,
+        },
+        {
+            name = "DFIntTextureQualityOverride",
+            kind = "i32",
+            value = 0,
+        },
+        {
+            name = "FIntRenderShadowIntensity",
+            kind = "i32",
+            value = 0,
+        },
+        {
+            name = "DFIntDebugFRMQualityLevelOverride",
+            kind = "i32",
+            value = 1,
+        },
+        {
+            name = "FIntFRMMinGrassDistance",
+            kind = "f32",
+            value = 0,
+        },
+        {
+            name = "FIntFRMMaxGrassDistance",
+            kind = "f32",
+            value = 0,
+        },
+        {
+            name = "FIntRenderGrassDetailStrands",
+            kind = "i32",
+            value = 0,
+        },
+        {
+            name = "FIntRenderGrassHeightScaler",
+            kind = "i32",
+            value = 0,
+        },
+        {
+            name = "FIntTerrainArraySliceSize",
+            kind = "i32",
+            value = 0,
+        },
+    }
+end
+
+
+function FALLEN_MISC_FPS_STRIPPED_NAME(
+    name
+)
+    name =
+        tostring(
+            name or ""
+        )
+
+    local prefixes = {
+        "DFFlag",
+        "DFInt",
+        "FFlag",
+        "FInt",
+        "FString",
+        "FLog",
+    }
+
+    for _, prefix in ipairs(prefixes) do
+        if string.sub(
+            name,
+            1,
+            #prefix
+        ) == prefix
+        then
+            return
+                string.sub(
+                    name,
+                    #prefix + 1
+                )
+        end
+    end
+
+    return name
+end
+
+
+function FALLEN_MISC_FPS_RESOLVE_OFFSET(
+    flag_name
+)
     if not memory
-        or type(memory.module_base) ~= "function"
-        or not memory.offsets
-        or not memory.offsets.PhysicsSenderMaxBandwidthBps
+        or type(memory.offsets) ~= "table"
+    then
+        return nil, nil
+    end
+
+    local full =
+        tostring(
+            flag_name or ""
+        )
+
+    local stripped =
+        FALLEN_MISC_FPS_STRIPPED_NAME(
+            full
+        )
+
+    local off =
+        memory.offsets[full]
+
+    if off ~= nil then
+        return off, full
+    end
+
+    off =
+        memory.offsets[stripped]
+
+    if off ~= nil then
+        return off, stripped
+    end
+
+    return nil, nil
+end
+
+
+function FALLEN_MISC_FPS_READ_VALUE(
+    addr,
+    kind
+)
+    if not memory
+        or not addr
     then
         return nil
+    end
+
+    local value = nil
+
+    if kind == "bool"
+        and type(memory.read_bool) == "function"
+    then
+        pcall(function()
+            value =
+                memory.read_bool(
+                    addr
+                )
+        end)
+
+    elseif kind == "f32"
+        and type(memory.read_f32) == "function"
+    then
+        pcall(function()
+            value =
+                memory.read_f32(
+                    addr
+                )
+        end)
+
+    elseif kind == "i32"
+        and type(memory.read_i32) == "function"
+    then
+        pcall(function()
+            value =
+                memory.read_i32(
+                    addr
+                )
+        end)
+    end
+
+    return value
+end
+
+
+function FALLEN_MISC_FPS_WRITE_VALUE(
+    addr,
+    kind,
+    value
+)
+    if not memory
+        or not addr
+    then
+        return false
+    end
+
+    local wrote = false
+
+    if kind == "bool"
+        and type(memory.write_bool) == "function"
+    then
+        pcall(function()
+            wrote =
+                memory.write_bool(
+                    addr,
+                    value == true
+                )
+                ~= false
+        end)
+
+    elseif kind == "f32"
+        and type(memory.write_f32) == "function"
+    then
+        pcall(function()
+            wrote =
+                memory.write_f32(
+                    addr,
+                    tonumber(value) or 0
+                )
+                ~= false
+        end)
+
+    elseif kind == "i32"
+        and type(memory.write_i32) == "function"
+    then
+        pcall(function()
+            wrote =
+                memory.write_i32(
+                    addr,
+                    math.floor(
+                        tonumber(value) or 0
+                    )
+                )
+                ~= false
+        end)
+    end
+
+    return wrote
+end
+
+
+function FALLEN_MISC_FPS_ENABLE()
+    if not memory
+        or type(memory.module_base) ~= "function"
+    then
+        return false
     end
 
     local base = nil
@@ -37457,540 +36887,127 @@ function FALLEN_MISC_CUSTOM_DESYNC_ADDRESS()
     if not base
         or base == 0
     then
-        return nil
-    end
-
-    return
-        base
-        + memory.offsets.PhysicsSenderMaxBandwidthBps
-end
-
-
-function FALLEN_MISC_CUSTOM_DESYNC_READ()
-    local addr =
-        FALLEN_MISC_CUSTOM_DESYNC_ADDRESS()
-
-    if not addr
-        or not memory
-        or type(memory.read_i32) ~= "function"
-    then
-        return nil
-    end
-
-    local value = nil
-
-    pcall(function()
-        value =
-            memory.read_i32(
-                addr
-            )
-    end)
-
-    return
-        tonumber(value)
-end
-
-
-function FALLEN_MISC_CUSTOM_DESYNC_IS_ON()
-    local value =
-        FALLEN_MISC_CUSTOM_DESYNC_READ()
-
-    if value == nil then
-        return
-            A.misc_custom_fastflag_desync_enabled
-            == true
-    end
-
-    return
-        value == 0
-end
-
-
-function FALLEN_MISC_CUSTOM_DESYNC_SET(
-    enabled
-)
-    enabled =
-        enabled == true
-
-    local addr =
-        FALLEN_MISC_CUSTOM_DESYNC_ADDRESS()
-
-    if not addr
-        or not memory
-        or type(memory.write_i32) ~= "function"
-    then
         return false
     end
 
-    local wanted =
-        enabled
-        and 0
-        or 38760
+    A.misc_fps_original =
+        A.misc_fps_original
+        or {}
 
-    local wrote =
-        false
+    A.misc_fps_applied =
+        {}
 
-    pcall(function()
-        local result =
-            memory.write_i32(
-                addr,
-                wanted
-            )
+    local changed =
+        0
 
-        wrote =
-            result ~= false
-    end)
-
-    if not wrote then
-        return false
-    end
-
-    local readback =
-        FALLEN_MISC_CUSTOM_DESYNC_READ()
-
-    if readback ~= nil
-        and readback ~= wanted
-    then
-        return false
-    end
-
-    A.misc_custom_fastflag_desync_enabled =
-        enabled
-
-    return true
-end
-
-
-function FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
-    local original =
-        A.misc_underground_desync_original
-
-    local hrp =
-        A.misc_underground_desync_hrp
-
-    local target_y =
-        tonumber(
-            A.misc_underground_desync_target_y
-        )
-
-    if not original
-        or not target_y
-    then
-        return false
-    end
-
-    if not hrp
-        and rbx
-        and type(rbx.local_hrp) == "function"
-    then
-        pcall(function()
-            hrp =
-                rbx.local_hrp()
-        end)
-
-        A.misc_underground_desync_hrp =
-            hrp
-    end
-
-    if not hrp then
-        return false
-    end
-
-    pcall(function()
-        hrp:set_velocity(
-            Vector3(
-                0,
-                0,
-                0
-            )
-        )
-    end)
-
-    pcall(function()
-        hrp:set_position(
-            Vector3(
-                original.X,
-                target_y,
-                original.Z
-            )
-        )
-    end)
-
-    local current = nil
-
-    pcall(function()
-        current =
-            hrp:get_position()
-    end)
-
-    if not current
-        or current.Y == nil
-    then
-        return false
-    end
-
-    return
-        math.abs(
-            tonumber(current.Y)
-            - target_y
-        ) <= 1.25
-end
-
-
-function FALLEN_MISC_UNDERGROUND_CLEAR_STATE()
-    A.misc_underground_desync_stage = 0
-    A.misc_underground_desync_time = 0
-    A.misc_underground_desync_original = nil
-    A.misc_underground_desync_hrp = nil
-    A.misc_underground_desync_target_y = nil
-    A.misc_underground_desync_confirm_frames = 0
-    A.misc_underground_desync_post_frames = 0
-    A.misc_underground_return_confirm_frames = 0
-    A.misc_underground_return_started = 0
-end
-
-
-function FALLEN_MISC_UNDERGROUND_RETURN_TICK()
-    local original =
-        A.misc_underground_desync_original
-
-    local hrp =
-        A.misc_underground_desync_hrp
-
-    if not original then
-        FALLEN_MISC_UNDERGROUND_CLEAR_STATE()
-        return true
-    end
-
-    if not hrp
-        and rbx
-        and type(rbx.local_hrp) == "function"
-    then
-        pcall(function()
-            hrp =
-                rbx.local_hrp()
-        end)
-
-        A.misc_underground_desync_hrp =
-            hrp
-    end
-
-    if not hrp then
-        return false
-    end
-
-    -- Always return to the EXACT position captured before going underground.
-    -- Depth is never added to/subtracted from the return position.
-    pcall(function()
-        hrp:set_velocity(
-            Vector3(
-                0,
-                0,
-                0
-            )
-        )
-    end)
-
-    pcall(function()
-        hrp:set_position(
-            Vector3(
-                original.X,
-                original.Y,
-                original.Z
-            )
-        )
-    end)
-
-    local current = nil
-
-    pcall(function()
-        current =
-            hrp:get_position()
-    end)
-
-    if current
-        and current.X ~= nil
-        and current.Y ~= nil
-        and current.Z ~= nil
-    then
-        local dx =
-            tonumber(current.X)
-            - tonumber(original.X)
-
-        local dy =
-            tonumber(current.Y)
-            - tonumber(original.Y)
-
-        local dz =
-            tonumber(current.Z)
-            - tonumber(original.Z)
-
-        if (
-            dx * dx
-            + dy * dy
-            + dz * dz
-        ) <= 2.25
-        then
-            FALLEN_MISC_UNDERGROUND_CLEAR_STATE()
-            return true
-        end
-    end
-
-    local elapsed =
-        tick()
-        - (
-            tonumber(
-                A.misc_underground_return_started
-            )
-            or tick()
-        )
-
-    -- Tiny retry window only. This remains a teleport, not a long hold.
-    if elapsed >= 0.08 then
-        pcall(function()
-            hrp:set_position(
-                Vector3(
-                    original.X,
-                    original.Y,
-                    original.Z
+    for _, spec in ipairs(
+        FALLEN_MISC_FPS_FLAG_SPECS()
+    ) do
+        -- FString globals need a documented string-object layout before they
+        -- can be modified safely in-process. Keep them in the bundle but skip.
+        if spec.kind ~= "string" then
+            local off, resolved_key =
+                FALLEN_MISC_FPS_RESOLVE_OFFSET(
+                    spec.name
                 )
-            )
-        end)
 
-        FALLEN_MISC_UNDERGROUND_CLEAR_STATE()
-        return true
-    end
+            if off ~= nil then
+                local addr =
+                    base + off
 
-    return false
-end
-
-
-function FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST()
-    if (A.misc_underground_desync_stage or 0) ~= 0 then
-        return false
-    end
-
-    if not rbx
-        or type(rbx.local_hrp) ~= "function"
-    then
-        return false
-    end
-
-    local hrp = nil
-    local pos = nil
-
-    pcall(function()
-        hrp =
-            rbx.local_hrp()
-    end)
-
-    if not hrp then
-        return false
-    end
-
-    pcall(function()
-        pos =
-            hrp:get_position()
-    end)
-
-    if not pos
-        or pos.X == nil
-        or pos.Y == nil
-        or pos.Z == nil
-    then
-        return false
-    end
-
-    local depth =
-        clamp(
-            tonumber(S.misc_desync_depth)
-            or 5,
-            1,
-            50
-        )
-
-    -- Exact origin captured BEFORE any teleport.
-    A.misc_underground_desync_hrp =
-        hrp
-
-    A.misc_underground_desync_original = {
-        X = pos.X,
-        Y = pos.Y,
-        Z = pos.Z,
-    }
-
-    -- Snapshot the rig pose before teleporting. The pose is stored as offsets
-    -- and later translated onto the frozen server anchor.
-    FALLEN_VISUAL_DESYNC_CAPTURE_POSE(
-        A.misc_underground_desync_original
-    )
-
-    A.misc_underground_desync_target_y =
-        pos.Y - depth
-
-    A.misc_underground_desync_confirm_frames =
-        0
-
-    A.misc_underground_desync_post_frames =
-        0
-
-    A.misc_underground_desync_stage =
-        1
-
-    A.misc_underground_desync_time =
-        tick()
-
-    -- Immediate first TP attempt. We do NOT enable the flag in this same
-    -- request call; the character must remain below across render frames first.
-    FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
-
-    return true
-end
-
-
-function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
-    local stage =
-        tonumber(
-            A.misc_underground_desync_stage
-        )
-        or 0
-
-    if stage == 0 then
-        return
-    end
-
-    local now =
-        tick()
-
-    if stage == 1 then
-        -- Keep the character physically below ground every render frame.
-        -- The old version enabled the flag and returned too quickly, often in
-        -- effectively the same frame, so the TP could never visibly/stably stick.
-        local below =
-            FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
-
-        if below then
-            A.misc_underground_desync_confirm_frames =
-                (
-                    tonumber(
-                        A.misc_underground_desync_confirm_frames
+                local original =
+                    FALLEN_MISC_FPS_READ_VALUE(
+                        addr,
+                        spec.kind
                     )
-                    or 0
-                )
-                + 1
-        else
-            A.misc_underground_desync_confirm_frames =
-                0
-        end
 
-        local elapsed =
-            now
-            - (
-                A.misc_underground_desync_time
-                or now
-            )
+                if original ~= nil then
+                    if A.misc_fps_original[spec.name] == nil then
+                        A.misc_fps_original[spec.name] = {
+                            addr = addr,
+                            kind = spec.kind,
+                            value = original,
+                            key = resolved_key,
+                        }
+                    end
 
-        -- Require the underground position on two render ticks.
-        -- Request() already performs the first TP attempt immediately.
-        if (
-            A.misc_underground_desync_confirm_frames
-            or 0
-        ) >= 2
-        then
-            local enabled =
-                FALLEN_MISC_CUSTOM_DESYNC_SET(
-                    true
-                )
+                    if FALLEN_MISC_FPS_WRITE_VALUE(
+                        addr,
+                        spec.kind,
+                        spec.value
+                    )
+                    then
+                        A.misc_fps_applied[spec.name] =
+                            true
 
-            if not enabled then
-                -- Flag write failed: return without leaving a half-state.
-                A.misc_custom_fastflag_desync_enabled =
-                    false
-
-                FALLEN_VISUAL_DESYNC_CLEAR()
-
-                A.misc_underground_desync_stage =
-                    3
-
-                A.misc_underground_return_started =
-                    now
-
-                FALLEN_MISC_UNDERGROUND_RETURN_TICK()
-                return
+                        changed =
+                            changed + 1
+                    end
+                end
             end
+        end
+    end
 
-            -- FastFlag is now ON while the character is still below.
-            -- Freeze the visual server anchor at this exact underground point.
-            if A.misc_underground_desync_original
-                and A.misc_underground_desync_target_y
+    return
+        changed > 0
+end
+
+
+function FALLEN_MISC_FPS_DISABLE()
+    local originals =
+        A.misc_fps_original
+
+    if type(originals) ~= "table" then
+        return false
+    end
+
+    local restored =
+        0
+
+    for _, info in pairs(originals) do
+        if info
+            and info.addr
+            and info.kind
+            and info.value ~= nil
+        then
+            if FALLEN_MISC_FPS_WRITE_VALUE(
+                info.addr,
+                info.kind,
+                info.value
+            )
             then
-                FALLEN_VISUAL_DESYNC_SET_SERVER_ANCHOR(
-                    A.misc_underground_desync_original.X,
-                    A.misc_underground_desync_target_y,
-                    A.misc_underground_desync_original.Z
-                )
+                restored =
+                    restored + 1
             end
-
-            -- Do NOT return in this frame. Stay underground until next render.
-            A.misc_underground_desync_stage =
-                2
-
-            A.misc_underground_desync_post_frames =
-                0
-
-            A.misc_underground_desync_time =
-                now
-
-            return
         end
+    end
 
-        if elapsed >= 0.20 then
-            -- Could not establish the underground position.
-            A.misc_underground_desync_stage =
-                3
+    A.misc_fps_original =
+        {}
 
-            A.misc_underground_return_started =
-                now
+    A.misc_fps_applied =
+        {}
 
-            FALLEN_MISC_UNDERGROUND_RETURN_TICK()
-        end
+    return
+        restored > 0
+end
 
+
+function FALLEN_MISC_FPS_TICK()
+    local desired =
+        S.misc_fps_enabled == true
+
+    if A.misc_fps_last_state == desired then
         return
     end
 
-    if stage == 2 then
-        -- One full render interval after FastFlag=0, still pinned underground.
-        FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
+    A.misc_fps_last_state =
+        desired
 
-        A.misc_underground_desync_post_frames =
-            (
-                tonumber(
-                    A.misc_underground_desync_post_frames
-                )
-                or 0
-            )
-            + 1
-
-        if (
-            A.misc_underground_desync_post_frames
-            or 0
-        ) >= 1
-        then
-            -- NOW return to the exact X/Y/Z captured before going underground.
-            A.misc_underground_desync_stage =
-                3
-
-            A.misc_underground_return_started =
-                now
-
-            FALLEN_MISC_UNDERGROUND_RETURN_TICK()
-        end
-
-        return
-    end
-
-    if stage == 3 then
-        FALLEN_MISC_UNDERGROUND_RETURN_TICK()
+    if desired then
+        FALLEN_MISC_FPS_ENABLE()
+    else
+        FALLEN_MISC_FPS_DISABLE()
     end
 end
 
@@ -38000,47 +37017,8 @@ hooks.on_render(function()
         return
     end
 
-    local vk =
-        math.floor(
-            tonumber(
-                S.misc_underground_desync_key
-            )
-            or 0
-        )
-
-    local down =
-        vk > 0
-        and key_down(vk)
-
-    local pressed =
-        down
-        and A.misc_underground_hotkey_prev ~= true
-        and A.misc_underground_bind_listening ~= true
-
-    if pressed
-        and (A.misc_underground_desync_stage or 0) == 0
-    then
-        if FALLEN_MISC_CUSTOM_DESYNC_IS_ON() then
-            -- Toggle OFF: no teleport. Restore the exact default flag value.
-            FALLEN_MISC_CUSTOM_DESYNC_SET(
-                false
-            )
-
-            FALLEN_VISUAL_DESYNC_CLEAR()
-        else
-            -- Toggle ON:
-            -- save origin -> TP below by Depth -> flag 0 -> exact origin.
-            pcall(
-                FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST
-            )
-        end
-    end
-
-    A.misc_underground_hotkey_prev =
-        down == true
-
     pcall(
-        FALLEN_MISC_UNDERGROUND_DESYNC_TICK
+        FALLEN_MISC_FPS_TICK
     )
 end)
 
