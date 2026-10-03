@@ -14444,106 +14444,52 @@ FALLEN_DMGNUM = FALLEN_DMGNUM or {
     last_spawn = 0,
 }
 
-function FALLEN_DMGNUM_TARGET_HEAD_SCREEN()
-    if not players
-        or type(players.get_all) ~= "function"
+function FALLEN_DMGNUM_TARGET_HEAD_SCREEN(
+    head_pos,
+    fallback_pos
+)
+    local world =
+        head_pos
+        or fallback_pos
+
+    -- Backwards-compatible Aimbot fallback.
+    if not world
+        and FAP.current_target_pos
+    then
+        world =
+            FAP.current_target_pos
+    end
+
+    if not world
+        or world.X == nil
+        or world.Y == nil
+        or world.Z == nil
     then
         return nil
     end
 
-    local target_addr =
-        FAP.current_target_addr
+    local screen =
+        FALLEN_BT_PROJECT({
+            X = world.X,
+            Y = world.Y,
+            Z = world.Z,
+        })
 
-    local target_name =
-        FAP.current_target_name
-
-    local list = nil
-
-    pcall(function()
-        list =
-            players.get_all()
-    end)
-
-    if type(list) ~= "table" then
+    if not screen then
         return nil
     end
 
-    for _, p in ipairs(list) do
-        local same =
-            false
-
-        if target_addr ~= nil
-            and p.address ~= nil
-            and p.address == target_addr
-        then
-            same =
-                true
-        elseif target_name ~= nil then
-            local name =
-                p.name
-                or p.display_name
-
-            if name ~= nil
-                and tostring(name)
-                    == tostring(target_name)
-            then
-                same =
-                    true
-            end
-        end
-
-        if same then
-            local head =
-                p.head_pos
-
-            if head
-                and head.X ~= nil
-                and head.Y ~= nil
-                and head.Z ~= nil
-            then
-                local screen =
-                    FALLEN_BT_PROJECT({
-                        X = head.X,
-                        Y = head.Y,
-                        Z = head.Z,
-                    })
-
-                if screen then
-                    return {
-                        X = screen.X,
-                        Y = screen.Y,
-                    }
-                end
-            end
-
-            break
-        end
-    end
-
-    -- Fallback if the player cache did not expose head_pos this frame.
-    -- This is still captured ONCE; it is never followed afterwards.
-    if FAP.current_target_pos then
-        local screen =
-            FALLEN_BT_PROJECT({
-                X = FAP.current_target_pos.X,
-                Y = FAP.current_target_pos.Y,
-                Z = FAP.current_target_pos.Z,
-            })
-
-        if screen then
-            return {
-                X = screen.X,
-                Y = screen.Y,
-            }
-        end
-    end
-
-    return nil
+    return {
+        X = screen.X,
+        Y = screen.Y,
+    }
 end
 
 
 function FALLEN_DMGNUM_ADD(
-    damage
+    damage,
+    head_pos,
+    fallback_pos
 )
     damage =
         tonumber(damage)
@@ -14555,7 +14501,10 @@ function FALLEN_DMGNUM_ADD(
     end
 
     local screen =
-        FALLEN_DMGNUM_TARGET_HEAD_SCREEN()
+        FALLEN_DMGNUM_TARGET_HEAD_SCREEN(
+            head_pos,
+            fallback_pos
+        )
 
     if not screen then
         return
@@ -15173,11 +15122,534 @@ function FALLEN_HITFX_DRAW_FALLEN(
     end
 end
 
-function FALLEN_HITFX_TARGET_KEY()
+function FALLEN_HITFX_FIND_PLAYER(
+    address,
+    name
+)
+    if not players
+        or type(players.get_all) ~= "function"
+    then
+        return nil
+    end
+
+    local list = nil
+
+    pcall(function()
+        list =
+            players.get_all()
+    end)
+
+    if type(list) ~= "table" then
+        return nil
+    end
+
+    for _, p in ipairs(list) do
+        if address ~= nil
+            and p.address ~= nil
+            and p.address == address
+        then
+            return p
+        end
+
+        if name ~= nil then
+            local pn =
+                p.name
+                or p.display_name
+                or p.Name
+
+            if pn ~= nil
+                and tostring(pn)
+                    == tostring(name)
+            then
+                return p
+            end
+        end
+    end
+
+    return nil
+end
+
+
+function FALLEN_HITFX_PLAYER_HEAD_POS(
+    p,
+    fallback
+)
+    if p
+        and p.head_pos
+        and p.head_pos.X ~= nil
+        and p.head_pos.Y ~= nil
+        and p.head_pos.Z ~= nil
+    then
+        return {
+            X = p.head_pos.X,
+            Y = p.head_pos.Y,
+            Z = p.head_pos.Z,
+        }
+    end
+
+    if p
+        and type(p.bones) == "table"
+        and type(fap_find_bone_pos) == "function"
+    then
+        local head =
+            fap_find_bone_pos(
+                p,
+                { "Head" }
+            )
+
+        if head then
+            return head
+        end
+    end
+
+    if fallback
+        and fallback.X ~= nil
+        and fallback.Y ~= nil
+        and fallback.Z ~= nil
+    then
+        return {
+            X = fallback.X,
+            Y = fallback.Y,
+            Z = fallback.Z,
+        }
+    end
+
+    return nil
+end
+
+
+function FALLEN_HITFX_SILENT_PART_POS(
+    p
+)
+    if not p then
+        return nil
+    end
+
+    local part =
+        tostring(
+            S.silent_target_part
+            or "Head"
+        )
+
+    if part == "Head" then
+        return
+            FALLEN_HITFX_PLAYER_HEAD_POS(
+                p,
+                p.position
+            )
+    end
+
+    if part == "Torso" then
+        if type(fap_find_bone_pos) == "function" then
+            local torso =
+                fap_find_bone_pos(
+                    p,
+                    {
+                        "UpperTorso",
+                        "Torso",
+                        "LowerTorso",
+                    }
+                )
+
+            if torso then
+                return torso
+            end
+        end
+
+        if p.position
+            and p.position.X ~= nil
+            and p.position.Y ~= nil
+            and p.position.Z ~= nil
+        then
+            return {
+                X = p.position.X,
+                Y = p.position.Y + 1.2,
+                Z = p.position.Z,
+            }
+        end
+    end
+
+    -- The stock Silent target_part index used by this script maps the
+    -- "Closest"/third option to Feet.
+    if type(fap_find_bone_pos) == "function" then
+        local foot =
+            fap_find_bone_pos(
+                p,
+                {
+                    "LeftFoot",
+                    "RightFoot",
+                    "Left Leg",
+                    "Right Leg",
+                }
+            )
+
+        if foot then
+            return foot
+        end
+    end
+
+    if p.position
+        and p.position.X ~= nil
+        and p.position.Y ~= nil
+        and p.position.Z ~= nil
+    then
+        return {
+            X = p.position.X,
+            Y = p.position.Y - 2.0,
+            Z = p.position.Z,
+        }
+    end
+
+    return nil
+end
+
+
+function FALLEN_HITFX_SILENT_BIND_DOWN()
+    if S.silent_enabled ~= true then
+        return false
+    end
+
+    local vk =
+        math.floor(
+            tonumber(S.silent_key)
+            or 0
+        )
+
     return
+        vk > 0
+        and key_down(vk) == true
+end
+
+
+function FALLEN_HITFX_SILENT_VALID_PLAYER(
+    p
+)
+    if not p
+        or p.is_self == true
+    then
+        return false
+    end
+
+    local hp =
+        tonumber(
+            p.health
+        )
+
+    if hp == nil
+        or hp <= 0
+    then
+        return false
+    end
+
+    if S.silent_team_check == true
+        and p.is_teammate == true
+    then
+        return false
+    end
+
+    local max_dist =
+        clamp(
+            tonumber(S.silent_max_dist)
+            or 1200,
+            50,
+            3000
+        )
+
+    local dist =
+        tonumber(
+            p.distance
+        )
+
+    if dist
+        and dist > max_dist
+    then
+        return false
+    end
+
+    return
+        FALLEN_HITFX_SILENT_PART_POS(p)
+        ~= nil
+end
+
+
+function FALLEN_HITFX_SILENT_TARGET()
+    if not FALLEN_HITFX_SILENT_BIND_DOWN() then
+        A.hitfx_silent_locked_addr =
+            nil
+
+        return nil
+    end
+
+    if not players
+        or type(players.get_all) ~= "function"
+    then
+        return nil
+    end
+
+    local list = nil
+
+    pcall(function()
+        list =
+            players.get_all()
+    end)
+
+    if type(list) ~= "table" then
+        return nil
+    end
+
+    -- Sticky Aim: keep the same Silent target while its physical bind is held.
+    if S.silent_sticky_aim == true
+        and A.hitfx_silent_locked_addr
+    then
+        for _, p in ipairs(list) do
+            if p.address
+                == A.hitfx_silent_locked_addr
+                and FALLEN_HITFX_SILENT_VALID_PLAYER(p)
+            then
+                local pos =
+                    FALLEN_HITFX_SILENT_PART_POS(p)
+
+                if pos
+                    and FALLEN_BT_PROJECT(pos)
+                then
+                    return p
+                end
+            end
+        end
+
+        A.hitfx_silent_locked_addr =
+            nil
+    end
+
+    local mx, my = nil, nil
+
+    if type(mouse_pos) == "function" then
+        pcall(function()
+            mx, my =
+                mouse_pos()
+        end)
+    end
+
+    mx =
+        tonumber(mx)
+
+    my =
+        tonumber(my)
+
+    if not mx
+        or not my
+    then
+        return nil
+    end
+
+    local best =
+        nil
+
+    local best_sd =
+        math.huge
+
+    local use_fov =
+        S.silent_fov_enabled == true
+
+    local fov =
+        clamp(
+            tonumber(S.silent_fov)
+            or 180,
+            10,
+            600
+        )
+
+    for _, p in ipairs(list) do
+        if FALLEN_HITFX_SILENT_VALID_PLAYER(p) then
+            local pos =
+                FALLEN_HITFX_SILENT_PART_POS(p)
+
+            local s =
+                FALLEN_BT_PROJECT(pos)
+
+            if s then
+                local dx =
+                    (tonumber(s.X) or 0)
+                    - mx
+
+                local dy =
+                    (tonumber(s.Y) or 0)
+                    - my
+
+                local sd =
+                    math.sqrt(
+                        dx * dx
+                        + dy * dy
+                    )
+
+                if (
+                        not use_fov
+                        or sd <= fov
+                    )
+                    and sd < best_sd
+                then
+                    best_sd =
+                        sd
+
+                    best =
+                        p
+                end
+            end
+        end
+    end
+
+    if best
+        and S.silent_sticky_aim == true
+    then
+        A.hitfx_silent_locked_addr =
+            best.address
+    end
+
+    return best
+end
+
+
+function FALLEN_HITFX_AIMBOT_TARGET()
+    if S.aim_enabled ~= true
+        or not FAP.current_target_pos
+        or tick() - (FAP.current_target_seen or 0) > 0.18
+    then
+        return nil
+    end
+
+    local p =
+        FALLEN_HITFX_FIND_PLAYER(
+            FAP.current_target_addr,
+            FAP.current_target_name
+        )
+
+    local hp =
+        tonumber(
+            FAP.current_target_health
+        )
+
+    if hp == nil
+        and p
+    then
+        hp =
+            tonumber(
+                p.health
+            )
+    end
+
+    if hp == nil then
+        return nil
+    end
+
+    local pos = {
+        X = FAP.current_target_pos.X,
+        Y = FAP.current_target_pos.Y,
+        Z = FAP.current_target_pos.Z,
+    }
+
+    local head =
+        FALLEN_HITFX_PLAYER_HEAD_POS(
+            p,
+            pos
+        )
+
+    local raw_key =
         FAP.current_target_addr
         or FAP.current_target_name
+
+    if raw_key == nil then
+        return nil
+    end
+
+    return {
+        source = "aimbot",
+        key =
+            "aimbot:"
+            .. tostring(raw_key),
+        hp = hp,
+        pos = pos,
+        head_pos = head,
+    }
 end
+
+
+function FALLEN_HITFX_SILENT_RESOLVED_TARGET()
+    local p =
+        FALLEN_HITFX_SILENT_TARGET()
+
+    if not p then
+        return nil
+    end
+
+    local pos =
+        FALLEN_HITFX_SILENT_PART_POS(p)
+
+    local head =
+        FALLEN_HITFX_PLAYER_HEAD_POS(
+            p,
+            pos
+        )
+
+    local hp =
+        tonumber(
+            p.health
+        )
+
+    local raw_key =
+        p.address
+        or p.name
+        or p.display_name
+
+    if not pos
+        or hp == nil
+        or raw_key == nil
+    then
+        return nil
+    end
+
+    return {
+        source = "silent",
+        key =
+            "silent:"
+            .. tostring(raw_key),
+        hp = hp,
+        pos = {
+            X = pos.X,
+            Y = pos.Y,
+            Z = pos.Z,
+        },
+        head_pos = head,
+    }
+end
+
+
+function FALLEN_HITFX_ACTIVE_TARGET()
+    -- When Silent's physical HOLD bind is down, its target is authoritative
+    -- for hit effects/damage numbers. If it has no valid target, fall back to
+    -- the custom Aimbot target so both systems can coexist.
+    if FALLEN_HITFX_SILENT_BIND_DOWN() then
+        local silent =
+            FALLEN_HITFX_SILENT_RESOLVED_TARGET()
+
+        if silent then
+            return silent
+        end
+    end
+
+    return
+        FALLEN_HITFX_AIMBOT_TARGET()
+end
+
+
+function FALLEN_HITFX_TARGET_KEY(
+    target
+)
+    return
+        target
+        and target.key
+        or nil
+end
+
 
 function FALLEN_HITFX_ADD(pos)
     if not pos then
@@ -15207,47 +15679,70 @@ function FALLEN_HITFX_SCAN_HP()
             S.hit_effect_enabled ~= true
             and S.damage_numbers_enabled ~= true
         )
-        or S.aim_enabled ~= true
     then
-        FALLEN_HITFX.target_key = nil
-        FALLEN_HITFX.last_hp = nil
-        FALLEN_HITFX.test_lmb_was_down = false
+        FALLEN_HITFX.target_key =
+            nil
+
+        FALLEN_HITFX.last_hp =
+            nil
+
+        FALLEN_HITFX.test_lmb_was_down =
+            false
+
+        A.hitfx_silent_locked_addr =
+            nil
+
         return
     end
 
-    -- The target must still be actively held by our Aimbot.
-    if not FAP.current_target_pos
-        or tick() - (FAP.current_target_seen or 0) > 0.18
+    local target =
+        FALLEN_HITFX_ACTIVE_TARGET()
+
+    if not target
+        or not target.pos
     then
-        FALLEN_HITFX.target_key = nil
-        FALLEN_HITFX.last_hp = nil
-        FALLEN_HITFX.test_lmb_was_down = false
+        FALLEN_HITFX.target_key =
+            nil
+
+        FALLEN_HITFX.last_hp =
+            nil
+
+        FALLEN_HITFX.test_lmb_was_down =
+            false
+
         return
     end
 
     local key =
-        FALLEN_HITFX_TARGET_KEY()
+        FALLEN_HITFX_TARGET_KEY(
+            target
+        )
 
     if not key then
         return
     end
 
-    -- FINAL LOGIC:
-    -- effect only fires while this exact target is still locked
-    -- and the same locked target loses at least 15 HP.
     local hp =
         tonumber(
-            FAP.current_target_health
+            target.hp
         )
 
     if hp == nil then
         return
     end
 
+    -- Changing Aimbot/Silent source or target resets the baseline instead of
+    -- turning a target switch into fake damage.
     if FALLEN_HITFX.target_key ~= key then
-        FALLEN_HITFX.target_key = key
-        FALLEN_HITFX.last_hp = hp
-        FALLEN_HITFX.last_seen = tick()
+        FALLEN_HITFX.target_key =
+            key
+
+        FALLEN_HITFX.last_hp =
+            hp
+
+        FALLEN_HITFX.last_seen =
+            tick()
+
         return
     end
 
@@ -15261,30 +15756,38 @@ function FALLEN_HITFX_SCAN_HP()
         and (old - hp)
         or 0
 
+    -- Same validation for BOTH Aimbot and Silent:
+    -- this exact active target must lose at least 15 HP.
     if damage >= 15
         and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.008
     then
-        FALLEN_HITFX.last_spawn = tick()
+        FALLEN_HITFX.last_spawn =
+            tick()
 
-        -- Both visuals are fed by this SAME validated damage event.
         if S.hit_effect_enabled == true then
             FALLEN_HITFX_ADD({
-                X = FAP.current_target_pos.X,
-                Y = FAP.current_target_pos.Y,
-                Z = FAP.current_target_pos.Z,
+                X = target.pos.X,
+                Y = target.pos.Y,
+                Z = target.pos.Z,
             })
         end
 
         if S.damage_numbers_enabled == true then
             FALLEN_DMGNUM_ADD(
-                damage
+                damage,
+                target.head_pos,
+                target.pos
             )
         end
     end
 
-    FALLEN_HITFX.last_hp = hp
-    FALLEN_HITFX.last_seen = tick()
+    FALLEN_HITFX.last_hp =
+        hp
+
+    FALLEN_HITFX.last_seen =
+        tick()
 end
+
 
 function FALLEN_HITFX_DRAW_ONE(hit, age, life)
     local s =
