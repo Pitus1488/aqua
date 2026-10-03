@@ -117,6 +117,15 @@ local defaults = {
     misc_shot_on_air_enabled = false,
     misc_fps_enabled = false,
 
+    -- VFX -> VMs -> Boulder local visual style.
+    misc_boulder_vfx_enabled = false,
+    misc_boulder_transparency = 35,
+    misc_boulder_reflectance = 0,
+    misc_boulder_h = 0.60,
+    misc_boulder_s = 0.18,
+    misc_boulder_v = 0.72,
+    misc_boulder_alpha = 100,
+
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
     world_rain_amount = 34,
@@ -560,6 +569,11 @@ local A = {
     misc_fps_last_state = false,
     misc_fps_original = {},
     misc_fps_applied = {},
+
+    -- Boulder VFX runtime.
+    misc_boulder_last_enabled = false,
+    misc_boulder_last_apply = 0,
+    misc_boulder_original = {},
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -33811,6 +33825,10 @@ hooks.on_render(function()
             "Misc"
         )
 
+        local misc_controls_clicked =
+            page_clicked
+            and not A.world_color_picker_open
+
         card(
             page_x,
             page_y + 25,
@@ -33822,7 +33840,7 @@ hooks.on_render(function()
         toggle_row(
             mx,
             my,
-            page_clicked,
+            misc_controls_clicked,
             page_x,
             page_y + 32,
             page_w,
@@ -33843,13 +33861,107 @@ hooks.on_render(function()
         toggle_row(
             mx,
             my,
-            page_clicked,
+            misc_controls_clicked,
             page_x,
             page_y + 73,
             page_w,
             "FPS",
             "misc_fps_enabled",
             false
+        )
+
+        section_title(
+            page_x,
+            page_y + 151,
+            "Boulder VFX"
+        )
+
+        card(
+            page_x,
+            page_y + 176,
+            page_w,
+            172,
+            11
+        )
+
+        toggle_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            page_x,
+            page_y + 183,
+            page_w,
+            "Enabled",
+            "misc_boulder_vfx_enabled",
+            false
+        )
+
+        line(
+            page_x + 12,
+            page_y + 223,
+            page_x + page_w - 12,
+            page_y + 223,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            lmb,
+            page_x,
+            page_y + 224,
+            page_w,
+            "Transparency",
+            "misc_boulder_transparency",
+            0,
+            100,
+            "int"
+        )
+
+        line(
+            page_x + 12,
+            page_y + 264,
+            page_x + page_w - 12,
+            page_y + 264,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            lmb,
+            page_x,
+            page_y + 265,
+            page_w,
+            "Reflectance",
+            "misc_boulder_reflectance",
+            0,
+            100,
+            "int"
+        )
+
+        line(
+            page_x + 12,
+            page_y + 305,
+            page_x + page_w - 12,
+            page_y + 305,
+            C.divider,
+            1
+        )
+
+        FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
+            mx,
+            my,
+            page_clicked,
+            page_x,
+            page_y + 306,
+            page_w,
+            "Color",
+            "misc_boulder"
         )
     elseif S.tab == 4
         and A.secret_unlocked
@@ -38348,6 +38460,504 @@ hooks.on_render(function()
     pcall(FALLEN_WORLD_RAIN_TICK)
     pcall(FALLEN_WORLD_THUNDER_TICK)
 end)
+
+-- =========================================================
+-- Misc: VFX -> VMs -> Boulder local style
+-- =========================================================
+
+function FALLEN_MISC_BOULDER_FIND()
+    if not rbx
+        or type(rbx.workspace) ~= "function"
+    then
+        return nil
+    end
+
+    local workspace = nil
+
+    pcall(function()
+        workspace =
+            rbx.workspace()
+    end)
+
+    if not workspace then
+        return nil
+    end
+
+    local vfx = nil
+    local vms = nil
+    local boulder = nil
+
+    pcall(function()
+        vfx =
+            workspace:find_first_child(
+                "VFX"
+            )
+    end)
+
+    if not vfx then
+        return nil
+    end
+
+    pcall(function()
+        vms =
+            vfx:find_first_child(
+                "VMs"
+            )
+    end)
+
+    if not vms then
+        return nil
+    end
+
+    pcall(function()
+        boulder =
+            vms:find_first_child(
+                "Boulder"
+            )
+    end)
+
+    return boulder
+end
+
+
+function FALLEN_MISC_BOULDER_COLLECT_PARTS()
+    local root =
+        FALLEN_MISC_BOULDER_FIND()
+
+    if not root then
+        return {}
+    end
+
+    local out = {}
+    local queue = {
+        {
+            inst = root,
+            depth = 0,
+        },
+    }
+
+    local qi = 1
+
+    while qi <= #queue do
+        local entry =
+            queue[qi]
+
+        qi =
+            qi + 1
+
+        local inst =
+            entry
+            and entry.inst
+
+        local depth =
+            (
+                entry
+                and entry.depth
+            )
+            or 0
+
+        if inst then
+            local is_part =
+                false
+
+            pcall(function()
+                is_part =
+                    inst:is_a(
+                        "BasePart"
+                    )
+            end)
+
+            if is_part then
+                out[#out + 1] =
+                    inst
+            end
+
+            if depth < 10 then
+                local children = nil
+
+                pcall(function()
+                    children =
+                        inst:get_children()
+                end)
+
+                if type(children) == "table" then
+                    for _, child in ipairs(children) do
+                        queue[#queue + 1] = {
+                            inst = child,
+                            depth = depth + 1,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    return out
+end
+
+
+function FALLEN_MISC_BOULDER_PRIMITIVE(
+    part
+)
+    if not part
+        or not part.addr
+        or not memory
+        or not memory.offsets
+        or not memory.offsets.Primitive
+        or type(memory.read_ptr) ~= "function"
+    then
+        return nil
+    end
+
+    local prim = nil
+
+    pcall(function()
+        prim =
+            memory.read_ptr(
+                part.addr
+                + memory.offsets.Primitive
+            )
+    end)
+
+    if not prim
+        or prim == 0
+    then
+        return nil
+    end
+
+    return prim
+end
+
+
+function FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
+    part
+)
+    if not part
+        or not part.addr
+    then
+        return
+    end
+
+    A.misc_boulder_original =
+        A.misc_boulder_original
+        or {}
+
+    local key =
+        tostring(
+            part.addr
+        )
+
+    if A.misc_boulder_original[key] then
+        return
+    end
+
+    local rec = {
+        part = part,
+        transparency = nil,
+        reflectance = nil,
+        color = nil,
+    }
+
+    local prim =
+        FALLEN_MISC_BOULDER_PRIMITIVE(
+            part
+        )
+
+    if prim
+        and memory
+        and memory.offsets
+    then
+        if memory.offsets.Transparency
+            and type(memory.read_f32) == "function"
+        then
+            pcall(function()
+                rec.transparency =
+                    memory.read_f32(
+                        prim
+                        + memory.offsets.Transparency
+                    )
+            end)
+        end
+
+        if memory.offsets.Reflectance
+            and type(memory.read_f32) == "function"
+        then
+            pcall(function()
+                rec.reflectance =
+                    memory.read_f32(
+                        prim
+                        + memory.offsets.Reflectance
+                    )
+            end)
+        end
+
+        if memory.offsets.BasePartColor
+            and type(memory.read_vec3) == "function"
+        then
+            pcall(function()
+                rec.color =
+                    memory.read_vec3(
+                        prim
+                        + memory.offsets.BasePartColor
+                    )
+            end)
+        end
+    end
+
+    A.misc_boulder_original[key] =
+        rec
+end
+
+
+function FALLEN_MISC_BOULDER_COLOR()
+    local r, g, b =
+        hsv_to_rgb(
+            tonumber(S.misc_boulder_h) or 0.60,
+            tonumber(S.misc_boulder_s) or 0.18,
+            tonumber(S.misc_boulder_v) or 0.72
+        )
+
+    return {
+        r,
+        g,
+        b,
+        clamp(
+            (tonumber(S.misc_boulder_alpha) or 100) / 100,
+            0,
+            1
+        ),
+    }
+end
+
+
+function FALLEN_MISC_BOULDER_APPLY_PART(
+    part
+)
+    if not part then
+        return
+    end
+
+    FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
+        part
+    )
+
+    local transparency =
+        clamp(
+            (tonumber(S.misc_boulder_transparency) or 35) / 100,
+            0,
+            1
+        )
+
+    local reflectance =
+        clamp(
+            (tonumber(S.misc_boulder_reflectance) or 0) / 100,
+            0,
+            1
+        )
+
+    local color =
+        FALLEN_MISC_BOULDER_COLOR()
+
+    -- Documented safe instance setter.
+    pcall(function()
+        part:set_transparency(
+            transparency
+        )
+    end)
+
+    local prim =
+        FALLEN_MISC_BOULDER_PRIMITIVE(
+            part
+        )
+
+    if not prim
+        or not memory
+        or not memory.offsets
+    then
+        return
+    end
+
+    -- BasePartColor / Reflectance are documented BasePart offsets.
+    if memory.offsets.BasePartColor
+        and type(memory.write_vec3) == "function"
+    then
+        pcall(function()
+            memory.write_vec3(
+                prim
+                + memory.offsets.BasePartColor,
+                Vector3(
+                    color[1],
+                    color[2],
+                    color[3]
+                )
+            )
+        end)
+    end
+
+    if memory.offsets.Reflectance
+        and type(memory.write_f32) == "function"
+    then
+        pcall(function()
+            memory.write_f32(
+                prim
+                + memory.offsets.Reflectance,
+                reflectance
+            )
+        end)
+    end
+end
+
+
+function FALLEN_MISC_BOULDER_APPLY()
+    local parts =
+        FALLEN_MISC_BOULDER_COLLECT_PARTS()
+
+    for _, part in ipairs(parts) do
+        FALLEN_MISC_BOULDER_APPLY_PART(
+            part
+        )
+    end
+
+    return
+        #parts > 0
+end
+
+
+function FALLEN_MISC_BOULDER_RESTORE()
+    local originals =
+        A.misc_boulder_original
+
+    if type(originals) ~= "table" then
+        A.misc_boulder_original =
+            {}
+
+        return
+    end
+
+    for _, rec in pairs(originals) do
+        local part =
+            rec
+            and rec.part
+
+        if part then
+            if rec.transparency ~= nil then
+                pcall(function()
+                    part:set_transparency(
+                        clamp(
+                            tonumber(rec.transparency) or 0,
+                            0,
+                            1
+                        )
+                    )
+                end)
+            end
+
+            local prim =
+                FALLEN_MISC_BOULDER_PRIMITIVE(
+                    part
+                )
+
+            if prim
+                and memory
+                and memory.offsets
+            then
+                if rec.reflectance ~= nil
+                    and memory.offsets.Reflectance
+                    and type(memory.write_f32) == "function"
+                then
+                    pcall(function()
+                        memory.write_f32(
+                            prim
+                            + memory.offsets.Reflectance,
+                            rec.reflectance
+                        )
+                    end)
+                end
+
+                if rec.color
+                    and rec.color.X ~= nil
+                    and rec.color.Y ~= nil
+                    and rec.color.Z ~= nil
+                    and memory.offsets.BasePartColor
+                    and type(memory.write_vec3) == "function"
+                then
+                    pcall(function()
+                        memory.write_vec3(
+                            prim
+                            + memory.offsets.BasePartColor,
+                            Vector3(
+                                rec.color.X,
+                                rec.color.Y,
+                                rec.color.Z
+                            )
+                        )
+                    end)
+                end
+            end
+        end
+    end
+
+    A.misc_boulder_original =
+        {}
+end
+
+
+function FALLEN_MISC_BOULDER_TICK()
+    local enabled =
+        S.misc_boulder_vfx_enabled
+        == true
+
+    if A.misc_boulder_last_enabled ~= enabled then
+        A.misc_boulder_last_enabled =
+            enabled
+
+        if not enabled then
+            FALLEN_MISC_BOULDER_RESTORE()
+            return
+        end
+
+        -- Apply immediately when toggled on.
+        A.misc_boulder_last_apply =
+            0
+    end
+
+    if not enabled then
+        return
+    end
+
+    local now =
+        tick()
+
+    -- VFX objects are commonly recreated. Re-find the exact path and reapply
+    -- periodically so a newly spawned Boulder receives the same appearance.
+    if now
+        - (
+            tonumber(
+                A.misc_boulder_last_apply
+            )
+            or 0
+        ) < 0.20
+    then
+        return
+    end
+
+    A.misc_boulder_last_apply =
+        now
+
+    FALLEN_MISC_BOULDER_APPLY()
+end
+
+
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    pcall(
+        FALLEN_MISC_BOULDER_TICK
+    )
+end)
+
 
 -- =========================================================
 -- Misc FPS FastFlags
