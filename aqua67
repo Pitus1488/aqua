@@ -12695,7 +12695,8 @@ function FALLEN_SILENT_SET_FOV_ENABLED(
         end
     end
 
-    -- Radius and color are mirrored into the stock Silent section/menu too.
+    -- Immediately mirror Silent FOV into the built-in "Aimbot FOV" visual
+    -- checkbox/radius. This does NOT enable or control stock Aimbot logic.
     FALLEN_SYNC_STOCK_FOV_VISUAL(
         S.silent_fov,
         FALLEN_SILENT_FOV_COLOR()
@@ -13384,8 +13385,12 @@ function FALLEN_SYNC_STOCK_FOV_VISUAL(
     radius,
     color
 )
-    -- SILENT ONLY.
-    -- This function never reads/writes cheat.aimbot.
+    -- IMPORTANT:
+    -- The built-in menu block visible as "Aimbot FOV" is backed by
+    -- cheat.aimbot.show_fov + cheat.aimbot.fov in this API.
+    --
+    -- Silent uses ONLY those two stock Aimbot VISUAL fields as a mirror.
+    -- We NEVER enable stock Aimbot and never touch its key/target/smoothing/etc.
     radius =
         math.floor(
             clamp(
@@ -13401,68 +13406,41 @@ function FALLEN_SYNC_STOCK_FOV_VISUAL(
         color
         or { 1, 1, 1, 1 }
 
+    -- Silent's own targeting radius/gate.
     local silent =
         FALLEN_SILENT_LIVE_SECTION()
 
     if silent then
-        -- Keep the stock Silent menu radius synchronized with our slider.
         pcall(function()
             silent.fov =
                 radius
         end)
 
-        -- Keep the stock Silent FOV visibility synchronized with our checkbox.
-        local keys =
-            FALLEN_SILENT_SECTION_KEYS()
-
-        local wrote_visual =
-            false
-
-        if type(keys) == "table" then
-            local visual_names = {
-                showfov = true,
-                drawfov = true,
-                displayfov = true,
-                renderfov = true,
-                fovvisible = true,
-                fovvisual = true,
-                fovcircle = true,
-            }
-
-            for _, raw_key in ipairs(keys) do
-                local raw =
-                    tostring(raw_key)
-
-                local normalized =
-                    FALLEN_SILENT_NORMALIZE_KEY(
-                        raw
-                    )
-
-                if visual_names[normalized] then
-                    local ok_write =
-                        pcall(function()
-                            silent[raw] =
-                                S.silent_fov_enabled == true
-                        end)
-
-                    if ok_write then
-                        wrote_visual =
-                            true
-                    end
-                end
-            end
-        end
-
-        if not wrote_visual then
-            pcall(function()
-                silent.show_fov =
-                    S.silent_fov_enabled == true
-            end)
-        end
+        pcall(function()
+            silent.fov_only =
+                S.silent_fov_enabled == true
+        end)
     end
 
-    -- The stock FOV color is shared through esp_colors in this API.
-    -- We update it only from Silent synchronization; custom Aimbot remains local.
+    -- This is the actual built-in MENU checkbox shown as:
+    -- Aimbot FOV -> Enabled
+    --
+    -- Only Silent calls this mirror path. Custom Aimbot does not.
+    if cheat
+        and cheat.aimbot
+    then
+        pcall(function()
+            cheat.aimbot.show_fov =
+                S.silent_fov_enabled == true
+        end)
+
+        pcall(function()
+            cheat.aimbot.fov =
+                radius
+        end)
+    end
+
+    -- Shared stock FOV color used by the menu renderer.
     if cheat
         and cheat.esp_colors
     then
@@ -14085,6 +14063,117 @@ function FALLEN_BT_HAS_GUN()
 end
 
 function FALLEN_BT_ACTIVE_TARGET()
+    -- Silent Aim has priority while its PHYSICAL HOLD bind is down.
+    -- Reuse the exact same Silent target resolver as Hit Effect/Damage Numbers,
+    -- so Team Check / Max Distance / FOV / Sticky / Target Part all match.
+    if type(FALLEN_HITFX_SILENT_BIND_DOWN) == "function"
+        and FALLEN_HITFX_SILENT_BIND_DOWN() == true
+        and type(FALLEN_HITFX_SILENT_RESOLVED_TARGET) == "function"
+    then
+        local silent =
+            FALLEN_HITFX_SILENT_RESOLVED_TARGET()
+
+        if silent
+            and silent.pos
+        then
+            local target_pos = {
+                X = silent.pos.X,
+                Y = silent.pos.Y,
+                Z = silent.pos.Z,
+            }
+
+            local prediction_time =
+                0
+
+            local prediction_gravity =
+                0
+
+            local prediction_speed =
+                0
+
+            local auto_prediction =
+                S.aim_auto_prediction == true
+
+            -- Silent itself uses the same fap_predict callback in this script.
+            -- Use that here too so the tracer endpoint matches the Silent shot
+            -- when Auto Prediction is enabled.
+            if auto_prediction
+                and silent.player
+                and type(fap_predict) == "function"
+            then
+                local cam = nil
+
+                pcall(function()
+                    if aim
+                        and type(aim.get_camera_position) == "function"
+                    then
+                        cam =
+                            aim.get_camera_position()
+                    end
+                end)
+
+                local predicted = nil
+
+                pcall(function()
+                    predicted =
+                        fap_predict(
+                            silent.player,
+                            target_pos,
+                            cam
+                        )
+                end)
+
+                if predicted
+                    and predicted.X ~= nil
+                    and predicted.Y ~= nil
+                    and predicted.Z ~= nil
+                then
+                    target_pos = {
+                        X = predicted.X,
+                        Y = predicted.Y,
+                        Z = predicted.Z,
+                    }
+                end
+
+                -- fap_predict updates these FAP runtime values for the current
+                -- prediction path in this script; copy them for curved tracers.
+                prediction_time =
+                    tonumber(FAP.current_prediction_time)
+                    or 0
+
+                prediction_gravity =
+                    tonumber(FAP.current_prediction_gravity)
+                    or 0
+
+                prediction_speed =
+                    tonumber(FAP.current_prediction_speed)
+                    or 0
+            end
+
+            return {
+                X = target_pos.X,
+                Y = target_pos.Y,
+                Z = target_pos.Z,
+
+                auto_prediction =
+                    auto_prediction,
+
+                prediction_time =
+                    prediction_time,
+
+                gravity =
+                    prediction_gravity,
+
+                bullet_speed =
+                    prediction_speed,
+
+                source =
+                    "silent",
+            }
+        end
+    end
+
+    -- Existing custom Aimbot Bullet Tracer path.
     if S.aim_enabled ~= true then
         return nil
     end
@@ -14095,7 +14184,8 @@ function FALLEN_BT_ACTIVE_TARGET()
         return nil
     end
 
-    local my_name = FALLEN_BT_LOCAL_NAME()
+    local my_name =
+        FALLEN_BT_LOCAL_NAME()
 
     if my_name
         and FAP.current_target_name
@@ -14125,8 +14215,12 @@ function FALLEN_BT_ACTIVE_TARGET()
         bullet_speed =
             tonumber(FAP.current_prediction_speed)
             or 0,
+
+        source =
+            "aimbot",
     }
 end
+
 
 function FALLEN_BT_ADD(origin, target)
     if not origin or not target then
@@ -16024,6 +16118,7 @@ function FALLEN_HITFX_SILENT_RESOLVED_TARGET()
             "silent:"
             .. tostring(raw_key),
         hp = hp,
+        player = p,
         pos = {
             X = pos.X,
             Y = pos.Y,
