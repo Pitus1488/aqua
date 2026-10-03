@@ -149,6 +149,7 @@ local defaults = {
     -- Visual hit effect: fires only when the locked Aimbot target loses HP.
     hit_effect_enabled = false,
     hit_effect_style = "Hit 1",
+    damage_numbers_enabled = false,
     -- Armor ESP.
     armor_esp_enabled = false,
     armor_esp_mode = "Normal",
@@ -14438,6 +14439,293 @@ function FALLEN_BT_TICK()
     FALLEN_BT_DRAW()
 end
 
+FALLEN_DMGNUM = FALLEN_DMGNUM or {
+    items = {},
+    last_spawn = 0,
+}
+
+function FALLEN_DMGNUM_TARGET_HEAD_SCREEN()
+    if not players
+        or type(players.get_all) ~= "function"
+    then
+        return nil
+    end
+
+    local target_addr =
+        FAP.current_target_addr
+
+    local target_name =
+        FAP.current_target_name
+
+    local list = nil
+
+    pcall(function()
+        list =
+            players.get_all()
+    end)
+
+    if type(list) ~= "table" then
+        return nil
+    end
+
+    for _, p in ipairs(list) do
+        local same =
+            false
+
+        if target_addr ~= nil
+            and p.address ~= nil
+            and p.address == target_addr
+        then
+            same =
+                true
+        elseif target_name ~= nil then
+            local name =
+                p.name
+                or p.display_name
+
+            if name ~= nil
+                and tostring(name)
+                    == tostring(target_name)
+            then
+                same =
+                    true
+            end
+        end
+
+        if same then
+            local head =
+                p.head_pos
+
+            if head
+                and head.X ~= nil
+                and head.Y ~= nil
+                and head.Z ~= nil
+            then
+                local screen =
+                    FALLEN_BT_PROJECT({
+                        X = head.X,
+                        Y = head.Y,
+                        Z = head.Z,
+                    })
+
+                if screen then
+                    return {
+                        X = screen.X,
+                        Y = screen.Y,
+                    }
+                end
+            end
+
+            break
+        end
+    end
+
+    -- Fallback if the player cache did not expose head_pos this frame.
+    -- This is still captured ONCE; it is never followed afterwards.
+    if FAP.current_target_pos then
+        local screen =
+            FALLEN_BT_PROJECT({
+                X = FAP.current_target_pos.X,
+                Y = FAP.current_target_pos.Y,
+                Z = FAP.current_target_pos.Z,
+            })
+
+        if screen then
+            return {
+                X = screen.X,
+                Y = screen.Y,
+            }
+        end
+    end
+
+    return nil
+end
+
+
+function FALLEN_DMGNUM_ADD(
+    damage
+)
+    damage =
+        tonumber(damage)
+
+    if not damage
+        or damage <= 0
+    then
+        return
+    end
+
+    local screen =
+        FALLEN_DMGNUM_TARGET_HEAD_SCREEN()
+
+    if not screen then
+        return
+    end
+
+    -- Freeze the SCREEN coordinate at the exact hit moment.
+    -- No target address/world position is retained, so this number cannot
+    -- follow the opponent after spawning.
+    FALLEN_DMGNUM.items[#FALLEN_DMGNUM.items + 1] = {
+        x = screen.X,
+        y = screen.Y - 7,
+        damage =
+            math.max(
+                1,
+                math.floor(
+                    damage + 0.5
+                )
+            ),
+        created = tick(),
+    }
+
+    while #FALLEN_DMGNUM.items > 32 do
+        table.remove(
+            FALLEN_DMGNUM.items,
+            1
+        )
+    end
+end
+
+
+function FALLEN_DMGNUM_DRAW()
+    if type(FALLEN_DMGNUM.items) ~= "table" then
+        FALLEN_DMGNUM.items = {}
+    end
+
+    local now =
+        tick()
+
+    local life =
+        1.05
+
+    for i = #FALLEN_DMGNUM.items, 1, -1 do
+        local item =
+            FALLEN_DMGNUM.items[i]
+
+        local age =
+            now
+            - (
+                item.created
+                or now
+            )
+
+        if age >= life
+            or S.damage_numbers_enabled ~= true
+        then
+            table.remove(
+                FALLEN_DMGNUM.items,
+                i
+            )
+        else
+            local t =
+                clamp(
+                    age / life,
+                    0,
+                    1
+                )
+
+            -- Smooth upward flight: quick start, soft finish.
+            local rise =
+                43
+                * (
+                    1
+                    - (1 - t)
+                    * (1 - t)
+                    * (1 - t)
+                )
+
+            -- Gentle fade-in, then a long smooth fade-out.
+            local fade_in =
+                clamp(
+                    age / 0.09,
+                    0,
+                    1
+                )
+
+            local fade_out =
+                1
+                - clamp(
+                    (t - 0.28) / 0.72,
+                    0,
+                    1
+                )
+
+            fade_out =
+                fade_out
+                * fade_out
+
+            local alpha =
+                fade_in
+                * fade_out
+
+            local label =
+                "-"
+                .. tostring(
+                    item.damage
+                    or 0
+                )
+
+            local cr =
+                (
+                    C
+                    and C.accent
+                    and C.accent[1]
+                )
+                or 1
+
+            local cg =
+                (
+                    C
+                    and C.accent
+                    and C.accent[2]
+                )
+                or 1
+
+            local cb =
+                (
+                    C
+                    and C.accent
+                    and C.accent[3]
+                )
+                or 1
+
+            local draw_y =
+                item.y
+                - rise
+
+            if type(DrawTextWithOutline) == "function" then
+                -- DrawTextWithOutline takes centerX, which keeps the number
+                -- centered over the captured head position.
+                DrawTextWithOutline(
+                    item.x,
+                    draw_y,
+                    label,
+                    cr,
+                    cg,
+                    cb,
+                    alpha,
+                    0,
+                    0,
+                    0,
+                    alpha * 0.82
+                )
+            elseif type(DrawText) == "function" then
+                -- Approximate centering fallback.
+                DrawText(
+                    item.x
+                        - #label * 3.5,
+                    draw_y,
+                    label,
+                    cr,
+                    cg,
+                    cb,
+                    alpha
+                )
+            end
+        end
+    end
+end
+
+
 FALLEN_HITFX = FALLEN_HITFX or {
     items = {},
     target_key = nil,
@@ -14915,7 +15203,10 @@ function FALLEN_HITFX_ADD(pos)
 end
 
 function FALLEN_HITFX_SCAN_HP()
-    if S.hit_effect_enabled ~= true
+    if (
+            S.hit_effect_enabled ~= true
+            and S.damage_numbers_enabled ~= true
+        )
         or S.aim_enabled ~= true
     then
         FALLEN_HITFX.target_key = nil
@@ -14975,11 +15266,20 @@ function FALLEN_HITFX_SCAN_HP()
     then
         FALLEN_HITFX.last_spawn = tick()
 
-        FALLEN_HITFX_ADD({
-            X = FAP.current_target_pos.X,
-            Y = FAP.current_target_pos.Y,
-            Z = FAP.current_target_pos.Z,
-        })
+        -- Both visuals are fed by this SAME validated damage event.
+        if S.hit_effect_enabled == true then
+            FALLEN_HITFX_ADD({
+                X = FAP.current_target_pos.X,
+                Y = FAP.current_target_pos.Y,
+                Z = FAP.current_target_pos.Z,
+            })
+        end
+
+        if S.damage_numbers_enabled == true then
+            FALLEN_DMGNUM_ADD(
+                damage
+            )
+        end
     end
 
     FALLEN_HITFX.last_hp = hp
@@ -15294,6 +15594,7 @@ function FALLEN_HITFX_TICK()
 
     FALLEN_HITFX_SCAN_HP()
     FALLEN_HITFX_DRAW()
+    FALLEN_DMGNUM_DRAW()
 end
 
 hooks.on_render(function()
@@ -28442,7 +28743,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         right_x,
         y + 25,
         right_w,
-        96,
+        137,
         11
     )
 
@@ -28563,17 +28864,38 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         numeric_stop(true)
     end
 
+    line(
+        right_x + 12,
+        y + 113,
+        right_x + right_w - 12,
+        y + 113,
+        C.divider,
+        1
+    )
+
+    toggle_row(
+        mx,
+        my,
+        controls_clicked,
+        right_x,
+        y + 114,
+        right_w,
+        "Damage Numbers",
+        "damage_numbers_enabled",
+        false
+    )
+
     -- World Weather: compact master rows. Settings live behind the Aimbot-style
     -- ellipsis popups and open ONLY with RMB on the three dots.
     section_title(
         right_x,
-        y + 145,
+        y + 186,
         "World Weather"
     )
 
     card(
         right_x,
-        y + 170,
+        y + 211,
         right_w,
         101,
         11
@@ -28585,7 +28907,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         - 79
 
     local rain_dots_y =
-        y + 185
+        y + 226
 
     local rain_dots_hot =
         hover(
@@ -28603,7 +28925,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         controls_clicked
             and not rain_dots_hot,
         right_x,
-        y + 177,
+        y + 218,
         right_w,
         "World Rain",
         "world_rain_enabled",
@@ -28612,9 +28934,9 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
 
     line(
         right_x + 12,
-        y + 217,
+        y + 258,
         right_x + right_w - 12,
-        y + 217,
+        y + 258,
         C.divider,
         1
     )
@@ -28625,7 +28947,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         - 79
 
     local thunder_dots_y =
-        y + 226
+        y + 267
 
     local thunder_dots_hot =
         hover(
@@ -28643,7 +28965,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         controls_clicked
             and not thunder_dots_hot,
         right_x,
-        y + 218,
+        y + 259,
         right_w,
         "Thunderstorm",
         "world_thunder_enabled",
