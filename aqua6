@@ -199,6 +199,17 @@ local defaults = {
     -- Hotkeys overlay.
     keybinds_list_enabled = false,
 
+    -- Temporary Hotkeys tuning values.
+    -- After visual tuning these can be frozen as final defaults.
+    hotkeys_glow_strength = 200,
+    hotkeys_glow_spread = 8,
+    hotkeys_glow_alpha = 100,
+    hotkeys_opacity = 96,
+
+    -- Normalized screen position so drag placement scales with resolution.
+    hotkeys_pos_x = 0.008,
+    hotkeys_pos_y = 0.042,
+
     -- Custom profile avatar editor.
     avatar_display_size = 38,
     avatar_crop_zoom = 1.00,
@@ -708,6 +719,12 @@ local A = {
     keybinds_panel_last_t = nil,
     keybinds_item_anim = {},
     keybinds_item_last_t = nil,
+
+    -- Hotkeys panel dragging.
+    keybinds_panel_dragging = false,
+    keybinds_panel_drag_off_x = 0,
+    keybinds_panel_drag_off_y = 0,
+    keybinds_panel_prev_lmb = false,
 
     gear_hover_anim = 0,
     gear_hover_last_t = nil,
@@ -24412,7 +24429,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or menu_type_lower == "blur"
 
     local ph =
-        426
+        590
         + (
             gradient_selected
             and 82
@@ -24836,10 +24853,8 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
-        -- Secret setting is completely absent until the hidden brand gesture.
-        if A.secret_unlocked
-            and shell_h > 451 + weather_offset
-        then
+        -- Temporary Hotkeys visual tuning.
+        if shell_h > 451 + weather_offset then
             line(
                 px + 12,
                 py + 408 + weather_offset,
@@ -24849,12 +24864,119 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 1
             )
 
+            slider_row(
+                mx,
+                my,
+                row_clicked,
+                lmb,
+                px + 8,
+                py + 409 + weather_offset,
+                pw - 16,
+                "Hotkeys Glow Strength",
+                "hotkeys_glow_strength",
+                0,
+                200,
+                "int"
+            )
+        end
+
+        if shell_h > 492 + weather_offset then
+            line(
+                px + 12,
+                py + 449 + weather_offset,
+                px + pw - 12,
+                py + 449 + weather_offset,
+                C.divider,
+                1
+            )
+
+            slider_row(
+                mx,
+                my,
+                row_clicked,
+                lmb,
+                px + 8,
+                py + 450 + weather_offset,
+                pw - 16,
+                "Hotkeys Glow Spread",
+                "hotkeys_glow_spread",
+                1,
+                12,
+                "int"
+            )
+        end
+
+        if shell_h > 533 + weather_offset then
+            line(
+                px + 12,
+                py + 490 + weather_offset,
+                px + pw - 12,
+                py + 490 + weather_offset,
+                C.divider,
+                1
+            )
+
+            slider_row(
+                mx,
+                my,
+                row_clicked,
+                lmb,
+                px + 8,
+                py + 491 + weather_offset,
+                pw - 16,
+                "Hotkeys Glow Alpha",
+                "hotkeys_glow_alpha",
+                0,
+                100,
+                "int"
+            )
+        end
+
+        if shell_h > 574 + weather_offset then
+            line(
+                px + 12,
+                py + 531 + weather_offset,
+                px + pw - 12,
+                py + 531 + weather_offset,
+                C.divider,
+                1
+            )
+
+            slider_row(
+                mx,
+                my,
+                row_clicked,
+                lmb,
+                px + 8,
+                py + 532 + weather_offset,
+                pw - 16,
+                "Hotkeys Opacity",
+                "hotkeys_opacity",
+                10,
+                100,
+                "int"
+            )
+        end
+
+        -- Secret setting is completely absent until the hidden brand gesture.
+        if A.secret_unlocked
+            and shell_h > 615 + weather_offset
+        then
+            line(
+                px + 12,
+                py + 572 + weather_offset,
+                px + pw - 12,
+                py + 572 + weather_offset,
+                C.divider,
+                1
+            )
+
             toggle_row(
                 mx,
                 my,
                 row_clicked,
                 px + 8,
-                py + 409 + weather_offset,
+                py + 573 + weather_offset,
                 pw - 16,
                 "???",
                 "secret_enabled",
@@ -25011,16 +25133,46 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     local panel_rounding =
         13
 
-    local x =
+    local base_x =
         math.floor(
-            sw * 0.008
+            sw
+            * clamp(
+                tonumber(S.hotkeys_pos_x) or 0.008,
+                0,
+                1
+            )
             + 0.5
         )
 
-    local y =
+    local base_y =
         math.floor(
-            sh * 0.042
+            sh
+            * clamp(
+                tonumber(S.hotkeys_pos_y) or 0.042,
+                0,
+                1
+            )
             + 0.5
+        )
+
+    base_x =
+        clamp(
+            base_x,
+            0,
+            math.max(
+                0,
+                sw - panel_w
+            )
+        )
+
+    base_y =
+        clamp(
+            base_y,
+            0,
+            math.max(
+                0,
+                sh - panel_h
+            )
         )
 
     local open_ease =
@@ -25028,9 +25180,106 @@ function FALLEN_DRAW_KEYBINDS_LIST()
             panel_anim
         )
 
-    x =
-        x
+    local x =
+        base_x
         - (1 - open_ease) * 8
+
+    local y =
+        base_y
+
+    -- Drag anywhere on the Hotkeys panel with LMB.
+    local mx, my =
+        mouse_pos()
+
+    local lmb =
+        key_down(
+            VK_LBUTTON
+        )
+
+    local pressed =
+        lmb
+        and A.keybinds_panel_prev_lmb ~= true
+
+    if pressed
+        and hover(
+            mx,
+            my,
+            x,
+            y,
+            panel_w,
+            panel_h
+        )
+    then
+        A.keybinds_panel_dragging =
+            true
+
+        A.keybinds_panel_drag_off_x =
+            mx - base_x
+
+        A.keybinds_panel_drag_off_y =
+            my - base_y
+
+        A.active_slider =
+            nil
+    end
+
+    if A.keybinds_panel_dragging
+        and lmb
+    then
+        base_x =
+            clamp(
+                mx
+                - (
+                    tonumber(
+                        A.keybinds_panel_drag_off_x
+                    )
+                    or 0
+                ),
+                0,
+                math.max(
+                    0,
+                    sw - panel_w
+                )
+            )
+
+        base_y =
+            clamp(
+                my
+                - (
+                    tonumber(
+                        A.keybinds_panel_drag_off_y
+                    )
+                    or 0
+                ),
+                0,
+                math.max(
+                    0,
+                    sh - panel_h
+                )
+            )
+
+        S.hotkeys_pos_x =
+            sw > 0
+            and base_x / sw
+            or 0
+
+        S.hotkeys_pos_y =
+            sh > 0
+            and base_y / sh
+            or 0
+
+        x =
+            base_x
+
+        y =
+            base_y
+    elseif not lmb then
+        A.keybinds_panel_dragging =
+            false
+    end
+
+    A.keybinds_panel_prev_lmb =
+        lmb == true
 
     local old_alpha =
         MENU_RENDER_ALPHA
@@ -25044,20 +25293,36 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     MENU_UI_TRANSFORM_ACTIVE =
         false
 
-    -- Same glow profile as the custom Aimbot FOV:
-    -- 28 layers, squared falloff, spread*3.
+    -- Same controls/profile as Aimbot FOV glow:
+    -- Strength + Spread + Alpha.
     FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
         x,
         y,
         panel_w,
         panel_h,
         panel_rounding,
-        { 0, 0, 0, 1 },
-        2,      -- previous Hotkeys Glow = 200
-        8       -- 8 * 3 = 24px visual spread
+        {
+            0,
+            0,
+            0,
+            clamp(
+                (tonumber(S.hotkeys_glow_alpha) or 100) / 100,
+                0,
+                1
+            )
+        },
+        clamp(
+            (tonumber(S.hotkeys_glow_strength) or 200) / 100,
+            0,
+            2
+        ),
+        clamp(
+            tonumber(S.hotkeys_glow_spread) or 8,
+            1,
+            12
+        )
     )
 
-    -- Less transparent than before: 96% opaque black.
     rounded_fill(
         x,
         y,
@@ -25068,7 +25333,11 @@ function FALLEN_DRAW_KEYBINDS_LIST()
             0.008,
             0.008,
             0.010,
-            0.96
+            clamp(
+                (tonumber(S.hotkeys_opacity) or 96) / 100,
+                0.10,
+                1
+            )
         }
     )
 
