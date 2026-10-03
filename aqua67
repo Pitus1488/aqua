@@ -36243,50 +36243,6 @@ function FALLEN_MISC_DESYNC_BIND_IS_ON()
 end
 
 
-function FALLEN_MISC_DESYNC_MASTER_SET(
-    enabled
-)
-    enabled =
-        enabled == true
-
-    if not cheat then
-        return false
-    end
-
-    local misc = nil
-    local wrote = false
-
-    pcall(function()
-        misc =
-            cheat.misc
-    end)
-
-    if not misc then
-        return false
-    end
-
-    -- IMPORTANT:
-    -- Do not scan/write every "desync*" boolean here.
-    -- Builds can expose unrelated options such as "Use tick".
-    -- Only touch the explicit Desync master mirrors.
-    pcall(function()
-        misc.desync =
-            enabled
-
-        wrote = true
-    end)
-
-    pcall(function()
-        misc.desync_enabled =
-            enabled
-
-        wrote = true
-    end)
-
-    return wrote
-end
-
-
 function FALLEN_MISC_DESYNC_BIND_SET(
     enabled
 )
@@ -36304,7 +36260,8 @@ function FALLEN_MISC_DESYNC_BIND_SET(
             cheat.misc
     end)
 
-    -- Keep Desync's stock bind in Toggle mode.
+    -- Keep the stock Desync bind in Toggle mode.
+    -- This changes only the bind mode, never the Desync master checkbox.
     if misc
         and type(misc._keys) == "function"
     then
@@ -36367,89 +36324,179 @@ function FALLEN_MISC_DESYNC_BIND_SET(
     local keybinds =
         cheat.keybinds
 
-    if keybinds then
-        -- Write ALL build-specific desync toggle/active fields, not only one
-        -- guessed field name.
-        if type(keybinds._keys) == "function" then
-            local keys = nil
+    if not keybinds then
+        return false
+    end
 
-            pcall(function()
-                keys =
-                    keybinds:_keys()
-            end)
+    -- First write every discovered Desync toggle latch.
+    if type(keybinds._keys) == "function" then
+        local keys = nil
 
-            if type(keys) == "table" then
-                for _, raw_key in ipairs(keys) do
-                    local key =
-                        tostring(raw_key)
+        pcall(function()
+            keys =
+                keybinds:_keys()
+        end)
 
-                    local normalized =
-                        string.lower(key)
+        if type(keys) == "table" then
+            for _, raw_key in ipairs(keys) do
+                local key =
+                    tostring(raw_key)
 
-                    normalized =
-                        string.gsub(
-                            normalized,
-                            "[%s_%-]",
-                            ""
-                        )
+                local normalized =
+                    string.lower(key)
 
-                    if string.find(
+                normalized =
+                    string.gsub(
+                        normalized,
+                        "[%s_%-]",
+                        ""
+                    )
+
+                local is_desync =
+                    string.find(
                         normalized,
                         "desync",
                         1,
                         true
-                    )
-                        and (
-                            string.find(
-                                normalized,
-                                "toggle",
-                                1,
-                                true
-                            )
-                            or string.find(
-                                normalized,
-                                "active",
-                                1,
-                                true
-                            )
-                        )
-                    then
-                        pcall(function()
-                            keybinds[key] =
-                                enabled
+                    ) ~= nil
 
-                            wrote = true
-                        end)
+                local is_toggle =
+                    string.find(
+                        normalized,
+                        "toggle",
+                        1,
+                        true
+                    ) ~= nil
+
+                local is_active =
+                    string.find(
+                        normalized,
+                        "active",
+                        1,
+                        true
+                    ) ~= nil
+
+                if is_desync
+                    and is_toggle
+                then
+                    pcall(function()
+                        keybinds[key] =
+                            enabled
+
+                        wrote = true
+                    end)
+
+                elseif is_desync
+                    and is_active
+                    and not enabled
+                then
+                    -- OFF behaves like releasing/deactivating the bind.
+                    -- ON does NOT fake active=true: we wait for the host to
+                    -- report the real active state before returning upstairs.
+                    pcall(function()
+                        keybinds[key] =
+                            false
+
+                        wrote = true
+                    end)
+                end
+            end
+        end
+    end
+
+    -- Known field fallback.
+    pcall(function()
+        keybinds.desync_toggled =
+            enabled
+
+        wrote = true
+    end)
+
+    if not enabled then
+        pcall(function()
+            keybinds.desync_active =
+                false
+
+            wrote = true
+        end)
+    end
+
+    return wrote
+end
+
+
+function FALLEN_MISC_DESYNC_BIND_ACTIVE()
+    if not cheat
+        or not cheat.keybinds
+    then
+        return false
+    end
+
+    local keybinds =
+        cheat.keybinds
+
+    -- Prefer discovered live active fields for this build.
+    if type(keybinds._keys) == "function" then
+        local keys = nil
+
+        pcall(function()
+            keys =
+                keybinds:_keys()
+        end)
+
+        if type(keys) == "table" then
+            for _, raw_key in ipairs(keys) do
+                local key =
+                    tostring(raw_key)
+
+                local normalized =
+                    string.lower(key)
+
+                normalized =
+                    string.gsub(
+                        normalized,
+                        "[%s_%-]",
+                        ""
+                    )
+
+                if string.find(
+                    normalized,
+                    "desync",
+                    1,
+                    true
+                )
+                    and string.find(
+                        normalized,
+                        "active",
+                        1,
+                        true
+                    )
+                then
+                    local active = false
+
+                    pcall(function()
+                        active =
+                            keybinds[key]
+                            == true
+                    end)
+
+                    if active then
+                        return true
                     end
                 end
             end
         end
-
-        -- Known field fallbacks.
-        pcall(function()
-            keybinds.desync_toggled =
-                enabled
-
-            wrote = true
-        end)
-
-        pcall(function()
-            keybinds.desync_active =
-                enabled
-
-            wrote = true
-        end)
     end
 
-    if not enabled then
-        -- OFF must be a real OFF, not just a visual latch change.
-        -- Kill any live/master Desync bools as well.
-        FALLEN_MISC_DESYNC_MASTER_SET(
-            false
-        )
-    end
+    local active = false
 
-    return wrote
+    pcall(function()
+        active =
+            keybinds.desync_active
+            == true
+    end)
+
+    return active == true
 end
 
 
@@ -36770,11 +36817,8 @@ function FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
             true
     end)
 
-    -- Arm only the real Desync master, then click its toggle latch.
-    FALLEN_MISC_DESYNC_MASTER_SET(
-        true
-    )
-
+    -- Never touch the stock Desync master checkbox here.
+    -- Only activate its bind latch, like pressing the configured toggle bind.
     FALLEN_MISC_DESYNC_BIND_SET(
         true
     )
@@ -36876,9 +36920,48 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
         tick()
 
     if stage == 1 then
-        -- Request() already teleported down immediately.
-        -- Because the hotkey hook calls this function in the same render frame,
-        -- wait only until the NEXT render frame before activating Desync.
+        -- Pin the HRP underground FIRST.
+        local below =
+            FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
+
+        if not below then
+            return
+        end
+
+        -- Activate the stock Desync bind while we are confirmed underground.
+        -- We intentionally do NOT write desync_active=true ourselves.
+        FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
+
+        A.misc_underground_desync_stage =
+            2
+
+        A.misc_underground_desync_time =
+            now
+
+        return
+    end
+
+    if stage == 2 then
+        -- Critical ordering: every frame starts by forcing the HRP underground.
+        -- Only after that do we inspect the host's REAL live active state.
+        FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
+
+        if FALLEN_MISC_DESYNC_BIND_ACTIVE() then
+            -- The host has now actually activated Desync while we are below.
+            -- Return immediately to the exact X/Y/Z captured before TP.
+            A.misc_underground_desync_stage =
+                3
+
+            A.misc_underground_return_confirm_frames =
+                0
+
+            A.misc_underground_return_started =
+                now
+
+            FALLEN_MISC_UNDERGROUND_RETURN_TICK()
+            return
+        end
+
         local elapsed =
             now
             - (
@@ -36886,26 +36969,25 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
                 or now
             )
 
-        if elapsed < 0.008 then
-            return
+        if elapsed >= 0.12 then
+            -- Never allow a delayed activation after we already went upstairs.
+            -- Cancel the bind first, THEN return to the exact saved position.
+            FALLEN_MISC_DESYNC_BIND_SET(
+                false
+            )
+
+            A.misc_underground_desync_stage =
+                3
+
+            A.misc_underground_return_confirm_frames =
+                0
+
+            A.misc_underground_return_started =
+                now
+
+            FALLEN_MISC_UNDERGROUND_RETURN_TICK()
         end
 
-        -- Re-assert the underground point once, activate Desync there,
-        -- then immediately start teleporting to the EXACT saved origin.
-        FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
-
-        FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
-
-        A.misc_underground_desync_stage =
-            3
-
-        A.misc_underground_return_confirm_frames =
-            0
-
-        A.misc_underground_return_started =
-            now
-
-        FALLEN_MISC_UNDERGROUND_RETURN_TICK()
         return
     end
 
@@ -36941,13 +37023,9 @@ hooks.on_render(function()
         and (A.misc_underground_desync_stage or 0) == 0
     then
         if FALLEN_MISC_DESYNC_BIND_IS_ON() then
-            -- Toggle OFF: absolutely no teleport.
-            -- Kill every discovered bind/live/master Desync state.
+            -- Toggle OFF: no teleport and do NOT touch the Desync checkbox.
+            -- This only releases/clears the stock bind state.
             FALLEN_MISC_DESYNC_BIND_SET(
-                false
-            )
-
-            FALLEN_MISC_DESYNC_MASTER_SET(
                 false
             )
         else
