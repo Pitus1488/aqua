@@ -583,6 +583,7 @@ local A = {
 
     -- Boulder VFX runtime.
     misc_boulder_last_apply = 0,
+    misc_boulder_root_addr = nil,
     misc_boulder_arms_last_enabled = false,
     misc_boulder_weapon_last_enabled = false,
     misc_boulder_original = {},
@@ -38654,7 +38655,78 @@ function FALLEN_MISC_BOULDER_FIND()
             )
     end)
 
-    return boulder
+    if boulder
+        and FALLEN_MISC_BOULDER_INSTANCE_VALID(
+            boulder
+        )
+    then
+        return boulder
+    end
+
+    return nil
+end
+
+
+function FALLEN_MISC_BOULDER_INSTANCE_VALID(
+    inst
+)
+    if not inst
+        or not inst.addr
+    then
+        return false
+    end
+
+    local valid =
+        false
+
+    if type(inst.is_valid) == "function" then
+        local ok, result =
+            pcall(function()
+                return
+                    inst:is_valid()
+            end)
+
+        if ok
+            and result == true
+        then
+            valid =
+                true
+        end
+    end
+
+    if not valid then
+        return false
+    end
+
+    if memory
+        and type(memory.is_valid) == "function"
+    then
+        local ok, mem_valid =
+            pcall(
+                memory.is_valid,
+                inst.addr
+            )
+
+        if not ok
+            or mem_valid ~= true
+        then
+            return false
+        end
+    end
+
+    return true
+end
+
+
+function FALLEN_MISC_BOULDER_CLEAR_DEAD_CACHE()
+    -- IMPORTANT:
+    -- Never try to restore parts after the whole VFX model disappeared.
+    -- Those instance/primitive pointers belong to the destroyed Boulder.
+    A.misc_boulder_original =
+        {}
+
+    A.misc_boulder_root_addr =
+        nil
 end
 
 
@@ -38664,7 +38736,11 @@ function FALLEN_MISC_BOULDER_FOLDER(
     local root =
         FALLEN_MISC_BOULDER_FIND()
 
-    if not root then
+    if not root
+        or not FALLEN_MISC_BOULDER_INSTANCE_VALID(
+            root
+        )
+    then
         return nil
     end
 
@@ -38679,7 +38755,15 @@ function FALLEN_MISC_BOULDER_FOLDER(
             )
     end)
 
-    return folder
+    if folder
+        and FALLEN_MISC_BOULDER_INSTANCE_VALID(
+            folder
+        )
+    then
+        return folder
+    end
+
+    return nil
 end
 
 
@@ -38723,7 +38807,11 @@ function FALLEN_MISC_BOULDER_COLLECT_MESHPARTS(
             )
             or 0
 
-        if inst then
+        if inst
+            and FALLEN_MISC_BOULDER_INSTANCE_VALID(
+                inst
+            )
+        then
             local is_mesh =
                 false
 
@@ -38749,10 +38837,15 @@ function FALLEN_MISC_BOULDER_COLLECT_MESHPARTS(
 
                 if type(children) == "table" then
                     for _, child in ipairs(children) do
-                        queue[#queue + 1] = {
-                            inst = child,
-                            depth = depth + 1,
-                        }
+                        if FALLEN_MISC_BOULDER_INSTANCE_VALID(
+                            child
+                        )
+                        then
+                            queue[#queue + 1] = {
+                                inst = child,
+                                depth = depth + 1,
+                            }
+                        end
                     end
                 end
             end
@@ -38766,14 +38859,30 @@ end
 function FALLEN_MISC_BOULDER_PRIMITIVE(
     part
 )
-    if not part
-        or not part.addr
+    if not FALLEN_MISC_BOULDER_INSTANCE_VALID(
+        part
+    )
         or not memory
         or not memory.offsets
         or not memory.offsets.Primitive
         or type(memory.read_ptr) ~= "function"
     then
         return nil
+    end
+
+    if type(memory.is_valid) == "function" then
+        local ok_addr, valid_addr =
+            pcall(
+                memory.is_valid,
+                part.addr
+                + memory.offsets.Primitive
+            )
+
+        if not ok_addr
+            or valid_addr ~= true
+        then
+            return nil
+        end
     end
 
     local prim = nil
@@ -38792,6 +38901,20 @@ function FALLEN_MISC_BOULDER_PRIMITIVE(
         return nil
     end
 
+    if type(memory.is_valid) == "function" then
+        local ok_prim, valid_prim =
+            pcall(
+                memory.is_valid,
+                prim
+            )
+
+        if not ok_prim
+            or valid_prim ~= true
+        then
+            return nil
+        end
+    end
+
     return prim
 end
 
@@ -38800,8 +38923,9 @@ function FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
     part,
     group
 )
-    if not part
-        or not part.addr
+    if not FALLEN_MISC_BOULDER_INSTANCE_VALID(
+        part
+    )
     then
         return
     end
@@ -38844,11 +38968,18 @@ function FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
             and type(memory.read_f32) == "function"
         then
             pcall(function()
-                rec.transparency =
-                    memory.read_f32(
-                        prim
-                        + memory.offsets.Transparency
-                    )
+                local addr =
+                    prim
+                    + memory.offsets.Transparency
+
+                if type(memory.is_valid) ~= "function"
+                    or memory.is_valid(addr)
+                then
+                    rec.transparency =
+                        memory.read_f32(
+                            addr
+                        )
+                end
             end)
         end
 
@@ -38856,11 +38987,18 @@ function FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
             and type(memory.read_f32) == "function"
         then
             pcall(function()
-                rec.reflectance =
-                    memory.read_f32(
-                        prim
-                        + memory.offsets.Reflectance
-                    )
+                local addr =
+                    prim
+                    + memory.offsets.Reflectance
+
+                if type(memory.is_valid) ~= "function"
+                    or memory.is_valid(addr)
+                then
+                    rec.reflectance =
+                        memory.read_f32(
+                            addr
+                        )
+                end
             end)
         end
 
@@ -38868,11 +39006,18 @@ function FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
             and type(memory.read_vec3) == "function"
         then
             pcall(function()
-                rec.color =
-                    memory.read_vec3(
-                        prim
-                        + memory.offsets.BasePartColor
-                    )
+                local addr =
+                    prim
+                    + memory.offsets.BasePartColor
+
+                if type(memory.is_valid) ~= "function"
+                    or memory.is_valid(addr)
+                then
+                    rec.color =
+                        memory.read_vec3(
+                            addr
+                        )
+                end
             end)
         end
     end
@@ -38910,7 +39055,10 @@ function FALLEN_MISC_BOULDER_APPLY_GROUP_PART(
     group,
     prefix
 )
-    if not part then
+    if not FALLEN_MISC_BOULDER_INSTANCE_VALID(
+        part
+    )
+    then
         return
     end
 
@@ -38960,15 +39108,22 @@ function FALLEN_MISC_BOULDER_APPLY_GROUP_PART(
         and type(memory.write_vec3) == "function"
     then
         pcall(function()
-            memory.write_vec3(
+            local addr =
                 prim
-                + memory.offsets.BasePartColor,
-                Vector3(
-                    color[1],
-                    color[2],
-                    color[3]
+                + memory.offsets.BasePartColor
+
+            if type(memory.is_valid) ~= "function"
+                or memory.is_valid(addr)
+            then
+                memory.write_vec3(
+                    addr,
+                    Vector3(
+                        color[1],
+                        color[2],
+                        color[3]
+                    )
                 )
-            )
+            end
         end)
     end
 
@@ -38976,11 +39131,18 @@ function FALLEN_MISC_BOULDER_APPLY_GROUP_PART(
         and type(memory.write_f32) == "function"
     then
         pcall(function()
-            memory.write_f32(
+            local addr =
                 prim
-                + memory.offsets.Reflectance,
-                reflectance
-            )
+                + memory.offsets.Reflectance
+
+            if type(memory.is_valid) ~= "function"
+                or memory.is_valid(addr)
+            then
+                memory.write_f32(
+                    addr,
+                    reflectance
+                )
+            end
         end)
     end
 end
@@ -39029,7 +39191,12 @@ function FALLEN_MISC_BOULDER_RESTORE_GROUP(
             local part =
                 rec.part
 
-            if part then
+            -- If the VFX model was unequipped/destroyed, the old handle must
+            -- NEVER be touched. Just forget that cache entry.
+            if FALLEN_MISC_BOULDER_INSTANCE_VALID(
+                part
+            )
+            then
                 if rec.transparency ~= nil then
                     pcall(function()
                         part:set_transparency(
@@ -39056,11 +39223,18 @@ function FALLEN_MISC_BOULDER_RESTORE_GROUP(
                         and type(memory.write_f32) == "function"
                     then
                         pcall(function()
-                            memory.write_f32(
+                            local addr =
                                 prim
-                                + memory.offsets.Reflectance,
-                                rec.reflectance
-                            )
+                                + memory.offsets.Reflectance
+
+                            if type(memory.is_valid) ~= "function"
+                                or memory.is_valid(addr)
+                            then
+                                memory.write_f32(
+                                    addr,
+                                    rec.reflectance
+                                )
+                            end
                         end)
                     end
 
@@ -39072,15 +39246,22 @@ function FALLEN_MISC_BOULDER_RESTORE_GROUP(
                         and type(memory.write_vec3) == "function"
                     then
                         pcall(function()
-                            memory.write_vec3(
+                            local addr =
                                 prim
-                                + memory.offsets.BasePartColor,
-                                Vector3(
-                                    rec.color.X,
-                                    rec.color.Y,
-                                    rec.color.Z
+                                + memory.offsets.BasePartColor
+
+                            if type(memory.is_valid) ~= "function"
+                                or memory.is_valid(addr)
+                            then
+                                memory.write_vec3(
+                                    addr,
+                                    Vector3(
+                                        rec.color.X,
+                                        rec.color.Y,
+                                        rec.color.Z
+                                    )
                                 )
-                            )
+                            end
                         end)
                     end
                 end
@@ -39106,6 +39287,39 @@ function FALLEN_MISC_BOULDER_TICK()
     local weapon_enabled =
         S.misc_boulder_weapon_enabled
         == true
+
+    local root =
+        FALLEN_MISC_BOULDER_FIND()
+
+    if not root then
+        -- Unequipped: Boulder model is gone. Its old MeshParts are dead.
+        -- Clear cached handles without calling any method/raw memory on them.
+        if A.misc_boulder_root_addr ~= nil
+            or next(
+                A.misc_boulder_original
+                or {}
+            ) ~= nil
+        then
+            FALLEN_MISC_BOULDER_CLEAR_DEAD_CACHE()
+        end
+
+        return
+    end
+
+    local root_addr =
+        root.addr
+
+    if A.misc_boulder_root_addr ~= root_addr then
+        -- New/recreated Boulder. Old cache belongs to another model instance.
+        A.misc_boulder_original =
+            {}
+
+        A.misc_boulder_root_addr =
+            root_addr
+
+        A.misc_boulder_last_apply =
+            0
+    end
 
     if A.misc_boulder_arms_last_enabled ~= arms_enabled then
         A.misc_boulder_arms_last_enabled =
@@ -39135,7 +39349,6 @@ function FALLEN_MISC_BOULDER_TICK()
         end
     end
 
-
     if not arms_enabled
         and not weapon_enabled
     then
@@ -39159,7 +39372,7 @@ function FALLEN_MISC_BOULDER_TICK()
     A.misc_boulder_last_apply =
         now
 
-    -- VFX/VM models can be recreated, so reacquire exact folders every pass.
+    -- Always reacquire the current folders/MeshParts. Never reuse old handles.
     if arms_enabled then
         FALLEN_MISC_BOULDER_APPLY_GROUP(
             "Arms",
@@ -39175,7 +39388,6 @@ function FALLEN_MISC_BOULDER_TICK()
             "misc_boulder_weapon"
         )
     end
-
 end
 
 
