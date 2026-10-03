@@ -150,6 +150,12 @@ local defaults = {
     hit_effect_enabled = false,
     hit_effect_style = "Hit 1",
     damage_numbers_enabled = false,
+    damage_numbers_size = 14,
+    damage_numbers_speed = 100,
+    damage_numbers_h = 0.625,
+    damage_numbers_s = 0.55,
+    damage_numbers_v = 0.92,
+    damage_numbers_alpha = 100,
     -- Armor ESP.
     armor_esp_enabled = false,
     armor_esp_mode = "Normal",
@@ -508,6 +514,11 @@ local A = {
     silent_fov_settings_open = false,
     silent_fov_settings_anim = 0,
     silent_fov_settings_last_t = nil,
+
+    -- Damage Numbers three-dots settings popup.
+    damage_numbers_settings_open = false,
+    damage_numbers_settings_anim = 0,
+    damage_numbers_settings_last_t = nil,
 
     -- Body-part dropdown inside Aimbot settings.
     aim_part_dropdown_open = false,
@@ -3866,6 +3877,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.silent_part_dropdown_open = false
         A.fov_settings_open = false
         A.silent_fov_settings_open = false
+        A.damage_numbers_settings_open = false
         A.fov_picker_open = false
         A.world_settings_open = false
         A.world_color_picker_open = false
@@ -10990,6 +11002,9 @@ local function fap_find_target(cross, cam)
             600
         )
 
+    local use_fov =
+        S.aim_fov_enabled == true
+
     local best = nil
     local best_sd = math.huge
 
@@ -11050,7 +11065,10 @@ local function fap_find_target(cross, cam)
                         + dy * dy
                     )
 
-                if sd <= fov
+                if (
+                        not use_fov
+                        or sd <= fov
+                    )
                     and sd < best_sd
                 then
                     best_sd = sd
@@ -11110,38 +11128,9 @@ function FALLEN_CUSTOM_AIMBOT_TICK()
         return
     end
 
-    -- Use the same cursor-space origin as our visible custom FOV.
-    local mx, my = nil, nil
-
-    if type(mouse_pos) == "function" then
-        pcall(function()
-            mx, my =
-                mouse_pos()
-        end)
-    end
-
-    if not mx
-        or not my
-    then
-        pcall(function()
-            if type(crosshair_pos) == "function" then
-                local c =
-                    crosshair_pos()
-
-                if c then
-                    mx =
-                        c.X
-                        or c.x
-                        or c[1]
-
-                    my =
-                        c.Y
-                        or c.y
-                        or c[2]
-                end
-            end
-        end)
-    end
+    -- Use the exact same center as the visible custom FOV renderer.
+    local mx, my =
+        FALLEN_CUSTOM_FOV_CENTER()
 
     mx =
         tonumber(mx)
@@ -12646,36 +12635,71 @@ function FALLEN_SILENT_SET_FOV_ENABLED(
     S.silent_fov_enabled =
         value
 
-    -- Keep custom Aimbot FOV completely independent.
-    -- Silent must never mutate S.aim_fov_enabled.
-
-    local changed_any =
-        false
+    -- Target-side FOV gate belongs to Silent only.
+    FALLEN_SILENT_WRITE_FIELD(
+        "fov_only",
+        value
+    )
 
     local silent =
         FALLEN_SILENT_LIVE_SECTION()
 
-    local s_fields =
-        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
-            silent,
-            value,
-            "silent_aim"
-        )
+    if silent then
+        local wrote_visual =
+            false
 
-    if #s_fields > 0 then
-        changed_any =
-            true
+        local keys =
+            FALLEN_SILENT_SECTION_KEYS()
+
+        if type(keys) == "table" then
+            local visual_names = {
+                showfov = true,
+                drawfov = true,
+                displayfov = true,
+                renderfov = true,
+                fovvisible = true,
+                fovvisual = true,
+                fovcircle = true,
+            }
+
+            for _, raw_key in ipairs(keys) do
+                local raw =
+                    tostring(raw_key)
+
+                local normalized =
+                    FALLEN_SILENT_NORMALIZE_KEY(
+                        raw
+                    )
+
+                if visual_names[normalized] then
+                    local ok_write =
+                        pcall(function()
+                            silent[raw] =
+                                value
+                        end)
+
+                    if ok_write then
+                        wrote_visual =
+                            true
+                    end
+                end
+            end
+        end
+
+        -- Documented/common Silent visual field fallback.
+        if not wrote_visual then
+            pcall(function()
+                silent.show_fov =
+                    value
+            end)
+        end
     end
 
-    -- Silent-only fallback for builds where _keys() is unavailable.
-    if not changed_any
-        and silent
-    then
-        pcall(function()
-            silent.show_fov =
-                value
-        end)
-    end
+    -- Radius and color are mirrored into the stock Silent section/menu too.
+    FALLEN_SYNC_STOCK_FOV_VISUAL(
+        S.silent_fov,
+        FALLEN_SILENT_FOV_COLOR()
+    )
 
     return true
 end
@@ -12709,14 +12733,12 @@ function FALLEN_SILENT_SET_FOV(
         end)
     end
 
-    -- Our Aimbot remains custom and is NOT enabled/controlled here.
-    -- The stock Aimbot FOV number is touched only as a visual radius mirror.
-    if S.silent_fov_enabled == true then
-        FALLEN_SYNC_STOCK_FOV_VISUAL(
-            fov,
-            FALLEN_SILENT_FOV_COLOR()
-        )
-    end
+    -- Mirror Silent radius/color into the stock Silent section/menu.
+    -- Stock Aimbot is never touched.
+    FALLEN_SYNC_STOCK_FOV_VISUAL(
+        fov,
+        FALLEN_SILENT_FOV_COLOR()
+    )
 
     FALLEN_SILENT_SET_FOV_ENABLED(
         S.silent_fov_enabled == true
@@ -13262,14 +13284,12 @@ function FALLEN_SILENT_TICK()
             silent_runtime_fov
     end)
 
-    -- Make the built-in FOV visual match OUR Silent FOV exactly:
-    -- same radius and same color picker value.
-    if S.silent_fov_enabled == true then
-        FALLEN_SYNC_STOCK_FOV_VISUAL(
-            silent_runtime_fov,
-            FALLEN_SILENT_FOV_COLOR()
-        )
-    end
+    -- Keep the built-in SILENT FOV/menu synchronized continuously:
+    -- same enabled state, radius and color as our Silent controls.
+    FALLEN_SYNC_STOCK_FOV_VISUAL(
+        silent_runtime_fov,
+        FALLEN_SILENT_FOV_COLOR()
+    )
 
     -- When the menu is closed, keep our UI cache following the stock cheat
     -- instead of overwriting the stock cheat with stale S.* values.
@@ -13279,28 +13299,8 @@ function FALLEN_SILENT_TICK()
 end
 
 function FALLEN_CUSTOM_FOV_CENTER()
-    -- Use the SAME mouse_pos() helper that the Fallen menu/weather already uses.
-    -- It returns the mouse in the same client-space coordinates as Drawing.
-    if type(mouse_pos) == "function" then
-        local ok, mx, my =
-            pcall(
-                mouse_pos
-            )
-
-        if ok then
-            mx =
-                tonumber(mx)
-
-            my =
-                tonumber(my)
-
-            if mx and my then
-                return mx, my
-            end
-        end
-    end
-
-    -- Fallback: game crosshair position.
+    -- Prefer the actual game crosshair. This keeps the visible circle and the
+    -- aiming radius in exactly the same coordinate space.
     if type(crosshair_pos) == "function" then
         local ok, c =
             pcall(
@@ -13324,6 +13324,26 @@ function FALLEN_CUSTOM_FOV_CENTER()
 
             if x and y then
                 return x, y
+            end
+        end
+    end
+
+    -- Fallback for builds where crosshair_pos is unavailable.
+    if type(mouse_pos) == "function" then
+        local ok, mx, my =
+            pcall(
+                mouse_pos
+            )
+
+        if ok then
+            mx =
+                tonumber(mx)
+
+            my =
+                tonumber(my)
+
+            if mx and my then
+                return mx, my
             end
         end
     end
@@ -13364,8 +13384,8 @@ function FALLEN_SYNC_STOCK_FOV_VISUAL(
     radius,
     color
 )
-    -- This ONLY synchronizes the stock FOV VISUAL.
-    -- It does not enable cheat.aimbot and does not touch its aim logic.
+    -- SILENT ONLY.
+    -- This function never reads/writes cheat.aimbot.
     radius =
         math.floor(
             clamp(
@@ -13381,10 +13401,68 @@ function FALLEN_SYNC_STOCK_FOV_VISUAL(
         color
         or { 1, 1, 1, 1 }
 
-    -- Never touch cheat.aimbot here. Our Aimbot/FOV is fully custom.
-    -- Silent FOV is drawn by our own custom FOV renderer as well.
+    local silent =
+        FALLEN_SILENT_LIVE_SECTION()
 
-    -- FOV color lives in esp_colors according to the custom API.
+    if silent then
+        -- Keep the stock Silent menu radius synchronized with our slider.
+        pcall(function()
+            silent.fov =
+                radius
+        end)
+
+        -- Keep the stock Silent FOV visibility synchronized with our checkbox.
+        local keys =
+            FALLEN_SILENT_SECTION_KEYS()
+
+        local wrote_visual =
+            false
+
+        if type(keys) == "table" then
+            local visual_names = {
+                showfov = true,
+                drawfov = true,
+                displayfov = true,
+                renderfov = true,
+                fovvisible = true,
+                fovvisual = true,
+                fovcircle = true,
+            }
+
+            for _, raw_key in ipairs(keys) do
+                local raw =
+                    tostring(raw_key)
+
+                local normalized =
+                    FALLEN_SILENT_NORMALIZE_KEY(
+                        raw
+                    )
+
+                if visual_names[normalized] then
+                    local ok_write =
+                        pcall(function()
+                            silent[raw] =
+                                S.silent_fov_enabled == true
+                        end)
+
+                    if ok_write then
+                        wrote_visual =
+                            true
+                    end
+                end
+            end
+        end
+
+        if not wrote_visual then
+            pcall(function()
+                silent.show_fov =
+                    S.silent_fov_enabled == true
+            end)
+        end
+    end
+
+    -- The stock FOV color is shared through esp_colors in this API.
+    -- We update it only from Silent synchronization; custom Aimbot remains local.
     if cheat
         and cheat.esp_colors
     then
@@ -13416,12 +13494,85 @@ function FALLEN_SYNC_STOCK_FOV_VISUAL(
                 rgba
         end)
 
-        -- Some builds use the same color for the aim/FOV line.
         pcall(function()
             cheat.esp_colors.aim_line =
                 rgba
         end)
     end
+end
+
+
+function FALLEN_CUSTOM_DRAW_CIRCLE(
+    cx,
+    cy,
+    radius,
+    color,
+    thickness
+)
+    local fn =
+        DrawCircle
+
+    if type(fn) ~= "function"
+        and Drawing
+        and type(Drawing.DrawCircle) == "function"
+    then
+        fn =
+            Drawing.DrawCircle
+    end
+
+    if type(fn) ~= "function" then
+        return false
+    end
+
+    pcall(
+        fn,
+        cx,
+        cy,
+        radius,
+        color[1],
+        color[2],
+        color[3],
+        color[4] or 1,
+        thickness or 1
+    )
+
+    return true
+end
+
+
+function FALLEN_CUSTOM_DRAW_CIRCLE_FILLED(
+    cx,
+    cy,
+    radius,
+    color
+)
+    local fn =
+        DrawCircleFilled
+
+    if type(fn) ~= "function"
+        and Drawing
+        and type(Drawing.DrawCircleFilled) == "function"
+    then
+        fn =
+            Drawing.DrawCircleFilled
+    end
+
+    if type(fn) ~= "function" then
+        return false
+    end
+
+    pcall(
+        fn,
+        cx,
+        cy,
+        radius,
+        color[1],
+        color[2],
+        color[3],
+        color[4] or 1
+    )
+
+    return true
 end
 
 
@@ -13435,9 +13586,7 @@ function FALLEN_DRAW_ONE_CUSTOM_FOV(
     glow_spread,
     filled
 )
-    if enabled ~= true
-        or type(DrawCircle) ~= "function"
-    then
+    if enabled ~= true then
         return
     end
 
@@ -13466,18 +13615,18 @@ function FALLEN_DRAW_ONE_CUSTOM_FOV(
         glow_color
         or color
 
-    if filled == true
-        and type(DrawCircleFilled) == "function"
-    then
-        DrawCircleFilled(
+    if filled == true then
+        FALLEN_CUSTOM_DRAW_CIRCLE_FILLED(
             cx,
             cy,
             radius,
-            color[1],
-            color[2],
-            color[3],
-            (color[4] or 1)
-                * 0.075
+            {
+                color[1],
+                color[2],
+                color[3],
+                (color[4] or 1)
+                    * 0.075,
+            }
         )
     end
 
@@ -13518,28 +13667,27 @@ function FALLEN_DRAW_ONE_CUSTOM_FOV(
                 * falloff
                 * 0.20
 
-            DrawCircle(
+            FALLEN_CUSTOM_DRAW_CIRCLE(
                 cx,
                 cy,
                 gr,
-                glow_color[1],
-                glow_color[2],
-                glow_color[3],
-                ga,
+                {
+                    glow_color[1],
+                    glow_color[2],
+                    glow_color[3],
+                    ga,
+                },
                 1.15
                     + falloff * 0.55
             )
         end
     end
 
-    DrawCircle(
+    FALLEN_CUSTOM_DRAW_CIRCLE(
         cx,
         cy,
         radius,
-        color[1],
-        color[2],
-        color[3],
-        color[4] or 1,
+        color,
         1.25
     )
 end
@@ -14535,6 +14683,297 @@ function FALLEN_DMGNUM_ADD(
 end
 
 
+_G.FALLEN_DMGNUM_GLYPHS =
+    _G.FALLEN_DMGNUM_GLYPHS
+    or {
+        ["0"] = {
+            "01110",
+            "10001",
+            "10011",
+            "10101",
+            "11001",
+            "10001",
+            "01110",
+        },
+        ["1"] = {
+            "00100",
+            "01100",
+            "00100",
+            "00100",
+            "00100",
+            "00100",
+            "01110",
+        },
+        ["2"] = {
+            "01110",
+            "10001",
+            "00001",
+            "00010",
+            "00100",
+            "01000",
+            "11111",
+        },
+        ["3"] = {
+            "11110",
+            "00001",
+            "00001",
+            "01110",
+            "00001",
+            "00001",
+            "11110",
+        },
+        ["4"] = {
+            "00010",
+            "00110",
+            "01010",
+            "10010",
+            "11111",
+            "00010",
+            "00010",
+        },
+        ["5"] = {
+            "11111",
+            "10000",
+            "10000",
+            "11110",
+            "00001",
+            "00001",
+            "11110",
+        },
+        ["6"] = {
+            "01110",
+            "10000",
+            "10000",
+            "11110",
+            "10001",
+            "10001",
+            "01110",
+        },
+        ["7"] = {
+            "11111",
+            "00001",
+            "00010",
+            "00100",
+            "01000",
+            "01000",
+            "01000",
+        },
+        ["8"] = {
+            "01110",
+            "10001",
+            "10001",
+            "01110",
+            "10001",
+            "10001",
+            "01110",
+        },
+        ["9"] = {
+            "01110",
+            "10001",
+            "10001",
+            "01111",
+            "00001",
+            "00001",
+            "01110",
+        },
+        ["-"] = {
+            "00000",
+            "00000",
+            "00000",
+            "11111",
+            "00000",
+            "00000",
+            "00000",
+        },
+    }
+
+
+function FALLEN_DMGNUM_COLOR()
+    local r, g, b =
+        hsv_to_rgb(
+            tonumber(S.damage_numbers_h) or 0.625,
+            tonumber(S.damage_numbers_s) or 0.55,
+            tonumber(S.damage_numbers_v) or 0.92
+        )
+
+    return {
+        r,
+        g,
+        b,
+        clamp(
+            (tonumber(S.damage_numbers_alpha) or 100) / 100,
+            0,
+            1
+        ),
+    }
+end
+
+
+function FALLEN_DMGNUM_TEXT_WIDTH(
+    label,
+    size
+)
+    label =
+        tostring(
+            label or ""
+        )
+
+    size =
+        clamp(
+            tonumber(size) or 14,
+            8,
+            30
+        )
+
+    local cell =
+        size / 7
+
+    local gap =
+        cell * 0.16
+
+    local glyph_w =
+        cell * 5
+        + gap * 4
+
+    local char_gap =
+        cell * 0.75
+
+    if #label <= 0 then
+        return 0
+    end
+
+    return
+        #label * glyph_w
+        + (#label - 1) * char_gap
+end
+
+
+function FALLEN_DMGNUM_DRAW_SCALED_TEXT(
+    center_x,
+    y,
+    label,
+    size,
+    color,
+    alpha_value
+)
+    if type(DrawBoxFilled) ~= "function" then
+        return
+    end
+
+    label =
+        tostring(
+            label or ""
+        )
+
+    size =
+        clamp(
+            tonumber(size) or 14,
+            8,
+            30
+        )
+
+    color =
+        color
+        or { 1, 1, 1, 1 }
+
+    local cell =
+        size / 7
+
+    local gap =
+        cell * 0.16
+
+    local glyph_w =
+        cell * 5
+        + gap * 4
+
+    local char_gap =
+        cell * 0.75
+
+    local total_w =
+        FALLEN_DMGNUM_TEXT_WIDTH(
+            label,
+            size
+        )
+
+    local cursor_x =
+        center_x
+        - total_w * 0.5
+
+    local outline =
+        clamp(
+            cell * 0.34,
+            0.55,
+            1.35
+        )
+
+    for ci = 1, #label do
+        local ch =
+            string.sub(
+                label,
+                ci,
+                ci
+            )
+
+        local glyph =
+            _G.FALLEN_DMGNUM_GLYPHS[ch]
+
+        if glyph then
+            for row = 1, 7 do
+                local bits =
+                    glyph[row]
+
+                for col = 1, 5 do
+                    if string.sub(
+                        bits,
+                        col,
+                        col
+                    ) == "1"
+                    then
+                        local px =
+                            cursor_x
+                            + (col - 1)
+                            * (cell + gap)
+
+                        local py =
+                            y
+                            + (row - 1)
+                            * (cell + gap)
+
+                        DrawBoxFilled(
+                            px - outline,
+                            py - outline,
+                            px + cell + outline,
+                            py + cell + outline,
+                            0,
+                            0,
+                            0,
+                            alpha_value * 0.72
+                        )
+
+                        DrawBoxFilled(
+                            px,
+                            py,
+                            px + cell,
+                            py + cell,
+                            color[1],
+                            color[2],
+                            color[3],
+                            alpha_value
+                                * (color[4] or 1)
+                        )
+                    end
+                end
+            end
+        end
+
+        cursor_x =
+            cursor_x
+            + glyph_w
+            + char_gap
+    end
+end
+
+
 function FALLEN_DMGNUM_DRAW()
     if type(FALLEN_DMGNUM.items) ~= "table" then
         FALLEN_DMGNUM.items = {}
@@ -14543,8 +14982,25 @@ function FALLEN_DMGNUM_DRAW()
     local now =
         tick()
 
+    local speed =
+        clamp(
+            (tonumber(S.damage_numbers_speed) or 100) / 100,
+            0.50,
+            2.00
+        )
+
     local life =
-        1.05
+        1.05 / speed
+
+    local size =
+        clamp(
+            tonumber(S.damage_numbers_size) or 14,
+            8,
+            30
+        )
+
+    local col =
+        FALLEN_DMGNUM_COLOR()
 
     for i = #FALLEN_DMGNUM.items, 1, -1 do
         local item =
@@ -14572,7 +15028,8 @@ function FALLEN_DMGNUM_DRAW()
                     1
                 )
 
-            -- Smooth upward flight: quick start, soft finish.
+            -- Same final travel, but Animation Speed changes how quickly
+            -- the number reaches it and disappears.
             local rise =
                 43
                 * (
@@ -14582,10 +15039,9 @@ function FALLEN_DMGNUM_DRAW()
                     * (1 - t)
                 )
 
-            -- Gentle fade-in, then a long smooth fade-out.
             local fade_in =
                 clamp(
-                    age / 0.09,
+                    age / (0.09 / speed),
                     0,
                     1
                 )
@@ -14602,7 +15058,7 @@ function FALLEN_DMGNUM_DRAW()
                 fade_out
                 * fade_out
 
-            local alpha =
+            local alpha_value =
                 fade_in
                 * fade_out
 
@@ -14613,63 +15069,18 @@ function FALLEN_DMGNUM_DRAW()
                     or 0
                 )
 
-            local cr =
-                (
-                    C
-                    and C.accent
-                    and C.accent[1]
-                )
-                or 1
-
-            local cg =
-                (
-                    C
-                    and C.accent
-                    and C.accent[2]
-                )
-                or 1
-
-            local cb =
-                (
-                    C
-                    and C.accent
-                    and C.accent[3]
-                )
-                or 1
-
             local draw_y =
                 item.y
                 - rise
 
-            if type(DrawTextWithOutline) == "function" then
-                -- DrawTextWithOutline takes centerX, which keeps the number
-                -- centered over the captured head position.
-                DrawTextWithOutline(
-                    item.x,
-                    draw_y,
-                    label,
-                    cr,
-                    cg,
-                    cb,
-                    alpha,
-                    0,
-                    0,
-                    0,
-                    alpha * 0.82
-                )
-            elseif type(DrawText) == "function" then
-                -- Approximate centering fallback.
-                DrawText(
-                    item.x
-                        - #label * 3.5,
-                    draw_y,
-                    label,
-                    cr,
-                    cg,
-                    cb,
-                    alpha
-                )
-            end
+            FALLEN_DMGNUM_DRAW_SCALED_TEXT(
+                item.x,
+                draw_y,
+                label,
+                size,
+                col,
+                alpha_value
+            )
         end
     end
 end
@@ -28899,6 +29310,373 @@ function FALLEN_DRAW_WORLD_THUNDER_SETTINGS_POPUP(
 end
 
 
+function FALLEN_DMGNUM_SETTINGS_STEP_ANIM()
+    local now =
+        tick()
+
+    if A.damage_numbers_settings_last_t == nil then
+        A.damage_numbers_settings_last_t =
+            now
+    end
+
+    local dt =
+        clamp(
+            now - A.damage_numbers_settings_last_t,
+            0,
+            0.05
+        )
+
+    A.damage_numbers_settings_last_t =
+        now
+
+    local target =
+        A.damage_numbers_settings_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.damage_numbers_settings_anim or 0)
+        and 13
+        or 10
+
+    A.damage_numbers_settings_anim =
+        exp_chase(
+            A.damage_numbers_settings_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if target == 0
+        and (A.damage_numbers_settings_anim or 0) < 0.02
+    then
+        A.damage_numbers_settings_anim =
+            0
+    elseif target == 1
+        and (A.damage_numbers_settings_anim or 0) > 0.992
+    then
+        A.damage_numbers_settings_anim =
+            1
+    end
+
+    return
+        clamp(
+            A.damage_numbers_settings_anim or 0,
+            0,
+            1
+        )
+end
+
+
+function FALLEN_DRAW_DMGNUM_SETTINGS_POPUP(
+    mx,
+    my,
+    clicked,
+    lmb,
+    dots_x,
+    dots_y
+)
+    local raw =
+        FALLEN_DMGNUM_SETTINGS_STEP_ANIM()
+
+    if raw <= 0.001
+        and not A.damage_numbers_settings_open
+    then
+        return false
+    end
+
+    local parent_alpha =
+        MENU_RENDER_ALPHA
+
+    local fade =
+        ease_out_cubic(raw)
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+        * fade
+
+    local anim =
+        A.damage_numbers_settings_open
+        and ease_out_cubic(raw)
+        or ease_in_out_cubic(raw)
+
+    local pw =
+        300
+
+    local ph =
+        165
+
+    local base_px =
+        dots_x
+        - pw
+        + 28
+
+    local base_py =
+        dots_y
+        + 31
+
+    local retract =
+        1 - anim
+
+    local px =
+        snap(
+            base_px
+            + retract * 14
+        )
+
+    local py =
+        snap(
+            base_py
+            - retract * 34
+        )
+
+    local shell_h =
+        math.max(
+            29,
+            ph
+            - retract * 58
+        )
+
+    local interactive =
+        raw > 0.96
+        and A.damage_numbers_settings_open
+
+    local ui_clicked =
+        clicked
+        and interactive
+        and not A.world_color_picker_open
+
+    FALLEN_POPUP_GLOW(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        1
+    )
+
+    rounded_fill(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        { 0.062, 0.066, 0.077, 1 }
+    )
+
+    text(
+        px + 13,
+        py + 12,
+        "Damage Numbers settings",
+        C.text
+    )
+
+    if shell_h > 39 then
+        line(
+            px + 12,
+            py + 34,
+            px + pw - 12,
+            py + 34,
+            C.divider,
+            1
+        )
+    end
+
+    if shell_h > 76 then
+        slider_row(
+            mx,
+            my,
+            ui_clicked,
+            lmb,
+            px + 8,
+            py + 35,
+            pw - 16,
+            "Size",
+            "damage_numbers_size",
+            8,
+            30,
+            "int"
+        )
+    end
+
+    if shell_h > 86 then
+        line(
+            px + 12,
+            py + 75,
+            px + pw - 12,
+            py + 75,
+            C.divider,
+            1
+        )
+    end
+
+    if shell_h > 117 then
+        local row_y =
+            py + 76
+
+        local color_hot =
+            row_hover(
+                mx,
+                my,
+                px + 8,
+                row_y,
+                pw - 16,
+                41
+            )
+
+        text(
+            px + 21,
+            row_y + 14,
+            "Color",
+            FALLEN_HOVER_TEXT(
+                "damage_numbers_color",
+                color_hot,
+                C.text
+            )
+        )
+
+        local swatch_s =
+            18
+
+        local swatch_x =
+            px + pw - 49
+
+        local swatch_y =
+            row_y + 11
+
+        color_preview(
+            swatch_x,
+            swatch_y,
+            swatch_s,
+            swatch_s,
+            FALLEN_DMGNUM_COLOR()
+        )
+
+        if ui_clicked
+            and hover(
+                mx,
+                my,
+                swatch_x,
+                swatch_y,
+                swatch_s,
+                swatch_s
+            )
+        then
+            FALLEN_COLOR_INPUT_STOP(true)
+
+            local prefix =
+                "damage_numbers"
+
+            if A.world_color_picker_open
+                and A.world_color_picker_key == prefix
+            then
+                A.world_color_picker_open =
+                    false
+
+                A.world_color_picker_drag =
+                    nil
+            else
+                A.world_color_picker_key =
+                    prefix
+
+                A.world_color_picker_open =
+                    true
+
+                A.world_color_picker_drag =
+                    nil
+
+                A.world_color_picker_anchor_x =
+                    FALLEN_UI_X(
+                        swatch_x
+                    )
+
+                A.world_color_picker_anchor_y =
+                    FALLEN_UI_Y(
+                        swatch_y
+                    )
+
+                A.world_color_picker_anchor_w =
+                    FALLEN_UI_LEN(
+                        swatch_s
+                    )
+
+                A.world_color_picker_anchor_h =
+                    FALLEN_UI_LEN(
+                        swatch_s
+                    )
+            end
+
+            numeric_stop(true)
+        end
+    end
+
+    if shell_h > 127 then
+        line(
+            px + 12,
+            py + 116,
+            px + pw - 12,
+            py + 116,
+            C.divider,
+            1
+        )
+    end
+
+    if shell_h > 153 then
+        slider_row(
+            mx,
+            my,
+            ui_clicked,
+            lmb,
+            px + 8,
+            py + 117,
+            pw - 16,
+            "Animation Speed",
+            "damage_numbers_speed",
+            50,
+            200,
+            "int"
+        )
+    end
+
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            shell_h
+        )
+
+    local dots_hot =
+        hover(
+            mx,
+            my,
+            dots_x,
+            dots_y,
+            27,
+            25
+        )
+
+    if interactive
+        and clicked
+        and not popup_hot
+        and not dots_hot
+        and not A.world_color_picker_open
+    then
+        A.damage_numbers_settings_open =
+            false
+
+        numeric_stop(true)
+    end
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+
+    return popup_hot
+end
+
+
 function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     mx,
     my,
@@ -28927,11 +29705,16 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         or A.world_thunder_settings_open
         or (A.world_thunder_settings_anim or 0) > 0.02
 
+    local damage_popup_open =
+        A.damage_numbers_settings_open
+        or (A.damage_numbers_settings_anim or 0) > 0.02
+
     local controls_clicked =
         clicked
         and not dropdown_open
         and not A.world_color_picker_open
         and not weather_popup_open
+        and not damage_popup_open
 
     section_title(
         x,
@@ -29376,17 +30159,75 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         1
     )
 
+    local damage_dots_x =
+        right_x
+        + right_w
+        - 79
+
+    local damage_dots_y =
+        y + 122
+
+    local damage_dots_hot =
+        hover(
+            mx,
+            my,
+            damage_dots_x,
+            damage_dots_y,
+            27,
+            25
+        )
+
+    local damage_row_hot =
+        hover(
+            mx,
+            my,
+            right_x,
+            y + 114,
+            right_w,
+            41
+        )
+
     toggle_row(
         mx,
         my,
-        controls_clicked,
+        controls_clicked
+            and not damage_dots_hot,
         right_x,
         y + 114,
         right_w,
         "Damage Numbers",
         "damage_numbers_enabled",
-        false
+        true
     )
+
+    if (
+            clicked
+            and damage_dots_hot
+        )
+        or (
+            rmb_clicked
+            and damage_row_hot
+        )
+    then
+        if not A.world_color_picker_open then
+            A.damage_numbers_settings_open =
+                not A.damage_numbers_settings_open
+
+            A.world_rain_settings_open =
+                false
+
+            A.world_thunder_settings_open =
+                false
+
+            A.bullet_tracer_style_open =
+                false
+
+            A.hit_effect_style_open =
+                false
+
+            numeric_stop(true)
+        end
+    end
 
     -- World Weather: compact master rows. Settings live behind the Aimbot-style
     -- ellipsis popups and open ONLY with RMB on the three dots.
@@ -29483,6 +30324,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
             not A.world_rain_settings_open
 
         A.world_thunder_settings_open = false
+        A.damage_numbers_settings_open = false
         A.world_thunder_settings_anim = 0
         A.world_thunder_settings_last_t = tick()
         A.bullet_tracer_style_open = false
@@ -29498,6 +30340,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
             not A.world_thunder_settings_open
 
         A.world_rain_settings_open = false
+        A.damage_numbers_settings_open = false
         A.world_rain_settings_anim = 0
         A.world_rain_settings_last_t = tick()
         A.bullet_tracer_style_open = false
@@ -29562,6 +30405,15 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         lmb,
         thunder_dots_x,
         thunder_dots_y
+    )
+
+    FALLEN_DRAW_DMGNUM_SETTINGS_POPUP(
+        mx,
+        my,
+        clicked,
+        lmb,
+        damage_dots_x,
+        damage_dots_y
     )
 
 
