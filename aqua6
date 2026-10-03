@@ -116,6 +116,7 @@ local defaults = {
     misc_upside_down_enabled = false,
     misc_shot_on_air_enabled = false,
     misc_desync_depth = 5,
+    misc_underground_desync_key = 0,
 
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
@@ -541,6 +542,12 @@ local A = {
     misc_underground_desync_hrp = nil,
     misc_underground_desync_button_hot = false,
     misc_underground_desync_method_found = false,
+
+    -- Underground Desync custom keybind capture / edge state.
+    misc_underground_bind_listening = false,
+    misc_underground_bind_wait_release = false,
+    misc_underground_bind_prev = {},
+    misc_underground_hotkey_prev = false,
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -1902,6 +1909,100 @@ numeric_stop = function(commit)
     n.replace_on_type = false
     n.original = nil
 end
+
+function FALLEN_MISC_UNDERGROUND_BIND_CANCEL()
+    A.misc_underground_bind_listening =
+        false
+
+    A.misc_underground_bind_wait_release =
+        false
+
+    A.misc_underground_bind_prev =
+        {}
+end
+
+
+function FALLEN_MISC_UNDERGROUND_BIND_START()
+    if numeric_stop then
+        numeric_stop(true)
+    end
+
+    A.misc_underground_bind_listening =
+        true
+
+    A.misc_underground_bind_wait_release =
+        true
+
+    A.misc_underground_bind_prev =
+        {}
+end
+
+
+function FALLEN_MISC_UNDERGROUND_BIND_POLL()
+    if not A.misc_underground_bind_listening then
+        return
+    end
+
+    -- Ignore the click used to open key capture.
+    if A.misc_underground_bind_wait_release then
+        if not key_down(VK_LBUTTON)
+            and not key_down(VK_RBUTTON)
+        then
+            A.misc_underground_bind_wait_release =
+                false
+
+            A.misc_underground_bind_prev =
+                {}
+
+            for vk = 1, 255 do
+                A.misc_underground_bind_prev[vk] =
+                    key_down(vk)
+            end
+        end
+
+        return
+    end
+
+    for vk = 1, 255 do
+        local down =
+            key_down(vk)
+
+        local was =
+            A.misc_underground_bind_prev[vk]
+            == true
+
+        if down
+            and not was
+        then
+            -- Esc = cancel.
+            if vk == 0x1B then
+                FALLEN_MISC_UNDERGROUND_BIND_CANCEL()
+                return
+            end
+
+            -- Backspace/Delete = clear.
+            if vk == 0x08
+                or vk == 0x2E
+            then
+                S.misc_underground_desync_key =
+                    0
+
+                FALLEN_MISC_UNDERGROUND_BIND_CANCEL()
+                return
+            end
+
+            S.misc_underground_desync_key =
+                vk
+
+            FALLEN_MISC_UNDERGROUND_BIND_CANCEL()
+            return
+        end
+
+        A.misc_underground_bind_prev[vk] =
+            down
+    end
+end
+
 
 local function numeric_start(key, minv, maxv, fmt)
     local current = tonumber(S[key]) or minv
@@ -30058,6 +30159,7 @@ hooks.on_render(function()
     numeric_poll()
     aim_bind_poll()
     FALLEN_SILENT_BIND_POLL()
+    FALLEN_MISC_UNDERGROUND_BIND_POLL()
     FALLEN_CONFIGS.input_poll()
     FALLEN_COLOR_INPUT_POLL()
 
@@ -31478,56 +31580,77 @@ hooks.on_render(function()
             1
         )
 
+        row_hover(
+            mx,
+            my,
+            page_x,
+            page_y + 114,
+            page_w,
+            41
+        )
+
+        text(
+            page_x + 13,
+            page_y + 128,
+            "Underground Desync Key",
+            C.text
+        )
+
         A.misc_underground_desync_button_hot =
             hover(
                 mx,
                 my,
-                page_x + page_w - 132,
-                page_y + 121,
-                118,
-                27
+                page_x + page_w - 126,
+                page_y + 122,
+                112,
+                25
             )
-
-        text(
-            page_x + 13,
-            page_y + 129,
-            "Underground Desync",
-            FALLEN_HOVER_TEXT(
-                "misc_underground_desync_label",
-                A.misc_underground_desync_button_hot,
-                C.text
-            )
-        )
 
         rounded_fill(
-            page_x + page_w - 132,
-            page_y + 121,
-            118,
-            27,
+            page_x + page_w - 126,
+            page_y + 122,
+            112,
+            25,
             6,
             A.misc_underground_desync_button_hot
-                and C.card_hover
+                and { 0.110, 0.115, 0.135, 1 }
                 or C.toggle_off
         )
 
-        text(
-            page_x + page_w - 112,
+        if A.misc_underground_bind_listening then
+            rounded_outline(
+                page_x + page_w - 126,
+                page_y + 122,
+                112,
+                25,
+                6,
+                alpha(
+                    C.accent,
+                    0.78
+                ),
+                1,
+                C.toggle_off
+            )
+        end
+
+        centered_text(
+            page_x + page_w - 70,
             page_y + 129,
-            (A.misc_underground_desync_stage or 0) ~= 0
-                and "RUNNING..."
-                or "ACTIVATE",
-            A.misc_underground_desync_button_hot
-                and C.white
-                or C.text_dim
+            A.misc_underground_bind_listening
+                and "Press key..."
+                or aim_vk_name(
+                    S.misc_underground_desync_key
+                    or 0
+                ),
+            A.misc_underground_bind_listening
+                and C.accent
+                or C.text
         )
 
         if page_clicked
             and A.misc_underground_desync_button_hot
-            and (A.misc_underground_desync_stage or 0) == 0
         then
-            FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST()
-            numeric_stop(true)
-            A.active_slider = nil
+            FALLEN_MISC_UNDERGROUND_BIND_START()
         end
     elseif S.tab == 4
         and A.secret_unlocked
@@ -36164,25 +36287,81 @@ function FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
         end)
     end
 
-    -- Direct programmatic enable. No physical Desync bind press is required.
-    if type(cheat.enable) == "function" then
+    -- IMPORTANT:
+    -- Do NOT call cheat.enable("desync", true) here.
+    -- Activate the stock Desync exactly through its keybind state,
+    -- as if the user's toggle bind had just been pressed.
+
+    -- Put the Desync bind into TOGGLE mode when a matching field is exposed.
+    if misc
+        and type(misc._keys) == "function"
+    then
+        local bind_keys = nil
+
         pcall(function()
-            cheat.enable(
-                "desync",
-                true
-            )
+            bind_keys =
+                misc:_keys()
         end)
+
+        if type(bind_keys) == "table" then
+            for _, raw_key in ipairs(bind_keys) do
+                local key =
+                    tostring(raw_key)
+
+                local normalized =
+                    string.lower(key)
+
+                normalized =
+                    string.gsub(
+                        normalized,
+                        "[%s_%-]",
+                        ""
+                    )
+
+                if string.find(
+                    normalized,
+                    "desync",
+                    1,
+                    true
+                )
+                    and string.find(
+                        normalized,
+                        "keymode",
+                        1,
+                        true
+                    )
+                then
+                    pcall(function()
+                        misc[key] = 1
+                    end)
+                end
+            end
+        end
     end
 
+    -- Common key-mode field fallbacks.
     if misc then
         pcall(function()
-            misc.desync = true
+            misc.desync_key_mode = 1
         end)
 
         pcall(function()
-            misc.desync_enabled = true
+            misc.desync_keymode = 1
         end)
     end
+
+    -- Writable *_toggled is the persistent bind latch.
+    -- *_active is also poked once for immediate same-frame activation;
+    -- the host may overwrite active on later frames, while toggled persists.
+    pcall(function()
+        if cheat.keybinds then
+            cheat.keybinds.desync_toggled =
+                true
+
+            cheat.keybinds.desync_active =
+                true
+        end
+    end)
 
     A.misc_underground_desync_method_found =
         method_found == true
@@ -36333,17 +36512,16 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
             end)
         end
 
-        -- Desync intentionally remains enabled after the teleport back.
-        if cheat
-            and type(cheat.enable) == "function"
-        then
-            pcall(function()
-                cheat.enable(
-                    "desync",
+        -- Keep the same persistent bind latch after returning.
+        -- This is equivalent to leaving a toggle keybind ON.
+        pcall(function()
+            if cheat
+                and cheat.keybinds
+            then
+                cheat.keybinds.desync_toggled =
                     true
-                )
-            end)
-        end
+            end
+        end)
 
         A.misc_underground_desync_stage = 0
         A.misc_underground_desync_time = 0
@@ -36357,6 +36535,33 @@ hooks.on_render(function()
     if _G.FallenMenuReady ~= true then
         return
     end
+
+    -- Custom hotkey for the whole underground sequence.
+    -- Edge-triggered: one press = one sequence.
+    local vk =
+        math.floor(
+            tonumber(
+                S.misc_underground_desync_key
+            )
+            or 0
+        )
+
+    local down =
+        vk > 0
+        and key_down(vk)
+
+    if down
+        and A.misc_underground_hotkey_prev ~= true
+        and A.misc_underground_bind_listening ~= true
+        and (A.misc_underground_desync_stage or 0) == 0
+    then
+        pcall(
+            FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST
+        )
+    end
+
+    A.misc_underground_hotkey_prev =
+        down == true
 
     pcall(
         FALLEN_MISC_UNDERGROUND_DESYNC_TICK
