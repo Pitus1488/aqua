@@ -248,6 +248,15 @@ local defaults = {
     world_base_esp_enabled = false,
     world_dropped_esp_enabled = false,
     world_body_bag_esp_enabled = false,
+    world_grenade_esp_enabled = false,
+
+    -- Visual Grenade: 4-second timer ring + flight trail.
+    world_color_grenade_h = 0.0200,
+    world_color_grenade_s = 0.8500,
+    world_color_grenade_v = 1.0000,
+    world_color_grenade_alpha = 100,
+    world_grenade_trail_enabled = true,
+    world_grenade_trail_thickness = 2.4,
 
     world_stone_node = false,
     world_metal_node = false,
@@ -9838,7 +9847,7 @@ local function draw_visuals_page(
         cx,
         cy + 25,
         cw,
-        6 * 41 + 8,
+        7 * 41 + 8,
         11
     )
 
@@ -9858,6 +9867,7 @@ local function draw_visuals_page(
     local base_y = plant_y + 41
     local drops_y = base_y + 41
     local bodybag_y = drops_y + 41
+    local grenade_y = bodybag_y + 41
 
     local global_dots_x = cx + cw - 79
     local global_dots_y = global_y + 8
@@ -9924,6 +9934,29 @@ local function draw_visuals_page(
     toggle_row(mx, my, base_clicked and not bodybag_dots_hot, cx, bodybag_y, cw, "Body Bag ESP", "world_body_bag_esp_enabled", true)
     if old_bodybag ~= (S.world_body_bag_esp_enabled == true) then
         _G.FALLEN_WORLD_FORCE_RESCAN = true
+    end
+    line(cx + 12, bodybag_y + 40, cx + cw - 12, bodybag_y + 40, C.divider, 1)
+
+    -- VISUAL GRENADE.
+    -- Independent from the World ESP master: watches Workspace/VFX directly.
+    local old_grenade = S.world_grenade_esp_enabled == true
+    toggle_row(
+        mx,
+        my,
+        base_clicked,
+        cx,
+        grenade_y,
+        cw,
+        "Visual Grenade",
+        "world_grenade_esp_enabled",
+        false
+    )
+
+    if old_grenade ~= (S.world_grenade_esp_enabled == true) then
+        -- WORLD_ESP is declared later in the script, so communicate through
+        -- globals here and let the runtime reset its private cache safely.
+        _G.FALLEN_GRENADE_FORCE_RESCAN = true
+        _G.FALLEN_GRENADE_RESET_TRACKS = true
     end
 
     -- Aimbot-style RMB ellipsis popups. Only one World popup at a time.
@@ -22608,12 +22641,20 @@ local WORLD_ESP = {
         Plants = nil,
         Bases = nil,
         Drops = nil,
+        VFX = nil,
     },
 
     entries = {},
     base_entries = {},
     drop_entries = {},
     body_bag_entries = {},
+
+    -- Visual Grenade runtime is independent from the World ESP master.
+    grenade_entries = {},
+    grenade_tracks = {},
+    grenade_last_scan = -100,
+    grenade_icon = nil,
+
     last_scan = -100,
 
     icons = {},
@@ -24353,14 +24394,753 @@ function world_draw_base_entry(
     end
 end
 
-local function world_esp_tick()
-    if _G.FallenMenuReady ~= true
-        or S.world_esp_enabled ~= true
+-- =========================================================
+-- Visual Grenade
+-- Workspace/VFX -> Military Grenade [Model]
+-- Draws the supplied grenade icon, a 4-second disappearing timer outline,
+-- and a screen-space trail following the grenade's real flight path.
+-- =========================================================
+
+FALLEN_GRENADE_ICON_URLS =
+    FALLEN_GRENADE_ICON_URLS
+    or {
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e8/Military_Grenade.png/revision/latest/scale-to-width-down/55?cb=20250406121732",
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e8/Military_Grenade.png/revision/latest?format=original",
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e8/Military_Grenade.png",
+    }
+
+FALLEN_GRENADE_FUSE_TIME = 4.0
+
+function FALLEN_GRENADE_INSTANCE_KEY(inst)
+    if not inst then
+        return nil
+    end
+
+    local key = nil
+
+    pcall(function()
+        key = tostring(inst.addr or inst)
+    end)
+
+    return key or tostring(inst)
+end
+
+function FALLEN_GRENADE_NAME_MATCH(name)
+    local s =
+        string.lower(
+            tostring(name or "")
+        )
+
+    s = string.gsub(s, "%s*%(%s*clone%s*%)%s*$", "")
+    s = string.gsub(s, "[%s_%-%[%]%(%)]+", "")
+
+    return
+        s == "militarygrenade"
+        or s == "grenade"
+        or string.find(
+            s,
+            "militarygrenade",
+            1,
+            true
+        ) ~= nil
+end
+
+function FALLEN_GRENADE_COLOR()
+    return
+        world_color_from_prefix(
+            "world_color_grenade"
+        )
+end
+
+function FALLEN_GRENADE_ICON_GET()
+    if type(LoadImage) ~= "function" then
+        return nil
+    end
+
+    local st =
+        WORLD_ESP.grenade_icon
+
+    if not st then
+        st = {
+            index = 1,
+            handle = nil,
+            dead = false,
+        }
+
+        WORLD_ESP.grenade_icon = st
+    end
+
+    if st.dead then
+        return nil
+    end
+
+    if not st.handle
+        and FALLEN_GRENADE_ICON_URLS[st.index]
+    then
+        local ok, handle =
+            pcall(
+                LoadImage,
+                FALLEN_GRENADE_ICON_URLS[st.index]
+            )
+
+        if ok and handle then
+            st.handle = handle
+        end
+    end
+
+    if st.handle
+        and type(IsImageReady) == "function"
+    then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                st.handle
+            )
+
+        if ok and ready == true then
+            return st.handle
+        end
+    end
+
+    if st.handle
+        and type(IsImageFailed) == "function"
+    then
+        local ok, failed =
+            pcall(
+                IsImageFailed,
+                st.handle
+            )
+
+        if ok and failed == true then
+            st.index = st.index + 1
+            st.handle = nil
+
+            if not FALLEN_GRENADE_ICON_URLS[st.index] then
+                st.dead = true
+            end
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_GRENADE_SCAN_CONTAINER(
+    container,
+    entries,
+    seen,
+    depth,
+    now
+)
+    if not container
+        or not world_inst_valid(container)
+        or depth > 3
+        or #entries >= 96
     then
         return
     end
 
-    world_refresh_cache(false)
+    for _, inst in ipairs(world_children(container)) do
+        if #entries >= 96 then
+            break
+        end
+
+        local name =
+            world_inst_name(inst)
+
+        if name
+            and FALLEN_GRENADE_NAME_MATCH(name)
+        then
+            local key =
+                FALLEN_GRENADE_INSTANCE_KEY(inst)
+
+            if key
+                and not seen[key]
+            then
+                seen[key] = true
+
+                entries[#entries + 1] = {
+                    inst = inst,
+                    key = key,
+                    name = name,
+                }
+
+                local track =
+                    WORLD_ESP.grenade_tracks[key]
+
+                if not track then
+                    track = {
+                        born = now,
+                        last_seen = now,
+                        points = {},
+                        inst = inst,
+                    }
+
+                    WORLD_ESP.grenade_tracks[key] = track
+                else
+                    track.last_seen = now
+                    track.inst = inst
+                end
+            end
+        end
+
+        local class =
+            world_inst_class(inst)
+
+        if depth < 3
+            and (
+                class == "Folder"
+                or class == "Model"
+            )
+        then
+            FALLEN_GRENADE_SCAN_CONTAINER(
+                inst,
+                entries,
+                seen,
+                depth + 1,
+                now
+            )
+        end
+    end
+end
+
+function FALLEN_GRENADE_REFRESH(force)
+    if _G.FALLEN_GRENADE_RESET_TRACKS == true then
+        WORLD_ESP.grenade_entries = {}
+        WORLD_ESP.grenade_tracks = {}
+        WORLD_ESP.grenade_last_scan = -100
+        _G.FALLEN_GRENADE_RESET_TRACKS = false
+    end
+
+    if _G.FALLEN_GRENADE_FORCE_RESCAN == true then
+        force = true
+        _G.FALLEN_GRENADE_FORCE_RESCAN = false
+    end
+
+    if S.world_grenade_esp_enabled ~= true then
+        WORLD_ESP.grenade_entries = {}
+        return
+    end
+
+    local now = tick()
+
+    if not force
+        and now - (WORLD_ESP.grenade_last_scan or -100) < 0.06
+    then
+        return
+    end
+
+    WORLD_ESP.grenade_last_scan = now
+
+    local ws = nil
+
+    pcall(function()
+        if rbx
+            and type(rbx.workspace) == "function"
+        then
+            ws = rbx.workspace()
+        end
+    end)
+
+    if not ws then
+        WORLD_ESP.grenade_entries = {}
+        return
+    end
+
+    local vfx =
+        world_find_child(
+            ws,
+            "VFX"
+        )
+
+    WORLD_ESP.folders.VFX = vfx
+
+    if not vfx
+        or not world_inst_valid(vfx)
+    then
+        WORLD_ESP.grenade_entries = {}
+        return
+    end
+
+    local entries = {}
+    local seen = {}
+
+    FALLEN_GRENADE_SCAN_CONTAINER(
+        vfx,
+        entries,
+        seen,
+        0,
+        now
+    )
+
+    WORLD_ESP.grenade_entries = entries
+
+    for key, track in pairs(WORLD_ESP.grenade_tracks) do
+        if not seen[key]
+            and now - (track.last_seen or 0) > 0.70
+        then
+            WORLD_ESP.grenade_tracks[key] = nil
+        end
+    end
+end
+
+function FALLEN_GRENADE_PUSH_TRAIL_POINT(track, pos)
+    if not track
+        or not pos
+    then
+        return
+    end
+
+    track.points =
+        type(track.points) == "table"
+        and track.points
+        or {}
+
+    local now = tick()
+    local points = track.points
+    local last = points[#points]
+    local push = false
+
+    if not last then
+        push = true
+    else
+        local dx = (pos.X or 0) - (last.x or 0)
+        local dy = (pos.Y or 0) - (last.y or 0)
+        local dz = (pos.Z or 0) - (last.z or 0)
+
+        local dist =
+            math.sqrt(
+                dx * dx
+                + dy * dy
+                + dz * dz
+            )
+
+        if dist >= 0.16
+            or now - (last.t or 0) >= 0.045
+        then
+            push = true
+        end
+    end
+
+    if push then
+        points[#points + 1] = {
+            x = pos.X or 0,
+            y = pos.Y or 0,
+            z = pos.Z or 0,
+            t = now,
+        }
+    end
+
+    while #points > 72 do
+        table.remove(points, 1)
+    end
+
+    -- Keep almost the whole four-second flight, but cap it for performance.
+    while #points > 2
+        and now - (points[1].t or now) > 3.85
+    do
+        table.remove(points, 1)
+    end
+end
+
+function FALLEN_GRENADE_DRAW_TRAIL(points, alpha_mul)
+    if S.world_grenade_trail_enabled ~= true
+        or type(DrawLine) ~= "function"
+        or type(points) ~= "table"
+        or #points < 2
+    then
+        return
+    end
+
+    local color =
+        FALLEN_GRENADE_COLOR()
+
+    local base_alpha =
+        (color[4] or 1)
+        * clamp(
+            tonumber(alpha_mul) or 1,
+            0,
+            1
+        )
+
+    local thickness =
+        clamp(
+            tonumber(S.world_grenade_trail_thickness) or 2.4,
+            0.5,
+            6
+        )
+
+    if base_alpha <= 0.001 then
+        return
+    end
+
+    local count = #points
+
+    for i = 2, count do
+        local a = points[i - 1]
+        local b = points[i]
+
+        local pa = nil
+        local pb = nil
+
+        pcall(function()
+            pa = Vector3(a.x, a.y, a.z)
+            pb = Vector3(b.x, b.y, b.z)
+        end)
+
+        local sa =
+            pa
+            and world_screen(pa)
+            or nil
+
+        local sb =
+            pb
+            and world_screen(pb)
+            or nil
+
+        if sa and sb then
+            local t =
+                (i - 1)
+                / math.max(1, count - 1)
+
+            -- Tail is almost transparent, head is bright and thicker.
+            local fade = t * t
+
+            DrawLine(
+                sa.X,
+                sa.Y,
+                sb.X,
+                sb.Y,
+                color[1],
+                color[2],
+                color[3],
+                base_alpha
+                    * (0.08 + fade * 0.82),
+                thickness
+                    * (0.55 + t * 0.45)
+            )
+        end
+    end
+end
+
+function FALLEN_GRENADE_DRAW_TIMER_RING(
+    x,
+    y,
+    radius,
+    remaining,
+    alpha_mul
+)
+    if type(DrawLine) ~= "function" then
+        return
+    end
+
+    remaining =
+        clamp(
+            tonumber(remaining) or 0,
+            0,
+            1
+        )
+
+    local color =
+        FALLEN_GRENADE_COLOR()
+
+    local alpha_value =
+        (color[4] or 1)
+        * clamp(
+            tonumber(alpha_mul) or 1,
+            0,
+            1
+        )
+
+    if alpha_value <= 0.001 then
+        return
+    end
+
+    -- Very faint full outline stays under the active countdown.
+    if type(DrawCircle) == "function" then
+        DrawCircle(
+            x,
+            y,
+            radius,
+            color[1],
+            color[2],
+            color[3],
+            alpha_value * 0.13,
+            1.15
+        )
+    end
+
+    if remaining <= 0.001 then
+        return
+    end
+
+    local segments = 56
+    local active =
+        math.max(
+            1,
+            math.floor(
+                segments * remaining + 0.5
+            )
+        )
+
+    local start_angle =
+        -math.pi * 0.5
+
+    local step =
+        (math.pi * 2)
+        / segments
+
+    -- Clockwise CS-style fuse ring: circumference disappears as time runs out.
+    for i = 1, active do
+        local a0 =
+            start_angle
+            + (i - 1) * step
+
+        local a1 =
+            start_angle
+            + i * step
+
+        DrawLine(
+            x + math.cos(a0) * radius,
+            y + math.sin(a0) * radius,
+            x + math.cos(a1) * radius,
+            y + math.sin(a1) * radius,
+            color[1],
+            color[2],
+            color[3],
+            alpha_value,
+            2.15
+        )
+    end
+end
+
+function FALLEN_GRENADE_DRAW_ICON(
+    handle,
+    x,
+    y,
+    size,
+    alpha_mul,
+    remaining
+)
+    if not handle
+        or type(DrawImage) ~= "function"
+    then
+        return false
+    end
+
+    size =
+        clamp(
+            tonumber(size) or 24,
+            14,
+            58
+        )
+
+    alpha_mul =
+        clamp(
+            tonumber(alpha_mul) or 1,
+            0,
+            1
+        )
+
+    local radius =
+        size * 0.5 + 4
+
+    if type(DrawCircleFilled) == "function" then
+        DrawCircleFilled(
+            x,
+            y,
+            radius,
+            0.018,
+            0.020,
+            0.026,
+            0.92 * alpha_mul
+        )
+    end
+
+    -- The outline itself is the fuse timer requested by the user.
+    FALLEN_GRENADE_DRAW_TIMER_RING(
+        x,
+        y,
+        radius,
+        remaining,
+        alpha_mul
+    )
+
+    DrawImage(
+        handle,
+        x - size * 0.5,
+        y - size * 0.5,
+        size,
+        size,
+        1,
+        1,
+        1,
+        alpha_mul,
+        math.max(2, size * 0.12)
+    )
+
+    return true
+end
+
+function FALLEN_GRENADE_DRAW(entry, my_pos)
+    if S.world_grenade_esp_enabled ~= true
+        or not entry
+        or not world_inst_valid(entry.inst)
+    then
+        return
+    end
+
+    local pos =
+        world_part_pos(
+            entry.inst,
+            0
+        )
+
+    if not pos then
+        return
+    end
+
+    local dist =
+        world_distance_m(
+            pos,
+            my_pos
+        )
+
+    if not dist then
+        return
+    end
+
+    local max_dist =
+        clamp(
+            tonumber(S.world_max_dist) or 500,
+            25,
+            2000
+        )
+
+    if dist > max_dist then
+        return
+    end
+
+    local key =
+        entry.key
+        or FALLEN_GRENADE_INSTANCE_KEY(entry.inst)
+
+    if not key then
+        return
+    end
+
+    local now = tick()
+    local track =
+        WORLD_ESP.grenade_tracks[key]
+
+    if not track then
+        track = {
+            born = now,
+            last_seen = now,
+            points = {},
+            inst = entry.inst,
+        }
+
+        WORLD_ESP.grenade_tracks[key] = track
+    end
+
+    track.last_seen = now
+    track.inst = entry.inst
+
+    FALLEN_GRENADE_PUSH_TRAIL_POINT(
+        track,
+        pos
+    )
+
+    local color =
+        FALLEN_GRENADE_COLOR()
+
+    local fade =
+        color[4] or 1
+
+    if S.world_fade_distance == true
+        and max_dist > 0
+    then
+        fade =
+            fade
+            * clamp(
+                1 - (dist / max_dist) * 0.78,
+                0.18,
+                1
+            )
+    end
+
+    -- Trail is intentionally drawn first so the icon always stays above it.
+    FALLEN_GRENADE_DRAW_TRAIL(
+        track.points,
+        fade
+    )
+
+    local screen =
+        world_screen(pos)
+
+    if not screen then
+        return
+    end
+
+    local handle =
+        FALLEN_GRENADE_ICON_GET()
+
+    if not handle then
+        return
+    end
+
+    local elapsed =
+        now - (track.born or now)
+
+    local remaining =
+        clamp(
+            1
+            - elapsed
+                / FALLEN_GRENADE_FUSE_TIME,
+            0,
+            1
+        )
+
+    local icon_size =
+        clamp(
+            (tonumber(S.world_icon_size) or 18) + 6,
+            18,
+            58
+        )
+
+    FALLEN_GRENADE_DRAW_ICON(
+        handle,
+        screen.X,
+        screen.Y - 24,
+        icon_size,
+        fade,
+        remaining
+    )
+end
+
+local function world_esp_tick()
+    local world_active =
+        S.world_esp_enabled == true
+
+    local grenade_active =
+        S.world_grenade_esp_enabled == true
+
+    if _G.FallenMenuReady ~= true
+        or (
+            not world_active
+            and not grenade_active
+        )
+    then
+        return
+    end
+
+    if world_active then
+        world_refresh_cache(false)
+    end
+
+    if grenade_active then
+        FALLEN_GRENADE_REFRESH(false)
+    end
 
     local my_pos =
         world_local_pos()
@@ -24369,40 +25149,53 @@ local function world_esp_tick()
         return
     end
 
-    for _, entry in ipairs(
-        WORLD_ESP.entries
-    ) do
-        world_draw_entry(
-            entry,
-            my_pos
-        )
+    if world_active then
+        for _, entry in ipairs(
+            WORLD_ESP.entries
+        ) do
+            world_draw_entry(
+                entry,
+                my_pos
+            )
+        end
+
+        for _, entry in ipairs(
+            WORLD_ESP.base_entries
+        ) do
+            world_draw_base_entry(
+                entry,
+                my_pos
+            )
+        end
+
+        for _, entry in ipairs(
+            WORLD_ESP.drop_entries or {}
+        ) do
+            FALLEN_WORLD_DRAW_DROPPED_ITEM(
+                entry,
+                my_pos
+            )
+        end
+
+        for _, entry in ipairs(
+            WORLD_ESP.body_bag_entries or {}
+        ) do
+            FALLEN_WORLD_DRAW_BODY_BAG(
+                entry,
+                my_pos
+            )
+        end
     end
 
-    for _, entry in ipairs(
-        WORLD_ESP.base_entries
-    ) do
-        world_draw_base_entry(
-            entry,
-            my_pos
-        )
-    end
-
-    for _, entry in ipairs(
-        WORLD_ESP.drop_entries or {}
-    ) do
-        FALLEN_WORLD_DRAW_DROPPED_ITEM(
-            entry,
-            my_pos
-        )
-    end
-
-    for _, entry in ipairs(
-        WORLD_ESP.body_bag_entries or {}
-    ) do
-        FALLEN_WORLD_DRAW_BODY_BAG(
-            entry,
-            my_pos
-        )
+    if grenade_active then
+        for _, entry in ipairs(
+            WORLD_ESP.grenade_entries or {}
+        ) do
+            FALLEN_GRENADE_DRAW(
+                entry,
+                my_pos
+            )
+        end
     end
 end
 
