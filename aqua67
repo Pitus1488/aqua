@@ -14219,6 +14219,7 @@ function FALLEN_BT_VFX_IS_IMPACT_NAME(
     return
         name == "hole"
         or name == "metalhole"
+        or name == "bloodpart"
 end
 
 
@@ -14232,7 +14233,7 @@ function FALLEN_BT_VFX_POSITION(
         return nil
     end
 
-    -- First try the Hole / MetalHole object itself.
+    -- First try the Hole / MetalHole / BloodPart object itself.
     local pos = nil
 
     pcall(function()
@@ -14252,7 +14253,7 @@ function FALLEN_BT_VFX_POSITION(
         }
     end
 
-    -- If Hole / MetalHole is a Model/Folder, use only its nearest direct
+    -- If Hole / MetalHole / BloodPart is a Model/Folder, use only its nearest direct
     -- positional child. Do NOT walk parents or unrelated VFX descendants.
     local children = nil
 
@@ -14381,6 +14382,66 @@ function FALLEN_BT_ORIGIN()
 end
 
 
+function FALLEN_BT_AIM_FOV_RADIUS()
+    local radius =
+        80
+
+    -- RMB = ADS/aiming: make validation FOV exactly 2x smaller.
+    if key_down(0x02) == true then
+        radius =
+            radius * 0.5
+    end
+
+    return radius
+end
+
+
+function FALLEN_BT_AIM_FOV_CENTER()
+    local cx, cy =
+        nil,
+        nil
+
+    if type(crosshair_pos) == "function" then
+        pcall(function()
+            local c =
+                crosshair_pos()
+
+            if c then
+                cx =
+                    tonumber(
+                        c.X
+                        or c.x
+                        or c[1]
+                    )
+
+                cy =
+                    tonumber(
+                        c.Y
+                        or c.y
+                        or c[2]
+                    )
+            end
+        end)
+    end
+
+    if (
+            cx == nil
+            or cy == nil
+        )
+        and type(FALLEN_CUSTOM_FOV_CENTER) == "function"
+    then
+        pcall(function()
+            cx, cy =
+                FALLEN_CUSTOM_FOV_CENTER()
+        end)
+    end
+
+    return
+        tonumber(cx),
+        tonumber(cy)
+end
+
+
 function FALLEN_BT_HIDDEN_AIM_FOV_CHECK(
     pos
 )
@@ -14409,51 +14470,7 @@ function FALLEN_BT_HIDDEN_AIM_FOV_CHECK(
     end
 
     local cx, cy =
-        nil,
-        nil
-
-    -- Use the actual game crosshair first.
-    if type(crosshair_pos) == "function" then
-        pcall(function()
-            local c =
-                crosshair_pos()
-
-            if c then
-                cx =
-                    tonumber(
-                        c.X
-                        or c.x
-                        or c[1]
-                    )
-
-                cy =
-                    tonumber(
-                        c.Y
-                        or c.y
-                        or c[2]
-                    )
-            end
-        end)
-    end
-
-    -- Same fallback center used by our custom FOV system.
-    if (
-            cx == nil
-            or cy == nil
-        )
-        and type(FALLEN_CUSTOM_FOV_CENTER) == "function"
-    then
-        pcall(function()
-            cx, cy =
-                FALLEN_CUSTOM_FOV_CENTER()
-        end)
-    end
-
-    cx =
-        tonumber(cx)
-
-    cy =
-        tonumber(cy)
+        FALLEN_BT_AIM_FOV_CENTER()
 
     if not cx
         or not cy
@@ -14473,14 +14490,12 @@ function FALLEN_BT_HIDDEN_AIM_FOV_CHECK(
         dx * dx
         + dy * dy
 
-    -- Invisible tiny FOV around the crosshair.
-    -- Nothing is drawn; this is validation only.
-    local hidden_radius =
-        24
+    local radius =
+        FALLEN_BT_AIM_FOV_RADIUS()
 
     if screen_dist_sq
-        > hidden_radius
-        * hidden_radius
+        > radius
+        * radius
     then
         return false, nil
     end
@@ -14488,6 +14503,107 @@ function FALLEN_BT_HIDDEN_AIM_FOV_CHECK(
     return
         true,
         screen_dist_sq
+end
+
+
+function FALLEN_BT_DRAW_AIM_FOV()
+    if S.bullet_tracer_enabled ~= true then
+        return
+    end
+
+    local cx, cy =
+        FALLEN_BT_AIM_FOV_CENTER()
+
+    if not cx
+        or not cy
+    then
+        return
+    end
+
+    local radius =
+        FALLEN_BT_AIM_FOV_RADIUS()
+
+    local color = {
+        0.80,
+        0.84,
+        1.00,
+        0.78,
+    }
+
+    -- Prefer Bullet Tracer's own selected color when available.
+    if type(world_color_from_prefix) == "function" then
+        pcall(function()
+            local c =
+                world_color_from_prefix(
+                    "bullet_tracer"
+                )
+
+            if c then
+                color = c
+            end
+        end)
+    end
+
+    local r =
+        tonumber(
+            color[1]
+            or color.r
+        )
+        or 0.80
+
+    local g =
+        tonumber(
+            color[2]
+            or color.g
+        )
+        or 0.84
+
+    local b =
+        tonumber(
+            color[3]
+            or color.b
+        )
+        or 1.00
+
+    local a =
+        tonumber(
+            color[4]
+            or color.a
+        )
+        or 0.78
+
+    -- Visible DEBUG FOV for now.
+    if type(DrawCircle) == "function" then
+        pcall(
+            DrawCircle,
+            cx,
+            cy,
+            radius,
+            r,
+            g,
+            b,
+            a,
+            1.5
+        )
+
+        return
+    end
+
+    if Drawing
+        and type(Drawing.DrawCircle) == "function"
+    then
+        pcall(
+            Drawing.DrawCircle,
+            cx,
+            cy,
+            radius,
+            r,
+            g,
+            b,
+            a,
+            1.5
+        )
+    end
 end
 
 
@@ -14555,7 +14671,7 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
                     if inside_fov
                         and screen_dist_sq ~= nil
                     then
-                        -- Primary criterion: closest Hole/MetalHole to where
+                        -- Primary criterion: closest Hole/MetalHole/BloodPart to where
                         -- the crosshair is actually aiming.
                         --
                         -- Tie-breaker: nearest in world space.
@@ -14587,7 +14703,7 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
                                 prediction_time = 0,
                                 gravity = 0,
                                 bullet_speed = 0,
-                                source = "vfx_hole_aim_fov",
+                                source = "vfx_impact_aim_fov",
                             }
                         end
                     end
@@ -15087,6 +15203,8 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
     )
 end
 function FALLEN_BT_DRAW()
+    FALLEN_BT_DRAW_AIM_FOV()
+
     if type(FALLEN_BT.items) ~= "table" then
         FALLEN_BT.items = {}
     end
