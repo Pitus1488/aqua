@@ -199,13 +199,6 @@ local defaults = {
     -- Hotkeys overlay.
     keybinds_list_enabled = false,
 
-    -- Hotkeys appearance. Provisional defaults; can be tuned later.
-    hotkeys_width = 170,
-    hotkeys_height = 38,
-    hotkeys_rounding = 14,
-    hotkeys_glow_strength = 100,
-    hotkeys_glow_lines = 35,
-
     -- Custom profile avatar editor.
     avatar_display_size = 38,
     avatar_crop_zoom = 1.00,
@@ -23564,76 +23557,142 @@ function FALLEN_DRAW_ROUNDED_GLOW_FRAME(
         )
 
     thickness =
-        thickness
-        or 1
+        math.max(
+            1,
+            tonumber(thickness) or 1
+        )
 
-    -- Straight sides stop before the rounded corners.
-    line(
-        x + radius,
-        y,
-        x + w - radius,
-        y,
-        color,
-        thickness
+    -- The arc owns the tangent pixel. Straight strokes stop half a stroke
+    -- before that point, so translucent alpha is not blended twice there.
+    local join_inset =
+        thickness * 0.5
+
+    local top_left_x =
+        x + radius
+
+    local top_right_x =
+        x + w - radius
+
+    local left_top_y =
+        y + radius
+
+    local left_bottom_y =
+        y + h - radius
+
+    if top_right_x - top_left_x > join_inset * 2 then
+        line(
+            top_left_x + join_inset,
+            y,
+            top_right_x - join_inset,
+            y,
+            color,
+            thickness
+        )
+
+        line(
+            top_left_x + join_inset,
+            y + h,
+            top_right_x - join_inset,
+            y + h,
+            color,
+            thickness
+        )
+    end
+
+    if left_bottom_y - left_top_y > join_inset * 2 then
+        line(
+            x,
+            left_top_y + join_inset,
+            x,
+            left_bottom_y - join_inset,
+            color,
+            thickness
+        )
+
+        line(
+            x + w,
+            left_top_y + join_inset,
+            x + w,
+            left_bottom_y - join_inset,
+            color,
+            thickness
+        )
+    end
+
+    -- Cardinal trig values such as cos(pi/2) are tiny non-zero floats.
+    -- Clean them so opposite corners rasterize to exactly matching pixels.
+    local function clean_trig(v)
+        if math.abs(v) < 0.0000001 then
+            return 0
+        end
+
+        if math.abs(v - 1) < 0.0000001 then
+            return 1
+        end
+
+        if math.abs(v + 1) < 0.0000001 then
+            return -1
+        end
+
+        return v
+    end
+
+    local segments =
+        8
+
+    local function arc(
+        cx,
+        cy,
+        a0,
+        a1,
+        start_x,
+        start_y,
+        end_x,
+        end_y
     )
-
-    line(
-        x + radius,
-        y + h,
-        x + w - radius,
-        y + h,
-        color,
-        thickness
-    )
-
-    line(
-        x,
-        y + radius,
-        x,
-        y + h - radius,
-        color,
-        thickness
-    )
-
-    line(
-        x + w,
-        y + radius,
-        x + w,
-        y + h - radius,
-        color,
-        thickness
-    )
-
-    -- Rounded corners made from short line segments.
-    -- Six segments per quarter is enough for a soft glow edge.
-    local segments = 6
-
-    local function arc(cx, cy, a0, a1)
         local px =
-            cx
-            + math.cos(a0)
-            * radius
+            start_x
 
         local py =
-            cy
-            + math.sin(a0)
-            * radius
+            start_y
 
         for n = 1, segments do
-            local a =
-                a0
-                + (a1 - a0)
-                * (n / segments)
+            local nx = nil
+            local ny = nil
 
-            local nx =
-                cx
-                + math.cos(a)
-                * radius
+            if n == segments then
+                -- Exact tangent endpoint: never leave it to trig rounding.
+                nx =
+                    end_x
 
-            local ny =
-                cy
-                + math.sin(a)
-                * radius
+                ny =
+                    end_y
+            else
+                local a =
+                    a0
+                    + (a1 - a0)
+                    * (n / segments)
+
+                local ca =
+                    clean_trig(
+                        math.cos(a)
+                    )
+
+                local sa =
+                    clean_trig(
+                        math.sin(a)
+                    )
+
+                nx =
+                    cx
+                    + ca
+                    * radius
+
+                ny =
+                    cy
+                    + sa
+                    * radius
+            end
 
             line(
                 px,
@@ -23644,8 +23703,11 @@ function FALLEN_DRAW_ROUNDED_GLOW_FRAME(
                 thickness
             )
 
-            px = nx
-            py = ny
+            px =
+                nx
+
+            py =
+                ny
         end
     end
 
@@ -23653,30 +23715,47 @@ function FALLEN_DRAW_ROUNDED_GLOW_FRAME(
         x + radius,
         y + radius,
         math.pi,
-        math.pi * 1.5
+        math.pi * 1.5,
+        x,
+        y + radius,
+        x + radius,
+        y
     )
 
     arc(
         x + w - radius,
         y + radius,
         math.pi * 1.5,
-        math.pi * 2
+        math.pi * 2,
+        x + w - radius,
+        y,
+        x + w,
+        y + radius
     )
 
     arc(
         x + w - radius,
         y + h - radius,
         0,
-        math.pi * 0.5
+        math.pi * 0.5,
+        x + w,
+        y + h - radius,
+        x + w - radius,
+        y + h
     )
 
     arc(
         x + radius,
         y + h - radius,
         math.pi * 0.5,
-        math.pi
+        math.pi,
+        x + radius,
+        y + h,
+        x,
+        y + h - radius
     )
 end
+
 
 function FALLEN_GEAR_HOVER_STEP(hot)
     local now = tick()
@@ -24399,7 +24478,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or menu_type_lower == "blur"
 
     local ph =
-        631
+        426
         + (
             gradient_selected
             and 82
@@ -24823,145 +24902,15 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
-        if shell_h > 451 + weather_offset then
-            line(
-                px + 12,
-                py + 409 + weather_offset,
-                px + pw - 12,
-                py + 409 + weather_offset,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                row_clicked,
-                lmb,
-                px + 8,
-                py + 410 + weather_offset,
-                pw - 16,
-                "Hotkeys Width",
-                "hotkeys_width",
-                120,
-                320,
-                "int"
-            )
-        end
-
-        if shell_h > 492 + weather_offset then
-            line(
-                px + 12,
-                py + 450 + weather_offset,
-                px + pw - 12,
-                py + 450 + weather_offset,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                row_clicked,
-                lmb,
-                px + 8,
-                py + 451 + weather_offset,
-                pw - 16,
-                "Hotkeys Height",
-                "hotkeys_height",
-                28,
-                90,
-                "int"
-            )
-        end
-
-        if shell_h > 533 + weather_offset then
-            line(
-                px + 12,
-                py + 491 + weather_offset,
-                px + pw - 12,
-                py + 491 + weather_offset,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                row_clicked,
-                lmb,
-                px + 8,
-                py + 492 + weather_offset,
-                pw - 16,
-                "Hotkeys Rounding",
-                "hotkeys_rounding",
-                0,
-                30,
-                "int"
-            )
-        end
-
-        if shell_h > 574 + weather_offset then
-            line(
-                px + 12,
-                py + 532 + weather_offset,
-                px + pw - 12,
-                py + 532 + weather_offset,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                row_clicked,
-                lmb,
-                px + 8,
-                py + 533 + weather_offset,
-                pw - 16,
-                "Hotkeys Glow",
-                "hotkeys_glow_strength",
-                0,
-                200,
-                "int"
-            )
-        end
-
-        if shell_h > 615 + weather_offset then
-            line(
-                px + 12,
-                py + 573 + weather_offset,
-                px + pw - 12,
-                py + 573 + weather_offset,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                row_clicked,
-                lmb,
-                px + 8,
-                py + 574 + weather_offset,
-                pw - 16,
-                "Hotkeys Glow Lines",
-                "hotkeys_glow_lines",
-                0,
-                50,
-                "int"
-            )
-        end
-
         -- Secret setting is completely absent until the hidden brand gesture.
         if A.secret_unlocked
-            and shell_h > 656 + weather_offset
+            and shell_h > 451 + weather_offset
         then
             line(
                 px + 12,
-                py + 614 + weather_offset,
+                py + 408 + weather_offset,
                 px + pw - 12,
-                py + 614 + weather_offset,
+                py + 408 + weather_offset,
                 C.divider,
                 1
             )
@@ -24971,7 +24920,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 615 + weather_offset,
+                py + 409 + weather_offset,
                 pw - 16,
                 "???",
                 "secret_enabled",
@@ -25118,31 +25067,15 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     local sw, sh =
         screen_size()
 
-    -- User-adjustable geometry.
+    -- Final Hotkeys geometry from the tuning screenshot.
     local panel_w =
-        clamp(
-            tonumber(S.hotkeys_width) or 170,
-            120,
-            320
-        )
+        120
 
     local panel_h =
-        clamp(
-            tonumber(S.hotkeys_height) or 38,
-            28,
-            90
-        )
+        35
 
     local panel_rounding =
-        clamp(
-            tonumber(S.hotkeys_rounding) or 14,
-            0,
-            math.min(
-                30,
-                panel_w * 0.5,
-                panel_h * 0.5
-            )
-        )
+        13
 
     local x =
         math.floor(
@@ -25179,22 +25112,13 @@ function FALLEN_DRAW_KEYBINDS_LIST()
 
     -- Main-menu-style multilayer black glow.
     -- Defaults to 35 line frames, exactly like the main menu glow approach.
+    -- Final glow values from the tuning screenshot:
+    -- Glow 200, Glow Lines 24.
     local glow_strength =
-        clamp(
-            (tonumber(S.hotkeys_glow_strength) or 100) / 100,
-            0,
-            2
-        )
+        2
 
     local glow_lines =
-        math.floor(
-            clamp(
-                tonumber(S.hotkeys_glow_lines) or 35,
-                0,
-                50
-            )
-            + 0.5
-        )
+        24
 
     if glow_lines > 0
         and glow_strength > 0
