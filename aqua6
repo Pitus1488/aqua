@@ -25401,6 +25401,25 @@ function FALLEN_HOTKEYS_ITEM_ROWS()
         }
     end
 
+    local desync_vk =
+        math.floor(
+            tonumber(
+                S.misc_underground_desync_key
+            )
+            or 0
+        )
+
+    if desync_vk > 0 then
+        rows[#rows + 1] = {
+            id = "custom_desync",
+            label = "Desync",
+            icon = "misc",
+            active =
+                FALLEN_MISC_CUSTOM_DESYNC_IS_ON()
+                == true,
+        }
+    end
+
     return rows
 end
 
@@ -25645,6 +25664,9 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
     elseif row.icon == "silent" then
         item_icon =
             FALLEN_SILENT_TAB_ICON_GET()
+    elseif row.icon == "misc" then
+        item_icon =
+            FALLEN_MISC_TAB_ICON_GET()
     end
 
     local text_x =
@@ -37168,13 +37190,20 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST()
     A.misc_underground_desync_target_y =
         pos.Y - depth
 
+    A.misc_underground_desync_confirm_frames =
+        0
+
+    A.misc_underground_desync_post_frames =
+        0
+
     A.misc_underground_desync_stage =
         1
 
     A.misc_underground_desync_time =
         tick()
 
-    -- Immediate first TP attempt.
+    -- Immediate first TP attempt. We do NOT enable the flag in this same
+    -- request call; the character must remain below across render frames first.
     FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
 
     return true
@@ -37196,22 +37225,50 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
         tick()
 
     if stage == 1 then
-        -- We must be physically at the underground Y before switching the
-        -- sender bandwidth flag to 0.
+        -- Keep the character physically below ground every render frame.
+        -- The old version enabled the flag and returned too quickly, often in
+        -- effectively the same frame, so the TP could never visibly/stably stick.
         local below =
             FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
 
-        if not below then
-            local elapsed =
-                now
-                - (
-                    A.misc_underground_desync_time
-                    or now
+        if below then
+            A.misc_underground_desync_confirm_frames =
+                (
+                    tonumber(
+                        A.misc_underground_desync_confirm_frames
+                    )
+                    or 0
+                )
+                + 1
+        else
+            A.misc_underground_desync_confirm_frames =
+                0
+        end
+
+        local elapsed =
+            now
+            - (
+                A.misc_underground_desync_time
+                or now
+            )
+
+        -- Require the underground position on two render ticks.
+        -- Request() already performs the first TP attempt immediately.
+        if (
+            A.misc_underground_desync_confirm_frames
+            or 0
+        ) >= 2
+        then
+            local enabled =
+                FALLEN_MISC_CUSTOM_DESYNC_SET(
+                    true
                 )
 
-            if elapsed >= 0.12 then
-                -- Could not stick underground. Abort without enabling Desync
-                -- and return to the exact saved origin.
+            if not enabled then
+                -- Flag write failed: return without leaving a half-state.
+                A.misc_custom_fastflag_desync_enabled =
+                    false
+
                 A.misc_underground_desync_stage =
                     3
 
@@ -37219,31 +37276,63 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
                     now
 
                 FALLEN_MISC_UNDERGROUND_RETURN_TICK()
+                return
             end
+
+            -- FastFlag is now ON while the character is still below.
+            -- Do NOT return in this frame. Stay underground until next render.
+            A.misc_underground_desync_stage =
+                2
+
+            A.misc_underground_desync_post_frames =
+                0
+
+            A.misc_underground_desync_time =
+                now
 
             return
         end
 
-        -- Custom Desync ON. This write is synchronous; no stock keybind,
-        -- no Service-side selector, and no delayed cheat.desync activation.
-        local enabled =
-            FALLEN_MISC_CUSTOM_DESYNC_SET(
-                true
+        if elapsed >= 0.20 then
+            -- Could not establish the underground position.
+            A.misc_underground_desync_stage =
+                3
+
+            A.misc_underground_return_started =
+                now
+
+            FALLEN_MISC_UNDERGROUND_RETURN_TICK()
+        end
+
+        return
+    end
+
+    if stage == 2 then
+        -- One full render interval after FastFlag=0, still pinned underground.
+        FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
+
+        A.misc_underground_desync_post_frames =
+            (
+                tonumber(
+                    A.misc_underground_desync_post_frames
+                )
+                or 0
             )
+            + 1
 
-        -- Whether the flag write worked or not, immediately begin exact return.
-        -- If it failed, we simply come back without leaving Desync half-enabled.
-        A.misc_underground_desync_stage =
-            3
+        if (
+            A.misc_underground_desync_post_frames
+            or 0
+        ) >= 1
+        then
+            -- NOW return to the exact X/Y/Z captured before going underground.
+            A.misc_underground_desync_stage =
+                3
 
-        A.misc_underground_return_started =
-            now
+            A.misc_underground_return_started =
+                now
 
-        FALLEN_MISC_UNDERGROUND_RETURN_TICK()
-
-        if not enabled then
-            A.misc_custom_fastflag_desync_enabled =
-                false
+            FALLEN_MISC_UNDERGROUND_RETURN_TICK()
         end
 
         return
