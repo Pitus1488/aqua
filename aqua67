@@ -14454,231 +14454,6 @@ function FALLEN_BT_ORIGIN()
 end
 
 
-function FALLEN_BT_AIM_FOV_RADIUS()
-    local radius =
-        80
-
-    -- RMB = ADS/aiming: make validation FOV exactly 2x smaller.
-    if key_down(0x02) == true then
-        radius =
-            radius * 0.5
-    end
-
-    return radius
-end
-
-
-function FALLEN_BT_AIM_FOV_CENTER()
-    local cx, cy =
-        nil,
-        nil
-
-    if type(crosshair_pos) == "function" then
-        pcall(function()
-            local c =
-                crosshair_pos()
-
-            if c then
-                cx =
-                    tonumber(
-                        c.X
-                        or c.x
-                        or c[1]
-                    )
-
-                cy =
-                    tonumber(
-                        c.Y
-                        or c.y
-                        or c[2]
-                    )
-            end
-        end)
-    end
-
-    if (
-            cx == nil
-            or cy == nil
-        )
-        and type(FALLEN_CUSTOM_FOV_CENTER) == "function"
-    then
-        pcall(function()
-            cx, cy =
-                FALLEN_CUSTOM_FOV_CENTER()
-        end)
-    end
-
-    return
-        tonumber(cx),
-        tonumber(cy)
-end
-
-
-function FALLEN_BT_HIDDEN_AIM_FOV_CHECK(
-    pos
-)
-    if not pos
-        or not aim
-        or type(aim.world_to_screen) ~= "function"
-    then
-        return false, nil
-    end
-
-    local screen = nil
-
-    pcall(function()
-        screen =
-            aim.world_to_screen(
-                pos
-            )
-    end)
-
-    if not screen
-        or screen.visible ~= true
-        or screen.X == nil
-        or screen.Y == nil
-    then
-        return false, nil
-    end
-
-    local cx, cy =
-        FALLEN_BT_AIM_FOV_CENTER()
-
-    if not cx
-        or not cy
-    then
-        return false, nil
-    end
-
-    local dx =
-        tonumber(screen.X)
-        - cx
-
-    local dy =
-        tonumber(screen.Y)
-        - cy
-
-    local screen_dist_sq =
-        dx * dx
-        + dy * dy
-
-    local radius =
-        FALLEN_BT_AIM_FOV_RADIUS()
-
-    if screen_dist_sq
-        > radius
-        * radius
-    then
-        return false, nil
-    end
-
-    return
-        true,
-        screen_dist_sq
-end
-
-
-function FALLEN_BT_DRAW_AIM_FOV()
-    if S.bullet_tracer_enabled ~= true then
-        return
-    end
-
-    local cx, cy =
-        FALLEN_BT_AIM_FOV_CENTER()
-
-    if not cx
-        or not cy
-    then
-        return
-    end
-
-    local radius =
-        FALLEN_BT_AIM_FOV_RADIUS()
-
-    local color = {
-        0.80,
-        0.84,
-        1.00,
-        0.78,
-    }
-
-    -- Prefer Bullet Tracer's own selected color when available.
-    if type(world_color_from_prefix) == "function" then
-        pcall(function()
-            local c =
-                world_color_from_prefix(
-                    "bullet_tracer"
-                )
-
-            if c then
-                color = c
-            end
-        end)
-    end
-
-    local r =
-        tonumber(
-            color[1]
-            or color.r
-        )
-        or 0.80
-
-    local g =
-        tonumber(
-            color[2]
-            or color.g
-        )
-        or 0.84
-
-    local b =
-        tonumber(
-            color[3]
-            or color.b
-        )
-        or 1.00
-
-    local a =
-        tonumber(
-            color[4]
-            or color.a
-        )
-        or 0.78
-
-    -- Visible DEBUG FOV for now.
-    if type(DrawCircle) == "function" then
-        pcall(
-            DrawCircle,
-            cx,
-            cy,
-            radius,
-            r,
-            g,
-            b,
-            a,
-            1.5
-        )
-
-        return
-    end
-
-    if Drawing
-        and type(Drawing.DrawCircle) == "function"
-    then
-        pcall(
-            Drawing.DrawCircle,
-            cx,
-            cy,
-            radius,
-            r,
-            g,
-            b,
-            a,
-            1.5
-        )
-    end
-end
-
-
 function FALLEN_BT_VFX_FIND_NEW_IMPACT(
     previous,
     current,
@@ -14696,9 +14471,6 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
         or {}
 
     local best_pos =
-        nil
-
-    local best_screen_dist_sq =
         nil
 
     local best_world_dist_sq =
@@ -14733,51 +14505,28 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
                     + dy * dy
                     + dz * dz
 
-                -- Ignore effects basically inside the face/muzzle.
+                -- Ignore objects basically inside the player's face/muzzle.
                 if world_dist_sq >= 4 then
-                    local inside_fov, screen_dist_sq =
-                        FALLEN_BT_HIDDEN_AIM_FOV_CHECK(
-                            pos
-                        )
-
-                    if inside_fov
-                        and screen_dist_sq ~= nil
+                    -- No FOV validation anymore.
+                    -- If several supported VFX appear in the same scan,
+                    -- use the nearest valid one in world space.
+                    if best_world_dist_sq == nil
+                        or world_dist_sq < best_world_dist_sq
                     then
-                        -- Primary criterion: closest Hole/MetalHole/BloodPart/CasingLarge/CasingSmall to where
-                        -- the crosshair is actually aiming.
-                        --
-                        -- Tie-breaker: nearest in world space.
-                        if best_screen_dist_sq == nil
-                            or screen_dist_sq < best_screen_dist_sq
-                            or (
-                                math.abs(
-                                    screen_dist_sq
-                                    - best_screen_dist_sq
-                                ) < 0.0001
-                                and (
-                                    best_world_dist_sq == nil
-                                    or world_dist_sq < best_world_dist_sq
-                                )
-                            )
-                        then
-                            best_screen_dist_sq =
-                                screen_dist_sq
+                        best_world_dist_sq =
+                            world_dist_sq
 
-                            best_world_dist_sq =
-                                world_dist_sq
+                        best_pos = {
+                            X = pos.X,
+                            Y = pos.Y,
+                            Z = pos.Z,
 
-                            best_pos = {
-                                X = pos.X,
-                                Y = pos.Y,
-                                Z = pos.Z,
-
-                                auto_prediction = false,
-                                prediction_time = 0,
-                                gravity = 0,
-                                bullet_speed = 0,
-                                source = "vfx_impact_aim_fov",
-                            }
-                        end
+                            auto_prediction = false,
+                            prediction_time = 0,
+                            gravity = 0,
+                            bullet_speed = 0,
+                            source = "vfx_impact",
+                        }
                     end
                 end
             end
@@ -15275,8 +15024,6 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
     )
 end
 function FALLEN_BT_DRAW()
-    FALLEN_BT_DRAW_AIM_FOV()
-
     if type(FALLEN_BT.items) ~= "table" then
         FALLEN_BT.items = {}
     end
@@ -15823,9 +15570,15 @@ FALLEN_HITFX = FALLEN_HITFX or {
     last_seen = 0,
     last_spawn = 0,
 
-    -- TEMP TEST: one Spark on a fresh LMB press while Aimbot is locked.
-    test_lmb_was_down = false,
+    -- Hit Effect now has its own VFX/BloodPart trigger.
+    vfx_seen = {},
+    vfx_prev_lmb = false,
+    vfx_watch_until = 0,
 }
+
+FALLEN_HITFX.vfx_seen =
+    FALLEN_HITFX.vfx_seen
+    or {}
 
 function FALLEN_HITFX_COLOR()
     -- No tinting: preserve the original image colors.
@@ -16816,20 +16569,15 @@ function FALLEN_HITFX_ADD(pos)
     end
 end
 
-function FALLEN_HITFX_SCAN_HP()
-    if (
-            S.hit_effect_enabled ~= true
-            and S.damage_numbers_enabled ~= true
-        )
-    then
+function FALLEN_DMGNUM_SCAN_HP()
+    -- Damage Numbers keep the existing HP-drop target logic.
+    -- Hit Effect is intentionally NOT triggered here anymore.
+    if S.damage_numbers_enabled ~= true then
         FALLEN_HITFX.target_key =
             nil
 
         FALLEN_HITFX.last_hp =
             nil
-
-        FALLEN_HITFX.test_lmb_was_down =
-            false
 
         A.hitfx_silent_locked_addr =
             nil
@@ -16848,9 +16596,6 @@ function FALLEN_HITFX_SCAN_HP()
 
         FALLEN_HITFX.last_hp =
             nil
-
-        FALLEN_HITFX.test_lmb_was_down =
-            false
 
         return
     end
@@ -16873,8 +16618,6 @@ function FALLEN_HITFX_SCAN_HP()
         return
     end
 
-    -- Changing Aimbot/Silent source or target resets the baseline instead of
-    -- turning a target switch into fake damage.
     if FALLEN_HITFX.target_key ~= key then
         FALLEN_HITFX.target_key =
             key
@@ -16898,29 +16641,17 @@ function FALLEN_HITFX_SCAN_HP()
         and (old - hp)
         or 0
 
-    -- Same validation for BOTH Aimbot and Silent:
-    -- this exact active target must lose at least 15 HP.
     if damage >= 15
         and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.008
     then
         FALLEN_HITFX.last_spawn =
             tick()
 
-        if S.hit_effect_enabled == true then
-            FALLEN_HITFX_ADD({
-                X = target.pos.X,
-                Y = target.pos.Y,
-                Z = target.pos.Z,
-            })
-        end
-
-        if S.damage_numbers_enabled == true then
-            FALLEN_DMGNUM_ADD(
-                damage,
-                target.head_pos,
-                target.pos
-            )
-        end
+        FALLEN_DMGNUM_ADD(
+            damage,
+            target.head_pos,
+            target.pos
+        )
     end
 
     FALLEN_HITFX.last_hp =
@@ -16928,6 +16659,323 @@ function FALLEN_HITFX_SCAN_HP()
 
     FALLEN_HITFX.last_seen =
         tick()
+end
+
+
+function FALLEN_HITFX_IS_BLOODPART(
+    inst
+)
+    if not inst
+        or not FALLEN_BT_VFX_INSTANCE_VALID(
+            inst
+        )
+    then
+        return false
+    end
+
+    local name = nil
+
+    pcall(function()
+        name =
+            inst:get_name()
+    end)
+
+    return
+        string.lower(
+            tostring(
+                name or ""
+            )
+        )
+        == "bloodpart"
+end
+
+
+function FALLEN_HITFX_FOV_RADIUS()
+    -- Same validation FOV we previously tested on Bullet Tracers.
+    -- Hidden: it is never drawn.
+    if key_down(0x02) == true then
+        return 40
+    end
+
+    return 80
+end
+
+
+function FALLEN_HITFX_FOV_CENTER()
+    local cx, cy =
+        nil,
+        nil
+
+    if type(crosshair_pos) == "function" then
+        pcall(function()
+            local c =
+                crosshair_pos()
+
+            if c then
+                cx =
+                    tonumber(
+                        c.X
+                        or c.x
+                        or c[1]
+                    )
+
+                cy =
+                    tonumber(
+                        c.Y
+                        or c.y
+                        or c[2]
+                    )
+            end
+        end)
+    end
+
+    if (
+            cx == nil
+            or cy == nil
+        )
+        and type(FALLEN_CUSTOM_FOV_CENTER) == "function"
+    then
+        pcall(function()
+            cx, cy =
+                FALLEN_CUSTOM_FOV_CENTER()
+        end)
+    end
+
+    return
+        tonumber(cx),
+        tonumber(cy)
+end
+
+
+function FALLEN_HITFX_FOV_CHECK(
+    pos
+)
+    if not pos
+        or not aim
+        or type(aim.world_to_screen) ~= "function"
+    then
+        return false, nil
+    end
+
+    local screen = nil
+
+    pcall(function()
+        screen =
+            aim.world_to_screen(
+                pos
+            )
+    end)
+
+    if not screen
+        or screen.visible ~= true
+        or screen.X == nil
+        or screen.Y == nil
+    then
+        return false, nil
+    end
+
+    local cx, cy =
+        FALLEN_HITFX_FOV_CENTER()
+
+    if not cx
+        or not cy
+    then
+        return false, nil
+    end
+
+    local dx =
+        tonumber(screen.X)
+        - cx
+
+    local dy =
+        tonumber(screen.Y)
+        - cy
+
+    local dist_sq =
+        dx * dx
+        + dy * dy
+
+    local radius =
+        FALLEN_HITFX_FOV_RADIUS()
+
+    if dist_sq
+        > radius
+        * radius
+    then
+        return false, nil
+    end
+
+    return
+        true,
+        dist_sq
+end
+
+
+function FALLEN_HITFX_FIND_NEW_BLOODPART(
+    previous,
+    current
+)
+    if type(current) ~= "table" then
+        return nil
+    end
+
+    previous =
+        type(previous) == "table"
+        and previous
+        or {}
+
+    local best_pos =
+        nil
+
+    local best_screen_dist_sq =
+        nil
+
+    for key, inst in pairs(current) do
+        if previous[key] == nil
+            and FALLEN_HITFX_IS_BLOODPART(
+                inst
+            )
+        then
+            -- BloodPart is already one of the supported positional VFX types
+            -- in the Bullet Tracer resolver, so reuse only its position logic.
+            local pos =
+                FALLEN_BT_VFX_POSITION(
+                    inst
+                )
+
+            if pos then
+                local inside, screen_dist_sq =
+                    FALLEN_HITFX_FOV_CHECK(
+                        pos
+                    )
+
+                if inside
+                    and screen_dist_sq ~= nil
+                    and (
+                        best_screen_dist_sq == nil
+                        or screen_dist_sq < best_screen_dist_sq
+                    )
+                then
+                    best_screen_dist_sq =
+                        screen_dist_sq
+
+                    best_pos = {
+                        X = pos.X,
+                        Y = pos.Y,
+                        Z = pos.Z,
+                    }
+                end
+            end
+        end
+    end
+
+    return best_pos
+end
+
+
+function FALLEN_HITFX_VFX_TICK()
+    if S.hit_effect_enabled ~= true then
+        FALLEN_HITFX.vfx_seen =
+            {}
+
+        FALLEN_HITFX.vfx_prev_lmb =
+            false
+
+        FALLEN_HITFX.vfx_watch_until =
+            0
+
+        return
+    end
+
+    -- Same physical-shot validation used by Bullet Tracers:
+    -- weapon must be recognized and Mouse1 starts the watch.
+    if not FALLEN_BT_WEAPON_READY() then
+        FALLEN_HITFX.vfx_seen =
+            {}
+
+        FALLEN_HITFX.vfx_prev_lmb =
+            false
+
+        FALLEN_HITFX.vfx_watch_until =
+            0
+
+        return
+    end
+
+    local now =
+        tick()
+
+    local lmb =
+        key_down(0x01)
+        == true
+
+    if not lmb
+        and now
+            >= (
+                tonumber(
+                    FALLEN_HITFX.vfx_watch_until
+                )
+                or 0
+            )
+    then
+        FALLEN_HITFX.vfx_seen =
+            FALLEN_BT_VFX_SCAN()
+
+        FALLEN_HITFX.vfx_prev_lmb =
+            false
+
+        return
+    end
+
+    if lmb
+        and FALLEN_HITFX.vfx_prev_lmb ~= true
+    then
+        -- Long enough for distant hits to spawn BloodPart.
+        FALLEN_HITFX.vfx_watch_until =
+            now + 2.50
+    elseif lmb then
+        FALLEN_HITFX.vfx_watch_until =
+            now + 2.50
+    end
+
+    FALLEN_HITFX.vfx_prev_lmb =
+        lmb
+
+    if not lmb
+        and now
+            > (
+                tonumber(
+                    FALLEN_HITFX.vfx_watch_until
+                )
+                or 0
+            )
+    then
+        return
+    end
+
+    local previous =
+        FALLEN_HITFX.vfx_seen
+        or {}
+
+    local current =
+        FALLEN_BT_VFX_SCAN()
+
+    local blood_pos =
+        FALLEN_HITFX_FIND_NEW_BLOODPART(
+            previous,
+            current
+        )
+
+    FALLEN_HITFX.vfx_seen =
+        current
+
+    if not blood_pos then
+        return
+    end
+
+    FALLEN_HITFX_ADD(
+        blood_pos
+    )
 end
 
 
@@ -17237,7 +17285,8 @@ function FALLEN_HITFX_TICK()
         return
     end
 
-    FALLEN_HITFX_SCAN_HP()
+    FALLEN_HITFX_VFX_TICK()
+    FALLEN_DMGNUM_SCAN_HP()
     FALLEN_HITFX_DRAW()
     FALLEN_DMGNUM_DRAW()
 end
