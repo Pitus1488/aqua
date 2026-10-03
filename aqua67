@@ -117,14 +117,25 @@ local defaults = {
     misc_shot_on_air_enabled = false,
     misc_fps_enabled = false,
 
-    -- VFX -> VMs -> Boulder local visual style.
-    misc_boulder_vfx_enabled = false,
-    misc_boulder_transparency = 35,
-    misc_boulder_reflectance = 0,
-    misc_boulder_h = 0.60,
-    misc_boulder_s = 0.18,
-    misc_boulder_v = 0.72,
-    misc_boulder_alpha = 100,
+    -- VFX -> VMs -> Boulder.
+    -- Arms affects ONLY MeshPart descendants of Boulder/Arms.
+    misc_boulder_arms_enabled = false,
+    misc_boulder_arms_transparency = 35,
+    misc_boulder_arms_reflectance = 0,
+    misc_boulder_arms_h = 0.60,
+    misc_boulder_arms_s = 0.18,
+    misc_boulder_arms_v = 0.72,
+    misc_boulder_arms_alpha = 100,
+
+    -- Weapon affects ONLY MeshPart descendants of Boulder/Weapon.
+    misc_boulder_weapon_enabled = false,
+    misc_boulder_weapon_transparency = 35,
+    misc_boulder_weapon_reflectance = 0,
+    misc_boulder_weapon_h = 0.08,
+    misc_boulder_weapon_s = 0.42,
+    misc_boulder_weapon_v = 0.92,
+    misc_boulder_weapon_alpha = 100,
+
 
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
@@ -571,8 +582,9 @@ local A = {
     misc_fps_applied = {},
 
     -- Boulder VFX runtime.
-    misc_boulder_last_enabled = false,
     misc_boulder_last_apply = 0,
+    misc_boulder_arms_last_enabled = false,
+    misc_boulder_weapon_last_enabled = false,
     misc_boulder_original = {},
 
     -- Shot on air runtime.
@@ -33870,16 +33882,36 @@ hooks.on_render(function()
             false
         )
 
+        local boulder_gap =
+            16
+
+        local boulder_col_w =
+            math.floor(
+                (page_w - boulder_gap)
+                * 0.5
+            )
+
+        local boulder_left_x =
+            page_x
+
+        local boulder_right_x =
+            page_x
+            + boulder_col_w
+            + boulder_gap
+
+        -- ----------------------------------------------------
+        -- Arms: ONLY Boulder/Arms MeshParts.
+        -- ----------------------------------------------------
         section_title(
-            page_x,
+            boulder_left_x,
             page_y + 151,
-            "Boulder VFX"
+            "Boulder Arms"
         )
 
         card(
-            page_x,
+            boulder_left_x,
             page_y + 176,
-            page_w,
+            boulder_col_w,
             172,
             11
         )
@@ -33888,18 +33920,18 @@ hooks.on_render(function()
             mx,
             my,
             misc_controls_clicked,
-            page_x,
+            boulder_left_x,
             page_y + 183,
-            page_w,
+            boulder_col_w,
             "Enabled",
-            "misc_boulder_vfx_enabled",
+            "misc_boulder_arms_enabled",
             false
         )
 
         line(
-            page_x + 12,
+            boulder_left_x + 12,
             page_y + 223,
-            page_x + page_w - 12,
+            boulder_left_x + boulder_col_w - 12,
             page_y + 223,
             C.divider,
             1
@@ -33910,20 +33942,20 @@ hooks.on_render(function()
             my,
             misc_controls_clicked,
             lmb,
-            page_x,
+            boulder_left_x,
             page_y + 224,
-            page_w,
+            boulder_col_w,
             "Transparency",
-            "misc_boulder_transparency",
+            "misc_boulder_arms_transparency",
             0,
             100,
             "int"
         )
 
         line(
-            page_x + 12,
+            boulder_left_x + 12,
             page_y + 264,
-            page_x + page_w - 12,
+            boulder_left_x + boulder_col_w - 12,
             page_y + 264,
             C.divider,
             1
@@ -33934,20 +33966,20 @@ hooks.on_render(function()
             my,
             misc_controls_clicked,
             lmb,
-            page_x,
+            boulder_left_x,
             page_y + 265,
-            page_w,
+            boulder_col_w,
             "Reflectance",
-            "misc_boulder_reflectance",
+            "misc_boulder_arms_reflectance",
             0,
             100,
             "int"
         )
 
         line(
-            page_x + 12,
+            boulder_left_x + 12,
             page_y + 305,
-            page_x + page_w - 12,
+            boulder_left_x + boulder_col_w - 12,
             page_y + 305,
             C.divider,
             1
@@ -33957,12 +33989,111 @@ hooks.on_render(function()
             mx,
             my,
             page_clicked,
-            page_x,
+            boulder_left_x,
             page_y + 306,
-            page_w,
+            boulder_col_w,
             "Color",
-            "misc_boulder"
+            "misc_boulder_arms"
         )
+
+        -- ----------------------------------------------------
+        -- Weapon: ONLY Boulder/Weapon MeshParts, including
+        -- nested Main/Detail MeshParts.
+        -- ----------------------------------------------------
+        section_title(
+            boulder_right_x,
+            page_y + 151,
+            "Boulder Weapon"
+        )
+
+        card(
+            boulder_right_x,
+            page_y + 176,
+            boulder_col_w,
+            172,
+            11
+        )
+
+        toggle_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            boulder_right_x,
+            page_y + 183,
+            boulder_col_w,
+            "Enabled",
+            "misc_boulder_weapon_enabled",
+            false
+        )
+
+        line(
+            boulder_right_x + 12,
+            page_y + 223,
+            boulder_right_x + boulder_col_w - 12,
+            page_y + 223,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            lmb,
+            boulder_right_x,
+            page_y + 224,
+            boulder_col_w,
+            "Transparency",
+            "misc_boulder_weapon_transparency",
+            0,
+            100,
+            "int"
+        )
+
+        line(
+            boulder_right_x + 12,
+            page_y + 264,
+            boulder_right_x + boulder_col_w - 12,
+            page_y + 264,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            lmb,
+            boulder_right_x,
+            page_y + 265,
+            boulder_col_w,
+            "Reflectance",
+            "misc_boulder_weapon_reflectance",
+            0,
+            100,
+            "int"
+        )
+
+        line(
+            boulder_right_x + 12,
+            page_y + 305,
+            boulder_right_x + boulder_col_w - 12,
+            page_y + 305,
+            C.divider,
+            1
+        )
+
+        FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
+            mx,
+            my,
+            page_clicked,
+            boulder_right_x,
+            page_y + 306,
+            boulder_col_w,
+            "Color",
+            "misc_boulder_weapon"
+        )
+
     elseif S.tab == 4
         and A.secret_unlocked
         and S.secret_enabled == true
@@ -38462,7 +38593,14 @@ hooks.on_render(function()
 end)
 
 -- =========================================================
--- Misc: VFX -> VMs -> Boulder local style
+-- Misc: VFX -> VMs -> Boulder
+--
+-- Arms:
+--   Workspace/VFX/VMs/Boulder/Arms -> MeshPart descendants ONLY
+--
+-- Weapon:
+--   Workspace/VFX/VMs/Boulder/Weapon -> MeshPart descendants ONLY
+--
 -- =========================================================
 
 function FALLEN_MISC_BOULDER_FIND()
@@ -38520,18 +38658,47 @@ function FALLEN_MISC_BOULDER_FIND()
 end
 
 
-function FALLEN_MISC_BOULDER_COLLECT_PARTS()
+function FALLEN_MISC_BOULDER_FOLDER(
+    folder_name
+)
     local root =
         FALLEN_MISC_BOULDER_FIND()
 
     if not root then
+        return nil
+    end
+
+    local folder = nil
+
+    pcall(function()
+        folder =
+            root:find_first_child(
+                tostring(
+                    folder_name or ""
+                )
+            )
+    end)
+
+    return folder
+end
+
+
+function FALLEN_MISC_BOULDER_COLLECT_MESHPARTS(
+    folder_name
+)
+    local folder =
+        FALLEN_MISC_BOULDER_FOLDER(
+            folder_name
+        )
+
+    if not folder then
         return {}
     end
 
     local out = {}
     local queue = {
         {
-            inst = root,
+            inst = folder,
             depth = 0,
         },
     }
@@ -38557,17 +38724,17 @@ function FALLEN_MISC_BOULDER_COLLECT_PARTS()
             or 0
 
         if inst then
-            local is_part =
+            local is_mesh =
                 false
 
             pcall(function()
-                is_part =
+                is_mesh =
                     inst:is_a(
-                        "BasePart"
+                        "MeshPart"
                     )
             end)
 
-            if is_part then
+            if is_mesh then
                 out[#out + 1] =
                     inst
             end
@@ -38630,7 +38797,8 @@ end
 
 
 function FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
-    part
+    part,
+    group
 )
     if not part
         or not part.addr
@@ -38644,6 +38812,10 @@ function FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
 
     local key =
         tostring(
+            group or "unknown"
+        )
+        .. ":"
+        .. tostring(
             part.addr
         )
 
@@ -38653,6 +38825,7 @@ function FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
 
     local rec = {
         part = part,
+        group = group,
         transparency = nil,
         reflectance = nil,
         color = nil,
@@ -38709,12 +38882,14 @@ function FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
 end
 
 
-function FALLEN_MISC_BOULDER_COLOR()
+function FALLEN_MISC_BOULDER_GROUP_COLOR(
+    prefix
+)
     local r, g, b =
         hsv_to_rgb(
-            tonumber(S.misc_boulder_h) or 0.60,
-            tonumber(S.misc_boulder_s) or 0.18,
-            tonumber(S.misc_boulder_v) or 0.72
+            tonumber(S[prefix .. "_h"]) or 0,
+            tonumber(S[prefix .. "_s"]) or 0,
+            tonumber(S[prefix .. "_v"]) or 1
         )
 
     return {
@@ -38722,7 +38897,7 @@ function FALLEN_MISC_BOULDER_COLOR()
         g,
         b,
         clamp(
-            (tonumber(S.misc_boulder_alpha) or 100) / 100,
+            (tonumber(S[prefix .. "_alpha"]) or 100) / 100,
             0,
             1
         ),
@@ -38730,35 +38905,39 @@ function FALLEN_MISC_BOULDER_COLOR()
 end
 
 
-function FALLEN_MISC_BOULDER_APPLY_PART(
-    part
+function FALLEN_MISC_BOULDER_APPLY_GROUP_PART(
+    part,
+    group,
+    prefix
 )
     if not part then
         return
     end
 
     FALLEN_MISC_BOULDER_SAVE_ORIGINAL(
-        part
+        part,
+        group
     )
 
     local transparency =
         clamp(
-            (tonumber(S.misc_boulder_transparency) or 35) / 100,
+            (tonumber(S[prefix .. "_transparency"]) or 35) / 100,
             0,
             1
         )
 
     local reflectance =
         clamp(
-            (tonumber(S.misc_boulder_reflectance) or 0) / 100,
+            (tonumber(S[prefix .. "_reflectance"]) or 0) / 100,
             0,
             1
         )
 
     local color =
-        FALLEN_MISC_BOULDER_COLOR()
+        FALLEN_MISC_BOULDER_GROUP_COLOR(
+            prefix
+        )
 
-    -- Documented safe instance setter.
     pcall(function()
         part:set_transparency(
             transparency
@@ -38777,7 +38956,6 @@ function FALLEN_MISC_BOULDER_APPLY_PART(
         return
     end
 
-    -- BasePartColor / Reflectance are documented BasePart offsets.
     if memory.offsets.BasePartColor
         and type(memory.write_vec3) == "function"
     then
@@ -38808,13 +38986,21 @@ function FALLEN_MISC_BOULDER_APPLY_PART(
 end
 
 
-function FALLEN_MISC_BOULDER_APPLY()
+function FALLEN_MISC_BOULDER_APPLY_GROUP(
+    folder_name,
+    group,
+    prefix
+)
     local parts =
-        FALLEN_MISC_BOULDER_COLLECT_PARTS()
+        FALLEN_MISC_BOULDER_COLLECT_MESHPARTS(
+            folder_name
+        )
 
     for _, part in ipairs(parts) do
-        FALLEN_MISC_BOULDER_APPLY_PART(
-            part
+        FALLEN_MISC_BOULDER_APPLY_GROUP_PART(
+            part,
+            group,
+            prefix
         )
     end
 
@@ -38823,113 +39009,142 @@ function FALLEN_MISC_BOULDER_APPLY()
 end
 
 
-function FALLEN_MISC_BOULDER_RESTORE()
+function FALLEN_MISC_BOULDER_RESTORE_GROUP(
+    group
+)
     local originals =
         A.misc_boulder_original
 
     if type(originals) ~= "table" then
-        A.misc_boulder_original =
-            {}
-
         return
     end
 
-    for _, rec in pairs(originals) do
-        local part =
-            rec
-            and rec.part
+    local remove_keys =
+        {}
 
-        if part then
-            if rec.transparency ~= nil then
-                pcall(function()
-                    part:set_transparency(
-                        clamp(
-                            tonumber(rec.transparency) or 0,
-                            0,
-                            1
-                        )
-                    )
-                end)
-            end
+    for key, rec in pairs(originals) do
+        if rec
+            and rec.group == group
+        then
+            local part =
+                rec.part
 
-            local prim =
-                FALLEN_MISC_BOULDER_PRIMITIVE(
-                    part
-                )
-
-            if prim
-                and memory
-                and memory.offsets
-            then
-                if rec.reflectance ~= nil
-                    and memory.offsets.Reflectance
-                    and type(memory.write_f32) == "function"
-                then
+            if part then
+                if rec.transparency ~= nil then
                     pcall(function()
-                        memory.write_f32(
-                            prim
-                            + memory.offsets.Reflectance,
-                            rec.reflectance
-                        )
-                    end)
-                end
-
-                if rec.color
-                    and rec.color.X ~= nil
-                    and rec.color.Y ~= nil
-                    and rec.color.Z ~= nil
-                    and memory.offsets.BasePartColor
-                    and type(memory.write_vec3) == "function"
-                then
-                    pcall(function()
-                        memory.write_vec3(
-                            prim
-                            + memory.offsets.BasePartColor,
-                            Vector3(
-                                rec.color.X,
-                                rec.color.Y,
-                                rec.color.Z
+                        part:set_transparency(
+                            clamp(
+                                tonumber(rec.transparency) or 0,
+                                0,
+                                1
                             )
                         )
                     end)
                 end
+
+                local prim =
+                    FALLEN_MISC_BOULDER_PRIMITIVE(
+                        part
+                    )
+
+                if prim
+                    and memory
+                    and memory.offsets
+                then
+                    if rec.reflectance ~= nil
+                        and memory.offsets.Reflectance
+                        and type(memory.write_f32) == "function"
+                    then
+                        pcall(function()
+                            memory.write_f32(
+                                prim
+                                + memory.offsets.Reflectance,
+                                rec.reflectance
+                            )
+                        end)
+                    end
+
+                    if rec.color
+                        and rec.color.X ~= nil
+                        and rec.color.Y ~= nil
+                        and rec.color.Z ~= nil
+                        and memory.offsets.BasePartColor
+                        and type(memory.write_vec3) == "function"
+                    then
+                        pcall(function()
+                            memory.write_vec3(
+                                prim
+                                + memory.offsets.BasePartColor,
+                                Vector3(
+                                    rec.color.X,
+                                    rec.color.Y,
+                                    rec.color.Z
+                                )
+                            )
+                        end)
+                    end
+                end
             end
+
+            remove_keys[#remove_keys + 1] =
+                key
         end
     end
 
-    A.misc_boulder_original =
-        {}
+    for _, key in ipairs(remove_keys) do
+        originals[key] =
+            nil
+    end
 end
 
 
 function FALLEN_MISC_BOULDER_TICK()
-    local enabled =
-        S.misc_boulder_vfx_enabled
+    local arms_enabled =
+        S.misc_boulder_arms_enabled
         == true
 
-    if A.misc_boulder_last_enabled ~= enabled then
-        A.misc_boulder_last_enabled =
-            enabled
+    local weapon_enabled =
+        S.misc_boulder_weapon_enabled
+        == true
 
-        if not enabled then
-            FALLEN_MISC_BOULDER_RESTORE()
-            return
+    if A.misc_boulder_arms_last_enabled ~= arms_enabled then
+        A.misc_boulder_arms_last_enabled =
+            arms_enabled
+
+        if not arms_enabled then
+            FALLEN_MISC_BOULDER_RESTORE_GROUP(
+                "arms"
+            )
+        else
+            A.misc_boulder_last_apply =
+                0
         end
-
-        -- Apply immediately when toggled on.
-        A.misc_boulder_last_apply =
-            0
     end
 
-    if not enabled then
+    if A.misc_boulder_weapon_last_enabled ~= weapon_enabled then
+        A.misc_boulder_weapon_last_enabled =
+            weapon_enabled
+
+        if not weapon_enabled then
+            FALLEN_MISC_BOULDER_RESTORE_GROUP(
+                "weapon"
+            )
+        else
+            A.misc_boulder_last_apply =
+                0
+        end
+    end
+
+
+    if not arms_enabled
+        and not weapon_enabled
+    then
         return
     end
 
     local now =
         tick()
 
-    -- VFX objects are commonly recreated. Re-find the exact path and reapply
-    -- periodically so a newly spawned Boulder receives the same appearance.
     if now
         - (
             tonumber(
@@ -38944,7 +39159,23 @@ function FALLEN_MISC_BOULDER_TICK()
     A.misc_boulder_last_apply =
         now
 
-    FALLEN_MISC_BOULDER_APPLY()
+    -- VFX/VM models can be recreated, so reacquire exact folders every pass.
+    if arms_enabled then
+        FALLEN_MISC_BOULDER_APPLY_GROUP(
+            "Arms",
+            "arms",
+            "misc_boulder_arms"
+        )
+    end
+
+    if weapon_enabled then
+        FALLEN_MISC_BOULDER_APPLY_GROUP(
+            "Weapon",
+            "weapon",
+            "misc_boulder_weapon"
+        )
+    end
+
 end
 
 
