@@ -14848,14 +14848,14 @@ function FALLEN_BT_SHOT_TICK()
     if lmb
         and FALLEN_BT.vfx_prev_lmb ~= true
     then
-        -- Continue watching briefly after each press because hit VFX can be
-        -- spawned a few frames after the input/shoot event.
+        -- Keep watching long enough for distant projectiles to reach the
+        -- surface and create Hole / MetalHole / BloodPart.
         FALLEN_BT.vfx_watch_until =
-            now + 0.45
+            now + 2.50
     elseif lmb then
         -- Automatic weapons: keep the watch window alive while Mouse1 is held.
         FALLEN_BT.vfx_watch_until =
-            now + 0.20
+            now + 2.50
     end
 
     FALLEN_BT.vfx_prev_lmb =
