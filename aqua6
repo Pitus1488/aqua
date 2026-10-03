@@ -23547,212 +23547,24 @@ function FALLEN_DRAW_ROUNDED_GLOW_FRAME(
     color,
     thickness
 )
-    radius =
-        math.max(
-            1,
-            math.min(
-                tonumber(radius) or 1,
-                math.min(w, h) * 0.5
-            )
-        )
-
-    thickness =
-        math.max(
-            1,
-            tonumber(thickness) or 1
-        )
-
-    -- The arc owns the tangent pixel. Straight strokes stop half a stroke
-    -- before that point, so translucent alpha is not blended twice there.
-    local join_inset =
-        thickness * 0.5
-
-    local top_left_x =
-        x + radius
-
-    local top_right_x =
-        x + w - radius
-
-    local left_top_y =
-        y + radius
-
-    local left_bottom_y =
-        y + h - radius
-
-    if top_right_x - top_left_x > join_inset * 2 then
-        line(
-            top_left_x + join_inset,
-            y,
-            top_right_x - join_inset,
-            y,
-            color,
-            thickness
-        )
-
-        line(
-            top_left_x + join_inset,
-            y + h,
-            top_right_x - join_inset,
-            y + h,
-            color,
-            thickness
-        )
-    end
-
-    if left_bottom_y - left_top_y > join_inset * 2 then
-        line(
-            x,
-            left_top_y + join_inset,
-            x,
-            left_bottom_y - join_inset,
-            color,
-            thickness
-        )
-
-        line(
-            x + w,
-            left_top_y + join_inset,
-            x + w,
-            left_bottom_y - join_inset,
-            color,
-            thickness
-        )
-    end
-
-    -- Cardinal trig values such as cos(pi/2) are tiny non-zero floats.
-    -- Clean them so opposite corners rasterize to exactly matching pixels.
-    local function clean_trig(v)
-        if math.abs(v) < 0.0000001 then
-            return 0
-        end
-
-        if math.abs(v - 1) < 0.0000001 then
-            return 1
-        end
-
-        if math.abs(v + 1) < 0.0000001 then
-            return -1
-        end
-
-        return v
-    end
-
-    local segments =
-        8
-
-    local function arc(
-        cx,
-        cy,
-        a0,
-        a1,
-        start_x,
-        start_y,
-        end_x,
-        end_y
-    )
-        local px =
-            start_x
-
-        local py =
-            start_y
-
-        for n = 1, segments do
-            local nx = nil
-            local ny = nil
-
-            if n == segments then
-                -- Exact tangent endpoint: never leave it to trig rounding.
-                nx =
-                    end_x
-
-                ny =
-                    end_y
-            else
-                local a =
-                    a0
-                    + (a1 - a0)
-                    * (n / segments)
-
-                local ca =
-                    clean_trig(
-                        math.cos(a)
-                    )
-
-                local sa =
-                    clean_trig(
-                        math.sin(a)
-                    )
-
-                nx =
-                    cx
-                    + ca
-                    * radius
-
-                ny =
-                    cy
-                    + sa
-                    * radius
-            end
-
-            line(
-                px,
-                py,
-                nx,
-                ny,
-                color,
-                thickness
-            )
-
-            px =
-                nx
-
-            py =
-                ny
-        end
-    end
-
-    arc(
-        x + radius,
-        y + radius,
-        math.pi,
-        math.pi * 1.5,
+    -- Do not construct the glow from lines/arcs.
+    -- A line-based perimeter can rasterize different joins on different
+    -- sides and leave single-pixel holes.
+    --
+    -- Instead every glow level is one COMPLETE rounded surface.
+    -- The caller expands every level equally:
+    --   x - i, y - i, w + i*2, h + i*2, radius + i
+    -- so spacing is exactly symmetric on left/right/top/bottom and corners.
+    --
+    -- The actual menu/panel is drawn afterwards, covering the interior.
+    -- Therefore only the outside part of these complete surfaces is visible.
+    rounded_fill(
         x,
-        y + radius,
-        x + radius,
-        y
-    )
-
-    arc(
-        x + w - radius,
-        y + radius,
-        math.pi * 1.5,
-        math.pi * 2,
-        x + w - radius,
         y,
-        x + w,
-        y + radius
-    )
-
-    arc(
-        x + w - radius,
-        y + h - radius,
-        0,
-        math.pi * 0.5,
-        x + w,
-        y + h - radius,
-        x + w - radius,
-        y + h
-    )
-
-    arc(
-        x + radius,
-        y + h - radius,
-        math.pi * 0.5,
-        math.pi,
-        x + radius,
-        y + h,
-        x,
-        y + h - radius
+        w,
+        h,
+        radius,
+        color
     )
 end
 
