@@ -25450,8 +25450,6 @@ end
 function FALLEN_DRAW_HOTKEYS_ITEM(
     x,
     y,
-    w,
-    h,
     row
 )
     local t =
@@ -25462,42 +25460,89 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
             row.active == true
         )
 
+    -- Separate little pill for the animated switch.
+    local switch_pill_w =
+        34
+
+    local item_h =
+        23
+
+    local gap =
+        6
+
+    -- Separate label pill. Aimbot/Silent fit cleanly without stretching
+    -- the Hotkeys header itself.
+    local label_pill_w =
+        72
+
+    -- SMALLER glow than the Hotkeys header.
     FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
         x,
         y,
-        w,
-        h,
-        8,
-        { 0, 0, 0, 0.72 },
-        0.55,
-        2.2
+        switch_pill_w,
+        item_h,
+        10,
+        { 0, 0, 0, 0.66 },
+        0.38,
+        1.55
     )
 
     FALLEN_HOTKEYS_ROUNDED_FILL(
         x,
         y,
-        w,
-        h,
-        8,
+        switch_pill_w,
+        item_h,
+        10,
         {
-            0.055,
+            0.045,
+            0.048,
             0.058,
-            0.068,
-            0.88
+            0.90
         }
     )
 
+    -- The actual switch is centered inside its own pill.
     FALLEN_DRAW_HOTKEYS_SWITCH(
-        x + 8,
-        y + math.floor((h - 10) * 0.5 + 0.5),
-        18,
+        x + 7,
+        y + 6.5,
+        20,
         10,
         t
     )
 
+    local label_x =
+        x
+        + switch_pill_w
+        + gap
+
+    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+        label_x,
+        y,
+        label_pill_w,
+        item_h,
+        10,
+        { 0, 0, 0, 0.66 },
+        0.38,
+        1.55
+    )
+
+    FALLEN_HOTKEYS_ROUNDED_FILL(
+        label_x,
+        y,
+        label_pill_w,
+        item_h,
+        10,
+        {
+            0.045,
+            0.048,
+            0.058,
+            0.90
+        }
+    )
+
     text(
-        x + 33,
-        y + math.floor((h - 12) * 0.5 + 0.5),
+        label_x + 10,
+        y + 6,
         tostring(
             row.label or "Bind"
         ),
@@ -25517,6 +25562,12 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
             t * 0.55
         )
     )
+
+    return
+        switch_pill_w
+        + gap
+        + label_pill_w,
+        item_h
 end
 
 
@@ -25539,41 +25590,40 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     local sw, sh =
         screen_size()
 
+    -- Header NEVER gets taller when binds appear.
     local panel_w =
         120
 
-    local title_h =
-        35
-
-    local row_h =
-        19
-
-    local row_gap =
-        5
-
-    local list_pad =
-        row_count > 0
-        and 7
-        or 0
-
     local panel_h =
-        title_h
-        + (
-            row_count > 0
-            and (
-                list_pad
-                + row_count * row_h
-                + math.max(
-                    0,
-                    row_count - 1
-                ) * row_gap
-                + 8
-            )
-            or 0
-        )
+        35
 
     local panel_rounding =
         13
+
+    local child_h =
+        23
+
+    local child_gap =
+        6
+
+    local child_start_gap =
+        8
+
+    -- Only used to keep the detached pills on screen while dragging.
+    local total_visual_h =
+        panel_h
+        + (
+            row_count > 0
+            and (
+                child_start_gap
+                + row_count * child_h
+                + math.max(
+                    0,
+                    row_count - 1
+                ) * child_gap
+            )
+            or 0
+        )
 
     local base_x =
         math.floor(
@@ -25613,7 +25663,7 @@ function FALLEN_DRAW_KEYBINDS_LIST()
             0,
             math.max(
                 0,
-                sh - panel_h
+                sh - total_visual_h
             )
         )
 
@@ -25641,6 +25691,7 @@ function FALLEN_DRAW_KEYBINDS_LIST()
         lmb
         and A.keybinds_panel_prev_lmb ~= true
 
+    -- Drag ONLY by the Hotkeys header, not by the detached bind pills.
     if pressed
         and hover(
             mx,
@@ -25695,7 +25746,7 @@ function FALLEN_DRAW_KEYBINDS_LIST()
                 0,
                 math.max(
                     0,
-                    sh - panel_h
+                    sh - total_visual_h
                 )
             )
 
@@ -25734,6 +25785,7 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     MENU_UI_TRANSFORM_ACTIVE =
         false
 
+    -- Only the 120x35 header gets the main Hotkeys glow/background.
     FALLEN_DRAW_HOTKEYS_FOV_GLOW(
         x,
         y,
@@ -25762,21 +25814,29 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     if header_icon
         and type(DrawImage) == "function"
     then
+        -- Bigger than before: 17px instead of 12px.
+        local icon_size =
+            17
+
         pcall(
             DrawImage,
             header_icon,
             FALLEN_UI_X(
-                x + 10
+                x + 8
             ),
             FALLEN_UI_Y(
-                y + 10
+                y + 9
             ),
             math.floor(
-                FALLEN_UI_LEN(12)
+                FALLEN_UI_LEN(
+                    icon_size
+                )
                 + 0.5
             ),
             math.floor(
-                FALLEN_UI_LEN(12)
+                FALLEN_UI_LEN(
+                    icon_size
+                )
                 + 0.5
             ),
             1,
@@ -25787,7 +25847,7 @@ function FALLEN_DRAW_KEYBINDS_LIST()
         )
 
         text(
-            x + 28,
+            x + 31,
             y + 9,
             "Hotkeys",
             {
@@ -25811,37 +25871,24 @@ function FALLEN_DRAW_KEYBINDS_LIST()
         )
     end
 
+    -- Detached pills underneath. There is NO big parent background behind them.
     if row_count > 0 then
-        line(
-            x + 8,
-            y + title_h - 1,
-            x + panel_w - 8,
-            y + title_h - 1,
-            {
-                0.15,
-                0.16,
-                0.18,
-                0.70
-            },
-            1
-        )
+        local child_y =
+            y
+            + panel_h
+            + child_start_gap
 
-        local row_y =
-            y + title_h + list_pad
-
-        for i, row in ipairs(rows) do
+        for _, row in ipairs(rows) do
             FALLEN_DRAW_HOTKEYS_ITEM(
-                x + 7,
-                row_y,
-                panel_w - 14,
-                row_h,
+                x,
+                child_y,
                 row
             )
 
-            row_y =
-                row_y
-                + row_h
-                + row_gap
+            child_y =
+                child_y
+                + child_h
+                + child_gap
         end
     end
 
