@@ -36265,104 +36265,10 @@ function FALLEN_MISC_DESYNC_MASTER_SET(
         return false
     end
 
-    -- Discover actual boolean Desync master/enabled fields.
-    if type(misc._keys) == "function" then
-        local keys = nil
-
-        pcall(function()
-            keys =
-                misc:_keys()
-        end)
-
-        if type(keys) == "table" then
-            for _, raw_key in ipairs(keys) do
-                local key =
-                    tostring(raw_key)
-
-                local normalized =
-                    string.lower(key)
-
-                normalized =
-                    string.gsub(
-                        normalized,
-                        "[%s_%-]",
-                        ""
-                    )
-
-                local field_type = nil
-
-                if type(misc._type) == "function" then
-                    pcall(function()
-                        field_type =
-                            misc:_type(key)
-                    end)
-                end
-
-                local is_desync =
-                    string.find(
-                        normalized,
-                        "desync",
-                        1,
-                        true
-                    ) ~= nil
-
-                local is_method =
-                    string.find(
-                        normalized,
-                        "method",
-                        1,
-                        true
-                    ) ~= nil
-                    or string.find(
-                        normalized,
-                        "mode",
-                        1,
-                        true
-                    ) ~= nil
-                    or string.find(
-                        normalized,
-                        "type",
-                        1,
-                        true
-                    ) ~= nil
-                    or string.find(
-                        normalized,
-                        "service",
-                        1,
-                        true
-                    ) ~= nil
-                    or string.find(
-                        normalized,
-                        "server",
-                        1,
-                        true
-                    ) ~= nil
-                    or string.find(
-                        normalized,
-                        "key",
-                        1,
-                        true
-                    ) ~= nil
-
-                if is_desync
-                    and not is_method
-                    and (
-                        field_type == "bool"
-                        or field_type == nil
-                    )
-                then
-                    pcall(function()
-                        misc[key] =
-                            enabled
-
-                        wrote = true
-                    end)
-                end
-            end
-        end
-    end
-
-    -- Common live mirrors/fallbacks.
+    -- IMPORTANT:
+    -- Do not scan/write every "desync*" boolean here.
+    -- Builds can expose unrelated options such as "Use tick".
+    -- Only touch the explicit Desync master mirrors.
     pcall(function()
         misc.desync =
             enabled
@@ -36656,8 +36562,7 @@ function FALLEN_MISC_UNDERGROUND_RETURN_TICK()
         return false
     end
 
-    -- Re-apply origin EVERY render frame. A single set_position is too easy
-    -- for physics/network/desync to overwrite.
+    -- Exact saved position. Depth is NEVER added/subtracted on return.
     pcall(function()
         hrp:set_position(
             Vector3(
@@ -36704,13 +36609,13 @@ function FALLEN_MISC_UNDERGROUND_RETURN_TICK()
             tonumber(current.Z)
             - tonumber(original.Z)
 
-        local dist_sq =
-            dx * dx
-            + dy * dy
-            + dz * dz
-
         confirmed =
-            dist_sq <= 4.0
+            (
+                dx * dx
+                + dy * dy
+                + dz * dz
+            )
+            <= 2.25
     end
 
     if confirmed then
@@ -36727,6 +36632,18 @@ function FALLEN_MISC_UNDERGROUND_RETURN_TICK()
             0
     end
 
+    -- Two quick confirmations only: return should feel like a teleport,
+    -- not like being held underground / slowly corrected.
+    if (
+        A.misc_underground_return_confirm_frames
+        or 0
+    ) >= 2
+    then
+        FALLEN_MISC_UNDERGROUND_CLEAR_STATE()
+        return true
+    end
+
+    -- Very short safety retry window.
     local elapsed =
         tick()
         - (
@@ -36736,20 +36653,7 @@ function FALLEN_MISC_UNDERGROUND_RETURN_TICK()
             or tick()
         )
 
-    -- Require several consecutive frames at the original position.
-    if (
-        A.misc_underground_return_confirm_frames
-        or 0
-    ) >= 5
-        and elapsed >= 0.10
-    then
-        FALLEN_MISC_UNDERGROUND_CLEAR_STATE()
-        return true
-    end
-
-    -- Keep retrying for a good while instead of silently abandoning the return.
-    if elapsed >= 1.50 then
-        -- One last forced write, then clear to avoid permanently locking the FSM.
+    if elapsed >= 0.10 then
         pcall(function()
             hrp:set_position(
                 Vector3(
@@ -36777,21 +36681,30 @@ function FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
     local method_found = false
 
     pcall(function()
-        misc = cheat.misc
+        misc =
+            cheat.misc
     end)
 
-    if misc
-        and type(misc._keys) == "function"
-    then
+    if not misc then
+        return false
+    end
+
+    -- Only exact Service-side / Server-side fields are touched.
+    -- Do NOT write generic desync_method/desync_mode/desync_type:
+    -- in this build that can alter unrelated menu options such as "Use tick".
+    if type(misc._keys) == "function" then
         local keys = nil
 
         pcall(function()
-            keys = misc:_keys()
+            keys =
+                misc:_keys()
         end)
 
         if type(keys) == "table" then
             for _, raw_key in ipairs(keys) do
-                local key = tostring(raw_key)
+                local key =
+                    tostring(raw_key)
+
                 local normalized =
                     string.lower(key)
 
@@ -36802,12 +36715,13 @@ function FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
                         ""
                     )
 
-                if string.find(
-                    normalized,
-                    "desync",
-                    1,
-                    true
-                ) then
+                local exact_service =
+                    normalized == "desyncserviceside"
+                    or normalized == "desyncserverside"
+                    or normalized == "servicesidedesync"
+                    or normalized == "serversidedesync"
+
+                if exact_service then
                     local field_type = nil
 
                     if type(misc._type) == "function" then
@@ -36817,99 +36731,46 @@ function FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
                         end)
                     end
 
-                    local service_field =
-                        string.find(
-                            normalized,
-                            "service",
-                            1,
-                            true
-                        ) ~= nil
-                        or string.find(
-                            normalized,
-                            "server",
-                            1,
-                            true
-                        ) ~= nil
+                    pcall(function()
+                        if field_type == "string" then
+                            misc[key] =
+                                "Service side"
+                        elseif field_type == "bool" then
+                            misc[key] =
+                                true
+                        else
+                            -- Numeric selector on builds exposing this exact
+                            -- service-side field.
+                            misc[key] =
+                                1
+                        end
 
-                    local method_field =
-                        string.find(
-                            normalized,
-                            "method",
-                            1,
+                        method_found =
                             true
-                        ) ~= nil
-                        or string.find(
-                            normalized,
-                            "mode",
-                            1,
-                            true
-                        ) ~= nil
-                        or string.find(
-                            normalized,
-                            "type",
-                            1,
-                            true
-                        ) ~= nil
-
-                    if service_field then
-                        pcall(function()
-                            if field_type == "bool" then
-                                misc[key] = true
-                            elseif field_type == "string" then
-                                misc[key] = "Service side"
-                            else
-                                misc[key] = 1
-                            end
-
-                            method_found = true
-                        end)
-
-                    elseif method_field then
-                        pcall(function()
-                            if field_type == "string" then
-                                misc[key] = "Service side"
-                            else
-                                misc[key] = 1
-                            end
-
-                            method_found = true
-                        end)
-                    end
+                    end)
                 end
             end
         end
     end
 
-    -- Compatibility fallbacks for builds without exposed _keys().
-    if misc then
-        pcall(function()
-            misc.desync_method = 1
-            method_found = true
-        end)
+    -- Exact-name fallbacks only. Unknown keys are safely ignored by pcall.
+    pcall(function()
+        misc.desync_service_side =
+            true
 
-        pcall(function()
-            misc.desync_mode = 1
-            method_found = true
-        end)
+        method_found =
+            true
+    end)
 
-        pcall(function()
-            misc.desync_type = 1
-            method_found = true
-        end)
+    pcall(function()
+        misc.desync_server_side =
+            true
 
-        pcall(function()
-            misc.desync_service_side = true
-            method_found = true
-        end)
+        method_found =
+            true
+    end)
 
-        pcall(function()
-            misc.desync_server_side = true
-            method_found = true
-        end)
-    end
-
-    -- Arm the stock Desync master while we are already underground,
-    -- then activate it through the real toggle-bind latch.
+    -- Arm only the real Desync master, then click its toggle latch.
     FALLEN_MISC_DESYNC_MASTER_SET(
         true
     )
@@ -37015,26 +36876,9 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
         tick()
 
     if stage == 1 then
-        -- Critical: keep teleporting to the underground point EVERY frame.
-        -- Do not activate Desync until the HRP has reported the underground
-        -- position for several consecutive render frames.
-        local confirmed =
-            FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
-
-        if confirmed then
-            A.misc_underground_desync_confirm_frames =
-                (
-                    tonumber(
-                        A.misc_underground_desync_confirm_frames
-                    )
-                    or 0
-                )
-                + 1
-        else
-            A.misc_underground_desync_confirm_frames =
-                0
-        end
-
+        -- Request() already teleported down immediately.
+        -- Because the hotkey hook calls this function in the same render frame,
+        -- wait only until the NEXT render frame before activating Desync.
         local elapsed =
             now
             - (
@@ -37042,86 +36886,26 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
                 or now
             )
 
-        if (
-            A.misc_underground_desync_confirm_frames
-            or 0
-        ) >= 4
-            and elapsed >= 0.10
-        then
-            -- NOW we know we are still below ground.
-            FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
-
-            A.misc_underground_desync_stage =
-                2
-
-            A.misc_underground_desync_time =
-                now
-
-            A.misc_underground_desync_post_frames =
-                0
-
+        if elapsed < 0.008 then
             return
         end
 
-        -- Safety timeout: if teleport cannot stick, enter the same guaranteed
-        -- multi-frame return stage without enabling Desync.
-        if elapsed >= 0.90 then
-            A.misc_underground_desync_stage =
-                3
-
-            A.misc_underground_return_confirm_frames =
-                0
-
-            A.misc_underground_return_started =
-                now
-
-            FALLEN_MISC_UNDERGROUND_RETURN_TICK()
-        end
-
-        return
-    end
-
-    if stage == 2 then
-        -- Desync has already been latched ON.
-        -- Keep HRP below for several MORE frames so activation cannot happen
-        -- after the return teleport due to ordering / network delay.
+        -- Re-assert the underground point once, activate Desync there,
+        -- then immediately start teleporting to the EXACT saved origin.
         FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
 
-        A.misc_underground_desync_post_frames =
-            (
-                tonumber(
-                    A.misc_underground_desync_post_frames
-                )
-                or 0
-            )
-            + 1
+        FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
 
-        local elapsed =
+        A.misc_underground_desync_stage =
+            3
+
+        A.misc_underground_return_confirm_frames =
+            0
+
+        A.misc_underground_return_started =
             now
-            - (
-                A.misc_underground_desync_time
-                or now
-            )
 
-        if (
-            A.misc_underground_desync_post_frames
-            or 0
-        ) >= 5
-            and elapsed >= 0.12
-        then
-            -- Latch stays ON. Enter a dedicated multi-frame return stage.
-            A.misc_underground_desync_stage =
-                3
-
-            A.misc_underground_return_confirm_frames =
-                0
-
-            A.misc_underground_return_started =
-                now
-
-            FALLEN_MISC_UNDERGROUND_RETURN_TICK()
-        end
-
+        FALLEN_MISC_UNDERGROUND_RETURN_TICK()
         return
     end
 
