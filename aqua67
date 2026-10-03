@@ -198,6 +198,7 @@ local defaults = {
 
     -- Hotkeys overlay.
     keybinds_list_enabled = false,
+    hotkeys_rounding = 13,
 
     -- Normalized screen position so drag placement scales with resolution.
     hotkeys_pos_x = 0.008,
@@ -711,7 +712,7 @@ local A = {
     keybinds_panel_anim = 0,
     keybinds_panel_last_t = nil,
     keybinds_item_anim = {},
-    keybinds_item_last_t = nil,
+    keybinds_item_last_t = {},
 
     -- Hotkeys panel dragging.
     keybinds_panel_dragging = false,
@@ -24494,7 +24495,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or menu_type_lower == "blur"
 
     local ph =
-        426
+        467
         + (
             gradient_selected
             and 82
@@ -24918,15 +24919,41 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
+        if shell_h > 451 + weather_offset then
+            line(
+                px + 12,
+                py + 409 + weather_offset,
+                px + pw - 12,
+                py + 409 + weather_offset,
+                C.divider,
+                1
+            )
+
+            slider_row(
+                mx,
+                my,
+                row_clicked,
+                lmb,
+                px + 8,
+                py + 410 + weather_offset,
+                pw - 16,
+                "Hotkeys Rounding",
+                "hotkeys_rounding",
+                0,
+                17,
+                "int"
+            )
+        end
+
         -- Secret setting is completely absent until the hidden brand gesture.
         if A.secret_unlocked
-            and shell_h > 451 + weather_offset
+            and shell_h > 492 + weather_offset
         then
             line(
                 px + 12,
-                py + 408 + weather_offset,
+                py + 450 + weather_offset,
                 px + pw - 12,
-                py + 408 + weather_offset,
+                py + 450 + weather_offset,
                 C.divider,
                 1
             )
@@ -24936,7 +24963,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 409 + weather_offset,
+                py + 451 + weather_offset,
                 pw - 16,
                 "???",
                 "secret_enabled",
@@ -25307,6 +25334,7 @@ function FALLEN_HOTKEYS_ITEM_ROWS()
         rows[#rows + 1] = {
             id = "aimbot",
             label = "Aimbot",
+            icon = "aimbot",
             active =
                 (
                     tonumber(S.aim_hold_key)
@@ -25327,6 +25355,7 @@ function FALLEN_HOTKEYS_ITEM_ROWS()
         rows[#rows + 1] = {
             id = "silent",
             label = "Silent",
+            icon = "silent",
             active =
                 silent_vk > 0
                 and key_down(
@@ -25344,22 +25373,39 @@ function FALLEN_HOTKEYS_ITEM_STEP(
     id,
     target
 )
+    id =
+        tostring(
+            id or "item"
+        )
+
     local now =
         tick()
 
-    if A.keybinds_item_last_t == nil then
+    if type(A.keybinds_item_last_t) ~= "table" then
         A.keybinds_item_last_t =
+            {}
+    end
+
+    local last =
+        tonumber(
+            A.keybinds_item_last_t[id]
+        )
+
+    if not last then
+        last =
             now
     end
 
     local dt =
         clamp(
-            now - A.keybinds_item_last_t,
+            now - last,
             0,
             0.05
         )
 
-    A.keybinds_item_last_t =
+    -- IMPORTANT: one timestamp per hotkey row.
+    -- Aimbot can no longer consume Silent's dt in the same render frame.
+    A.keybinds_item_last_t[id] =
         now
 
     local current =
@@ -25393,7 +25439,8 @@ function FALLEN_DRAW_HOTKEYS_SWITCH(
     y,
     w,
     h,
-    t
+    t,
+    rounding
 )
     t =
         clamp(
@@ -25416,12 +25463,21 @@ function FALLEN_DRAW_HOTKEYS_SWITCH(
             t
         )
 
+    local track_rounding =
+        clamp(
+            tonumber(rounding)
+            or tonumber(S.hotkeys_rounding)
+            or 13,
+            0,
+            h * 0.5
+        )
+
     FALLEN_HOTKEYS_ROUNDED_FILL(
         x,
         y,
         w,
         h,
-        h * 0.5,
+        track_rounding,
         track
     )
 
@@ -25460,11 +25516,6 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
             row.active == true
         )
 
-    -- Two separate pills:
-    -- [ switch pill ] [ label pill ]
-    -- Both must visually match the Hotkeys header itself:
-    -- same translucent body, same rounded feel, same glow family,
-    -- but with a slightly weaker glow.
     local switch_pill_w =
         34
 
@@ -25478,7 +25529,11 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
         72
 
     local child_rounding =
-        10
+        clamp(
+            tonumber(S.hotkeys_rounding) or 13,
+            0,
+            item_h * 0.5
+        )
 
     local child_fill =
         {
@@ -25491,7 +25546,7 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
     local child_glow_color =
         { 0, 0, 0, 1 }
 
-    -- Same glow family as Hotkeys header, only a bit weaker/smaller.
+    -- Same style as Hotkeys header, glow only a little weaker.
     FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
         x,
         y,
@@ -25517,7 +25572,8 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
         y + 6.5,
         20,
         10,
-        t
+        t,
+        child_rounding
     )
 
     local label_x =
@@ -25545,8 +25601,56 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
         child_fill
     )
 
+    local item_icon =
+        nil
+
+    if row.icon == "aimbot" then
+        item_icon =
+            FALLEN_AIMBOT_TAB_ICON_GET()
+    elseif row.icon == "silent" then
+        item_icon =
+            FALLEN_SILENT_TAB_ICON_GET()
+    end
+
+    local text_x =
+        label_x + 10
+
+    if item_icon
+        and type(DrawImage) == "function"
+    then
+        local icon_size =
+            12
+
+        pcall(
+            DrawImage,
+            item_icon,
+            FALLEN_UI_X(
+                label_x + 8
+            ),
+            FALLEN_UI_Y(
+                y + 5.5
+            ),
+            math.floor(
+                FALLEN_UI_LEN(icon_size)
+                + 0.5
+            ),
+            math.floor(
+                FALLEN_UI_LEN(icon_size)
+                + 0.5
+            ),
+            1,
+            1,
+            1,
+            MENU_RENDER_ALPHA,
+            0
+        )
+
+        text_x =
+            label_x + 25
+    end
+
     text(
-        label_x + 10,
+        text_x,
         y + 6,
         tostring(
             row.label or "Bind"
@@ -25603,7 +25707,11 @@ function FALLEN_DRAW_KEYBINDS_LIST()
         35
 
     local panel_rounding =
-        13
+        clamp(
+            tonumber(S.hotkeys_rounding) or 13,
+            0,
+            panel_h * 0.5
+        )
 
     local child_h =
         23
