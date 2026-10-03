@@ -3501,6 +3501,78 @@ function FALLEN_SILENT_TAB_ICON_GET()
 end
 
 
+-- Hotkeys panel header image icon.
+_G.FALLEN_HOTKEYS_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%91%D0%B5%D0%BB%D1%8B%D0%B5-%D1%81%D0%BB%D0%B0%D0%B9%D0%B4%D0%B5%D1%80%D1%8B-%D0%BD%D0%B0-%D1%87%D1%91%D1%80%D0%BD%D0%BE%D0%BC-%D1%84%D0%BE%D0%BD%D0%B5-%281%29.QFS0k"
+
+_G.FALLEN_HOTKEYS_ICON_SOURCE =
+    _G.FALLEN_HOTKEYS_ICON_SOURCE
+    or nil
+
+_G.FALLEN_HOTKEYS_ICON_URL =
+    _G.FALLEN_HOTKEYS_ICON_URL
+    or nil
+
+_G.FALLEN_HOTKEYS_ICON_HANDLE =
+    _G.FALLEN_HOTKEYS_ICON_HANDLE
+    or nil
+
+function FALLEN_HOTKEYS_ICON_GET()
+    local page_url =
+        _G.FALLEN_HOTKEYS_ICON_PAGE_URL
+
+    if _G.FALLEN_HOTKEYS_ICON_SOURCE ~= page_url then
+        _G.FALLEN_HOTKEYS_ICON_SOURCE = page_url
+        _G.FALLEN_HOTKEYS_ICON_URL = nil
+        _G.FALLEN_HOTKEYS_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_HOTKEYS_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_HOTKEYS_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_HOTKEYS_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_HOTKEYS_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_HOTKEYS_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_HOTKEYS_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
 -- Aimbot sidebar image icon.
 -- White source image: default is white; selected/hovered state can tint toward accent.
 _G.FALLEN_AIMBOT_TAB_ICON_PAGE_URL =
@@ -25227,6 +25299,227 @@ function FALLEN_DRAW_HOTKEYS_FOV_GLOW(
 end
 
 
+
+function FALLEN_HOTKEYS_ITEM_ROWS()
+    local rows = {}
+
+    if S.aim_enabled == true then
+        rows[#rows + 1] = {
+            id = "aimbot",
+            label = "Aimbot",
+            active =
+                (
+                    tonumber(S.aim_hold_key)
+                    or 0
+                ) > 0
+                and fap_hold_down() == true
+                or false,
+        }
+    end
+
+    if S.silent_enabled == true then
+        local silent_vk =
+            math.floor(
+                tonumber(S.silent_key)
+                or 0
+            )
+
+        rows[#rows + 1] = {
+            id = "silent",
+            label = "Silent",
+            active =
+                silent_vk > 0
+                and key_down(
+                    silent_vk
+                ) == true
+                or false,
+        }
+    end
+
+    return rows
+end
+
+
+function FALLEN_HOTKEYS_ITEM_STEP(
+    id,
+    target
+)
+    local now =
+        tick()
+
+    if A.keybinds_item_last_t == nil then
+        A.keybinds_item_last_t =
+            now
+    end
+
+    local dt =
+        clamp(
+            now - A.keybinds_item_last_t,
+            0,
+            0.05
+        )
+
+    A.keybinds_item_last_t =
+        now
+
+    local current =
+        tonumber(
+            A.keybinds_item_anim[id]
+        )
+        or 0
+
+    current =
+        exp_chase(
+            current,
+            target and 1 or 0,
+            target and 17 or 12,
+            dt
+        )
+
+    A.keybinds_item_anim[id] =
+        current
+
+    return
+        clamp(
+            current,
+            0,
+            1
+        )
+end
+
+
+function FALLEN_DRAW_HOTKEYS_SWITCH(
+    x,
+    y,
+    w,
+    h,
+    t
+)
+    t =
+        clamp(
+            tonumber(t) or 0,
+            0,
+            1
+        )
+
+    local track =
+        mix_color(
+            { 0.080, 0.084, 0.095, 0.95 },
+            { 0.180, 0.185, 0.205, 0.98 },
+            t
+        )
+
+    local knob =
+        mix_color(
+            { 0.52, 0.54, 0.60, 1.00 },
+            { 0.96, 0.96, 0.99, 1.00 },
+            t
+        )
+
+    FALLEN_HOTKEYS_ROUNDED_FILL(
+        x,
+        y,
+        w,
+        h,
+        h * 0.5,
+        track
+    )
+
+    local pad =
+        1.5
+
+    local knob_d =
+        h - pad * 2
+
+    local knob_x =
+        lerp(
+            x + pad,
+            x + w - pad - knob_d,
+            t
+        )
+
+    circle_fill(
+        knob_x + knob_d * 0.5,
+        y + h * 0.5,
+        knob_d * 0.5,
+        knob
+    )
+end
+
+
+function FALLEN_DRAW_HOTKEYS_ITEM(
+    x,
+    y,
+    w,
+    h,
+    row
+)
+    local t =
+        FALLEN_HOTKEYS_ITEM_STEP(
+            tostring(
+                row.id or "item"
+            ),
+            row.active == true
+        )
+
+    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+        x,
+        y,
+        w,
+        h,
+        8,
+        { 0, 0, 0, 0.72 },
+        0.55,
+        2.2
+    )
+
+    FALLEN_HOTKEYS_ROUNDED_FILL(
+        x,
+        y,
+        w,
+        h,
+        8,
+        {
+            0.055,
+            0.058,
+            0.068,
+            0.88
+        }
+    )
+
+    FALLEN_DRAW_HOTKEYS_SWITCH(
+        x + 8,
+        y + math.floor((h - 10) * 0.5 + 0.5),
+        18,
+        10,
+        t
+    )
+
+    text(
+        x + 33,
+        y + math.floor((h - 12) * 0.5 + 0.5),
+        tostring(
+            row.label or "Bind"
+        ),
+        mix_color(
+            {
+                0.72,
+                0.73,
+                0.77,
+                1
+            },
+            {
+                0.96,
+                0.96,
+                0.99,
+                1
+            },
+            t * 0.55
+        )
+    )
+end
+
+
 function FALLEN_DRAW_KEYBINDS_LIST()
     local panel_anim =
         FALLEN_KEYBINDS_STEP()
@@ -25237,15 +25530,47 @@ function FALLEN_DRAW_KEYBINDS_LIST()
         return
     end
 
+    local rows =
+        FALLEN_HOTKEYS_ITEM_ROWS()
+
+    local row_count =
+        #rows
+
     local sw, sh =
         screen_size()
 
-    -- Final Hotkeys geometry from the tuning screenshot.
     local panel_w =
         120
 
-    local panel_h =
+    local title_h =
         35
+
+    local row_h =
+        19
+
+    local row_gap =
+        5
+
+    local list_pad =
+        row_count > 0
+        and 7
+        or 0
+
+    local panel_h =
+        title_h
+        + (
+            row_count > 0
+            and (
+                list_pad
+                + row_count * row_h
+                + math.max(
+                    0,
+                    row_count - 1
+                ) * row_gap
+                + 8
+            )
+            or 0
+        )
 
     local panel_rounding =
         13
@@ -25304,7 +25629,6 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     local y =
         base_y
 
-    -- Drag anywhere on the Hotkeys panel with LMB.
     local mx, my =
         mouse_pos()
 
@@ -25410,7 +25734,6 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     MENU_UI_TRANSFORM_ACTIVE =
         false
 
-    -- Final tuned Hotkeys glow.
     FALLEN_DRAW_HOTKEYS_FOV_GLOW(
         x,
         y,
@@ -25419,8 +25742,6 @@ function FALLEN_DRAW_KEYBINDS_LIST()
         panel_rounding
     )
 
-    -- Final tuned panel opacity = 62%.
-    -- Use the dedicated symmetric scanline rounded renderer.
     FALLEN_HOTKEYS_ROUNDED_FILL(
         x,
         y,
@@ -25435,20 +25756,94 @@ function FALLEN_DRAW_KEYBINDS_LIST()
         }
     )
 
-    text(
-        x + 13,
-        y + math.max(
-            8,
-            (panel_h - 14) * 0.5
-        ),
-        "Hotkeys",
-        {
-            0.92,
-            0.92,
-            0.95,
+    local header_icon =
+        FALLEN_HOTKEYS_ICON_GET()
+
+    if header_icon
+        and type(DrawImage) == "function"
+    then
+        pcall(
+            DrawImage,
+            header_icon,
+            FALLEN_UI_X(
+                x + 10
+            ),
+            FALLEN_UI_Y(
+                y + 10
+            ),
+            math.floor(
+                FALLEN_UI_LEN(12)
+                + 0.5
+            ),
+            math.floor(
+                FALLEN_UI_LEN(12)
+                + 0.5
+            ),
+            1,
+            1,
+            1,
+            MENU_RENDER_ALPHA,
+            0
+        )
+
+        text(
+            x + 28,
+            y + 9,
+            "Hotkeys",
+            {
+                0.92,
+                0.92,
+                0.95,
+                1
+            }
+        )
+    else
+        text(
+            x + 13,
+            y + 9,
+            "Hotkeys",
+            {
+                0.92,
+                0.92,
+                0.95,
+                1
+            }
+        )
+    end
+
+    if row_count > 0 then
+        line(
+            x + 8,
+            y + title_h - 1,
+            x + panel_w - 8,
+            y + title_h - 1,
+            {
+                0.15,
+                0.16,
+                0.18,
+                0.70
+            },
             1
-        }
-    )
+        )
+
+        local row_y =
+            y + title_h + list_pad
+
+        for i, row in ipairs(rows) do
+            FALLEN_DRAW_HOTKEYS_ITEM(
+                x + 7,
+                row_y,
+                panel_w - 14,
+                row_h,
+                row
+            )
+
+            row_y =
+                row_y
+                + row_h
+                + row_gap
+        end
+    end
 
     MENU_RENDER_ALPHA =
         old_alpha
