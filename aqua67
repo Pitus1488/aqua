@@ -14192,17 +14192,47 @@ function FALLEN_BT_VFX_SCAN()
 end
 
 
-function FALLEN_BT_VFX_POSITION(
+function FALLEN_BT_VFX_IS_IMPACT_NAME(
     inst
 )
     if not FALLEN_BT_VFX_INSTANCE_VALID(
         inst
     )
     then
+        return false
+    end
+
+    local name = nil
+
+    pcall(function()
+        name =
+            inst:get_name()
+    end)
+
+    name =
+        string.lower(
+            tostring(
+                name or ""
+            )
+        )
+
+    return
+        name == "hole"
+        or name == "metalhole"
+end
+
+
+function FALLEN_BT_VFX_POSITION(
+    inst
+)
+    if not FALLEN_BT_VFX_IS_IMPACT_NAME(
+        inst
+    )
+    then
         return nil
     end
 
-    -- Most impact objects (Hole/StoneHole/etc.) are BaseParts or MeshParts.
+    -- First try the Hole / MetalHole object itself.
     local pos = nil
 
     pcall(function()
@@ -14222,72 +14252,32 @@ function FALLEN_BT_VFX_POSITION(
         }
     end
 
-    -- If the newly-created object is an Attachment/Decal/etc., walk upward
-    -- a few levels and use the first parent that exposes a world position.
-    local parent =
-        inst
+    -- If Hole / MetalHole is a Model/Folder, use only its nearest direct
+    -- positional child. Do NOT walk parents or unrelated VFX descendants.
+    local children = nil
 
-    for _ = 1, 4 do
-        local next_parent = nil
+    pcall(function()
+        children =
+            inst:get_children()
+    end)
 
-        pcall(function()
-            next_parent =
-                parent:parent()
-        end)
-
-        parent =
-            next_parent
-
-        if not parent
-            or not FALLEN_BT_VFX_INSTANCE_VALID(
-                parent
+    if type(children) == "table" then
+        for _, child in ipairs(children) do
+            if FALLEN_BT_VFX_INSTANCE_VALID(
+                child
             )
-        then
-            break
-        end
+            then
+                local class_name = nil
 
-        local parent_pos = nil
+                pcall(function()
+                    class_name =
+                        child:get_class()
+                end)
 
-        pcall(function()
-            parent_pos =
-                parent:get_position()
-        end)
-
-        if parent_pos
-            and parent_pos.X ~= nil
-            and parent_pos.Y ~= nil
-            and parent_pos.Z ~= nil
-        then
-            return {
-                X = parent_pos.X,
-                Y = parent_pos.Y,
-                Z = parent_pos.Z,
-            }
-        end
-    end
-
-    -- New Model/Folder: find a positional descendant.
-    local classes = {
-        "MeshPart",
-        "Part",
-        "UnionOperation",
-    }
-
-    for _, class_name in ipairs(classes) do
-        local descendants = nil
-
-        pcall(function()
-            descendants =
-                inst:find_descendants_of_class(
-                    class_name
-                )
-        end)
-
-        if type(descendants) == "table" then
-            for _, child in ipairs(descendants) do
-                if FALLEN_BT_VFX_INSTANCE_VALID(
-                    child
-                )
+                if class_name == "MeshPart"
+                    or class_name == "Part"
+                    or class_name == "UnionOperation"
+                    or class_name == "BasePart"
                 then
                     local child_pos = nil
 
@@ -14317,8 +14307,53 @@ end
 
 
 function FALLEN_BT_ORIGIN()
-    -- Existing tracer should visually start from us.
-    -- Camera is preferred because that matches the first-person weapon view.
+    -- Start from the player's face/head, not camera.
+    local head = nil
+
+    pcall(function()
+        if rbx
+            and type(rbx.local_head) == "function"
+        then
+            head =
+                rbx.local_head()
+        end
+    end)
+
+    if head then
+        local valid =
+            true
+
+        pcall(function()
+            if type(head.is_valid) == "function" then
+                valid =
+                    head:is_valid()
+                    == true
+            end
+        end)
+
+        if valid then
+            local p = nil
+
+            pcall(function()
+                p =
+                    head:get_position()
+            end)
+
+            if p
+                and p.X ~= nil
+                and p.Y ~= nil
+                and p.Z ~= nil
+            then
+                return {
+                    X = p.X,
+                    Y = p.Y,
+                    Z = p.Z,
+                }
+            end
+        end
+    end
+
+    -- Camera only as fallback if Head is temporarily unavailable.
     local cam = nil
 
     pcall(function()
@@ -14340,70 +14375,6 @@ function FALLEN_BT_ORIGIN()
             Y = cam.Y,
             Z = cam.Z,
         }
-    end
-
-    local head = nil
-
-    pcall(function()
-        if rbx
-            and type(rbx.local_head) == "function"
-        then
-            head =
-                rbx.local_head()
-        end
-    end)
-
-    if head then
-        local p = nil
-
-        pcall(function()
-            p =
-                head:get_position()
-        end)
-
-        if p
-            and p.X ~= nil
-            and p.Y ~= nil
-            and p.Z ~= nil
-        then
-            return {
-                X = p.X,
-                Y = p.Y,
-                Z = p.Z,
-            }
-        end
-    end
-
-    local hrp = nil
-
-    pcall(function()
-        if rbx
-            and type(rbx.local_hrp) == "function"
-        then
-            hrp =
-                rbx.local_hrp()
-        end
-    end)
-
-    if hrp then
-        local p = nil
-
-        pcall(function()
-            p =
-                hrp:get_position()
-        end)
-
-        if p
-            and p.X ~= nil
-            and p.Y ~= nil
-            and p.Z ~= nil
-        then
-            return {
-                X = p.X,
-                Y = p.Y,
-                Z = p.Z,
-            }
-        end
     end
 
     return nil
@@ -14430,13 +14401,14 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
         nil
 
     local best_dist_sq =
-        -1
+        nil
 
-    -- Names/classes are intentionally NOT filtered.
-    -- Hole, StoneHole, Model, Attachment, or any other newly-created VFX
-    -- object can become the endpoint if it resolves to a world position.
     for key, inst in pairs(current) do
-        if previous[key] == nil then
+        if previous[key] == nil
+            and FALLEN_BT_VFX_IS_IMPACT_NAME(
+                inst
+            )
+        then
             local pos =
                 FALLEN_BT_VFX_POSITION(
                     inst
@@ -14460,25 +14432,27 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
                     + dy * dy
                     + dz * dz
 
-                -- A shot can create a muzzle effect and an impact VFX together.
-                -- The impact is normally farther from the camera, so choose the
-                -- farthest newly-created positional VFX object this scan.
-                if dist_sq > best_dist_sq then
-                    best_dist_sq =
-                        dist_sq
+                -- Ignore effects basically inside the face/muzzle.
+                -- A real Hole/MetalHole impact should be away from us.
+                if dist_sq >= 4 then
+                    if best_dist_sq == nil
+                        or dist_sq < best_dist_sq
+                    then
+                        best_dist_sq =
+                            dist_sq
 
-                    best_pos = {
-                        X = pos.X,
-                        Y = pos.Y,
-                        Z = pos.Z,
+                        best_pos = {
+                            X = pos.X,
+                            Y = pos.Y,
+                            Z = pos.Z,
 
-                        -- Keep existing tracer renderer in straight-line mode.
-                        auto_prediction = false,
-                        prediction_time = 0,
-                        gravity = 0,
-                        bullet_speed = 0,
-                        source = "vfx",
-                    }
+                            auto_prediction = false,
+                            prediction_time = 0,
+                            gravity = 0,
+                            bullet_speed = 0,
+                            source = "vfx_hole",
+                        }
+                    end
                 end
             end
         end
