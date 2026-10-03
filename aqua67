@@ -36666,6 +36666,31 @@ function FALLEN_MISC_FPS_FLAG_SPECS()
             value = 1,
         },
         {
+            name = "DFIntCSGLevelOfDetailSwitchingDistance",
+            kind = "i32",
+            value = 100,
+        },
+        {
+            name = "DFIntCSGLevelOfDetailSwitchingDistanceL12",
+            kind = "i32",
+            value = 200,
+        },
+        {
+            name = "DFIntCSGLevelOfDetailSwitchingDistanceL23",
+            kind = "i32",
+            value = 400,
+        },
+        {
+            name = "DFIntCSGLevelOfDetailSwitchingDistanceL34",
+            kind = "i32",
+            value = 800,
+        },
+        {
+            name = "DFFlagDebugPauseVoxelizer",
+            kind = "bool",
+            value = true,
+        },
+        {
             name = "FIntFRMMinGrassDistance",
             kind = "f32",
             value = 0,
