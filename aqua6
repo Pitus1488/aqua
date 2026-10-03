@@ -25460,7 +25460,11 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
             row.active == true
         )
 
-    -- Separate little pill for the animated switch.
+    -- Two separate pills:
+    -- [ switch pill ] [ label pill ]
+    -- Both must visually match the Hotkeys header itself:
+    -- same translucent body, same rounded feel, same glow family,
+    -- but with a slightly weaker glow.
     local switch_pill_w =
         34
 
@@ -25470,21 +25474,33 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
     local gap =
         6
 
-    -- Separate label pill. Aimbot/Silent fit cleanly without stretching
-    -- the Hotkeys header itself.
     local label_pill_w =
         72
 
-    -- SMALLER glow than the Hotkeys header.
+    local child_rounding =
+        10
+
+    local child_fill =
+        {
+            0.008,
+            0.008,
+            0.010,
+            0.62
+        }
+
+    local child_glow_color =
+        { 0, 0, 0, 1 }
+
+    -- Same glow family as Hotkeys header, only a bit weaker/smaller.
     FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
         x,
         y,
         switch_pill_w,
         item_h,
-        10,
-        { 0, 0, 0, 0.66 },
-        0.38,
-        1.55
+        child_rounding,
+        child_glow_color,
+        1.05,
+        3.9
     )
 
     FALLEN_HOTKEYS_ROUNDED_FILL(
@@ -25492,16 +25508,10 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
         y,
         switch_pill_w,
         item_h,
-        10,
-        {
-            0.045,
-            0.048,
-            0.058,
-            0.90
-        }
+        child_rounding,
+        child_fill
     )
 
-    -- The actual switch is centered inside its own pill.
     FALLEN_DRAW_HOTKEYS_SWITCH(
         x + 7,
         y + 6.5,
@@ -25520,10 +25530,10 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
         y,
         label_pill_w,
         item_h,
-        10,
-        { 0, 0, 0, 0.66 },
-        0.38,
-        1.55
+        child_rounding,
+        child_glow_color,
+        1.05,
+        3.9
     )
 
     FALLEN_HOTKEYS_ROUNDED_FILL(
@@ -25531,13 +25541,8 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
         y,
         label_pill_w,
         item_h,
-        10,
-        {
-            0.045,
-            0.048,
-            0.058,
-            0.90
-        }
+        child_rounding,
+        child_fill
     )
 
     text(
