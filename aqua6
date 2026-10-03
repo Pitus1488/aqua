@@ -117,16 +117,6 @@ local defaults = {
     misc_shot_on_air_enabled = false,
     misc_fps_enabled = false,
 
-    -- VFX -> VMs -> Boulder.
-    -- SAFE MODE: only documented instance transparency setters are used.
-    -- No raw Primitive/BasePartColor/Reflectance memory access.
-    misc_boulder_arms_enabled = false,
-    misc_boulder_arms_transparency = 35,
-
-    misc_boulder_weapon_enabled = false,
-    misc_boulder_weapon_transparency = 35,
-
-
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
     world_rain_amount = 34,
@@ -570,14 +560,6 @@ local A = {
     misc_fps_last_state = false,
     misc_fps_original = {},
     misc_fps_applied = {},
-
-    -- Boulder VFX runtime.
-    misc_boulder_last_apply = 0,
-    misc_boulder_root_addr = nil,
-    misc_boulder_root_since = 0,
-    misc_boulder_last_signature = nil,
-    misc_boulder_arms_last_enabled = false,
-    misc_boulder_weapon_last_enabled = false,
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -13762,10 +13744,18 @@ end)
 FALLEN_BT = FALLEN_BT or {
     items = {},
     last_error = 0,
-    last_shot = 0,
     local_name = nil,
     local_name_scan = 0,
+
+    -- VFX impact detector.
+    vfx_seen = {},
+    vfx_prev_lmb = false,
+    vfx_watch_until = 0,
 }
+
+FALLEN_BT.vfx_seen =
+    FALLEN_BT.vfx_seen
+    or {}
 
 
 function FALLEN_BT_LOCAL_NAME()
@@ -14044,199 +14034,457 @@ function FALLEN_BT_DRAW_IMAGE_NODE(
     end
 end
 
-function FALLEN_BT_HAS_GUN()
-    local weapon = FAP.weapon
-
-    if not weapon or weapon == "" then
-        pcall(function()
-            weapon = fap_detect_weapon()
-        end)
-    end
-
-    if not weapon or weapon == "" then
+function FALLEN_BT_WEAPON_READY()
+    -- EXACT same weapon detector used by custom Aimbot Auto Prediction.
+    -- No Aimbot/Silent target checks are involved.
+    if type(fap_detect_weapon) ~= "function" then
         return false
     end
 
-    local lower = string.lower(tostring(weapon))
+    local weapon = nil
 
-    local bad = {
-        "rock",
-        "stone hatchet",
-        "pickaxe",
-        "hammer",
-        "building",
-        "torch",
-        "bandage",
-        "medkit",
-        "syringe",
-    }
+    pcall(function()
+        weapon =
+            fap_detect_weapon()
+    end)
 
-    for _, word in ipairs(bad) do
-        if string.find(lower, word, 1, true) then
-            return false
-        end
-    end
-
-    return true
+    return
+        weapon ~= nil
+        and tostring(weapon) ~= ""
 end
 
-function FALLEN_BT_ACTIVE_TARGET()
-    -- Silent Aim has priority while its PHYSICAL HOLD bind is down.
-    -- Reuse the exact same Silent target resolver as Hit Effect/Damage Numbers,
-    -- so Team Check / Max Distance / FOV / Sticky / Target Part all match.
-    if type(FALLEN_HITFX_SILENT_BIND_DOWN) == "function"
-        and FALLEN_HITFX_SILENT_BIND_DOWN() == true
-        and type(FALLEN_HITFX_SILENT_RESOLVED_TARGET) == "function"
+
+function FALLEN_BT_VFX_ROOT()
+    if not rbx
+        or type(rbx.workspace) ~= "function"
     then
-        local silent =
-            FALLEN_HITFX_SILENT_RESOLVED_TARGET()
+        return nil
+    end
 
-        if silent
-            and silent.pos
+    local workspace = nil
+
+    pcall(function()
+        workspace =
+            rbx.workspace()
+    end)
+
+    if not workspace then
+        return nil
+    end
+
+    local vfx = nil
+
+    pcall(function()
+        vfx =
+            workspace:find_first_child(
+                "VFX"
+            )
+    end)
+
+    if not vfx then
+        return nil
+    end
+
+    local valid =
+        true
+
+    pcall(function()
+        if type(vfx.is_valid) == "function" then
+            valid =
+                vfx:is_valid()
+                == true
+        end
+    end)
+
+    if not valid then
+        return nil
+    end
+
+    return vfx
+end
+
+
+function FALLEN_BT_VFX_INSTANCE_VALID(
+    inst
+)
+    if not inst then
+        return false
+    end
+
+    local valid =
+        true
+
+    pcall(function()
+        if type(inst.is_valid) == "function" then
+            valid =
+                inst:is_valid()
+                == true
+        end
+    end)
+
+    return
+        valid == true
+end
+
+
+function FALLEN_BT_VFX_SCAN()
+    local root =
+        FALLEN_BT_VFX_ROOT()
+
+    if not root then
+        return {}
+    end
+
+    local out = {}
+    local queue = {
+        root,
+    }
+
+    local qi =
+        1
+
+    -- Pure instance-tree walk. No raw memory/pointers.
+    while qi <= #queue do
+        local inst =
+            queue[qi]
+
+        qi =
+            qi + 1
+
+        if FALLEN_BT_VFX_INSTANCE_VALID(
+            inst
+        )
         then
-            local target_pos = {
-                X = silent.pos.X,
-                Y = silent.pos.Y,
-                Z = silent.pos.Z,
-            }
+            local addr =
+                inst.addr
 
-            local prediction_time =
-                0
-
-            local prediction_gravity =
-                0
-
-            local prediction_speed =
-                0
-
-            local auto_prediction =
-                S.aim_auto_prediction == true
-
-            -- Silent itself uses the same fap_predict callback in this script.
-            -- Use that here too so the tracer endpoint matches the Silent shot
-            -- when Auto Prediction is enabled.
-            if auto_prediction
-                and silent.player
-                and type(fap_predict) == "function"
+            if addr
+                and addr ~= 0
             then
-                local cam = nil
-
-                pcall(function()
-                    if aim
-                        and type(aim.get_camera_position) == "function"
-                    then
-                        cam =
-                            aim.get_camera_position()
-                    end
-                end)
-
-                local predicted = nil
-
-                pcall(function()
-                    predicted =
-                        fap_predict(
-                            silent.player,
-                            target_pos,
-                            cam
-                        )
-                end)
-
-                if predicted
-                    and predicted.X ~= nil
-                    and predicted.Y ~= nil
-                    and predicted.Z ~= nil
-                then
-                    target_pos = {
-                        X = predicted.X,
-                        Y = predicted.Y,
-                        Z = predicted.Z,
-                    }
-                end
-
-                -- fap_predict updates these FAP runtime values for the current
-                -- prediction path in this script; copy them for curved tracers.
-                prediction_time =
-                    tonumber(FAP.current_prediction_time)
-                    or 0
-
-                prediction_gravity =
-                    tonumber(FAP.current_prediction_gravity)
-                    or 0
-
-                prediction_speed =
-                    tonumber(FAP.current_prediction_speed)
-                    or 0
+                out[
+                    tostring(addr)
+                ] =
+                    inst
             end
 
+            local children = nil
+
+            pcall(function()
+                children =
+                    inst:get_children()
+            end)
+
+            if type(children) == "table" then
+                for _, child in ipairs(children) do
+                    if FALLEN_BT_VFX_INSTANCE_VALID(
+                        child
+                    )
+                    then
+                        queue[#queue + 1] =
+                            child
+                    end
+                end
+            end
+        end
+    end
+
+    return out
+end
+
+
+function FALLEN_BT_VFX_POSITION(
+    inst
+)
+    if not FALLEN_BT_VFX_INSTANCE_VALID(
+        inst
+    )
+    then
+        return nil
+    end
+
+    -- Most impact objects (Hole/StoneHole/etc.) are BaseParts or MeshParts.
+    local pos = nil
+
+    pcall(function()
+        pos =
+            inst:get_position()
+    end)
+
+    if pos
+        and pos.X ~= nil
+        and pos.Y ~= nil
+        and pos.Z ~= nil
+    then
+        return {
+            X = pos.X,
+            Y = pos.Y,
+            Z = pos.Z,
+        }
+    end
+
+    -- If the newly-created object is an Attachment/Decal/etc., walk upward
+    -- a few levels and use the first parent that exposes a world position.
+    local parent =
+        inst
+
+    for _ = 1, 4 do
+        local next_parent = nil
+
+        pcall(function()
+            next_parent =
+                parent:parent()
+        end)
+
+        parent =
+            next_parent
+
+        if not parent
+            or not FALLEN_BT_VFX_INSTANCE_VALID(
+                parent
+            )
+        then
+            break
+        end
+
+        local parent_pos = nil
+
+        pcall(function()
+            parent_pos =
+                parent:get_position()
+        end)
+
+        if parent_pos
+            and parent_pos.X ~= nil
+            and parent_pos.Y ~= nil
+            and parent_pos.Z ~= nil
+        then
             return {
-                X = target_pos.X,
-                Y = target_pos.Y,
-                Z = target_pos.Z,
-
-                auto_prediction =
-                    auto_prediction,
-
-                prediction_time =
-                    prediction_time,
-
-                gravity =
-                    prediction_gravity,
-
-                bullet_speed =
-                    prediction_speed,
-
-                source =
-                    "silent",
+                X = parent_pos.X,
+                Y = parent_pos.Y,
+                Z = parent_pos.Z,
             }
         end
     end
 
-    -- Existing custom Aimbot Bullet Tracer path.
-    if S.aim_enabled ~= true then
-        return nil
-    end
-
-    if not FAP.current_target_pos
-        or tick() - (FAP.current_target_seen or 0) > 0.18
-    then
-        return nil
-    end
-
-    local my_name =
-        FALLEN_BT_LOCAL_NAME()
-
-    if my_name
-        and FAP.current_target_name
-        and FAP.current_target_name ~= ""
-        and string.lower(FAP.current_target_name)
-            == string.lower(my_name)
-    then
-        return nil
-    end
-
-    return {
-        X = FAP.current_target_pos.X,
-        Y = FAP.current_target_pos.Y,
-        Z = FAP.current_target_pos.Z,
-
-        auto_prediction =
-            FAP.current_auto_prediction == true,
-
-        prediction_time =
-            tonumber(FAP.current_prediction_time)
-            or 0,
-
-        gravity =
-            tonumber(FAP.current_prediction_gravity)
-            or 0,
-
-        bullet_speed =
-            tonumber(FAP.current_prediction_speed)
-            or 0,
-
-        source =
-            "aimbot",
+    -- New Model/Folder: find a positional descendant.
+    local classes = {
+        "MeshPart",
+        "Part",
+        "UnionOperation",
     }
+
+    for _, class_name in ipairs(classes) do
+        local descendants = nil
+
+        pcall(function()
+            descendants =
+                inst:find_descendants_of_class(
+                    class_name
+                )
+        end)
+
+        if type(descendants) == "table" then
+            for _, child in ipairs(descendants) do
+                if FALLEN_BT_VFX_INSTANCE_VALID(
+                    child
+                )
+                then
+                    local child_pos = nil
+
+                    pcall(function()
+                        child_pos =
+                            child:get_position()
+                    end)
+
+                    if child_pos
+                        and child_pos.X ~= nil
+                        and child_pos.Y ~= nil
+                        and child_pos.Z ~= nil
+                    then
+                        return {
+                            X = child_pos.X,
+                            Y = child_pos.Y,
+                            Z = child_pos.Z,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+
+function FALLEN_BT_ORIGIN()
+    -- Existing tracer should visually start from us.
+    -- Camera is preferred because that matches the first-person weapon view.
+    local cam = nil
+
+    pcall(function()
+        if aim
+            and type(aim.get_camera_position) == "function"
+        then
+            cam =
+                aim.get_camera_position()
+        end
+    end)
+
+    if cam
+        and cam.X ~= nil
+        and cam.Y ~= nil
+        and cam.Z ~= nil
+    then
+        return {
+            X = cam.X,
+            Y = cam.Y,
+            Z = cam.Z,
+        }
+    end
+
+    local head = nil
+
+    pcall(function()
+        if rbx
+            and type(rbx.local_head) == "function"
+        then
+            head =
+                rbx.local_head()
+        end
+    end)
+
+    if head then
+        local p = nil
+
+        pcall(function()
+            p =
+                head:get_position()
+        end)
+
+        if p
+            and p.X ~= nil
+            and p.Y ~= nil
+            and p.Z ~= nil
+        then
+            return {
+                X = p.X,
+                Y = p.Y,
+                Z = p.Z,
+            }
+        end
+    end
+
+    local hrp = nil
+
+    pcall(function()
+        if rbx
+            and type(rbx.local_hrp) == "function"
+        then
+            hrp =
+                rbx.local_hrp()
+        end
+    end)
+
+    if hrp then
+        local p = nil
+
+        pcall(function()
+            p =
+                hrp:get_position()
+        end)
+
+        if p
+            and p.X ~= nil
+            and p.Y ~= nil
+            and p.Z ~= nil
+        then
+            return {
+                X = p.X,
+                Y = p.Y,
+                Z = p.Z,
+            }
+        end
+    end
+
+    return nil
+end
+
+
+function FALLEN_BT_VFX_FIND_NEW_IMPACT(
+    previous,
+    current,
+    origin
+)
+    if type(current) ~= "table"
+        or not origin
+    then
+        return nil
+    end
+
+    previous =
+        type(previous) == "table"
+        and previous
+        or {}
+
+    local best_pos =
+        nil
+
+    local best_dist_sq =
+        -1
+
+    -- Names/classes are intentionally NOT filtered.
+    -- Hole, StoneHole, Model, Attachment, or any other newly-created VFX
+    -- object can become the endpoint if it resolves to a world position.
+    for key, inst in pairs(current) do
+        if previous[key] == nil then
+            local pos =
+                FALLEN_BT_VFX_POSITION(
+                    inst
+                )
+
+            if pos then
+                local dx =
+                    tonumber(pos.X)
+                    - tonumber(origin.X)
+
+                local dy =
+                    tonumber(pos.Y)
+                    - tonumber(origin.Y)
+
+                local dz =
+                    tonumber(pos.Z)
+                    - tonumber(origin.Z)
+
+                local dist_sq =
+                    dx * dx
+                    + dy * dy
+                    + dz * dz
+
+                -- A shot can create a muzzle effect and an impact VFX together.
+                -- The impact is normally farther from the camera, so choose the
+                -- farthest newly-created positional VFX object this scan.
+                if dist_sq > best_dist_sq then
+                    best_dist_sq =
+                        dist_sq
+
+                    best_pos = {
+                        X = pos.X,
+                        Y = pos.Y,
+                        Z = pos.Z,
+
+                        -- Keep existing tracer renderer in straight-line mode.
+                        auto_prediction = false,
+                        prediction_time = 0,
+                        gravity = 0,
+                        bullet_speed = 0,
+                        source = "vfx",
+                    }
+                end
+            end
+        end
+    end
+
+    return best_pos
 end
 
 
@@ -14311,58 +14559,126 @@ end
 
 function FALLEN_BT_SHOT_TICK()
     if S.bullet_tracer_enabled ~= true then
+        FALLEN_BT.vfx_seen =
+            {}
+
+        FALLEN_BT.vfx_prev_lmb =
+            false
+
+        FALLEN_BT.vfx_watch_until =
+            0
+
         return
     end
 
-    -- Mouse1 belongs to the local client.
-    if key_down(0x01) ~= true then
+    -- ONLY required gameplay check: same equipped-weapon detection used by
+    -- Auto Prediction. No Aimbot/Silent/target/FOV/HP checks.
+    local weapon_ready =
+        FALLEN_BT_WEAPON_READY()
+
+    if not weapon_ready then
+        FALLEN_BT.vfx_seen =
+            {}
+
+        FALLEN_BT.vfx_prev_lmb =
+            false
+
+        FALLEN_BT.vfx_watch_until =
+            0
+
         return
     end
 
-    local target = FALLEN_BT_ACTIVE_TARGET()
+    local now =
+        tick()
 
-    if not target then
+    local lmb =
+        key_down(0x01)
+        == true
+
+    -- Keep a clean baseline while not firing. This lets a VFX object created
+    -- immediately on the first LMB frame still be detected against the
+    -- previous frame's VFX tree.
+    if not lmb
+        and now
+            >= (
+                tonumber(
+                    FALLEN_BT.vfx_watch_until
+                )
+                or 0
+            )
+    then
+        FALLEN_BT.vfx_seen =
+            FALLEN_BT_VFX_SCAN()
+
+        FALLEN_BT.vfx_prev_lmb =
+            false
+
         return
     end
 
-    if FALLEN_BT_HAS_GUN() ~= true then
+    if lmb
+        and FALLEN_BT.vfx_prev_lmb ~= true
+    then
+        -- Continue watching briefly after each press because hit VFX can be
+        -- spawned a few frames after the input/shoot event.
+        FALLEN_BT.vfx_watch_until =
+            now + 0.45
+    elseif lmb then
+        -- Automatic weapons: keep the watch window alive while Mouse1 is held.
+        FALLEN_BT.vfx_watch_until =
+            now + 0.20
+    end
+
+    FALLEN_BT.vfx_prev_lmb =
+        lmb
+
+    if not lmb
+        and now
+            > (
+                tonumber(
+                    FALLEN_BT.vfx_watch_until
+                )
+                or 0
+            )
+    then
         return
     end
 
-    local now = tick()
+    local previous =
+        FALLEN_BT.vfx_seen
+        or {}
 
-    local delay =
-        clamp(
-            tonumber(S.bullet_tracer_delay) or 0.13,
-            0.04,
-            0.50
+    local current =
+        FALLEN_BT_VFX_SCAN()
+
+    local origin =
+        FALLEN_BT_ORIGIN()
+
+    local impact =
+        FALLEN_BT_VFX_FIND_NEW_IMPACT(
+            previous,
+            current,
+            origin
         )
 
-    if now - (FALLEN_BT.last_shot or 0) < delay then
+    -- Baseline always advances, so the same spawned VFX object can emit only
+    -- once. A later automatic shot creates another object/address.
+    FALLEN_BT.vfx_seen =
+        current
+
+    if not origin
+        or not impact
+    then
         return
     end
-
-    local cam = nil
-
-    pcall(function()
-        if aim
-            and type(aim.get_camera_position) == "function"
-        then
-            cam = aim.get_camera_position()
-        end
-    end)
-
-    if not cam then
-        return
-    end
-
-    FALLEN_BT.last_shot = now
 
     FALLEN_BT_ADD(
-        cam,
-        target
+        origin,
+        impact
     )
 end
+
 
 function FALLEN_BT_DRAW_PATH(
     tr,
@@ -33891,126 +34207,6 @@ hooks.on_render(function()
             + boulder_col_w
             + boulder_gap
 
-        -- ----------------------------------------------------
-        -- Boulder SAFE MODE:
-        -- only MeshPart transparency, no raw memory.
-        -- ----------------------------------------------------
-        local boulder_gap =
-            16
-
-        local boulder_col_w =
-            math.floor(
-                (page_w - boulder_gap)
-                * 0.5
-            )
-
-        local boulder_left_x =
-            page_x
-
-        local boulder_right_x =
-            page_x
-            + boulder_col_w
-            + boulder_gap
-
-        section_title(
-            boulder_left_x,
-            page_y + 151,
-            "Boulder Arms"
-        )
-
-        card(
-            boulder_left_x,
-            page_y + 176,
-            boulder_col_w,
-            101,
-            11
-        )
-
-        toggle_row(
-            mx,
-            my,
-            misc_controls_clicked,
-            boulder_left_x,
-            page_y + 183,
-            boulder_col_w,
-            "Enabled",
-            "misc_boulder_arms_enabled",
-            false
-        )
-
-        line(
-            boulder_left_x + 12,
-            page_y + 223,
-            boulder_left_x + boulder_col_w - 12,
-            page_y + 223,
-            C.divider,
-            1
-        )
-
-        slider_row(
-            mx,
-            my,
-            misc_controls_clicked,
-            lmb,
-            boulder_left_x,
-            page_y + 224,
-            boulder_col_w,
-            "Transparency",
-            "misc_boulder_arms_transparency",
-            0,
-            100,
-            "int"
-        )
-
-        section_title(
-            boulder_right_x,
-            page_y + 151,
-            "Boulder Weapon"
-        )
-
-        card(
-            boulder_right_x,
-            page_y + 176,
-            boulder_col_w,
-            101,
-            11
-        )
-
-        toggle_row(
-            mx,
-            my,
-            misc_controls_clicked,
-            boulder_right_x,
-            page_y + 183,
-            boulder_col_w,
-            "Enabled",
-            "misc_boulder_weapon_enabled",
-            false
-        )
-
-        line(
-            boulder_right_x + 12,
-            page_y + 223,
-            boulder_right_x + boulder_col_w - 12,
-            page_y + 223,
-            C.divider,
-            1
-        )
-
-        slider_row(
-            mx,
-            my,
-            misc_controls_clicked,
-            lmb,
-            boulder_right_x,
-            page_y + 224,
-            boulder_col_w,
-            "Transparency",
-            "misc_boulder_weapon_transparency",
-            0,
-            100,
-            "int"
-        )
     elseif S.tab == 4
         and A.secret_unlocked
         and S.secret_enabled == true
@@ -38508,483 +38704,6 @@ hooks.on_render(function()
     pcall(FALLEN_WORLD_RAIN_TICK)
     pcall(FALLEN_WORLD_THUNDER_TICK)
 end)
-
--- =========================================================
--- Misc: VFX -> VMs -> Boulder SAFE MODE
---
--- IMPORTANT:
--- No memory.read_ptr / Primitive / BasePartColor / Reflectance writes.
--- Dynamic VFX is destroyed on unequip, so raw pointers are too crash-prone.
---
--- Arms:
---   Workspace/VFX/VMs/Boulder/Arms -> MeshPart descendants ONLY
---
--- Weapon:
---   Workspace/VFX/VMs/Boulder/Weapon -> MeshPart descendants ONLY
--- =========================================================
-
-function FALLEN_MISC_BOULDER_TOOL_EQUIPPED()
-    if not rbx
-        or type(rbx.local_tool) ~= "function"
-    then
-        return false
-    end
-
-    local tool = nil
-
-    pcall(function()
-        tool =
-            rbx.local_tool()
-    end)
-
-    if not tool then
-        return false
-    end
-
-    local valid =
-        false
-
-    pcall(function()
-        valid =
-            tool:is_valid()
-            == true
-    end)
-
-    if not valid then
-        return false
-    end
-
-    local name = nil
-
-    pcall(function()
-        name =
-            tool:get_name()
-    end)
-
-    name =
-        string.lower(
-            tostring(
-                name or ""
-            )
-        )
-
-    return
-        name == "boulder"
-        or string.find(
-            name,
-            "boulder",
-            1,
-            true
-        ) ~= nil
-end
-
-
-function FALLEN_MISC_BOULDER_SIGNATURE()
-    return
-        tostring(
-            S.misc_boulder_arms_enabled
-            == true
-        )
-        .. ":"
-        .. tostring(
-            math.floor(
-                tonumber(
-                    S.misc_boulder_arms_transparency
-                )
-                or 35
-            )
-        )
-        .. ":"
-        .. tostring(
-            S.misc_boulder_weapon_enabled
-            == true
-        )
-        .. ":"
-        .. tostring(
-            math.floor(
-                tonumber(
-                    S.misc_boulder_weapon_transparency
-                )
-                or 35
-            )
-        )
-end
-
-
-function FALLEN_MISC_BOULDER_FIND()
-    if not rbx
-        or type(rbx.workspace) ~= "function"
-    then
-        return nil
-    end
-
-    local workspace = nil
-
-    pcall(function()
-        workspace =
-            rbx.workspace()
-    end)
-
-    if not workspace then
-        return nil
-    end
-
-    local vfx = nil
-    local vms = nil
-    local boulder = nil
-
-    pcall(function()
-        vfx =
-            workspace:find_first_child(
-                "VFX"
-            )
-    end)
-
-    if not vfx then
-        return nil
-    end
-
-    pcall(function()
-        vms =
-            vfx:find_first_child(
-                "VMs"
-            )
-    end)
-
-    if not vms then
-        return nil
-    end
-
-    pcall(function()
-        boulder =
-            vms:find_first_child(
-                "Boulder"
-            )
-    end)
-
-    if not boulder then
-        return nil
-    end
-
-    local valid =
-        false
-
-    pcall(function()
-        valid =
-            boulder:is_valid()
-            == true
-    end)
-
-    if not valid then
-        return nil
-    end
-
-    return boulder
-end
-
-
-function FALLEN_MISC_BOULDER_FOLDER(
-    root,
-    folder_name
-)
-    if not root then
-        return nil
-    end
-
-    local folder = nil
-
-    pcall(function()
-        folder =
-            root:find_first_child(
-                tostring(
-                    folder_name or ""
-                )
-            )
-    end)
-
-    if not folder then
-        return nil
-    end
-
-    local valid =
-        false
-
-    pcall(function()
-        valid =
-            folder:is_valid()
-            == true
-    end)
-
-    if not valid then
-        return nil
-    end
-
-    return folder
-end
-
-
-function FALLEN_MISC_BOULDER_COLLECT_MESHPARTS(
-    root,
-    folder_name
-)
-    local folder =
-        FALLEN_MISC_BOULDER_FOLDER(
-            root,
-            folder_name
-        )
-
-    if not folder then
-        return {}
-    end
-
-    local out = {}
-    local descendants = nil
-
-    -- One engine-side recursive query is safer than keeping our own queue of
-    -- short-lived VFX handles over multiple operations.
-    pcall(function()
-        descendants =
-            folder:find_descendants_of_class(
-                "MeshPart"
-            )
-    end)
-
-    if type(descendants) ~= "table" then
-        return out
-    end
-
-    for _, part in ipairs(descendants) do
-        local valid =
-            false
-
-        pcall(function()
-            valid =
-                part
-                and part:is_valid()
-                == true
-        end)
-
-        if valid then
-            out[#out + 1] =
-                part
-        end
-    end
-
-    return out
-end
-
-
-function FALLEN_MISC_BOULDER_SET_GROUP_TRANSPARENCY(
-    root,
-    folder_name,
-    percent
-)
-    if not root then
-        return false
-    end
-
-    local value =
-        clamp(
-            (tonumber(percent) or 0) / 100,
-            0,
-            1
-        )
-
-    local parts =
-        FALLEN_MISC_BOULDER_COLLECT_MESHPARTS(
-            root,
-            folder_name
-        )
-
-    local changed =
-        0
-
-    for _, part in ipairs(parts) do
-        -- Re-check immediately before the only mutation.
-        -- No pointer arithmetic / memory access is performed.
-        local valid =
-            false
-
-        pcall(function()
-            valid =
-                part:is_valid()
-                == true
-        end)
-
-        if valid then
-            local ok =
-                pcall(function()
-                    part:set_transparency(
-                        value
-                    )
-                end)
-
-            if ok then
-                changed =
-                    changed + 1
-            end
-        end
-    end
-
-    return
-        changed > 0
-end
-
-
-function FALLEN_MISC_BOULDER_TICK()
-    local arms_enabled =
-        S.misc_boulder_arms_enabled
-        == true
-
-    local weapon_enabled =
-        S.misc_boulder_weapon_enabled
-        == true
-
-    -- Strongest unequip guard:
-    -- once the actual equipped Tool is gone, DO NOT even walk VFX/VMs/Boulder.
-    -- This prevents us racing the game's VFX destruction path.
-    if not FALLEN_MISC_BOULDER_TOOL_EQUIPPED() then
-        A.misc_boulder_root_addr =
-            nil
-
-        A.misc_boulder_root_since =
-            0
-
-        A.misc_boulder_last_apply =
-            0
-
-        A.misc_boulder_last_signature =
-            nil
-
-        A.misc_boulder_arms_last_enabled =
-            arms_enabled
-
-        A.misc_boulder_weapon_last_enabled =
-            weapon_enabled
-
-        return
-    end
-
-    local root =
-        FALLEN_MISC_BOULDER_FIND()
-
-    if not root then
-        A.misc_boulder_root_addr =
-            nil
-
-        A.misc_boulder_root_since =
-            0
-
-        A.misc_boulder_last_signature =
-            nil
-
-        return
-    end
-
-    local root_addr =
-        root.addr
-
-    local now =
-        tick()
-
-    if A.misc_boulder_root_addr ~= root_addr then
-        -- Fresh VFX model. Wait before touching descendants.
-        A.misc_boulder_root_addr =
-            root_addr
-
-        A.misc_boulder_root_since =
-            now
-
-        A.misc_boulder_last_signature =
-            nil
-
-        return
-    end
-
-    local stable_for =
-        now
-        - (
-            tonumber(
-                A.misc_boulder_root_since
-            )
-            or now
-        )
-
-    if stable_for < 0.40 then
-        return
-    end
-
-    -- Check the Tool AGAIN immediately before any MeshPart traversal.
-    -- If unequip started during this frame, abort with zero mutations.
-    if not FALLEN_MISC_BOULDER_TOOL_EQUIPPED() then
-        A.misc_boulder_root_addr =
-            nil
-
-        A.misc_boulder_root_since =
-            0
-
-        A.misc_boulder_last_signature =
-            nil
-
-        return
-    end
-
-    local signature =
-        FALLEN_MISC_BOULDER_SIGNATURE()
-
-    -- No periodic writes anymore.
-    -- Apply only on first stable equip or when the user changed a setting.
-    if A.misc_boulder_last_signature == signature then
-        return
-    end
-
-    A.misc_boulder_last_signature =
-        signature
-
-    -- Disabled group is restored to default transparency 0 ONLY while the
-    -- Boulder Tool is confirmed equipped/stable. Never during unequip.
-    FALLEN_MISC_BOULDER_SET_GROUP_TRANSPARENCY(
-        root,
-        "Arms",
-        arms_enabled
-            and S.misc_boulder_arms_transparency
-            or 0
-    )
-
-    -- Re-check between groups because the tool can disappear mid-frame.
-    if not FALLEN_MISC_BOULDER_TOOL_EQUIPPED() then
-        A.misc_boulder_root_addr =
-            nil
-
-        A.misc_boulder_root_since =
-            0
-
-        A.misc_boulder_last_signature =
-            nil
-
-        return
-    end
-
-    FALLEN_MISC_BOULDER_SET_GROUP_TRANSPARENCY(
-        root,
-        "Weapon",
-        weapon_enabled
-            and S.misc_boulder_weapon_transparency
-            or 0
-    )
-end
-
-
-hooks.on_render(function()
-    if _G.FallenMenuReady ~= true then
-        return
-    end
-
-    pcall(
-        FALLEN_MISC_BOULDER_TICK
-    )
-end)
-
 
 -- =========================================================
 -- Misc FPS FastFlags
