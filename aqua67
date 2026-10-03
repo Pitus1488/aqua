@@ -14220,6 +14220,7 @@ function FALLEN_BT_VFX_IS_IMPACT_NAME(
         name == "hole"
         or name == "metalhole"
         or name == "bloodpart"
+        or name == "casinglarge"
 end
 
 
@@ -14233,7 +14234,7 @@ function FALLEN_BT_VFX_POSITION(
         return nil
     end
 
-    -- First try the Hole / MetalHole / BloodPart object itself.
+    -- First try the Hole / MetalHole / BloodPart / CasingLarge object itself.
     local pos = nil
 
     pcall(function()
@@ -14253,7 +14254,7 @@ function FALLEN_BT_VFX_POSITION(
         }
     end
 
-    -- If Hole / MetalHole / BloodPart is a Model/Folder, use only its nearest direct
+    -- If Hole / MetalHole / BloodPart / CasingLarge is a Model/Folder, use only its nearest direct
     -- positional child. Do NOT walk parents or unrelated VFX descendants.
     local children = nil
 
@@ -14671,7 +14672,7 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
                     if inside_fov
                         and screen_dist_sq ~= nil
                     then
-                        -- Primary criterion: closest Hole/MetalHole/BloodPart to where
+                        -- Primary criterion: closest Hole/MetalHole/BloodPart/CasingLarge to where
                         -- the crosshair is actually aiming.
                         --
                         -- Tie-breaker: nearest in world space.
@@ -14849,7 +14850,7 @@ function FALLEN_BT_SHOT_TICK()
         and FALLEN_BT.vfx_prev_lmb ~= true
     then
         -- Keep watching long enough for distant projectiles to reach the
-        -- surface and create Hole / MetalHole / BloodPart.
+        -- surface and create Hole / MetalHole / BloodPart / CasingLarge.
         FALLEN_BT.vfx_watch_until =
             now + 2.50
     elseif lmb then
