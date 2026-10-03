@@ -22843,23 +22843,30 @@ end
 -- Menu appearance helpers
 -- =========================================================
 
-function FALLEN_POPUP_GLOW(x, y, w, h, radius, strength)
-    local amount = tonumber(strength) or 1
-
-    for i = 1, 14 do
-        local t = (i - 1) / 13
-        local falloff = 1 - t
-        local a = 0.12 * amount * falloff * falloff
-
-        FALLEN_DRAW_ROUNDED_GLOW_FRAME(
-            x - i, y - i,
-            w + i * 2, h + i * 2,
-            radius + i,
-            { 0, 0, 0, a },
-            1
-        )
-    end
+function FALLEN_POPUP_GLOW(
+    x,
+    y,
+    w,
+    h,
+    radius,
+    strength
+)
+    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+        x,
+        y,
+        w,
+        h,
+        radius,
+        { 0, 0, 0, 1 },
+        clamp(
+            tonumber(strength) or 1,
+            0,
+            2
+        ),
+        14 / 3
+    )
 end
+
 
 FALLEN_MENU_GRADIENT_TEXTURE =
     FALLEN_MENU_GRADIENT_TEXTURE
@@ -23566,6 +23573,121 @@ function FALLEN_DRAW_ROUNDED_GLOW_FRAME(
         radius,
         color
     )
+end
+
+
+function FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+    x,
+    y,
+    w,
+    h,
+    radius,
+    color,
+    strength,
+    spread
+)
+    color =
+        color
+        or { 0, 0, 0, 1 }
+
+    strength =
+        clamp(
+            tonumber(strength) or 1,
+            0,
+            2
+        )
+
+    spread =
+        clamp(
+            tonumber(spread) or 6,
+            1,
+            12
+        )
+
+    if strength <= 0.001
+        or (color[4] or 0) <= 0.001
+    then
+        return
+    end
+
+    -- Exact Aimbot FOV glow sampling.
+    local total_spread =
+        spread * 3.0
+
+    local layers =
+        28
+
+    -- Full rounded surfaces overlap. Convert the FOV target opacity at each
+    -- distance into the incremental alpha needed for this surface so the
+    -- FINAL visible falloff equals the FOV curve instead of over-darkening.
+    --
+    -- target_i = 0.20 * colorAlpha * strength * (1 - t)^2
+    -- target_i = 1 - (1 - layerAlpha_i) * (1 - target_{i+1})
+    local next_target =
+        0
+
+    for layer = layers - 1, 0, -1 do
+        local t =
+            layer / (layers - 1)
+
+        local falloff =
+            1 - t
+
+        local offset =
+            t * total_spread
+
+        local target_alpha =
+            clamp(
+                (color[4] or 1)
+                * strength
+                * falloff
+                * falloff
+                * 0.20,
+                0,
+                0.95
+            )
+
+        local layer_alpha =
+            0
+
+        if target_alpha > next_target then
+            layer_alpha =
+                1
+                - (
+                    (1 - target_alpha)
+                    / math.max(
+                        0.0001,
+                        1 - next_target
+                    )
+                )
+        end
+
+        layer_alpha =
+            clamp(
+                layer_alpha,
+                0,
+                0.95
+            )
+
+        if layer_alpha > 0.0001 then
+            rounded_fill(
+                x - offset,
+                y - offset,
+                w + offset * 2,
+                h + offset * 2,
+                radius + offset,
+                {
+                    color[1],
+                    color[2],
+                    color[3],
+                    layer_alpha
+                }
+            )
+        end
+
+        next_target =
+            target_alpha
+    end
 end
 
 
@@ -24922,50 +25044,18 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     MENU_UI_TRANSFORM_ACTIVE =
         false
 
-    -- Main-menu-style multilayer black glow.
-    -- Defaults to 35 line frames, exactly like the main menu glow approach.
-    -- Final glow values from the tuning screenshot:
-    -- Glow 200, Glow Lines 24.
-    local glow_strength =
-        2
-
-    local glow_lines =
-        24
-
-    if glow_lines > 0
-        and glow_strength > 0
-    then
-        for i = 0, glow_lines - 1 do
-            local t =
-                glow_lines <= 1
-                and 0
-                or i / (glow_lines - 1)
-
-            local falloff =
-                1 - t
-
-            local glow_alpha =
-                0.19
-                * glow_strength
-                * falloff
-                * falloff
-
-            FALLEN_DRAW_ROUNDED_GLOW_FRAME(
-                x - i,
-                y - i,
-                panel_w + i * 2,
-                panel_h + i * 2,
-                panel_rounding + i,
-                {
-                    0,
-                    0,
-                    0,
-                    glow_alpha
-                },
-                1
-            )
-        end
-    end
+    -- Same glow profile as the custom Aimbot FOV:
+    -- 28 layers, squared falloff, spread*3.
+    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+        x,
+        y,
+        panel_w,
+        panel_h,
+        panel_rounding,
+        { 0, 0, 0, 1 },
+        2,      -- previous Hotkeys Glow = 200
+        8       -- 8 * 3 = 24px visual spread
+    )
 
     -- Less transparent than before: 96% opaque black.
     rounded_fill(
@@ -29949,46 +30039,31 @@ hooks.on_render(function()
         )
     end
 
-    -- 35 line based glow frames around the entire menu.
-    -- Every line uses the selected Glow Color directly.
-    -- The alpha fades from the edge outward, like a real soft glow.
+    -- Same glow profile as the custom Aimbot FOV.
     local glow_rgb = {1, 1, 1, 1}
+
     pcall(function()
-        glow_rgb = FALLEN_GLOW_COLOR()
+        glow_rgb =
+            FALLEN_GLOW_COLOR()
     end)
 
     local glow_strength =
-        clamp((tonumber(S.menu_glow_strength) or 100) / 100, 0, 2)
-
-    for i = 0, 34 do
-        local t =
-            i / 34
-
-        local falloff =
-            1 - t
-
-        local glow_alpha =
-            0.165
-            * glow_strength
-            * falloff
-            * falloff
-            * (glow_rgb[4] or 1)
-
-        FALLEN_DRAW_ROUNDED_GLOW_FRAME(
-            wx - i,
-            wy - i,
-            WIN_W + i * 2,
-            WIN_H + i * 2,
-            OUTER_R + i,
-            {
-                glow_rgb[1],
-                glow_rgb[2],
-                glow_rgb[3],
-                glow_alpha,
-            },
-            1
+        clamp(
+            (tonumber(S.menu_glow_strength) or 100) / 100,
+            0,
+            2
         )
-    end
+
+    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+        wx,
+        wy,
+        WIN_W,
+        WIN_H,
+        OUTER_R,
+        glow_rgb,
+        glow_strength,
+        34 / 3
+    )
 
     -- Base surfaces are genuinely transparent during the transition, but
     -- sidebar/content are now two DISJOINT rounded shapes. Nothing is drawn
