@@ -375,6 +375,7 @@ local defaults = {
 
     trigger_enabled = false,
     visuals_enabled = false,
+    visual_desync_skeleton = false,
     world_enabled = false,
     character_enabled = false,
     npc_enabled = false,
@@ -28798,6 +28799,33 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         numeric_stop(true)
     end
 
+
+    section_title(
+        right_x,
+        y + 295,
+        "Desync Visual"
+    )
+
+    card(
+        right_x,
+        y + 320,
+        right_w,
+        60,
+        11
+    )
+
+    toggle_row(
+        mx,
+        my,
+        controls_clicked,
+        right_x,
+        y + 327,
+        right_w,
+        "Server Skeleton",
+        "visual_desync_skeleton",
+        false
+    )
+
     if rmb_clicked
         and thunder_dots_hot
         and not A.world_color_picker_open
@@ -30730,6 +30758,610 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         C.text_faint
     )
 end
+
+-- =========================================================
+-- Visual Desync: frozen server-anchor skeleton
+--
+-- The API does not expose a separate authoritative server transform.
+-- For our custom FastFlag Desync, the best deterministic server anchor is the
+-- exact point where PhysicsSenderMaxBandwidthBps is switched to 0.
+-- We capture the local skeleton pose before the underground TP, then draw that
+-- pose translated onto the frozen server anchor while the flag remains 0.
+-- =========================================================
+
+function FALLEN_VISUAL_DESYNC_NORMALIZE_BONE_NAME(
+    name
+)
+    local s =
+        string.lower(
+            tostring(
+                name or ""
+            )
+        )
+
+    s =
+        string.gsub(
+            s,
+            "[%s_%-]",
+            ""
+        )
+
+    return s
+end
+
+
+function FALLEN_VISUAL_DESYNC_CAPTURE_POSE(
+    origin
+)
+    if not origin
+        or origin.X == nil
+        or origin.Y == nil
+        or origin.Z == nil
+    then
+        return false
+    end
+
+    local pose = {}
+    local count = 0
+
+    -- Preferred path: the player cache already exposes bones specifically for
+    -- skeleton ESP. Store bone offsets, not absolute client positions.
+    if players
+        and type(players.get_local) == "function"
+    then
+        local me = nil
+
+        pcall(function()
+            me =
+                players.get_local()
+        end)
+
+        if me
+            and type(me.bones) == "table"
+        then
+            local base =
+                me.position
+
+            if not base
+                or base.X == nil
+                or base.Y == nil
+                or base.Z == nil
+            then
+                base =
+                    origin
+            end
+
+            for _, bone in ipairs(me.bones) do
+                local name =
+                    bone
+                    and (
+                        bone.name
+                        or bone.Name
+                    )
+
+                local p =
+                    bone
+                    and (
+                        bone.position
+                        or bone.Position
+                        or bone.pos
+                    )
+
+                if name
+                    and p
+                    and p.X ~= nil
+                    and p.Y ~= nil
+                    and p.Z ~= nil
+                then
+                    local key =
+                        FALLEN_VISUAL_DESYNC_NORMALIZE_BONE_NAME(
+                            name
+                        )
+
+                    if key ~= "" then
+                        pose[key] = {
+                            X =
+                                tonumber(p.X)
+                                - tonumber(base.X),
+
+                            Y =
+                                tonumber(p.Y)
+                                - tonumber(base.Y),
+
+                            Z =
+                                tonumber(p.Z)
+                                - tonumber(base.Z),
+                        }
+
+                        count =
+                            count + 1
+                    end
+                end
+            end
+        end
+    end
+
+    -- Fallback: directly read local character body parts.
+    if count < 3
+        and rbx
+        and type(rbx.local_character) == "function"
+    then
+        local character = nil
+
+        pcall(function()
+            character =
+                rbx.local_character()
+        end)
+
+        if character then
+            local parts = {}
+
+            pcall(function()
+                local normal =
+                    character:find_descendants_of_class(
+                        "Part"
+                    )
+                    or {}
+
+                for _, part in ipairs(normal) do
+                    parts[#parts + 1] =
+                        part
+                end
+
+                local mesh =
+                    character:find_descendants_of_class(
+                        "MeshPart"
+                    )
+                    or {}
+
+                for _, part in ipairs(mesh) do
+                    parts[#parts + 1] =
+                        part
+                end
+            end)
+
+            for _, part in ipairs(parts) do
+                local name = nil
+                local p = nil
+
+                pcall(function()
+                    name =
+                        part:get_name()
+
+                    p =
+                        part:get_position()
+                end)
+
+                if name
+                    and p
+                    and p.X ~= nil
+                    and p.Y ~= nil
+                    and p.Z ~= nil
+                then
+                    local key =
+                        FALLEN_VISUAL_DESYNC_NORMALIZE_BONE_NAME(
+                            name
+                        )
+
+                    if key ~= "" then
+                        pose[key] = {
+                            X =
+                                tonumber(p.X)
+                                - tonumber(origin.X),
+
+                            Y =
+                                tonumber(p.Y)
+                                - tonumber(origin.Y),
+
+                            Z =
+                                tonumber(p.Z)
+                                - tonumber(origin.Z),
+                        }
+
+                        count =
+                            count + 1
+                    end
+                end
+            end
+        end
+    end
+
+    if count < 3 then
+        A.visual_desync_server_pose =
+            nil
+
+        return false
+    end
+
+    A.visual_desync_server_pose =
+        pose
+
+    return true
+end
+
+
+function FALLEN_VISUAL_DESYNC_SET_SERVER_ANCHOR(
+    x,
+    y,
+    z
+)
+    A.visual_desync_server_anchor = {
+        X = tonumber(x) or 0,
+        Y = tonumber(y) or 0,
+        Z = tonumber(z) or 0,
+    }
+end
+
+
+function FALLEN_VISUAL_DESYNC_CLEAR()
+    A.visual_desync_server_anchor =
+        nil
+
+    A.visual_desync_server_pose =
+        nil
+end
+
+
+function FALLEN_VISUAL_DESYNC_WORLD_BONE(
+    key
+)
+    local anchor =
+        A.visual_desync_server_anchor
+
+    local pose =
+        A.visual_desync_server_pose
+
+    if not anchor
+        or type(pose) ~= "table"
+    then
+        return nil
+    end
+
+    local rel =
+        pose[
+            FALLEN_VISUAL_DESYNC_NORMALIZE_BONE_NAME(
+                key
+            )
+        ]
+
+    if not rel then
+        return nil
+    end
+
+    return
+        Vector3(
+            anchor.X + rel.X,
+            anchor.Y + rel.Y,
+            anchor.Z + rel.Z
+        )
+end
+
+
+function FALLEN_VISUAL_DESYNC_PROJECT(
+    p
+)
+    if not p then
+        return nil
+    end
+
+    local s = nil
+
+    if aim
+        and type(aim.world_to_screen) == "function"
+    then
+        pcall(function()
+            s =
+                aim.world_to_screen(
+                    p
+                )
+        end)
+    end
+
+    if not s
+        and rbx
+        and type(rbx.world_to_screen) == "function"
+    then
+        pcall(function()
+            s =
+                rbx.world_to_screen(
+                    p
+                )
+        end)
+    end
+
+    if not s then
+        return nil
+    end
+
+    local x =
+        tonumber(
+            s.X
+            or s.x
+            or s[1]
+        )
+
+    local y =
+        tonumber(
+            s.Y
+            or s.y
+            or s[2]
+        )
+
+    local visible =
+        s.visible
+
+    if visible == nil then
+        visible =
+            s.Visible
+    end
+
+    if not x
+        or not y
+        or x < -10000
+        or y < -10000
+        or visible == false
+    then
+        return nil
+    end
+
+    return {
+        X = x,
+        Y = y,
+    }
+end
+
+
+function FALLEN_VISUAL_DESYNC_DRAW_LINK(
+    a_name,
+    b_name,
+    color
+)
+    local a =
+        FALLEN_VISUAL_DESYNC_PROJECT(
+            FALLEN_VISUAL_DESYNC_WORLD_BONE(
+                a_name
+            )
+        )
+
+    local b =
+        FALLEN_VISUAL_DESYNC_PROJECT(
+            FALLEN_VISUAL_DESYNC_WORLD_BONE(
+                b_name
+            )
+        )
+
+    if not a
+        or not b
+        or type(DrawLine) ~= "function"
+    then
+        return false
+    end
+
+    -- Thin black outline keeps the ghost readable through bright terrain.
+    DrawLine(
+        a.X,
+        a.Y,
+        b.X,
+        b.Y,
+        0,
+        0,
+        0,
+        0.72,
+        3.0
+    )
+
+    DrawLine(
+        a.X,
+        a.Y,
+        b.X,
+        b.Y,
+        color[1],
+        color[2],
+        color[3],
+        color[4] or 1,
+        1.35
+    )
+
+    return true
+end
+
+
+function FALLEN_VISUAL_DESYNC_DRAW()
+    if _G.FallenMenuReady ~= true
+        or S.visual_desync_skeleton ~= true
+        or FALLEN_MISC_CUSTOM_DESYNC_IS_ON() ~= true
+        or not A.visual_desync_server_anchor
+        or not A.visual_desync_server_pose
+    then
+        return
+    end
+
+    local c = {
+        C.accent[1],
+        C.accent[2],
+        C.accent[3],
+        0.88,
+    }
+
+    local pose =
+        A.visual_desync_server_pose
+
+    local has_r15 =
+        pose.uppertorso ~= nil
+        or pose.lowertorso ~= nil
+
+    if has_r15 then
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "Head",
+            "UpperTorso",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "UpperTorso",
+            "LowerTorso",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "LowerTorso",
+            "HumanoidRootPart",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "UpperTorso",
+            "LeftUpperArm",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "LeftUpperArm",
+            "LeftLowerArm",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "LeftLowerArm",
+            "LeftHand",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "UpperTorso",
+            "RightUpperArm",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "RightUpperArm",
+            "RightLowerArm",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "RightLowerArm",
+            "RightHand",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "LowerTorso",
+            "LeftUpperLeg",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "LeftUpperLeg",
+            "LeftLowerLeg",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "LeftLowerLeg",
+            "LeftFoot",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "LowerTorso",
+            "RightUpperLeg",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "RightUpperLeg",
+            "RightLowerLeg",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "RightLowerLeg",
+            "RightFoot",
+            c
+        )
+    else
+        -- R6.
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "Head",
+            "Torso",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "Torso",
+            "Left Arm",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "Torso",
+            "Right Arm",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "Torso",
+            "Left Leg",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "Torso",
+            "Right Leg",
+            c
+        )
+
+        FALLEN_VISUAL_DESYNC_DRAW_LINK(
+            "Torso",
+            "HumanoidRootPart",
+            c
+        )
+    end
+
+    -- Head marker.
+    local head =
+        FALLEN_VISUAL_DESYNC_PROJECT(
+            FALLEN_VISUAL_DESYNC_WORLD_BONE(
+                "Head"
+            )
+        )
+
+    if head
+        and type(DrawCircle) == "function"
+    then
+        DrawCircle(
+            head.X,
+            head.Y,
+            3.25,
+            0,
+            0,
+            0,
+            0.72,
+            3.0
+        )
+
+        DrawCircle(
+            head.X,
+            head.Y,
+            3.25,
+            c[1],
+            c[2],
+            c[3],
+            c[4],
+            1.25
+        )
+    end
+end
+
+
+-- Draw world-space ghost before the menu so the menu remains on top.
+hooks.on_render(function()
+    pcall(
+        FALLEN_VISUAL_DESYNC_DRAW
+    )
+end)
+
 
 -- =========================================================
 -- Render
@@ -37187,6 +37819,12 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST()
         Z = pos.Z,
     }
 
+    -- Snapshot the rig pose before teleporting. The pose is stored as offsets
+    -- and later translated onto the frozen server anchor.
+    FALLEN_VISUAL_DESYNC_CAPTURE_POSE(
+        A.misc_underground_desync_original
+    )
+
     A.misc_underground_desync_target_y =
         pos.Y - depth
 
@@ -37269,6 +37907,8 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
                 A.misc_custom_fastflag_desync_enabled =
                     false
 
+                FALLEN_VISUAL_DESYNC_CLEAR()
+
                 A.misc_underground_desync_stage =
                     3
 
@@ -37280,6 +37920,17 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
             end
 
             -- FastFlag is now ON while the character is still below.
+            -- Freeze the visual server anchor at this exact underground point.
+            if A.misc_underground_desync_original
+                and A.misc_underground_desync_target_y
+            then
+                FALLEN_VISUAL_DESYNC_SET_SERVER_ANCHOR(
+                    A.misc_underground_desync_original.X,
+                    A.misc_underground_desync_target_y,
+                    A.misc_underground_desync_original.Z
+                )
+            end
+
             -- Do NOT return in this frame. Stay underground until next render.
             A.misc_underground_desync_stage =
                 2
@@ -37374,6 +38025,8 @@ hooks.on_render(function()
             FALLEN_MISC_CUSTOM_DESYNC_SET(
                 false
             )
+
+            FALLEN_VISUAL_DESYNC_CLEAR()
         else
             -- Toggle ON:
             -- save origin -> TP below by Depth -> flag 0 -> exact origin.
