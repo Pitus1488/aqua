@@ -24396,7 +24396,7 @@ end
 
 -- =========================================================
 -- Visual Grenade
--- Workspace/VFX -> Military Grenade [Model]
+-- Workspace/VFX -> Military Grenade [Model] (DIRECT CHILD ONLY; VFX/VMS ignored)
 -- Draws the supplied grenade icon, a 4-second disappearing timer outline,
 -- and a screen-space trail following the grenade's real flight path.
 -- =========================================================
@@ -24524,30 +24524,37 @@ function FALLEN_GRENADE_ICON_GET()
     return nil
 end
 
-function FALLEN_GRENADE_SCAN_CONTAINER(
-    container,
+function FALLEN_GRENADE_SCAN_VFX_ROOT(
+    vfx,
     entries,
     seen,
-    depth,
     now
 )
-    if not container
-        or not world_inst_valid(container)
-        or depth > 3
+    -- IMPORTANT: only direct children of Workspace/VFX count.
+    -- Never walk VFX/VMS or any other nested folder/model, otherwise
+    -- the held/viewmodel grenade gets picked up as a world grenade.
+    if not vfx
+        or not world_inst_valid(vfx)
         or #entries >= 96
     then
         return
     end
 
-    for _, inst in ipairs(world_children(container)) do
+    for _, inst in ipairs(world_children(vfx)) do
         if #entries >= 96 then
             break
         end
 
+        local class =
+            world_inst_class(inst)
+
         local name =
             world_inst_name(inst)
 
-        if name
+        -- The real thrown grenade appears as a Model directly under VFX.
+        -- Nested VMS contents are intentionally ignored completely.
+        if class == "Model"
+            and name
             and FALLEN_GRENADE_NAME_MATCH(name)
         then
             local key =
@@ -24581,24 +24588,6 @@ function FALLEN_GRENADE_SCAN_CONTAINER(
                     track.inst = inst
                 end
             end
-        end
-
-        local class =
-            world_inst_class(inst)
-
-        if depth < 3
-            and (
-                class == "Folder"
-                or class == "Model"
-            )
-        then
-            FALLEN_GRENADE_SCAN_CONTAINER(
-                inst,
-                entries,
-                seen,
-                depth + 1,
-                now
-            )
         end
     end
 end
@@ -24664,11 +24653,10 @@ function FALLEN_GRENADE_REFRESH(force)
     local entries = {}
     local seen = {}
 
-    FALLEN_GRENADE_SCAN_CONTAINER(
+    FALLEN_GRENADE_SCAN_VFX_ROOT(
         vfx,
         entries,
         seen,
-        0,
         now
     )
 
