@@ -24410,6 +24410,9 @@ FALLEN_GRENADE_ICON_URLS =
     }
 
 FALLEN_GRENADE_FUSE_TIME = 4.0
+-- Compensate only for the gap between the actual VFX spawn frame and our first scan/render.
+-- The visible countdown still represents the full 4.0-second fuse from the real VFX appearance.
+FALLEN_GRENADE_SPAWN_SYNC = 0.075
 
 function FALLEN_GRENADE_INSTANCE_KEY(inst)
     if not inst then
@@ -24576,7 +24579,7 @@ function FALLEN_GRENADE_SCAN_VFX_ROOT(
 
                 if not track then
                     track = {
-                        born = now,
+                        born = now - FALLEN_GRENADE_SPAWN_SYNC,
                         last_seen = now,
                         points = {},
                         inst = inst,
@@ -24613,7 +24616,7 @@ function FALLEN_GRENADE_REFRESH(force)
     local now = tick()
 
     if not force
-        and now - (WORLD_ESP.grenade_last_scan or -100) < 0.06
+        and now - (WORLD_ESP.grenade_last_scan or -100) < 0.012
     then
         return
     end
@@ -24857,18 +24860,19 @@ function FALLEN_GRENADE_DRAW_TIMER_RING(
         )
     end
 
-    if remaining <= 0.001 then
+    if remaining <= 0 then
         return
     end
 
-    local segments = 56
+    local segments = 64
     local active =
-        math.max(
-            1,
-            math.floor(
-                segments * remaining + 0.5
-            )
+        math.floor(
+            segments * remaining
         )
+
+    if active <= 0 then
+        return
+    end
 
     local start_angle =
         -math.pi * 0.5
@@ -25022,7 +25026,7 @@ function FALLEN_GRENADE_DRAW(entry, my_pos)
 
     if not track then
         track = {
-            born = now,
+            born = now - FALLEN_GRENADE_SPAWN_SYNC,
             last_seen = now,
             points = {},
             inst = entry.inst,
