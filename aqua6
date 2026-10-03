@@ -187,6 +187,12 @@ local defaults = {
     menu_gradient_b_v = 0.85,
     menu_gradient_b_alpha = 100,
 
+    -- Menu accent/style color. Changes small UI accents only; never the shell/background.
+    menu_style_h = 0.625,
+    menu_style_s = 0.55,
+    menu_style_v = 0.76,
+    menu_style_alpha = 100,
+
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
     menu_glow_strength = 100,
 
@@ -198,7 +204,6 @@ local defaults = {
 
     -- Hotkeys overlay.
     keybinds_list_enabled = false,
-    hotkeys_rounding = 13,
 
     -- Normalized screen position so drag placement scales with resolution.
     hotkeys_pos_x = 0.008,
@@ -23465,10 +23470,44 @@ function FALLEN_APPLY_STYLE_COLOR()
         tostring(S.menu_type or "glass")
         :lower()
 
-    -- Accent stays blue; only the shell material changes.
-    C.accent = { 0.340, 0.450, 0.760, 1.00 }
-    C.accent_dim = { 0.240, 0.320, 0.600, 1.00 }
-    C.accent_soft = { 0.210, 0.260, 0.430, 0.65 }
+    -- Accent color is user-controlled and is intentionally independent
+    -- from the menu shell/background material. Only small UI details use it.
+    local accent_r, accent_g, accent_b =
+        hsv_to_rgb(
+            tonumber(S.menu_style_h) or 0.625,
+            tonumber(S.menu_style_s) or 0.55,
+            tonumber(S.menu_style_v) or 0.76
+        )
+
+    local accent_a =
+        clamp(
+            (tonumber(S.menu_style_alpha) or 100) / 100,
+            0,
+            1
+        )
+
+    C.accent = {
+        accent_r,
+        accent_g,
+        accent_b,
+        accent_a,
+    }
+
+    -- Derived accent variants keep sliders/toggles/soft highlights in the
+    -- same chosen hue instead of leaving old hard-coded blue pieces behind.
+    C.accent_dim = {
+        accent_r * 0.76,
+        accent_g * 0.76,
+        accent_b * 0.79,
+        accent_a,
+    }
+
+    C.accent_soft = {
+        accent_r * 0.62,
+        accent_g * 0.62,
+        accent_b * 0.62,
+        0.65 * accent_a,
+    }
 
     if t == "default" then
         -- Original dark Fallen-lua default theme.
@@ -24518,6 +24557,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
     if A.world_color_picker_open
         and (
             A.world_color_picker_key == "menu_glow"
+            or A.world_color_picker_key == "menu_style"
             or A.world_color_picker_key == "menu_gradient_a"
             or A.world_color_picker_key == "menu_gradient_b"
         )
@@ -24922,26 +24962,22 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         if shell_h > 451 + weather_offset then
             line(
                 px + 12,
-                py + 409 + weather_offset,
+                py + 408 + weather_offset,
                 px + pw - 12,
-                py + 409 + weather_offset,
+                py + 408 + weather_offset,
                 C.divider,
                 1
             )
 
-            slider_row(
+            FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
                 mx,
                 my,
                 row_clicked,
-                lmb,
                 px + 8,
-                py + 410 + weather_offset,
+                py + 409 + weather_offset,
                 pw - 16,
-                "Hotkeys Rounding",
-                "hotkeys_rounding",
-                0,
-                17,
-                "int"
+                "Menu Style Color",
+                "menu_style"
             )
         end
 
@@ -24951,9 +24987,9 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         then
             line(
                 px + 12,
-                py + 450 + weather_offset,
+                py + 449 + weather_offset,
                 px + pw - 12,
-                py + 450 + weather_offset,
+                py + 449 + weather_offset,
                 C.divider,
                 1
             )
@@ -24963,7 +24999,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 451 + weather_offset,
+                py + 450 + weather_offset,
                 pw - 16,
                 "???",
                 "secret_enabled",
@@ -25466,8 +25502,7 @@ function FALLEN_DRAW_HOTKEYS_SWITCH(
     local track_rounding =
         clamp(
             tonumber(rounding)
-            or tonumber(S.hotkeys_rounding)
-            or 13,
+            or 8,
             0,
             h * 0.5
         )
@@ -25530,7 +25565,7 @@ function FALLEN_DRAW_HOTKEYS_ITEM(
 
     local child_rounding =
         clamp(
-            tonumber(S.hotkeys_rounding) or 13,
+            8,
             0,
             item_h * 0.5
         )
@@ -25708,7 +25743,7 @@ function FALLEN_DRAW_KEYBINDS_LIST()
 
     local panel_rounding =
         clamp(
-            tonumber(S.hotkeys_rounding) or 13,
+            8,
             0,
             panel_h * 0.5
         )
