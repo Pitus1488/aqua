@@ -199,13 +199,6 @@ local defaults = {
     -- Hotkeys overlay.
     keybinds_list_enabled = false,
 
-    -- Temporary Hotkeys tuning values.
-    -- After visual tuning these can be frozen as final defaults.
-    hotkeys_glow_strength = 200,
-    hotkeys_glow_spread = 8,
-    hotkeys_glow_alpha = 100,
-    hotkeys_opacity = 96,
-
     -- Normalized screen position so drag placement scales with resolution.
     hotkeys_pos_x = 0.008,
     hotkeys_pos_y = 0.042,
@@ -24429,7 +24422,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or menu_type_lower == "blur"
 
     local ph =
-        590
+        426
         + (
             gradient_selected
             and 82
@@ -24853,120 +24846,15 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
-        -- Temporary Hotkeys visual tuning.
-        if shell_h > 451 + weather_offset then
-            line(
-                px + 12,
-                py + 408 + weather_offset,
-                px + pw - 12,
-                py + 408 + weather_offset,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                row_clicked,
-                lmb,
-                px + 8,
-                py + 409 + weather_offset,
-                pw - 16,
-                "Hotkeys Glow Strength",
-                "hotkeys_glow_strength",
-                0,
-                200,
-                "int"
-            )
-        end
-
-        if shell_h > 492 + weather_offset then
-            line(
-                px + 12,
-                py + 449 + weather_offset,
-                px + pw - 12,
-                py + 449 + weather_offset,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                row_clicked,
-                lmb,
-                px + 8,
-                py + 450 + weather_offset,
-                pw - 16,
-                "Hotkeys Glow Spread",
-                "hotkeys_glow_spread",
-                1,
-                12,
-                "int"
-            )
-        end
-
-        if shell_h > 533 + weather_offset then
-            line(
-                px + 12,
-                py + 490 + weather_offset,
-                px + pw - 12,
-                py + 490 + weather_offset,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                row_clicked,
-                lmb,
-                px + 8,
-                py + 491 + weather_offset,
-                pw - 16,
-                "Hotkeys Glow Alpha",
-                "hotkeys_glow_alpha",
-                0,
-                100,
-                "int"
-            )
-        end
-
-        if shell_h > 574 + weather_offset then
-            line(
-                px + 12,
-                py + 531 + weather_offset,
-                px + pw - 12,
-                py + 531 + weather_offset,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                row_clicked,
-                lmb,
-                px + 8,
-                py + 532 + weather_offset,
-                pw - 16,
-                "Hotkeys Opacity",
-                "hotkeys_opacity",
-                10,
-                100,
-                "int"
-            )
-        end
-
         -- Secret setting is completely absent until the hidden brand gesture.
         if A.secret_unlocked
-            and shell_h > 615 + weather_offset
+            and shell_h > 451 + weather_offset
         then
             line(
                 px + 12,
-                py + 572 + weather_offset,
+                py + 408 + weather_offset,
                 px + pw - 12,
-                py + 572 + weather_offset,
+                py + 408 + weather_offset,
                 C.divider,
                 1
             )
@@ -24976,7 +24864,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 573 + weather_offset,
+                py + 409 + weather_offset,
                 pw - 16,
                 "???",
                 "secret_enabled",
@@ -25107,6 +24995,235 @@ function FALLEN_KEYBINDS_STEP()
             0,
             1
         )
+end
+
+
+function FALLEN_HOTKEYS_ROUNDED_FILL(
+    x,
+    y,
+    w,
+    h,
+    radius,
+    color
+)
+    -- Pixel-lock the whole shape first.
+    x =
+        math.floor(
+            tonumber(x) or 0
+            + 0.5
+        )
+
+    y =
+        math.floor(
+            tonumber(y) or 0
+            + 0.5
+        )
+
+    w =
+        math.max(
+            1,
+            math.floor(
+                tonumber(w) or 1
+                + 0.5
+            )
+        )
+
+    h =
+        math.max(
+            1,
+            math.floor(
+                tonumber(h) or 1
+                + 0.5
+            )
+        )
+
+    radius =
+        math.floor(
+            clamp(
+                tonumber(radius) or 0,
+                0,
+                math.min(w, h) * 0.5
+            )
+            + 0.5
+        )
+
+    if radius <= 0 then
+        fill(
+            x,
+            y,
+            w,
+            h,
+            color
+        )
+
+        return
+    end
+
+    local x2 =
+        x + w
+
+    local y2 =
+        y + h
+
+    local rr =
+        radius * radius
+
+    -- Top and bottom corner rows are each ONE continuous horizontal strip.
+    -- That guarantees perfect left/right symmetry at this small 120x35 size.
+    for yy = 0, radius - 1 do
+        local dy =
+            radius
+            - yy
+            - 0.5
+
+        local dx =
+            math.floor(
+                math.sqrt(
+                    math.max(
+                        0,
+                        rr - dy * dy
+                    )
+                )
+                + 0.5
+            )
+
+        local left =
+            x
+            + radius
+            - dx
+
+        local right =
+            x2
+            - radius
+            + dx
+
+        local strip_w =
+            math.max(
+                0,
+                right - left
+            )
+
+        if strip_w > 0 then
+            fill(
+                left,
+                y + yy,
+                strip_w,
+                1,
+                color
+            )
+
+            fill(
+                left,
+                y2 - yy - 1,
+                strip_w,
+                1,
+                color
+            )
+        end
+    end
+
+    local middle_h =
+        h
+        - radius * 2
+
+    if middle_h > 0 then
+        fill(
+            x,
+            y + radius,
+            w,
+            middle_h,
+            color
+        )
+    end
+end
+
+
+function FALLEN_DRAW_HOTKEYS_FOV_GLOW(
+    x,
+    y,
+    w,
+    h,
+    radius
+)
+    -- Final tuned values:
+    -- Strength 158, Spread 5, Alpha 100.
+    local strength =
+        1.58
+
+    local spread =
+        5
+
+    local total_spread =
+        spread * 3.0
+
+    local layers =
+        28
+
+    local next_target =
+        0
+
+    for layer = layers - 1, 0, -1 do
+        local t =
+            layer / (layers - 1)
+
+        local falloff =
+            1 - t
+
+        local offset =
+            t * total_spread
+
+        local target_alpha =
+            clamp(
+                1.0
+                * strength
+                * falloff
+                * falloff
+                * 0.20,
+                0,
+                0.95
+            )
+
+        local layer_alpha =
+            0
+
+        if target_alpha > next_target then
+            layer_alpha =
+                1
+                - (
+                    (1 - target_alpha)
+                    / math.max(
+                        0.0001,
+                        1 - next_target
+                    )
+                )
+        end
+
+        layer_alpha =
+            clamp(
+                layer_alpha,
+                0,
+                0.95
+            )
+
+        if layer_alpha > 0.0001 then
+            FALLEN_HOTKEYS_ROUNDED_FILL(
+                x - offset,
+                y - offset,
+                w + offset * 2,
+                h + offset * 2,
+                radius + offset,
+                {
+                    0,
+                    0,
+                    0,
+                    layer_alpha
+                }
+            )
+        end
+
+        next_target =
+            target_alpha
+    end
 end
 
 
@@ -25293,37 +25410,18 @@ function FALLEN_DRAW_KEYBINDS_LIST()
     MENU_UI_TRANSFORM_ACTIVE =
         false
 
-    -- Same controls/profile as Aimbot FOV glow:
-    -- Strength + Spread + Alpha.
-    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+    -- Final tuned Hotkeys glow.
+    FALLEN_DRAW_HOTKEYS_FOV_GLOW(
         x,
         y,
         panel_w,
         panel_h,
-        panel_rounding,
-        {
-            0,
-            0,
-            0,
-            clamp(
-                (tonumber(S.hotkeys_glow_alpha) or 100) / 100,
-                0,
-                1
-            )
-        },
-        clamp(
-            (tonumber(S.hotkeys_glow_strength) or 200) / 100,
-            0,
-            2
-        ),
-        clamp(
-            tonumber(S.hotkeys_glow_spread) or 8,
-            1,
-            12
-        )
+        panel_rounding
     )
 
-    rounded_fill(
+    -- Final tuned panel opacity = 62%.
+    -- Use the dedicated symmetric scanline rounded renderer.
+    FALLEN_HOTKEYS_ROUNDED_FILL(
         x,
         y,
         panel_w,
@@ -25333,11 +25431,7 @@ function FALLEN_DRAW_KEYBINDS_LIST()
             0.008,
             0.008,
             0.010,
-            clamp(
-                (tonumber(S.hotkeys_opacity) or 96) / 100,
-                0.10,
-                1
-            )
+            0.62
         }
     )
 
