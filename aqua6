@@ -14221,6 +14221,7 @@ function FALLEN_BT_VFX_IS_IMPACT_NAME(
         or name == "metalhole"
         or name == "bloodpart"
         or name == "casinglarge"
+        or name == "casingsmall"
 end
 
 
@@ -14234,7 +14235,78 @@ function FALLEN_BT_VFX_POSITION(
         return nil
     end
 
-    -- First try the Hole / MetalHole / BloodPart / CasingLarge object itself.
+    local impact_name = nil
+
+    pcall(function()
+        impact_name =
+            string.lower(
+                tostring(
+                    inst:get_name()
+                    or ""
+                )
+            )
+    end)
+
+    -- CasingLarge / CasingSmall are only container Models.
+    -- Their actual positional MeshPart is:
+    -- CasingLarge -> Main
+    -- CasingSmall -> Main
+    if impact_name == "casinglarge"
+        or impact_name == "casingsmall"
+    then
+        local main = nil
+
+        pcall(function()
+            main =
+                inst:find_first_child(
+                    "Main"
+                )
+        end)
+
+        if main
+            and FALLEN_BT_VFX_INSTANCE_VALID(
+                main
+            )
+        then
+            local class_name = nil
+
+            pcall(function()
+                class_name =
+                    main:get_class()
+            end)
+
+            if class_name == "MeshPart"
+                or class_name == "Part"
+                or class_name == "UnionOperation"
+                or class_name == "BasePart"
+            then
+                local main_pos = nil
+
+                pcall(function()
+                    main_pos =
+                        main:get_position()
+                end)
+
+                if main_pos
+                    and main_pos.X ~= nil
+                    and main_pos.Y ~= nil
+                    and main_pos.Z ~= nil
+                then
+                    return {
+                        X = main_pos.X,
+                        Y = main_pos.Y,
+                        Z = main_pos.Z,
+                    }
+                end
+            end
+        end
+
+        -- Do not fall back to the Model or some unrelated child.
+        return nil
+    end
+
+    -- Hole / MetalHole / BloodPart:
+    -- first use the object itself if it has a world position.
     local pos = nil
 
     pcall(function()
@@ -14254,8 +14326,7 @@ function FALLEN_BT_VFX_POSITION(
         }
     end
 
-    -- If Hole / MetalHole / BloodPart / CasingLarge is a Model/Folder, use only its nearest direct
-    -- positional child. Do NOT walk parents or unrelated VFX descendants.
+    -- If one of those is a Model/Folder, keep the old direct-child fallback.
     local children = nil
 
     pcall(function()
@@ -14672,7 +14743,7 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
                     if inside_fov
                         and screen_dist_sq ~= nil
                     then
-                        -- Primary criterion: closest Hole/MetalHole/BloodPart/CasingLarge to where
+                        -- Primary criterion: closest Hole/MetalHole/BloodPart/CasingLarge/CasingSmall to where
                         -- the crosshair is actually aiming.
                         --
                         -- Tie-breaker: nearest in world space.
@@ -14850,7 +14921,7 @@ function FALLEN_BT_SHOT_TICK()
         and FALLEN_BT.vfx_prev_lmb ~= true
     then
         -- Keep watching long enough for distant projectiles to reach the
-        -- surface and create Hole / MetalHole / BloodPart / CasingLarge.
+        -- surface and create Hole / MetalHole / BloodPart / CasingLarge / CasingSmall.
         FALLEN_BT.vfx_watch_until =
             now + 2.50
     elseif lmb then
