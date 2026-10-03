@@ -542,6 +542,9 @@ local A = {
     misc_underground_desync_hrp = nil,
     misc_underground_desync_button_hot = false,
     misc_underground_desync_method_found = false,
+    misc_underground_desync_target_y = nil,
+    misc_underground_desync_confirm_frames = 0,
+    misc_underground_desync_post_frames = 0,
 
     -- Underground Desync custom keybind capture / edge state.
     misc_underground_bind_listening = false,
@@ -36147,6 +36150,227 @@ end)
 -- =========================================================
 -- Misc: Underground -> Service-side Desync -> return
 -- =========================================================
+function FALLEN_MISC_DESYNC_BIND_IS_ON()
+    if not cheat
+        or not cheat.keybinds
+    then
+        return false
+    end
+
+    local value = false
+
+    pcall(function()
+        value =
+            cheat.keybinds.desync_toggled
+            == true
+    end)
+
+    return value == true
+end
+
+
+function FALLEN_MISC_DESYNC_BIND_SET(
+    enabled
+)
+    enabled =
+        enabled == true
+
+    if not cheat then
+        return false
+    end
+
+    local misc = nil
+
+    pcall(function()
+        misc =
+            cheat.misc
+    end)
+
+    -- Make sure Desync behaves as a TOGGLE bind.
+    if misc
+        and type(misc._keys) == "function"
+    then
+        local keys = nil
+
+        pcall(function()
+            keys =
+                misc:_keys()
+        end)
+
+        if type(keys) == "table" then
+            for _, raw_key in ipairs(keys) do
+                local key =
+                    tostring(raw_key)
+
+                local normalized =
+                    string.lower(key)
+
+                normalized =
+                    string.gsub(
+                        normalized,
+                        "[%s_%-]",
+                        ""
+                    )
+
+                if string.find(
+                    normalized,
+                    "desync",
+                    1,
+                    true
+                )
+                    and string.find(
+                        normalized,
+                        "keymode",
+                        1,
+                        true
+                    )
+                then
+                    pcall(function()
+                        misc[key] = 1
+                    end)
+                end
+            end
+        end
+    end
+
+    if misc then
+        pcall(function()
+            misc.desync_key_mode = 1
+        end)
+
+        pcall(function()
+            misc.desync_keymode = 1
+        end)
+    end
+
+    local wrote = false
+
+    pcall(function()
+        if cheat.keybinds then
+            cheat.keybinds.desync_toggled =
+                enabled
+
+            -- Immediate same-frame state.
+            -- The host can overwrite *_active later; *_toggled is persistent.
+            cheat.keybinds.desync_active =
+                enabled
+
+            wrote = true
+        end
+    end)
+
+    return wrote
+end
+
+
+function FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
+    local original =
+        A.misc_underground_desync_original
+
+    local hrp =
+        A.misc_underground_desync_hrp
+
+    local target_y =
+        tonumber(
+            A.misc_underground_desync_target_y
+        )
+
+    if not original
+        or not target_y
+    then
+        return false
+    end
+
+    if not hrp
+        and rbx
+        and type(rbx.local_hrp) == "function"
+    then
+        pcall(function()
+            hrp =
+                rbx.local_hrp()
+        end)
+
+        A.misc_underground_desync_hrp =
+            hrp
+    end
+
+    if not hrp then
+        return false
+    end
+
+    pcall(function()
+        hrp:set_position(
+            Vector3(
+                original.X,
+                target_y,
+                original.Z
+            )
+        )
+    end)
+
+    -- Verify that the HRP actually reports being below ground.
+    local current = nil
+
+    pcall(function()
+        current =
+            hrp:get_position()
+    end)
+
+    if not current
+        or current.Y == nil
+    then
+        return false
+    end
+
+    return
+        math.abs(
+            tonumber(current.Y)
+            - target_y
+        ) <= 1.25
+end
+
+
+function FALLEN_MISC_UNDERGROUND_RETURN()
+    local original =
+        A.misc_underground_desync_original
+
+    local hrp =
+        A.misc_underground_desync_hrp
+
+    if not hrp
+        and rbx
+        and type(rbx.local_hrp) == "function"
+    then
+        pcall(function()
+            hrp =
+                rbx.local_hrp()
+        end)
+    end
+
+    if hrp
+        and original
+    then
+        pcall(function()
+            hrp:set_position(
+                Vector3(
+                    original.X,
+                    original.Y,
+                    original.Z
+                )
+            )
+        end)
+    end
+
+    A.misc_underground_desync_stage = 0
+    A.misc_underground_desync_time = 0
+    A.misc_underground_desync_original = nil
+    A.misc_underground_desync_hrp = nil
+    A.misc_underground_desync_target_y = nil
+    A.misc_underground_desync_confirm_frames = 0
+    A.misc_underground_desync_post_frames = 0
+end
+
+
 function FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
     if not cheat then
         return false
@@ -36287,81 +36511,10 @@ function FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
         end)
     end
 
-    -- IMPORTANT:
-    -- Do NOT call cheat.enable("desync", true) here.
-    -- Activate the stock Desync exactly through its keybind state,
-    -- as if the user's toggle bind had just been pressed.
-
-    -- Put the Desync bind into TOGGLE mode when a matching field is exposed.
-    if misc
-        and type(misc._keys) == "function"
-    then
-        local bind_keys = nil
-
-        pcall(function()
-            bind_keys =
-                misc:_keys()
-        end)
-
-        if type(bind_keys) == "table" then
-            for _, raw_key in ipairs(bind_keys) do
-                local key =
-                    tostring(raw_key)
-
-                local normalized =
-                    string.lower(key)
-
-                normalized =
-                    string.gsub(
-                        normalized,
-                        "[%s_%-]",
-                        ""
-                    )
-
-                if string.find(
-                    normalized,
-                    "desync",
-                    1,
-                    true
-                )
-                    and string.find(
-                        normalized,
-                        "keymode",
-                        1,
-                        true
-                    )
-                then
-                    pcall(function()
-                        misc[key] = 1
-                    end)
-                end
-            end
-        end
-    end
-
-    -- Common key-mode field fallbacks.
-    if misc then
-        pcall(function()
-            misc.desync_key_mode = 1
-        end)
-
-        pcall(function()
-            misc.desync_keymode = 1
-        end)
-    end
-
-    -- Writable *_toggled is the persistent bind latch.
-    -- *_active is also poked once for immediate same-frame activation;
-    -- the host may overwrite active on later frames, while toggled persists.
-    pcall(function()
-        if cheat.keybinds then
-            cheat.keybinds.desync_toggled =
-                true
-
-            cheat.keybinds.desync_active =
-                true
-        end
-    end)
+    -- Activate through the real bind latch, exactly like a toggle-key press.
+    FALLEN_MISC_DESYNC_BIND_SET(
+        true
+    )
 
     A.misc_underground_desync_method_found =
         method_found == true
@@ -36423,27 +36576,23 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST()
         Z = pos.Z,
     }
 
-    local moved = false
+    A.misc_underground_desync_target_y =
+        pos.Y - depth
 
-    pcall(function()
-        moved =
-            hrp:set_position(
-                Vector3(
-                    pos.X,
-                    pos.Y - depth,
-                    pos.Z
-                )
-            ) ~= false
-    end)
+    A.misc_underground_desync_confirm_frames =
+        0
 
-    if not moved then
-        A.misc_underground_desync_hrp = nil
-        A.misc_underground_desync_original = nil
-        return false
-    end
+    A.misc_underground_desync_post_frames =
+        0
 
-    A.misc_underground_desync_stage = 1
-    A.misc_underground_desync_time = tick()
+    A.misc_underground_desync_stage =
+        1
+
+    A.misc_underground_desync_time =
+        tick()
+
+    -- Move immediately, then every render frame keeps pinning the HRP below.
+    FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
 
     return true
 end
@@ -36460,73 +36609,97 @@ function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
         return
     end
 
-    local now = tick()
+    local now =
+        tick()
 
     if stage == 1 then
-        -- Keep the character below ground for a couple of render frames first.
-        if now - (A.misc_underground_desync_time or now) < 0.045 then
+        -- Critical: keep teleporting to the underground point EVERY frame.
+        -- Do not activate Desync until the HRP has reported the underground
+        -- position for several consecutive render frames.
+        local confirmed =
+            FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
+
+        if confirmed then
+            A.misc_underground_desync_confirm_frames =
+                (
+                    tonumber(
+                        A.misc_underground_desync_confirm_frames
+                    )
+                    or 0
+                )
+                + 1
+        else
+            A.misc_underground_desync_confirm_frames =
+                0
+        end
+
+        local elapsed =
+            now
+            - (
+                A.misc_underground_desync_time
+                or now
+            )
+
+        if (
+            A.misc_underground_desync_confirm_frames
+            or 0
+        ) >= 4
+            and elapsed >= 0.10
+        then
+            -- NOW we know we are still below ground.
+            FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
+
+            A.misc_underground_desync_stage =
+                2
+
+            A.misc_underground_desync_time =
+                now
+
+            A.misc_underground_desync_post_frames =
+                0
+
             return
         end
 
-        -- Select Service side and turn Desync on while the HRP is underground.
-        FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
+        -- Safety timeout: if teleport cannot stick, return without enabling.
+        if elapsed >= 0.90 then
+            FALLEN_MISC_UNDERGROUND_RETURN()
+        end
 
-        A.misc_underground_desync_stage = 2
-        A.misc_underground_desync_time = now
         return
     end
 
     if stage == 2 then
-        -- Let the enabled state exist underground briefly before returning.
-        if now - (A.misc_underground_desync_time or now) < 0.045 then
-            return
-        end
+        -- Desync has already been latched ON.
+        -- Keep HRP below for several MORE frames so activation cannot happen
+        -- after the return teleport due to ordering / network delay.
+        FALLEN_MISC_UNDERGROUND_FORCE_BELOW()
 
-        local original =
-            A.misc_underground_desync_original
-
-        local hrp =
-            A.misc_underground_desync_hrp
-
-        if not hrp
-            and rbx
-            and type(rbx.local_hrp) == "function"
-        then
-            pcall(function()
-                hrp =
-                    rbx.local_hrp()
-            end)
-        end
-
-        if hrp
-            and original
-        then
-            pcall(function()
-                hrp:set_position(
-                    Vector3(
-                        original.X,
-                        original.Y,
-                        original.Z
-                    )
+        A.misc_underground_desync_post_frames =
+            (
+                tonumber(
+                    A.misc_underground_desync_post_frames
                 )
-            end)
+                or 0
+            )
+            + 1
+
+        local elapsed =
+            now
+            - (
+                A.misc_underground_desync_time
+                or now
+            )
+
+        if (
+            A.misc_underground_desync_post_frames
+            or 0
+        ) >= 5
+            and elapsed >= 0.12
+        then
+            -- Latch stays ON; only position returns.
+            FALLEN_MISC_UNDERGROUND_RETURN()
         end
-
-        -- Keep the same persistent bind latch after returning.
-        -- This is equivalent to leaving a toggle keybind ON.
-        pcall(function()
-            if cheat
-                and cheat.keybinds
-            then
-                cheat.keybinds.desync_toggled =
-                    true
-            end
-        end)
-
-        A.misc_underground_desync_stage = 0
-        A.misc_underground_desync_time = 0
-        A.misc_underground_desync_original = nil
-        A.misc_underground_desync_hrp = nil
     end
 end
 
@@ -36536,8 +36709,6 @@ hooks.on_render(function()
         return
     end
 
-    -- Custom hotkey for the whole underground sequence.
-    -- Edge-triggered: one press = one sequence.
     local vk =
         math.floor(
             tonumber(
@@ -36550,14 +36721,25 @@ hooks.on_render(function()
         vk > 0
         and key_down(vk)
 
-    if down
+    local pressed =
+        down
         and A.misc_underground_hotkey_prev ~= true
         and A.misc_underground_bind_listening ~= true
+
+    if pressed
         and (A.misc_underground_desync_stage or 0) == 0
     then
-        pcall(
-            FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST
-        )
+        if FALLEN_MISC_DESYNC_BIND_IS_ON() then
+            -- Toggle OFF: no underground teleport on the OFF press.
+            FALLEN_MISC_DESYNC_BIND_SET(
+                false
+            )
+        else
+            -- Toggle ON: underground -> Service side -> latch ON -> return.
+            pcall(
+                FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST
+            )
+        end
     end
 
     A.misc_underground_hotkey_prev =
