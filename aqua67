@@ -115,6 +115,7 @@ local defaults = {
     misc_fly_enabled = false,
     misc_upside_down_enabled = false,
     misc_shot_on_air_enabled = false,
+    misc_desync_depth = 5,
 
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
@@ -532,6 +533,14 @@ local A = {
 
     secret_desync_module = nil,
     secret_desync_last_state = nil,
+
+    -- Misc underground Service-side Desync one-shot.
+    misc_underground_desync_stage = 0,
+    misc_underground_desync_time = 0,
+    misc_underground_desync_original = nil,
+    misc_underground_desync_hrp = nil,
+    misc_underground_desync_button_hot = false,
+    misc_underground_desync_method_found = false,
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -31420,7 +31429,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            60,
+            147,
             11
         )
 
@@ -31435,6 +31444,91 @@ hooks.on_render(function()
             "misc_shot_on_air_enabled",
             false
         )
+
+        line(
+            page_x + 12,
+            page_y + 72,
+            page_x + page_w - 12,
+            page_y + 72,
+            C.divider,
+            1
+        )
+
+        slider_row(
+            mx,
+            my,
+            page_clicked,
+            lmb,
+            page_x,
+            page_y + 73,
+            page_w,
+            "Depth",
+            "misc_desync_depth",
+            1,
+            50,
+            "int"
+        )
+
+        line(
+            page_x + 12,
+            page_y + 113,
+            page_x + page_w - 12,
+            page_y + 113,
+            C.divider,
+            1
+        )
+
+        A.misc_underground_desync_button_hot =
+            hover(
+                mx,
+                my,
+                page_x + page_w - 132,
+                page_y + 121,
+                118,
+                27
+            )
+
+        text(
+            page_x + 13,
+            page_y + 129,
+            "Underground Desync",
+            FALLEN_HOVER_TEXT(
+                "misc_underground_desync_label",
+                A.misc_underground_desync_button_hot,
+                C.text
+            )
+        )
+
+        rounded_fill(
+            page_x + page_w - 132,
+            page_y + 121,
+            118,
+            27,
+            6,
+            A.misc_underground_desync_button_hot
+                and C.card_hover
+                or C.toggle_off
+        )
+
+        text(
+            page_x + page_w - 112,
+            page_y + 129,
+            (A.misc_underground_desync_stage or 0) ~= 0
+                and "RUNNING..."
+                or "ACTIVATE",
+            A.misc_underground_desync_button_hot
+                and C.white
+                or C.text_dim
+        )
+
+        if page_clicked
+            and A.misc_underground_desync_button_hot
+            and (A.misc_underground_desync_stage or 0) == 0
+        then
+            FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST()
+            numeric_stop(true)
+            A.active_slider = nil
+        end
     elseif S.tab == 4
         and A.secret_unlocked
         and S.secret_enabled == true
@@ -35926,6 +36020,349 @@ hooks.on_render(function()
     pcall(FALLEN_WORLD_RAIN_TICK)
     pcall(FALLEN_WORLD_THUNDER_TICK)
 end)
+
+-- =========================================================
+-- Misc: Underground -> Service-side Desync -> return
+-- =========================================================
+function FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
+    if not cheat then
+        return false
+    end
+
+    local misc = nil
+    local method_found = false
+
+    pcall(function()
+        misc = cheat.misc
+    end)
+
+    if misc
+        and type(misc._keys) == "function"
+    then
+        local keys = nil
+
+        pcall(function()
+            keys = misc:_keys()
+        end)
+
+        if type(keys) == "table" then
+            for _, raw_key in ipairs(keys) do
+                local key = tostring(raw_key)
+                local normalized =
+                    string.lower(key)
+
+                normalized =
+                    string.gsub(
+                        normalized,
+                        "[%s_%-]",
+                        ""
+                    )
+
+                if string.find(
+                    normalized,
+                    "desync",
+                    1,
+                    true
+                ) then
+                    local field_type = nil
+
+                    if type(misc._type) == "function" then
+                        pcall(function()
+                            field_type =
+                                misc:_type(key)
+                        end)
+                    end
+
+                    local service_field =
+                        string.find(
+                            normalized,
+                            "service",
+                            1,
+                            true
+                        ) ~= nil
+                        or string.find(
+                            normalized,
+                            "server",
+                            1,
+                            true
+                        ) ~= nil
+
+                    local method_field =
+                        string.find(
+                            normalized,
+                            "method",
+                            1,
+                            true
+                        ) ~= nil
+                        or string.find(
+                            normalized,
+                            "mode",
+                            1,
+                            true
+                        ) ~= nil
+                        or string.find(
+                            normalized,
+                            "type",
+                            1,
+                            true
+                        ) ~= nil
+
+                    if service_field then
+                        pcall(function()
+                            if field_type == "bool" then
+                                misc[key] = true
+                            elseif field_type == "string" then
+                                misc[key] = "Service side"
+                            else
+                                misc[key] = 1
+                            end
+
+                            method_found = true
+                        end)
+
+                    elseif method_field then
+                        pcall(function()
+                            if field_type == "string" then
+                                misc[key] = "Service side"
+                            else
+                                misc[key] = 1
+                            end
+
+                            method_found = true
+                        end)
+                    end
+                end
+            end
+        end
+    end
+
+    -- Compatibility fallbacks for builds without exposed _keys().
+    if misc then
+        pcall(function()
+            misc.desync_method = 1
+            method_found = true
+        end)
+
+        pcall(function()
+            misc.desync_mode = 1
+            method_found = true
+        end)
+
+        pcall(function()
+            misc.desync_type = 1
+            method_found = true
+        end)
+
+        pcall(function()
+            misc.desync_service_side = true
+            method_found = true
+        end)
+
+        pcall(function()
+            misc.desync_server_side = true
+            method_found = true
+        end)
+    end
+
+    -- Direct programmatic enable. No physical Desync bind press is required.
+    if type(cheat.enable) == "function" then
+        pcall(function()
+            cheat.enable(
+                "desync",
+                true
+            )
+        end)
+    end
+
+    if misc then
+        pcall(function()
+            misc.desync = true
+        end)
+
+        pcall(function()
+            misc.desync_enabled = true
+        end)
+    end
+
+    A.misc_underground_desync_method_found =
+        method_found == true
+
+    return true
+end
+
+
+function FALLEN_MISC_UNDERGROUND_DESYNC_REQUEST()
+    if (A.misc_underground_desync_stage or 0) ~= 0 then
+        return false
+    end
+
+    if not rbx
+        or type(rbx.local_hrp) ~= "function"
+    then
+        return false
+    end
+
+    local hrp = nil
+    local pos = nil
+
+    pcall(function()
+        hrp =
+            rbx.local_hrp()
+    end)
+
+    if not hrp then
+        return false
+    end
+
+    pcall(function()
+        pos =
+            hrp:get_position()
+    end)
+
+    if not pos
+        or pos.X == nil
+        or pos.Y == nil
+        or pos.Z == nil
+    then
+        return false
+    end
+
+    local depth =
+        clamp(
+            tonumber(S.misc_desync_depth)
+            or 5,
+            1,
+            50
+        )
+
+    A.misc_underground_desync_hrp =
+        hrp
+
+    A.misc_underground_desync_original = {
+        X = pos.X,
+        Y = pos.Y,
+        Z = pos.Z,
+    }
+
+    local moved = false
+
+    pcall(function()
+        moved =
+            hrp:set_position(
+                Vector3(
+                    pos.X,
+                    pos.Y - depth,
+                    pos.Z
+                )
+            ) ~= false
+    end)
+
+    if not moved then
+        A.misc_underground_desync_hrp = nil
+        A.misc_underground_desync_original = nil
+        return false
+    end
+
+    A.misc_underground_desync_stage = 1
+    A.misc_underground_desync_time = tick()
+
+    return true
+end
+
+
+function FALLEN_MISC_UNDERGROUND_DESYNC_TICK()
+    local stage =
+        tonumber(
+            A.misc_underground_desync_stage
+        )
+        or 0
+
+    if stage == 0 then
+        return
+    end
+
+    local now = tick()
+
+    if stage == 1 then
+        -- Keep the character below ground for a couple of render frames first.
+        if now - (A.misc_underground_desync_time or now) < 0.045 then
+            return
+        end
+
+        -- Select Service side and turn Desync on while the HRP is underground.
+        FALLEN_MISC_SET_DESYNC_SERVICE_SIDE()
+
+        A.misc_underground_desync_stage = 2
+        A.misc_underground_desync_time = now
+        return
+    end
+
+    if stage == 2 then
+        -- Let the enabled state exist underground briefly before returning.
+        if now - (A.misc_underground_desync_time or now) < 0.045 then
+            return
+        end
+
+        local original =
+            A.misc_underground_desync_original
+
+        local hrp =
+            A.misc_underground_desync_hrp
+
+        if not hrp
+            and rbx
+            and type(rbx.local_hrp) == "function"
+        then
+            pcall(function()
+                hrp =
+                    rbx.local_hrp()
+            end)
+        end
+
+        if hrp
+            and original
+        then
+            pcall(function()
+                hrp:set_position(
+                    Vector3(
+                        original.X,
+                        original.Y,
+                        original.Z
+                    )
+                )
+            end)
+        end
+
+        -- Desync intentionally remains enabled after the teleport back.
+        if cheat
+            and type(cheat.enable) == "function"
+        then
+            pcall(function()
+                cheat.enable(
+                    "desync",
+                    true
+                )
+            end)
+        end
+
+        A.misc_underground_desync_stage = 0
+        A.misc_underground_desync_time = 0
+        A.misc_underground_desync_original = nil
+        A.misc_underground_desync_hrp = nil
+    end
+end
+
+
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    pcall(
+        FALLEN_MISC_UNDERGROUND_DESYNC_TICK
+    )
+end)
+
 
 -- =========================================================
 -- Shot on air bridge
