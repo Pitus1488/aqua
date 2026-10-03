@@ -13751,6 +13751,7 @@ FALLEN_BT = FALLEN_BT or {
     vfx_seen = {},
     vfx_prev_lmb = false,
     vfx_watch_until = 0,
+    vfx_shot_time = nil,
 }
 
 FALLEN_BT.vfx_seen =
@@ -14454,10 +14455,120 @@ function FALLEN_BT_ORIGIN()
 end
 
 
+function FALLEN_BT_FOV_RADIUS()
+    if key_down(0x02) == true then
+        return 20
+    end
+
+    return 40
+end
+
+
+function FALLEN_BT_FOV_CENTER()
+    local cx, cy = nil, nil
+
+    if type(crosshair_pos) == "function" then
+        pcall(function()
+            local c = crosshair_pos()
+
+            if c then
+                cx = tonumber(c.X or c.x or c[1])
+                cy = tonumber(c.Y or c.y or c[2])
+            end
+        end)
+    end
+
+    if (cx == nil or cy == nil)
+        and type(FALLEN_CUSTOM_FOV_CENTER) == "function"
+    then
+        pcall(function()
+            cx, cy = FALLEN_CUSTOM_FOV_CENTER()
+        end)
+    end
+
+    return tonumber(cx), tonumber(cy)
+end
+
+
+function FALLEN_BT_FOV_CHECK(pos)
+    if not pos
+        or not aim
+        or type(aim.world_to_screen) ~= "function"
+    then
+        return false, nil
+    end
+
+    local screen = nil
+
+    pcall(function()
+        screen = aim.world_to_screen(pos)
+    end)
+
+    if not screen
+        or screen.visible ~= true
+        or screen.X == nil
+        or screen.Y == nil
+    then
+        return false, nil
+    end
+
+    local cx, cy = FALLEN_BT_FOV_CENTER()
+
+    if not cx or not cy then
+        return false, nil
+    end
+
+    local dx = tonumber(screen.X) - cx
+    local dy = tonumber(screen.Y) - cy
+    local dist_sq = dx * dx + dy * dy
+    local radius = FALLEN_BT_FOV_RADIUS()
+
+    return
+        dist_sq <= radius * radius,
+        dist_sq
+end
+
+
+function FALLEN_BT_VFX_KIND(inst)
+    if not inst
+        or not FALLEN_BT_VFX_INSTANCE_VALID(inst)
+    then
+        return nil
+    end
+
+    local name = nil
+
+    pcall(function()
+        name = inst:get_name()
+    end)
+
+    name = string.lower(tostring(name or ""))
+
+    if name == "hole"
+        or name == "metalhole"
+    then
+        return "hole"
+    end
+
+    if name == "bloodpart" then
+        return "bloodpart"
+    end
+
+    if name == "casinglarge"
+        or name == "casingsmall"
+    then
+        return "casing"
+    end
+
+    return nil
+end
+
+
 function FALLEN_BT_VFX_FIND_NEW_IMPACT(
     previous,
     current,
-    origin
+    origin,
+    shot_age
 )
     if type(current) ~= "table"
         or not origin
@@ -14470,63 +14581,64 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
         and previous
         or {}
 
-    local best_pos =
-        nil
+    shot_age = tonumber(shot_age) or 999
 
-    local best_world_dist_sq =
-        nil
+    local best_pos = nil
+    local best_screen_dist_sq = nil
 
     for key, inst in pairs(current) do
-        if previous[key] == nil
-            and FALLEN_BT_VFX_IS_IMPACT_NAME(
-                inst
-            )
-        then
-            local pos =
-                FALLEN_BT_VFX_POSITION(
-                    inst
-                )
+        if previous[key] == nil then
+            local kind =
+                FALLEN_BT_VFX_KIND(inst)
 
-            if pos then
-                local dx =
-                    tonumber(pos.X)
-                    - tonumber(origin.X)
+            local allowed = false
 
-                local dy =
-                    tonumber(pos.Y)
-                    - tonumber(origin.Y)
+            if kind == "hole" then
+                allowed = shot_age <= 0.50
 
-                local dz =
-                    tonumber(pos.Z)
-                    - tonumber(origin.Z)
+            elseif kind == "bloodpart" then
+                allowed = shot_age <= 1.00
 
-                local world_dist_sq =
-                    dx * dx
-                    + dy * dy
-                    + dz * dz
+            elseif kind == "casing" then
+                allowed = shot_age <= 1.00
+            end
 
-                -- Ignore objects basically inside the player's face/muzzle.
-                if world_dist_sq >= 4 then
-                    -- No FOV validation anymore.
-                    -- If several supported VFX appear in the same scan,
-                    -- use the nearest valid one in world space.
-                    if best_world_dist_sq == nil
-                        or world_dist_sq < best_world_dist_sq
-                    then
-                        best_world_dist_sq =
-                            world_dist_sq
+            if allowed then
+                local pos =
+                    FALLEN_BT_VFX_POSITION(inst)
 
-                        best_pos = {
-                            X = pos.X,
-                            Y = pos.Y,
-                            Z = pos.Z,
+                if pos then
+                    local dx = tonumber(pos.X) - tonumber(origin.X)
+                    local dy = tonumber(pos.Y) - tonumber(origin.Y)
+                    local dz = tonumber(pos.Z) - tonumber(origin.Z)
+                    local world_dist_sq =
+                        dx * dx + dy * dy + dz * dz
 
-                            auto_prediction = false,
-                            prediction_time = 0,
-                            gravity = 0,
-                            bullet_speed = 0,
-                            source = "vfx_impact",
-                        }
+                    if world_dist_sq >= 4 then
+                        local inside, screen_dist_sq =
+                            FALLEN_BT_FOV_CHECK(pos)
+
+                        if inside
+                            and screen_dist_sq ~= nil
+                            and (
+                                best_screen_dist_sq == nil
+                                or screen_dist_sq < best_screen_dist_sq
+                            )
+                        then
+                            best_screen_dist_sq = screen_dist_sq
+
+                            best_pos = {
+                                X = pos.X,
+                                Y = pos.Y,
+                                Z = pos.Z,
+
+                                auto_prediction = false,
+                                prediction_time = 0,
+                                gravity = 0,
+                                bullet_speed = 0,
+                                source = "vfx_impact",
+                            }
+                        end
                     end
                 end
             end
@@ -14608,88 +14720,50 @@ end
 
 function FALLEN_BT_SHOT_TICK()
     if S.bullet_tracer_enabled ~= true then
-        FALLEN_BT.vfx_seen =
-            {}
-
-        FALLEN_BT.vfx_prev_lmb =
-            false
-
-        FALLEN_BT.vfx_watch_until =
-            0
-
+        FALLEN_BT.vfx_seen = {}
+        FALLEN_BT.vfx_prev_lmb = false
+        FALLEN_BT.vfx_watch_until = 0
+        FALLEN_BT.vfx_shot_time = nil
         return
     end
 
-    -- ONLY required gameplay check: same equipped-weapon detection used by
-    -- Auto Prediction. No Aimbot/Silent/target/FOV/HP checks.
-    local weapon_ready =
-        FALLEN_BT_WEAPON_READY()
-
-    if not weapon_ready then
-        FALLEN_BT.vfx_seen =
-            {}
-
-        FALLEN_BT.vfx_prev_lmb =
-            false
-
-        FALLEN_BT.vfx_watch_until =
-            0
-
+    if not FALLEN_BT_WEAPON_READY() then
+        FALLEN_BT.vfx_seen = {}
+        FALLEN_BT.vfx_prev_lmb = false
+        FALLEN_BT.vfx_watch_until = 0
+        FALLEN_BT.vfx_shot_time = nil
         return
     end
 
-    local now =
-        tick()
+    local now = tick()
+    local lmb = key_down(0x01) == true
 
-    local lmb =
-        key_down(0x01)
-        == true
-
-    -- Keep a clean baseline while not firing. This lets a VFX object created
-    -- immediately on the first LMB frame still be detected against the
-    -- previous frame's VFX tree.
     if not lmb
-        and now
-            >= (
-                tonumber(
-                    FALLEN_BT.vfx_watch_until
-                )
-                or 0
-            )
+        and now >= (tonumber(FALLEN_BT.vfx_watch_until) or 0)
     then
         FALLEN_BT.vfx_seen =
             FALLEN_BT_VFX_SCAN()
 
-        FALLEN_BT.vfx_prev_lmb =
-            false
-
+        FALLEN_BT.vfx_prev_lmb = false
+        FALLEN_BT.vfx_shot_time = nil
         return
     end
 
     if lmb
         and FALLEN_BT.vfx_prev_lmb ~= true
     then
-        -- Keep watching long enough for distant projectiles to reach the
-        -- surface and create Hole / MetalHole / BloodPart / CasingLarge / CasingSmall.
-        FALLEN_BT.vfx_watch_until =
-            now + 2.50
+        FALLEN_BT.vfx_shot_time = now
+        FALLEN_BT.vfx_watch_until = now + 1.00
+
     elseif lmb then
-        -- Automatic weapons: keep the watch window alive while Mouse1 is held.
-        FALLEN_BT.vfx_watch_until =
-            now + 2.50
+        FALLEN_BT.vfx_shot_time = now
+        FALLEN_BT.vfx_watch_until = now + 1.00
     end
 
-    FALLEN_BT.vfx_prev_lmb =
-        lmb
+    FALLEN_BT.vfx_prev_lmb = lmb
 
     if not lmb
-        and now
-            > (
-                tonumber(
-                    FALLEN_BT.vfx_watch_until
-                )
-                or 0
-            )
+        and now > (tonumber(FALLEN_BT.vfx_watch_until) or 0)
     then
         return
     end
@@ -14704,17 +14778,18 @@ function FALLEN_BT_SHOT_TICK()
     local origin =
         FALLEN_BT_ORIGIN()
 
+    local shot_age =
+        now - (tonumber(FALLEN_BT.vfx_shot_time) or now)
+
     local impact =
         FALLEN_BT_VFX_FIND_NEW_IMPACT(
             previous,
             current,
-            origin
+            origin,
+            shot_age
         )
 
-    -- Baseline always advances, so the same spawned VFX object can emit only
-    -- once. A later automatic shot creates another object/address.
-    FALLEN_BT.vfx_seen =
-        current
+    FALLEN_BT.vfx_seen = current
 
     if not origin
         or not impact
@@ -15574,6 +15649,7 @@ FALLEN_HITFX = FALLEN_HITFX or {
     vfx_seen = {},
     vfx_prev_lmb = false,
     vfx_watch_until = 0,
+    vfx_shot_time = nil,
 }
 
 FALLEN_HITFX.vfx_seen =
@@ -16662,7 +16738,7 @@ function FALLEN_DMGNUM_SCAN_HP()
 end
 
 
-function FALLEN_HITFX_IS_BLOODPART(
+function FALLEN_HITFX_VFX_KIND(
     inst
 )
     if not inst
@@ -16670,7 +16746,7 @@ function FALLEN_HITFX_IS_BLOODPART(
             inst
         )
     then
-        return false
+        return nil
     end
 
     local name = nil
@@ -16680,24 +16756,34 @@ function FALLEN_HITFX_IS_BLOODPART(
             inst:get_name()
     end)
 
-    return
+    name =
         string.lower(
             tostring(
                 name or ""
             )
         )
-        == "bloodpart"
+
+    if name == "bloodpart" then
+        return "bloodpart"
+    end
+
+    if name == "hole"
+        or name == "metalhole"
+    then
+        return "hole"
+    end
+
+    return nil
 end
 
 
 function FALLEN_HITFX_FOV_RADIUS()
-    -- Same validation FOV we previously tested on Bullet Tracers.
-    -- Hidden: it is never drawn.
+    -- Hidden validation FOV.
     if key_down(0x02) == true then
-        return 40
+        return 20
     end
 
-    return 80
+    return 40
 end
 
 
@@ -16811,9 +16897,10 @@ function FALLEN_HITFX_FOV_CHECK(
 end
 
 
-function FALLEN_HITFX_FIND_NEW_BLOODPART(
+function FALLEN_HITFX_FIND_NEW_IMPACT(
     previous,
-    current
+    current,
+    shot_age
 )
     if type(current) ~= "table" then
         return nil
@@ -16824,6 +16911,10 @@ function FALLEN_HITFX_FIND_NEW_BLOODPART(
         and previous
         or {}
 
+    shot_age =
+        tonumber(shot_age)
+        or 999
+
     local best_pos =
         nil
 
@@ -16831,39 +16922,54 @@ function FALLEN_HITFX_FIND_NEW_BLOODPART(
         nil
 
     for key, inst in pairs(current) do
-        if previous[key] == nil
-            and FALLEN_HITFX_IS_BLOODPART(
-                inst
-            )
-        then
-            -- BloodPart is already one of the supported positional VFX types
-            -- in the Bullet Tracer resolver, so reuse only its position logic.
-            local pos =
-                FALLEN_BT_VFX_POSITION(
+        if previous[key] == nil then
+            local kind =
+                FALLEN_HITFX_VFX_KIND(
                     inst
                 )
 
-            if pos then
-                local inside, screen_dist_sq =
-                    FALLEN_HITFX_FOV_CHECK(
-                        pos
+            local allowed =
+                false
+
+            if kind == "hole" then
+                -- Hole / MetalHole must appear almost immediately.
+                allowed =
+                    shot_age <= 0.50
+
+            elseif kind == "bloodpart" then
+                -- BloodPart has a longer window than Hole/MetalHole.
+                allowed =
+                    shot_age <= 1.00
+            end
+
+            if allowed then
+                local pos =
+                    FALLEN_BT_VFX_POSITION(
+                        inst
                     )
 
-                if inside
-                    and screen_dist_sq ~= nil
-                    and (
-                        best_screen_dist_sq == nil
-                        or screen_dist_sq < best_screen_dist_sq
-                    )
-                then
-                    best_screen_dist_sq =
-                        screen_dist_sq
+                if pos then
+                    local inside, screen_dist_sq =
+                        FALLEN_HITFX_FOV_CHECK(
+                            pos
+                        )
 
-                    best_pos = {
-                        X = pos.X,
-                        Y = pos.Y,
-                        Z = pos.Z,
-                    }
+                    if inside
+                        and screen_dist_sq ~= nil
+                        and (
+                            best_screen_dist_sq == nil
+                            or screen_dist_sq < best_screen_dist_sq
+                        )
+                    then
+                        best_screen_dist_sq =
+                            screen_dist_sq
+
+                        best_pos = {
+                            X = pos.X,
+                            Y = pos.Y,
+                            Z = pos.Z,
+                        }
+                    end
                 end
             end
         end
@@ -16884,11 +16990,12 @@ function FALLEN_HITFX_VFX_TICK()
         FALLEN_HITFX.vfx_watch_until =
             0
 
+        FALLEN_HITFX.vfx_shot_time =
+            nil
+
         return
     end
 
-    -- Same physical-shot validation used by Bullet Tracers:
-    -- weapon must be recognized and Mouse1 starts the watch.
     if not FALLEN_BT_WEAPON_READY() then
         FALLEN_HITFX.vfx_seen =
             {}
@@ -16898,6 +17005,9 @@ function FALLEN_HITFX_VFX_TICK()
 
         FALLEN_HITFX.vfx_watch_until =
             0
+
+        FALLEN_HITFX.vfx_shot_time =
+            nil
 
         return
     end
@@ -16924,18 +17034,30 @@ function FALLEN_HITFX_VFX_TICK()
         FALLEN_HITFX.vfx_prev_lmb =
             false
 
+        FALLEN_HITFX.vfx_shot_time =
+            nil
+
         return
     end
 
     if lmb
         and FALLEN_HITFX.vfx_prev_lmb ~= true
     then
-        -- Long enough for distant hits to spawn BloodPart.
+        FALLEN_HITFX.vfx_shot_time =
+            now
+
+        -- Longest required window is BloodPart = 1.0 s.
         FALLEN_HITFX.vfx_watch_until =
-            now + 2.50
+            now + 1.00
+
     elseif lmb then
+        -- Automatic fire: treat the current held-fire frame as a fresh shot
+        -- opportunity so Hole/MetalHole still get their own 0.5 s window.
+        FALLEN_HITFX.vfx_shot_time =
+            now
+
         FALLEN_HITFX.vfx_watch_until =
-            now + 2.50
+            now + 1.00
     end
 
     FALLEN_HITFX.vfx_prev_lmb =
@@ -16960,21 +17082,31 @@ function FALLEN_HITFX_VFX_TICK()
     local current =
         FALLEN_BT_VFX_SCAN()
 
-    local blood_pos =
-        FALLEN_HITFX_FIND_NEW_BLOODPART(
+    local shot_age =
+        now
+        - (
+            tonumber(
+                FALLEN_HITFX.vfx_shot_time
+            )
+            or now
+        )
+
+    local impact_pos =
+        FALLEN_HITFX_FIND_NEW_IMPACT(
             previous,
-            current
+            current,
+            shot_age
         )
 
     FALLEN_HITFX.vfx_seen =
         current
 
-    if not blood_pos then
+    if not impact_pos then
         return
     end
 
     FALLEN_HITFX_ADD(
-        blood_pos
+        impact_pos
     )
 end
 
