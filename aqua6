@@ -12022,11 +12022,10 @@ end
 
 
 function FALLEN_SHARED_AIM_SECTION()
-    if not cheat then
-        return nil
-    end
-
-    return cheat.aimbot
+    -- IMPORTANT: our custom Aimbot must NEVER read or write cheat.aimbot.
+    -- Keep this legacy helper inert so old Silent compatibility paths cannot
+    -- accidentally touch the stock Aimbot menu/module.
+    return nil
 end
 
 
@@ -12350,12 +12349,6 @@ function FALLEN_SILENT_SET_TEAM_CHECK(
     S.silent_team_check =
         value
 
-    -- This is a shared Aimbot selector in the stock cheat.
-    FALLEN_SHARED_AIM_WRITE(
-        "team_check",
-        value
-    )
-
     -- Mirror into silent_aim too when this build exposes the same field.
     FALLEN_SILENT_WRITE_FIELD(
         "team_check",
@@ -12372,15 +12365,6 @@ function FALLEN_SILENT_SET_STICKY(
 
     S.silent_sticky_aim =
         value
-
-    -- Keep our normal Aimbot state in sync because this selector is shared.
-    S.sticky_aim =
-        value
-
-    FALLEN_SHARED_AIM_WRITE(
-        "sticky",
-        value
-    )
 
     FALLEN_SILENT_WRITE_FIELD(
         "sticky",
@@ -12405,15 +12389,6 @@ function FALLEN_SILENT_SET_MAX_DISTANCE(
 
     S.silent_max_dist =
         distance
-
-    -- Shared selection distance used by the built-in aim system.
-    S.aim_max_dist =
-        distance
-
-    FALLEN_SHARED_AIM_WRITE(
-        "max_distance",
-        distance
-    )
 
     -- Mirror to silent section too if available.
     FALLEN_SILENT_WRITE_FIELD(
@@ -12445,15 +12420,6 @@ function FALLEN_SILENT_SET_TARGET_PART(
 
     S.silent_target_part =
         part
-
-    -- Keep our Aimbot popup and the built-in shared selector aligned.
-    S.aim_target_part =
-        part
-
-    FALLEN_SHARED_AIM_WRITE(
-        "target_part",
-        index
-    )
 
     -- Some builds also expose target_part inside silent_aim; mirror it.
     FALLEN_SILENT_WRITE_FIELD(
@@ -12678,54 +12644,16 @@ end
 function FALLEN_FOV_DEBUG_FOUND_FIELDS(
     value
 )
-    -- Print only on explicit UI interaction, never from the render tick.
-    local found = {}
-
-    local aimbot =
-        FALLEN_SHARED_AIM_SECTION()
-
-    local a_keys =
-        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
-            aimbot,
-            value,
-            "aimbot"
-        )
-
-    for _, name in ipairs(a_keys) do
-        found[#found + 1] =
-            name
-    end
-
+    -- Silent-only debug. Stock cheat.aimbot is intentionally untouched.
     local silent =
         FALLEN_SILENT_LIVE_SECTION()
 
-    local s_keys =
+    local found =
         FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
             silent,
             value,
             "silent_aim"
         )
-
-    for _, name in ipairs(s_keys) do
-        found[#found + 1] =
-            name
-    end
-
-    if #found > 0 then
-        print(
-            "[Fallen-lua FOV] "
-            .. tostring(value)
-            .. " -> "
-            .. table.concat(
-                found,
-                ", "
-            )
-        )
-    else
-        print(
-            "[Fallen-lua FOV] no boolean FOV field found"
-        )
-    end
 
     return found
 end
@@ -12746,21 +12674,6 @@ function FALLEN_SILENT_SET_FOV_ENABLED(
     local changed_any =
         false
 
-    local aimbot =
-        FALLEN_SHARED_AIM_SECTION()
-
-    local a_fields =
-        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
-            aimbot,
-            value,
-            "aimbot"
-        )
-
-    if #a_fields > 0 then
-        changed_any =
-            true
-    end
-
     local silent =
         FALLEN_SILENT_LIVE_SECTION()
 
@@ -12776,12 +12689,12 @@ function FALLEN_SILENT_SET_FOV_ENABLED(
             true
     end
 
-    -- Documented fallback for builds where _keys() is unavailable.
+    -- Silent-only fallback for builds where _keys() is unavailable.
     if not changed_any
-        and aimbot
+        and silent
     then
         pcall(function()
-            aimbot.show_fov =
+            silent.show_fov =
                 value
         end)
     end
@@ -12964,8 +12877,8 @@ end
 
 
 function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
-    -- Enabled is custom-menu authoritative while our menu is open.
-    -- Only import the stock value when the custom menu is closed.
+    -- Silent reads only from cheat.silent_aim. Never import anything from
+    -- cheat.aimbot: our normal Aimbot is entirely custom/local.
     if not S.visible then
         local live_enabled =
             FALLEN_SILENT_READ_FIELD(
@@ -12976,103 +12889,63 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
             S.silent_enabled =
                 live_enabled == true
         end
-    end
 
-    -- These four values are shared with the built-in Aimbot selector.
-    local team =
-        FALLEN_SHARED_AIM_READ(
-            "team_check"
-        )
+        local live_team =
+            FALLEN_SILENT_READ_FIELD(
+                "team_check"
+            )
 
-    if team ~= nil then
-        S.silent_team_check =
-            team == true
-    end
+        if live_team ~= nil then
+            S.silent_team_check =
+                live_team == true
+        end
 
-    local sticky =
-        FALLEN_SHARED_AIM_READ(
-            "sticky"
-        )
+        local live_sticky =
+            FALLEN_SILENT_READ_FIELD(
+                "sticky"
+            )
 
-    if sticky ~= nil then
-        S.silent_sticky_aim =
-            sticky == true
+        if live_sticky ~= nil then
+            S.silent_sticky_aim =
+                live_sticky == true
+        end
 
-        S.sticky_aim =
-            sticky == true
-    end
-
-    local editing_distance =
-        A.active_slider == "silent_max_dist"
-        or (
-            A.numeric
-            and A.numeric.active_key
-                == "silent_max_dist"
-        )
-
-    -- While the custom menu is open, our slider is authoritative.
-    -- Otherwise stock-cheat readback can arrive one frame later and
-    -- snap the knob back to an old endpoint during/after dragging.
-    local allow_distance_readback =
-        S.visible ~= true
-        or A.silent_distance_force_sync == true
-
-    if not editing_distance
-        and allow_distance_readback
-    then
-        local distance =
+        local live_distance =
             tonumber(
-                FALLEN_SHARED_AIM_READ(
+                FALLEN_SILENT_READ_FIELD(
                     "max_distance"
                 )
             )
 
-        if distance then
-            distance =
+        if live_distance then
+            S.silent_max_dist =
                 clamp(
-                    distance,
+                    live_distance,
                     50,
                     3000
                 )
-
-            S.silent_max_dist =
-                distance
-
-            S.aim_max_dist =
-                distance
-
-            A.slider_target.silent_max_dist =
-                distance
-
-            A.slider_visual.silent_max_dist =
-                distance
         end
-    end
 
-    local part =
-        tonumber(
-            FALLEN_SHARED_AIM_READ(
-                "target_part"
+        local live_part =
+            tonumber(
+                FALLEN_SILENT_READ_FIELD(
+                    "target_part"
+                )
             )
-        )
 
-    if part ~= nil then
-        if part == 2 then
-            S.silent_target_part =
-                "Closest"
-        elseif part == 1 then
-            S.silent_target_part =
-                "Torso"
-        else
-            S.silent_target_part =
-                "Head"
+        if live_part ~= nil then
+            if live_part == 1 then
+                S.silent_target_part =
+                    "Torso"
+            elseif live_part == 2 then
+                S.silent_target_part =
+                    "Closest"
+            else
+                S.silent_target_part =
+                    "Head"
+            end
         end
 
-        S.aim_target_part =
-            S.silent_target_part
-    end
-
-    if not A.silent_bind_listening then
         local live_key =
             tonumber(
                 FALLEN_SILENT_READ_FIELD(
@@ -13080,7 +12953,9 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
                 )
             )
 
-        if live_key ~= nil then
+        if live_key ~= nil
+            and not A.silent_bind_listening
+        then
             S.silent_key =
                 math.floor(
                     clamp(
@@ -13091,80 +12966,23 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
                     + 0.5
                 )
         end
-    end
 
-    -- Follow the built-in Aimbot FOV switch.
-    local live_fov_enabled =
-        FALLEN_SHARED_AIM_READ(
-            "show_fov"
-        )
-
-    if live_fov_enabled ~= nil then
-        S.silent_fov_enabled =
-            live_fov_enabled == true
-    else
-        local live_fov_only =
-            FALLEN_SILENT_READ_FIELD(
-                "fov_only"
-            )
-
-        if live_fov_only ~= nil then
-            S.silent_fov_enabled =
-                live_fov_only == true
-        end
-    end
-
-    local editing_fov =
-        A.active_slider == "silent_fov"
-        or (
-            A.numeric
-            and A.numeric.active_key
-                == "silent_fov"
-        )
-
-    local allow_fov_readback =
-        S.visible ~= true
-        or A.silent_distance_force_sync == true
-
-    if not editing_fov
-        and allow_fov_readback
-    then
         local live_fov =
             tonumber(
-                FALLEN_SHARED_AIM_READ(
+                FALLEN_SILENT_READ_FIELD(
                     "fov"
                 )
             )
 
-        if not live_fov then
-            live_fov =
-                tonumber(
-                    FALLEN_SILENT_READ_FIELD(
-                        "fov"
-                    )
-                )
-        end
-
         if live_fov then
-            live_fov =
+            S.silent_fov =
                 clamp(
                     live_fov,
                     10,
                     600
                 )
-
-            S.silent_fov =
-                live_fov
-
-            A.slider_target.silent_fov =
-                live_fov
-
-            A.slider_visual.silent_fov =
-                live_fov
         end
-    end
 
-    if not S.visible then
         local magic =
             FALLEN_SILENT_READ_FIELD(
                 "magic_bullet"
@@ -13585,15 +13403,8 @@ function FALLEN_SYNC_STOCK_FOV_VISUAL(
         color
         or { 1, 1, 1, 1 }
 
-    -- The stock FOV circle uses the Aimbot FOV size field for drawing.
-    if cheat
-        and cheat.aimbot
-    then
-        pcall(function()
-            cheat.aimbot.fov =
-                radius
-        end)
-    end
+    -- Never touch cheat.aimbot here. Our Aimbot/FOV is fully custom.
+    -- Silent FOV is drawn by our own custom FOV renderer as well.
 
     -- FOV color lives in esp_colors according to the custom API.
     if cheat
