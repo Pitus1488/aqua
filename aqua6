@@ -92,7 +92,7 @@ local defaults = {
     aim_target_part = "Head",
 
     -- Aim FOV
-    aim_fov_enabled = false,
+    aim_fov_enabled = true,
     aim_fov_size = 50,
 
     -- HSV picker state. Saturation 0 = white by default.
@@ -193,9 +193,6 @@ local defaults = {
     menu_rain = false,
     menu_lightning = false,
     menu_dark_background = false,
-
-    -- Neverlose-style active keybind list.
-    keybinds_list_enabled = false,
 
     -- Custom profile avatar editor.
     avatar_display_size = 38,
@@ -338,27 +335,8 @@ local defaults = {
     silent_max_dist = 1200,
     silent_target_part = "Head",
     silent_key = 0,
-
-    -- Silent FOV is independent from our custom Aimbot FOV.
-    silent_fov_enabled = false,
+    silent_fov_enabled = true,
     silent_fov = 180,
-
-    -- Silent FOV visual/color.
-    silent_fov_h = 0.66,
-    silent_fov_s = 0.00,
-    silent_fov_v = 1.00,
-    silent_fov_alpha = 100,
-
-    -- Silent FOV glow (same feature set as our custom Aimbot FOV).
-    silent_fov_glow_enabled = false,
-    silent_fov_filled = false,
-    silent_fov_glow_strength = 60,
-    silent_fov_glow_spread = 6,
-    silent_fov_glow_h = 0.66,
-    silent_fov_glow_s = 0.10,
-    silent_fov_glow_v = 1.00,
-    silent_fov_glow_alpha = 70,
-
     silent_magic_bullet = false,
 
     trigger_enabled = false,
@@ -487,15 +465,10 @@ local A = {
     aim_settings_anim = 0,
     aim_settings_last_t = nil,
 
-    -- Aimbot FOV glow popup.
+    -- FOV glow popup.
     fov_settings_open = false,
     fov_settings_anim = 0,
     fov_settings_last_t = nil,
-
-    -- Silent FOV glow popup (completely separate from Aimbot).
-    silent_fov_settings_open = false,
-    silent_fov_settings_anim = 0,
-    silent_fov_settings_last_t = nil,
 
     -- Body-part dropdown inside Aimbot settings.
     aim_part_dropdown_open = false,
@@ -679,12 +652,6 @@ local A = {
     menu_settings_open = false,
     menu_settings_anim = 0,
     menu_settings_last_t = nil,
-
-    -- Neverlose-style active keybind window.
-    keybinds_panel_anim = 0,
-    keybinds_panel_last_t = nil,
-    keybinds_item_anim = {},
-    keybinds_item_last_t = nil,
 
     gear_hover_anim = 0,
     gear_hover_last_t = nil,
@@ -3545,8 +3512,6 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.aim_settings_open = false
         A.aim_part_dropdown_open = false
         A.silent_part_dropdown_open = false
-        A.fov_settings_open = false
-        A.silent_fov_settings_open = false
         A.fov_picker_open = false
         A.world_settings_open = false
         A.world_color_picker_open = false
@@ -4025,48 +3990,6 @@ local function fov_color()
         clamp((tonumber(S.aim_fov_alpha) or 100) / 100, 0, 1),
     }
 end
-
-function FALLEN_SILENT_FOV_COLOR()
-    local r, g, b =
-        hsv_to_rgb(
-            S.silent_fov_h,
-            S.silent_fov_s,
-            S.silent_fov_v
-        )
-
-    return {
-        r,
-        g,
-        b,
-        clamp(
-            (tonumber(S.silent_fov_alpha) or 100) / 100,
-            0,
-            1
-        ),
-    }
-end
-
-
-function FALLEN_SILENT_FOV_GLOW_COLOR()
-    local r, g, b =
-        hsv_to_rgb(
-            S.silent_fov_glow_h,
-            S.silent_fov_glow_s,
-            S.silent_fov_glow_v
-        )
-
-    return {
-        r,
-        g,
-        b,
-        clamp(
-            (tonumber(S.silent_fov_glow_alpha) or 70) / 100,
-            0,
-            1
-        ),
-    }
-end
-
 
 function FALLEN_FOV_GLOW_COLOR()
     local r, g, b =
@@ -5664,64 +5587,6 @@ local function draw_aim_settings_popup(
     MENU_RENDER_ALPHA = parent_menu_alpha
 end
 
-function FALLEN_SILENT_FOV_SETTINGS_STEP_ANIM()
-    local now =
-        tick()
-
-    if A.silent_fov_settings_last_t == nil then
-        A.silent_fov_settings_last_t =
-            now
-    end
-
-    local dt =
-        clamp(
-            now - A.silent_fov_settings_last_t,
-            0,
-            0.05
-        )
-
-    A.silent_fov_settings_last_t =
-        now
-
-    local target =
-        A.silent_fov_settings_open
-        and 1
-        or 0
-
-    local speed =
-        target > (A.silent_fov_settings_anim or 0)
-        and 15
-        or 11
-
-    A.silent_fov_settings_anim =
-        exp_chase(
-            A.silent_fov_settings_anim or 0,
-            target,
-            speed,
-            dt
-        )
-
-    if target == 0
-        and (A.silent_fov_settings_anim or 0) < 0.028
-    then
-        A.silent_fov_settings_anim =
-            0
-    elseif target == 1
-        and (A.silent_fov_settings_anim or 0) > 0.992
-    then
-        A.silent_fov_settings_anim =
-            1
-    end
-
-    return
-        clamp(
-            A.silent_fov_settings_anim or 0,
-            0,
-            1
-        )
-end
-
-
 function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     mx,
     my,
@@ -6032,362 +5897,6 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
 end
 
 
-function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
-    mx,
-    my,
-    clicked,
-    lmb,
-    dots_x,
-    dots_y
-)
-    local raw_anim =
-        FALLEN_SILENT_FOV_SETTINGS_STEP_ANIM()
-
-    if raw_anim <= 0.001
-        and not A.silent_fov_settings_open
-    then
-        return
-    end
-
-    local parent_menu_alpha =
-        MENU_RENDER_ALPHA
-
-    local popup_fade =
-        ease_out_cubic(
-            clamp(
-                raw_anim,
-                0,
-                1
-            )
-        )
-
-    MENU_RENDER_ALPHA =
-        parent_menu_alpha
-        * popup_fade
-
-    local anim =
-        A.silent_fov_settings_open
-        and ease_out_cubic(raw_anim)
-        or ease_in_out_cubic(raw_anim)
-
-    local pw = 300
-    local ph = 247
-
-    local base_px =
-        dots_x
-        - pw
-        + 28
-
-    local base_py =
-        dots_y
-        + 31
-
-    local retract =
-        1 - anim
-
-    local px =
-        snap(
-            base_px
-            + retract * 14
-        )
-
-    local py =
-        snap(
-            base_py
-            - retract * 34
-        )
-
-    local shell_h =
-        math.max(
-            28,
-            ph
-            - retract * 58
-        )
-
-    local interactive =
-        raw_anim > 0.96
-        and A.silent_fov_settings_open
-
-    local ui_clicked =
-        clicked
-        and interactive
-
-    FALLEN_POPUP_GLOW(
-        px,
-        py,
-        pw,
-        shell_h,
-        11,
-        1
-    )
-
-    rounded_fill(
-        px,
-        py,
-        pw,
-        shell_h,
-        11,
-        { 0.062, 0.066, 0.077, 1 }
-    )
-
-    local details_visible =
-        raw_anim > 0.42
-
-    text(
-        px + 13,
-        py + 12,
-        "Silent FOV settings",
-        C.text
-    )
-
-    if shell_h > 39 then
-        line(
-            px + 12,
-            py + 34,
-            px + pw - 12,
-            py + 34,
-            C.divider,
-            1
-        )
-    end
-
-    if details_visible then
-        toggle_row(
-            mx,
-            my,
-            ui_clicked,
-            px + 8,
-            py + 35,
-            pw - 16,
-            "Glow",
-            "silent_fov_glow_enabled",
-            false
-        )
-
-        if shell_h > 84 then
-            line(
-                px + 12,
-                py + 74,
-                px + pw - 12,
-                py + 74,
-                C.divider,
-                1
-            )
-        end
-
-        if shell_h > 119 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 75,
-                pw - 16,
-                "Strength",
-                "silent_fov_glow_strength",
-                0,
-                100
-            )
-        end
-
-        if shell_h > 154 then
-            line(
-                px + 12,
-                py + 114,
-                px + pw - 12,
-                py + 114,
-                C.divider,
-                1
-            )
-        end
-
-        if shell_h > 189 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 115,
-                pw - 16,
-                "Spread",
-                "silent_fov_glow_spread",
-                1,
-                12
-            )
-        end
-
-        if shell_h > 200 then
-            line(
-                px + 12,
-                py + 154,
-                px + pw - 12,
-                py + 154,
-                C.divider,
-                1
-            )
-        end
-
-        if shell_h > 180 then
-            local row_y =
-                py + 155
-
-            local hot =
-                row_hover(
-                    mx,
-                    my,
-                    px + 8,
-                    row_y,
-                    pw - 16,
-                    41
-                )
-
-            text(
-                px + 21,
-                row_y + 14,
-                "Glow Color",
-                FALLEN_HOVER_TEXT(
-                    "silent_fov_glow_color",
-                    hot,
-                    C.text
-                )
-            )
-
-            local swatch_s = 18
-
-            local swatch_x =
-                px + pw - 49
-
-            local swatch_y =
-                row_y + 11
-
-            color_preview(
-                swatch_x,
-                swatch_y,
-                swatch_s,
-                swatch_s,
-                FALLEN_SILENT_FOV_GLOW_COLOR()
-            )
-
-            if ui_clicked
-                and hover(
-                    mx,
-                    my,
-                    swatch_x,
-                    swatch_y,
-                    swatch_s,
-                    swatch_s
-                )
-            then
-                FALLEN_COLOR_INPUT_STOP(true)
-
-                local prefix =
-                    "silent_fov_glow"
-
-                if A.world_color_picker_open
-                    and A.world_color_picker_key == prefix
-                then
-                    A.world_color_picker_open =
-                        false
-
-                    A.world_color_picker_drag =
-                        nil
-                else
-                    A.world_color_picker_key =
-                        prefix
-
-                    A.world_color_picker_open =
-                        true
-
-                    A.world_color_picker_drag =
-                        nil
-
-                    A.world_color_picker_anchor_x =
-                        FALLEN_UI_X(
-                            swatch_x
-                        )
-
-                    A.world_color_picker_anchor_y =
-                        FALLEN_UI_Y(
-                            swatch_y
-                        )
-
-                    A.world_color_picker_anchor_w =
-                        FALLEN_UI_LEN(
-                            swatch_s
-                        )
-
-                    A.world_color_picker_anchor_h =
-                        FALLEN_UI_LEN(
-                            swatch_s
-                        )
-                end
-            end
-        end
-
-        if shell_h > 221 then
-            line(
-                px + 12,
-                py + 195,
-                px + pw - 12,
-                py + 195,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                ui_clicked,
-                px + 8,
-                py + 196,
-                pw - 16,
-                "Filled FOV",
-                "silent_fov_filled",
-                false
-            )
-        end
-    end
-
-    local popup_hot =
-        hover(
-            mx,
-            my,
-            px,
-            py,
-            pw,
-            shell_h
-        )
-
-    local dots_hot =
-        hover(
-            mx,
-            my,
-            dots_x,
-            dots_y,
-            27,
-            25
-        )
-
-    -- Same behavior as the Aimbot FOV popup:
-    -- repeated RMB on the FOV row toggles it,
-    -- while LMB on empty space outside closes it.
-    if interactive
-        and clicked
-        and not popup_hot
-        and not dots_hot
-        and not A.world_color_picker_open
-    then
-        A.silent_fov_settings_open =
-            false
-    end
-
-    MENU_RENDER_ALPHA =
-        parent_menu_alpha
-end
-
-
 function FALLEN_SILENT_PART_DROPDOWN_STEP()
     local now = tick()
 
@@ -6612,7 +6121,6 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
     my,
     clicked,
     lmb,
-    rmb_clicked,
     cx,
     cy,
     cw
@@ -6848,7 +6356,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         rx,
         cy + 25,
         right_w,
-        212,
+        171,
         11
     )
 
@@ -6978,68 +6486,17 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         1
     )
 
-    -- Silent FOV: own toggle / size / color / glow popup.
-    local silent_fov_dots_x =
-        rx + right_w - 79
-
-    local silent_fov_dots_y =
-        cy + 122
-
-    local silent_fov_dots_hot =
-        hover(
-            mx,
-            my,
-            silent_fov_dots_x,
-            silent_fov_dots_y,
-            27,
-            25
-        )
-
-    local silent_fov_row_hot =
-        hover(
-            mx,
-            my,
-            rx,
-            cy + 114,
-            right_w,
-            41
-        )
-
-    -- LMB only changes the checkbox.
-    -- It explicitly does NOT open the settings popup.
     toggle_row(
         mx,
         my,
-        clicked
-            and not silent_fov_dots_hot
-            and not A.silent_fov_settings_open,
+        clicked,
         rx,
         cy + 114,
         right_w,
         "FOV Enabled",
         "silent_fov_enabled",
-        true
+        false
     )
-
-    -- RMB on the FOV row (including the dots) toggles the popup.
-    -- Repeating RMB closes it.
-    if rmb_clicked
-        and silent_fov_row_hot
-    then
-        A.silent_fov_settings_open =
-            not A.silent_fov_settings_open
-
-        A.fov_settings_open =
-            false
-
-        A.aim_settings_open =
-            false
-
-        A.silent_part_dropdown_open =
-            false
-
-        numeric_stop(true)
-    end
 
     line(
         rx + 12,
@@ -7053,122 +6510,17 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
     slider_row(
         mx,
         my,
-        clicked
-            and not A.silent_fov_settings_open,
+        clicked,
         lmb,
         rx,
         cy + 155,
         right_w,
-        "FOV Size",
+        "FOV",
         "silent_fov",
         10,
         600,
         "int"
     )
-
-    line(
-        rx + 12,
-        cy + 195,
-        rx + right_w - 12,
-        cy + 195,
-        C.divider,
-        1
-    )
-
-    local silent_swatch_s = 18
-
-    local silent_swatch_x =
-        rx + right_w - 36
-
-    local silent_swatch_y =
-        cy + 204
-
-    local silent_color_hot =
-        row_hover(
-            mx,
-            my,
-            rx,
-            cy + 196,
-            right_w,
-            41
-        )
-
-    text(
-        rx + 13,
-        cy + 210,
-        "FOV Color",
-        FALLEN_HOVER_TEXT(
-            "silent_fov_color",
-            silent_color_hot,
-            C.text
-        )
-    )
-
-    color_preview(
-        silent_swatch_x,
-        silent_swatch_y,
-        silent_swatch_s,
-        silent_swatch_s,
-        FALLEN_SILENT_FOV_COLOR()
-    )
-
-    if clicked
-        and not A.silent_fov_settings_open
-        and hover(
-            mx,
-            my,
-            silent_swatch_x,
-            silent_swatch_y,
-            silent_swatch_s,
-            silent_swatch_s
-        )
-    then
-        FALLEN_COLOR_INPUT_STOP(true)
-
-        local prefix =
-            "silent_fov"
-
-        if A.world_color_picker_open
-            and A.world_color_picker_key == prefix
-        then
-            A.world_color_picker_open =
-                false
-
-            A.world_color_picker_drag =
-                nil
-        else
-            A.world_color_picker_key =
-                prefix
-
-            A.world_color_picker_open =
-                true
-
-            A.world_color_picker_drag =
-                nil
-
-            A.world_color_picker_anchor_x =
-                FALLEN_UI_X(
-                    silent_swatch_x
-                )
-
-            A.world_color_picker_anchor_y =
-                FALLEN_UI_Y(
-                    silent_swatch_y
-                )
-
-            A.world_color_picker_anchor_w =
-                FALLEN_UI_LEN(
-                    silent_swatch_s
-                )
-
-            A.world_color_picker_anchor_h =
-                FALLEN_UI_LEN(
-                    silent_swatch_s
-                )
-        end
-
-        numeric_stop(true)
-    end
 
     -- Draw the dropdown last so it unfolds over the rows below it.
     local dropdown_hot =
@@ -7190,15 +6542,6 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         A.silent_part_dropdown_open =
             false
     end
-
-    FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
-        mx,
-        my,
-        clicked,
-        lmb,
-        silent_fov_dots_x,
-        silent_fov_dots_y
-    )
 end
 
 
@@ -10752,251 +10095,6 @@ local function fap_find_target(cross, cam)
 end
 
 
-function FALLEN_CUSTOM_AIMBOT_TICK()
-    -- This is OUR custom Aimbot runtime.
-    -- Never enable or depend on cheat.aimbot here.
-    if S.aim_enabled ~= true then
-        fap_clear_lock()
-        return
-    end
-
-    -- Hold-bind behavior from the original custom Aimbot.
-    if not fap_hold_down() then
-        fap_clear_lock()
-        return
-    end
-
-    if not aim
-        or type(aim.world_to_screen) ~= "function"
-        or type(aim.get_camera_position) ~= "function"
-    then
-        fap_clear_lock()
-        return
-    end
-
-    -- Auto Prediction actually updates weapon-specific speed/gravity.
-    -- When the toggle is OFF, fap_refresh_weapon() resets to the
-    -- neutral/default prediction values and fap_predict() returns raw pos.
-    fap_refresh_weapon()
-
-    local cam = nil
-
-    pcall(function()
-        cam =
-            aim.get_camera_position()
-    end)
-
-    if not cam then
-        fap_clear_lock()
-        return
-    end
-
-    -- Use the same cursor-space origin as our visible custom FOV.
-    local mx, my = nil, nil
-
-    if type(mouse_pos) == "function" then
-        pcall(function()
-            mx, my =
-                mouse_pos()
-        end)
-    end
-
-    if not mx
-        or not my
-    then
-        pcall(function()
-            if type(crosshair_pos) == "function" then
-                local c =
-                    crosshair_pos()
-
-                if c then
-                    mx =
-                        c.X
-                        or c.x
-                        or c[1]
-
-                    my =
-                        c.Y
-                        or c.y
-                        or c[2]
-                end
-            end
-        end)
-    end
-
-    mx =
-        tonumber(mx)
-
-    my =
-        tonumber(my)
-
-    if not mx
-        or not my
-    then
-        fap_clear_lock()
-        return
-    end
-
-    local cross = {
-        X = mx,
-        Y = my,
-    }
-
-    local target =
-        fap_find_target(
-            cross,
-            cam
-        )
-
-    if not target then
-        fap_clear_lock()
-        return
-    end
-
-    local base_pos =
-        fap_target_pos(
-            target
-        )
-
-    if not base_pos then
-        fap_clear_lock()
-        return
-    end
-
-    local target_pos =
-        fap_predict(
-            target,
-            base_pos,
-            cam
-        )
-        or base_pos
-
-    if not target_pos then
-        fap_clear_lock()
-        return
-    end
-
-    -- Make sure the final predicted point is on screen before snapping.
-    local screen = nil
-
-    pcall(function()
-        screen =
-            aim.world_to_screen(
-                target_pos
-            )
-    end)
-
-    if not screen
-        or screen.visible == false
-    then
-        fap_clear_lock()
-        return
-    end
-
-    -- Keep runtime target state alive for the existing hit/tracer/target effects.
-    FAP.current_target_addr =
-        target.address
-
-    FAP.current_target_name =
-        target.name
-        or target.display_name
-        or target.Name
-
-    FAP.current_target_pos = {
-        X = target_pos.X,
-        Y = target_pos.Y,
-        Z = target_pos.Z,
-    }
-
-    FAP.current_target_health =
-        tonumber(
-            target.health
-        )
-
-    FAP.current_auto_prediction =
-        S.aim_auto_prediction == true
-
-    FAP.current_prediction_time =
-        tonumber(
-            target_pos.time
-        )
-        or 0
-
-    FAP.current_prediction_gravity =
-        S.aim_auto_prediction == true
-        and (
-            tonumber(FAP.gravity)
-            or 0
-        )
-        or 0
-
-    FAP.current_prediction_speed =
-        S.aim_auto_prediction == true
-        and (
-            tonumber(FAP.bullet_speed)
-            or 0
-        )
-        or 0
-
-    FAP.current_target_seen =
-        tick()
-
-    -- Original custom Aimbot behavior: rotate the camera directly
-    -- toward the selected/predicted world point.
-    if type(aim.look_at_matrix) == "function"
-        and type(aim.set_camera_rotation) == "function"
-    then
-        local mat = nil
-
-        pcall(function()
-            mat =
-                aim.look_at_matrix(
-                    cam,
-                    target_pos
-                )
-        end)
-
-        if mat then
-            pcall(function()
-                aim.set_camera_rotation(
-                    mat
-                )
-            end)
-
-            return
-        end
-    end
-
-    -- Compatibility fallback for API builds without look_at_matrix.
-    -- This still moves toward the same predicted screen point.
-    if type(aim.move_mouse) == "function" then
-        pcall(function()
-            aim.move_mouse({
-                X = screen.X,
-                Y = screen.Y,
-            })
-        end)
-    end
-end
-
-
-hooks.on_render(function()
-    if _G.FallenMenuReady ~= true then
-        return
-    end
-
-    local ok =
-        pcall(
-            FALLEN_CUSTOM_AIMBOT_TICK
-        )
-
-    if not ok then
-        -- Never spam the console from an aim render callback.
-        fap_clear_lock()
-    end
-end)
-
-
 
 function FALLEN_SILENT_NORMALIZE_KEY(
     value
@@ -12146,250 +11244,6 @@ function FALLEN_SILENT_SET_KEY(
 end
 
 
-function FALLEN_FOV_BOOL_FIELD_IS_CANDIDATE(
-    section,
-    raw_key
-)
-    local raw =
-        tostring(
-            raw_key
-            or ""
-        )
-
-    local kn =
-        FALLEN_SILENT_NORMALIZE_KEY(
-            raw
-        )
-
-    if string.find(
-        kn,
-        "fov",
-        1,
-        true
-    ) == nil
-    then
-        return false
-    end
-
-    -- Do not touch presentation/detail booleans that are not the master FOV switch.
-    local reject_words = {
-        "color",
-        "glow",
-        "filled",
-        "fill",
-        "rainbow",
-        "gradient",
-        "style",
-        "alpha",
-    }
-
-    for _, word in ipairs(reject_words) do
-        if string.find(
-            kn,
-            word,
-            1,
-            true
-        ) ~= nil
-        then
-            return false
-        end
-    end
-
-    local field_type = nil
-
-    if section
-        and type(section._type) == "function"
-    then
-        local ok_type, t =
-            pcall(function()
-                return section:_type(
-                    raw
-                )
-            end)
-
-        if ok_type then
-            field_type =
-                tostring(
-                    t
-                    or ""
-                ):lower()
-        end
-    end
-
-    if field_type ~= nil
-        and field_type ~= ""
-        and field_type ~= "bool"
-    then
-        return false
-    end
-
-    -- If _type is unavailable, verify the live value is actually boolean.
-    if field_type == nil
-        or field_type == ""
-    then
-        local ok_value, current =
-            pcall(function()
-                return section[raw]
-            end)
-
-        if ok_value
-            and current ~= nil
-            and type(current) ~= "boolean"
-        then
-            return false
-        end
-    end
-
-    local toggle_words = {
-        "show",
-        "enable",
-        "enabled",
-        "use",
-        "check",
-        "draw",
-        "visible",
-        "limit",
-        "only",
-        "active",
-    }
-
-    for _, word in ipairs(toggle_words) do
-        if string.find(
-            kn,
-            word,
-            1,
-            true
-        ) ~= nil
-        then
-            return true
-        end
-    end
-
-    -- Some builds may simply expose a boolean named "aimbot_fov".
-    return
-        kn == "aimbotfov"
-        or kn == "silentfov"
-        or kn == "fov"
-end
-
-
-function FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
-    section,
-    value,
-    section_name
-)
-    if not section then
-        return {}
-    end
-
-    local changed = {}
-
-    local keys = nil
-
-    if type(section._keys) == "function" then
-        local ok_keys, out =
-            pcall(function()
-                return section:_keys()
-            end)
-
-        if ok_keys
-            and type(out) == "table"
-        then
-            keys = out
-        end
-    end
-
-    if type(keys) == "table" then
-        for _, raw_key in ipairs(keys) do
-            local raw =
-                tostring(raw_key)
-
-            if FALLEN_FOV_BOOL_FIELD_IS_CANDIDATE(
-                section,
-                raw
-            )
-            then
-                local ok_write =
-                    pcall(function()
-                        section[raw] =
-                            value
-                    end)
-
-                if ok_write then
-                    changed[
-                        #changed + 1
-                    ] =
-                        tostring(
-                            section_name
-                            or "section"
-                        )
-                        .. "."
-                        .. raw
-                end
-            end
-        end
-    end
-
-    return changed
-end
-
-
-function FALLEN_FOV_DEBUG_FOUND_FIELDS(
-    value
-)
-    -- Print only on explicit UI interaction, never from the render tick.
-    local found = {}
-
-    local aimbot =
-        FALLEN_SHARED_AIM_SECTION()
-
-    local a_keys =
-        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
-            aimbot,
-            value,
-            "aimbot"
-        )
-
-    for _, name in ipairs(a_keys) do
-        found[#found + 1] =
-            name
-    end
-
-    local silent =
-        FALLEN_SILENT_LIVE_SECTION()
-
-    local s_keys =
-        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
-            silent,
-            value,
-            "silent_aim"
-        )
-
-    for _, name in ipairs(s_keys) do
-        found[#found + 1] =
-            name
-    end
-
-    if #found > 0 then
-        print(
-            "[Fallen-lua FOV] "
-            .. tostring(value)
-            .. " -> "
-            .. table.concat(
-                found,
-                ", "
-            )
-        )
-    else
-        print(
-            "[Fallen-lua FOV] no boolean FOV field found"
-        )
-    end
-
-    return found
-end
-
-
 function FALLEN_SILENT_SET_FOV_ENABLED(
     value
 )
@@ -12399,50 +11253,47 @@ function FALLEN_SILENT_SET_FOV_ENABLED(
     S.silent_fov_enabled =
         value
 
-    -- Keep custom Aimbot FOV completely independent.
-    -- Silent must never mutate S.aim_fov_enabled.
-
-    local changed_any =
-        false
-
+    -- Built-in menu calls this "Aimbot FOV".
+    -- The documented Aimbot section exposes show_fov.
     local aimbot =
         FALLEN_SHARED_AIM_SECTION()
 
-    local a_fields =
-        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
-            aimbot,
-            value,
-            "aimbot"
-        )
+    if aimbot then
+        local show_key =
+            FALLEN_SHARED_AIM_FIND_KEY(
+                "show_fov"
+            )
 
-    if #a_fields > 0 then
-        changed_any =
-            true
+        if show_key then
+            pcall(function()
+                aimbot[show_key] =
+                    value
+            end)
+        else
+            -- Exact documented fallback.
+            pcall(function()
+                aimbot.show_fov =
+                    value
+            end)
+        end
     end
 
-    local silent =
+    -- Keep a Silent-specific FOV gate aligned too if this build exposes one.
+    local sa =
         FALLEN_SILENT_LIVE_SECTION()
 
-    local s_fields =
-        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
-            silent,
-            value,
-            "silent_aim"
-        )
+    if sa then
+        local silent_gate =
+            FALLEN_SILENT_FIND_LIVE_KEY(
+                "fov_only"
+            )
 
-    if #s_fields > 0 then
-        changed_any =
-            true
-    end
-
-    -- Documented fallback for builds where _keys() is unavailable.
-    if not changed_any
-        and aimbot
-    then
-        pcall(function()
-            aimbot.show_fov =
-                value
-        end)
+        if silent_gate then
+            pcall(function()
+                sa[silent_gate] =
+                    value
+            end)
+        end
     end
 
     return true
@@ -12477,13 +11328,27 @@ function FALLEN_SILENT_SET_FOV(
         end)
     end
 
-    -- Our Aimbot remains custom and is NOT enabled/controlled here.
-    -- The stock Aimbot FOV number is touched only as a visual radius mirror.
-    if S.silent_fov_enabled == true then
-        FALLEN_SYNC_STOCK_FOV_VISUAL(
-            fov,
-            FALLEN_SILENT_FOV_COLOR()
-        )
+    -- Built-in "Aimbot FOV" value.
+    local aimbot =
+        FALLEN_SHARED_AIM_SECTION()
+
+    if aimbot then
+        local fov_key =
+            FALLEN_SHARED_AIM_FIND_KEY(
+                "fov"
+            )
+
+        if fov_key then
+            pcall(function()
+                aimbot[fov_key] =
+                    fov
+            end)
+        else
+            pcall(function()
+                aimbot.fov =
+                    fov
+            end)
+        end
     end
 
     FALLEN_SILENT_SET_FOV_ENABLED(
@@ -13103,36 +11968,10 @@ function FALLEN_SILENT_TICK()
         end)
     end
 
-    -- Keep the explicit Silent FOV gate pinned.
+    -- Keep the explicit FOV switch pinned through the real field name.
     FALLEN_SILENT_SET_FOV_ENABLED(
         S.silent_fov_enabled == true
     )
-
-    -- Silent target selection uses the radius from OUR Silent FOV.
-    local silent_runtime_fov =
-        math.floor(
-            clamp(
-                tonumber(S.silent_fov)
-                or 180,
-                10,
-                600
-            )
-            + 0.5
-        )
-
-    pcall(function()
-        sa.fov =
-            silent_runtime_fov
-    end)
-
-    -- Make the built-in FOV visual match OUR Silent FOV exactly:
-    -- same radius and same color picker value.
-    if S.silent_fov_enabled == true then
-        FALLEN_SYNC_STOCK_FOV_VISUAL(
-            silent_runtime_fov,
-            FALLEN_SILENT_FOV_COLOR()
-        )
-    end
 
     -- When the menu is closed, keep our UI cache following the stock cheat
     -- instead of overwriting the stock cheat with stale S.* values.
@@ -13140,318 +11979,6 @@ function FALLEN_SILENT_TICK()
         FALLEN_SILENT_SYNC_UI_FROM_LIVE()
     end
 end
-
-function FALLEN_CUSTOM_FOV_CENTER()
-    -- Use the SAME mouse_pos() helper that the Fallen menu/weather already uses.
-    -- It returns the mouse in the same client-space coordinates as Drawing.
-    if type(mouse_pos) == "function" then
-        local ok, mx, my =
-            pcall(
-                mouse_pos
-            )
-
-        if ok then
-            mx =
-                tonumber(mx)
-
-            my =
-                tonumber(my)
-
-            if mx and my then
-                return mx, my
-            end
-        end
-    end
-
-    -- Fallback: game crosshair position.
-    if type(crosshair_pos) == "function" then
-        local ok, c =
-            pcall(
-                crosshair_pos
-            )
-
-        if ok and c then
-            local x =
-                tonumber(
-                    c.X
-                    or c.x
-                    or c[1]
-                )
-
-            local y =
-                tonumber(
-                    c.Y
-                    or c.y
-                    or c[2]
-                )
-
-            if x and y then
-                return x, y
-            end
-        end
-    end
-
-    -- Last fallback: screen center.
-    local dims = nil
-
-    pcall(function()
-        dims =
-            ScreenSize()
-    end)
-
-    if dims then
-        local sw =
-            tonumber(
-                dims.Width
-                or dims.X
-            )
-
-        local sh =
-            tonumber(
-                dims.Height
-                or dims.Y
-            )
-
-        if sw and sh then
-            return
-                sw * 0.5,
-                sh * 0.5
-        end
-    end
-
-    return nil, nil
-end
-
-
-function FALLEN_SYNC_STOCK_FOV_VISUAL(
-    radius,
-    color
-)
-    -- This ONLY synchronizes the stock FOV VISUAL.
-    -- It does not enable cheat.aimbot and does not touch its aim logic.
-    radius =
-        math.floor(
-            clamp(
-                tonumber(radius)
-                or 180,
-                10,
-                600
-            )
-            + 0.5
-        )
-
-    color =
-        color
-        or { 1, 1, 1, 1 }
-
-    -- The stock FOV circle uses the Aimbot FOV size field for drawing.
-    if cheat
-        and cheat.aimbot
-    then
-        pcall(function()
-            cheat.aimbot.fov =
-                radius
-        end)
-    end
-
-    -- FOV color lives in esp_colors according to the custom API.
-    if cheat
-        and cheat.esp_colors
-    then
-        local rgba = {
-            clamp(
-                tonumber(color[1]) or 1,
-                0,
-                1
-            ),
-            clamp(
-                tonumber(color[2]) or 1,
-                0,
-                1
-            ),
-            clamp(
-                tonumber(color[3]) or 1,
-                0,
-                1
-            ),
-            clamp(
-                tonumber(color[4]) or 1,
-                0,
-                1
-            ),
-        }
-
-        pcall(function()
-            cheat.esp_colors.fov =
-                rgba
-        end)
-
-        -- Some builds use the same color for the aim/FOV line.
-        pcall(function()
-            cheat.esp_colors.aim_line =
-                rgba
-        end)
-    end
-end
-
-
-function FALLEN_DRAW_ONE_CUSTOM_FOV(
-    enabled,
-    radius,
-    color,
-    glow_enabled,
-    glow_color,
-    glow_strength,
-    glow_spread,
-    filled
-)
-    if enabled ~= true
-        or type(DrawCircle) ~= "function"
-    then
-        return
-    end
-
-    local cx, cy =
-        FALLEN_CUSTOM_FOV_CENTER()
-
-    if not cx
-        or not cy
-    then
-        return
-    end
-
-    radius =
-        clamp(
-            tonumber(radius)
-            or 50,
-            10,
-            600
-        )
-
-    color =
-        color
-        or { 1, 1, 1, 1 }
-
-    glow_color =
-        glow_color
-        or color
-
-    if filled == true
-        and type(DrawCircleFilled) == "function"
-    then
-        DrawCircleFilled(
-            cx,
-            cy,
-            radius,
-            color[1],
-            color[2],
-            color[3],
-            (color[4] or 1)
-                * 0.075
-        )
-    end
-
-    if glow_enabled == true then
-        local strength =
-            clamp(
-                (tonumber(glow_strength) or 60) / 100,
-                0,
-                1
-            )
-
-        local spread =
-            clamp(
-                tonumber(glow_spread)
-                or 6,
-                1,
-                12
-            )
-
-        local total_spread =
-            spread * 3.0
-
-        for layer = 0, 27 do
-            local t =
-                layer / 27
-
-            local falloff =
-                1 - t
-
-            local gr =
-                radius
-                + t * total_spread
-
-            local ga =
-                (glow_color[4] or 1)
-                * strength
-                * falloff
-                * falloff
-                * 0.20
-
-            DrawCircle(
-                cx,
-                cy,
-                gr,
-                glow_color[1],
-                glow_color[2],
-                glow_color[3],
-                ga,
-                1.15
-                    + falloff * 0.55
-            )
-        end
-    end
-
-    DrawCircle(
-        cx,
-        cy,
-        radius,
-        color[1],
-        color[2],
-        color[3],
-        color[4] or 1,
-        1.25
-    )
-end
-
-
-function FALLEN_DRAW_CUSTOM_FOVS()
-    -- Our custom Aimbot FOV. Completely independent from cheat.aimbot.
-    FALLEN_DRAW_ONE_CUSTOM_FOV(
-        S.aim_fov_enabled == true,
-        S.aim_fov_size,
-        fov_color(),
-        S.aim_fov_glow_enabled == true,
-        FALLEN_FOV_GLOW_COLOR(),
-        S.aim_fov_glow_strength,
-        S.aim_fov_glow_spread,
-        S.aim_fov_filled == true
-    )
-
-    -- Separate Silent FOV using its own radius/color/glow settings.
-    FALLEN_DRAW_ONE_CUSTOM_FOV(
-        S.silent_fov_enabled == true,
-        S.silent_fov,
-        FALLEN_SILENT_FOV_COLOR(),
-        S.silent_fov_glow_enabled == true,
-        FALLEN_SILENT_FOV_GLOW_COLOR(),
-        S.silent_fov_glow_strength,
-        S.silent_fov_glow_spread,
-        S.silent_fov_filled == true
-    )
-end
-
-
-hooks.on_render(function()
-    if _G.FallenMenuReady ~= true then
-        return
-    end
-
-    pcall(
-        FALLEN_DRAW_CUSTOM_FOVS
-    )
-end)
-
 
 -- Silent Aim bridge only keeps Raycast pinned and mirrors external cheat changes.
 -- UI controls themselves write directly into cheat.silent_aim / cheat.enable.
@@ -24240,7 +22767,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or menu_type_lower == "blur"
 
     local ph =
-        426
+        385
         + (
             gradient_selected
             and 82
@@ -24637,42 +23164,15 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
-        local keybinds_y =
-            py + 368
-            + weather_offset
-
-        if shell_h > 410 + weather_offset then
-            line(
-                px + 12,
-                keybinds_y - 1,
-                px + pw - 12,
-                keybinds_y - 1,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                row_clicked,
-                px + 8,
-                keybinds_y,
-                pw - 16,
-                "Keybinds",
-                "keybinds_list_enabled",
-                false
-            )
-        end
-
         -- Secret setting is completely absent until the hidden brand gesture.
         if A.secret_unlocked
-            and shell_h > 451 + weather_offset
+            and shell_h > 410 + weather_offset
         then
             line(
                 px + 12,
-                py + 408 + weather_offset,
+                py + 367 + weather_offset,
                 px + pw - 12,
-                py + 408 + weather_offset,
+                py + 367 + weather_offset,
                 C.divider,
                 1
             )
@@ -24682,7 +23182,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 409 + weather_offset,
+                py + 368 + weather_offset,
                 pw - 16,
                 "???",
                 "secret_enabled",
@@ -24755,378 +23255,6 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or scale_dropdown_hot
         or type_dropdown_hot
 end
-
-
--- =========================================================
--- Neverlose-style active Keybinds window
--- =========================================================
-
-function FALLEN_KEYBINDS_STEP()
-    local now =
-        tick()
-
-    if A.keybinds_panel_last_t == nil then
-        A.keybinds_panel_last_t =
-            now
-    end
-
-    local dt =
-        clamp(
-            now - A.keybinds_panel_last_t,
-            0,
-            0.05
-        )
-
-    A.keybinds_panel_last_t =
-        now
-
-    local target =
-        S.keybinds_list_enabled == true
-        and 1
-        or 0
-
-    A.keybinds_panel_anim =
-        exp_chase(
-            A.keybinds_panel_anim or 0,
-            target,
-            target > (A.keybinds_panel_anim or 0)
-                and 12
-                or 9,
-            dt
-        )
-
-    if target == 0
-        and (A.keybinds_panel_anim or 0) < 0.015
-    then
-        A.keybinds_panel_anim =
-            0
-    elseif target == 1
-        and (A.keybinds_panel_anim or 0) > 0.992
-    then
-        A.keybinds_panel_anim =
-            1
-    end
-
-    return
-        clamp(
-            A.keybinds_panel_anim or 0,
-            0,
-            1
-        ),
-        dt
-end
-
-
-function FALLEN_KEYBINDS_ACTIVE_ITEMS()
-    local items = {}
-
-    local aim_vk =
-        math.floor(
-            tonumber(S.aim_hold_key)
-            or 0
-        )
-
-    local aim_active =
-        S.aim_enabled == true
-        and (
-            aim_vk <= 0
-            or key_down(aim_vk)
-        )
-
-    items[#items + 1] = {
-        id = "aimbot",
-        name = "Aimbot",
-        active = aim_active,
-        mode = aim_vk <= 0
-            and "[always]"
-            or "[hold]",
-        key = aim_vk_name(aim_vk),
-    }
-
-    local silent_vk =
-        math.floor(
-            tonumber(S.silent_key)
-            or 0
-        )
-
-    local silent_active =
-        S.silent_enabled == true
-        and (
-            silent_vk <= 0
-            or key_down(silent_vk)
-        )
-
-    items[#items + 1] = {
-        id = "silent_aim",
-        name = "Silent Aim",
-        active = silent_active,
-        mode = silent_vk <= 0
-            and "[always]"
-            or "[hold]",
-        key = aim_vk_name(silent_vk),
-    }
-
-    return items
-end
-
-
-function FALLEN_DRAW_KEYBINDS_LIST()
-    local panel_anim, dt =
-        FALLEN_KEYBINDS_STEP()
-
-    if panel_anim <= 0.002
-        and S.keybinds_list_enabled ~= true
-    then
-        return
-    end
-
-    local items =
-        FALLEN_KEYBINDS_ACTIVE_ITEMS()
-
-    local visible_rows = {}
-
-    for _, item in ipairs(items) do
-        local id =
-            tostring(item.id)
-
-        local current =
-            tonumber(
-                A.keybinds_item_anim[id]
-            )
-            or 0
-
-        local target =
-            item.active == true
-            and 1
-            or 0
-
-        current =
-            exp_chase(
-                current,
-                target,
-                target > current
-                    and 16
-                    or 11,
-                dt
-            )
-
-        if target == 0
-            and current < 0.012
-        then
-            current = 0
-        elseif target == 1
-            and current > 0.992
-        then
-            current = 1
-        end
-
-        A.keybinds_item_anim[id] =
-            current
-
-        if current > 0.01 then
-            item.anim =
-                current
-
-            visible_rows[
-                #visible_rows + 1
-            ] =
-                item
-        end
-    end
-
-    local sw, sh =
-        screen_size()
-
-    local panel_w = 214
-    local header_h = 31
-    local row_h = 27
-
-    local rows_h = 0
-
-    for _, item in ipairs(visible_rows) do
-        rows_h =
-            rows_h
-            + row_h
-            * ease_out_cubic(
-                item.anim
-            )
-    end
-
-    local panel_h =
-        header_h
-        + rows_h
-
-    local open_ease =
-        ease_out_cubic(
-            panel_anim
-        )
-
-    local x =
-        sw
-        - panel_w
-        - 24
-        + (1 - open_ease) * 18
-
-    local y =
-        84
-
-    local old_alpha =
-        MENU_RENDER_ALPHA
-
-    local old_transform =
-        MENU_UI_TRANSFORM_ACTIVE
-
-    MENU_RENDER_ALPHA =
-        open_ease
-
-    MENU_UI_TRANSFORM_ACTIVE =
-        false
-
-    -- Soft Neverlose-like dark floating card.
-    FALLEN_POPUP_GLOW(
-        x,
-        y,
-        panel_w,
-        panel_h,
-        8,
-        0.65
-    )
-
-    rounded_fill(
-        x,
-        y,
-        panel_w,
-        panel_h,
-        8,
-        { 0.035, 0.038, 0.046, 0.94 }
-    )
-
-    rounded_fill(
-        x + 1,
-        y + 1,
-        panel_w - 2,
-        header_h - 1,
-        7,
-        { 0.052, 0.056, 0.067, 0.97 }
-    )
-
-    -- Thin accent rail, Neverlose-style.
-    rounded_fill(
-        x + 10,
-        y + header_h - 2,
-        panel_w - 20,
-        2,
-        1,
-        C.accent
-    )
-
-    text(
-        x + 13,
-        y + 10,
-        "Keybinds",
-        C.text
-    )
-
-    local row_y =
-        y + header_h
-
-    for _, item in ipairs(visible_rows) do
-        local a =
-            ease_out_cubic(
-                item.anim
-            )
-
-        local h =
-            row_h
-            * a
-
-        if h > 1 then
-            local slide =
-                (1 - a) * 10
-
-            line(
-                x + 10,
-                row_y,
-                x + panel_w - 10,
-                row_y,
-                alpha(
-                    C.divider,
-                    0.72 * a
-                ),
-                1
-            )
-
-            circle_fill(
-                x + 15 + slide,
-                row_y + 13,
-                2.5,
-                alpha(
-                    C.accent,
-                    a
-                )
-            )
-
-            text(
-                x + 24 + slide,
-                row_y + 8,
-                item.name,
-                alpha(
-                    C.text,
-                    a
-                )
-            )
-
-            -- Neverlose keybind lists emphasize the mode on the right.
-            text(
-                x + panel_w - 53,
-                row_y + 8,
-                item.mode,
-                alpha(
-                    C.text_dim,
-                    a
-                )
-            )
-
-            -- Small key hint next to the mode.
-            if item.key
-                and item.key ~= "None"
-            then
-                local key_text =
-                    tostring(item.key)
-
-                if #key_text > 7 then
-                    key_text =
-                        string.sub(
-                            key_text,
-                            1,
-                            7
-                        )
-                end
-
-                text(
-                    x + panel_w - 103,
-                    row_y + 8,
-                    key_text,
-                    alpha(
-                        C.text_faint,
-                        a * 0.88
-                    )
-                )
-            end
-        end
-
-        row_y =
-            row_y
-            + h
-    end
-
-    MENU_RENDER_ALPHA =
-        old_alpha
-
-    MENU_UI_TRANSFORM_ACTIVE =
-        old_transform
-end
-
 
 -- =========================================================
 -- Animated menu-background weather
@@ -31062,7 +29190,6 @@ hooks.on_render(function()
             my,
             page_clicked,
             lmb,
-            page_rmb_clicked,
             page_x,
             page_y,
             page_w
@@ -31552,24 +29679,6 @@ hooks.on_render(function()
         end
     end
 end)
-
-
-hooks.on_render(function()
-    if _G.FallenMenuReady ~= true then
-        return
-    end
-
-    if S.keybinds_list_enabled ~= true
-        and (A.keybinds_panel_anim or 0) <= 0.002
-    then
-        return
-    end
-
-    pcall(
-        FALLEN_DRAW_KEYBINDS_LIST
-    )
-end)
-
 
 print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA1)")
 
