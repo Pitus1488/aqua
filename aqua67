@@ -250,7 +250,7 @@ local defaults = {
     world_body_bag_esp_enabled = false,
     world_grenade_esp_enabled = false,
 
-    -- Visual Grenade: 4-second timer ring + flight trail.
+    -- Visual Grenade: 3-second timer ring + flight trail.
     world_color_grenade_h = 0.0200,
     world_color_grenade_s = 0.8500,
     world_color_grenade_v = 1.0000,
@@ -8926,6 +8926,9 @@ local function draw_world_settings_popup(
     local is_bodybag =
         group == "bodybag"
 
+    local is_grenade =
+        group == "grenade"
+
     local title = "World ESP settings"
     local pw = 328
     local ph = 174
@@ -8950,6 +8953,10 @@ local function draw_world_settings_popup(
         ph = 92
     elseif is_bodybag then
         title = "Body Bag ESP settings"
+        pw = 306
+        ph = 92
+    elseif is_grenade then
+        title = "Visual Grenade settings"
         pw = 306
         ph = 92
     end
@@ -9702,6 +9709,79 @@ local function draw_world_settings_popup(
         end
 
     -- =========================================================
+    -- VISUAL GRENADE settings.
+    -- One shared color controls both the flight trail and the timer outline.
+    -- =========================================================
+    elseif is_grenade then
+        local row_x = px + 8
+        local row_y = py + 39
+        local row_w = pw - 16
+
+        local color_prefix =
+            "world_color_grenade"
+
+        local swatch_s = 18
+        local swatch_x =
+            row_x + row_w - swatch_s - 12
+        local swatch_y =
+            row_y + 11
+
+        local swatch_hot =
+            hover(
+                mx, my,
+                swatch_x - 5, swatch_y - 5,
+                swatch_s + 10, swatch_s + 10
+            )
+
+        text(
+            row_x + 13,
+            row_y + 14,
+            "Trail / Ring Color",
+            FALLEN_HOVER_TEXT(
+                "world_grenade_color",
+                swatch_hot,
+                C.text
+            )
+        )
+
+        world_square_swatch(
+            swatch_x,
+            swatch_y,
+            swatch_s,
+            world_color_from_prefix(
+                color_prefix
+            )
+        )
+
+        if ui_clicked
+            and swatch_hot
+        then
+            FALLEN_COLOR_INPUT_STOP(true)
+
+            if A.world_color_picker_open
+                and A.world_color_picker_key == color_prefix
+            then
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+            else
+                A.world_color_picker_key = color_prefix
+                A.world_color_picker_open = true
+                A.world_color_picker_drag = nil
+                A.fov_picker_open = false
+                A.fov_picker_drag = nil
+            end
+
+            A.world_color_picker_anchor_x =
+                FALLEN_UI_X(swatch_x)
+            A.world_color_picker_anchor_y =
+                FALLEN_UI_Y(swatch_y)
+            A.world_color_picker_anchor_w =
+                FALLEN_UI_LEN(swatch_s)
+            A.world_color_picker_anchor_h =
+                FALLEN_UI_LEN(swatch_s)
+        end
+
+    -- =========================================================
     -- BASE item settings.
     -- =========================================================
     elseif is_bases
@@ -9881,6 +9961,8 @@ local function draw_visuals_page(
     local drops_dots_y = drops_y + 8
     local bodybag_dots_x = cx + cw - 79
     local bodybag_dots_y = bodybag_y + 8
+    local grenade_dots_x = cx + cw - 79
+    local grenade_dots_y = grenade_y + 8
 
     local global_dots_hot = hover(mx, my, global_dots_x, global_dots_y, 27, 25)
     local node_dots_hot = hover(mx, my, node_dots_x, node_dots_y, 27, 25)
@@ -9888,6 +9970,7 @@ local function draw_visuals_page(
     local base_dots_hot = hover(mx, my, base_dots_x, base_dots_y, 27, 25)
     local drops_dots_hot = hover(mx, my, drops_dots_x, drops_dots_y, 27, 25)
     local bodybag_dots_hot = hover(mx, my, bodybag_dots_x, bodybag_dots_y, 27, 25)
+    local grenade_dots_hot = hover(mx, my, grenade_dots_x, grenade_dots_y, 27, 25)
 
     -- GLOBAL MASTER.
     local old_global = S.world_esp_enabled == true
@@ -9943,13 +10026,13 @@ local function draw_visuals_page(
     toggle_row(
         mx,
         my,
-        base_clicked,
+        base_clicked and not grenade_dots_hot,
         cx,
         grenade_y,
         cw,
         "Visual Grenade",
         "world_grenade_esp_enabled",
-        false
+        true
     )
 
     if old_grenade ~= (S.world_grenade_esp_enabled == true) then
@@ -10043,6 +10126,20 @@ local function draw_visuals_page(
         A.fov_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
         if numeric_stop then numeric_stop(true) end
+
+    elseif rmb_clicked and grenade_dots_hot then
+        if A.world_settings_open and A.world_settings_group == "grenade" then
+            A.world_settings_open = false
+        else
+            A.world_settings_group = "grenade"
+            A.world_settings_open = true
+        end
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+        A.fov_picker_open = false
+        A.fov_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
+        if numeric_stop then numeric_stop(true) end
     end
 
     local popup_dots_x = global_dots_x
@@ -10063,6 +10160,9 @@ local function draw_visuals_page(
     elseif A.world_settings_group == "bodybag" then
         popup_dots_x = bodybag_dots_x
         popup_dots_y = bodybag_dots_y
+    elseif A.world_settings_group == "grenade" then
+        popup_dots_x = grenade_dots_x
+        popup_dots_y = grenade_dots_y
     end
 
     draw_world_settings_popup(
@@ -24618,7 +24718,7 @@ function FALLEN_GRENADE_SCAN_VFX_ROOT(
                     name = name,
                     -- Copy the immutable VFX-spawn timestamp into the entry too.
                     -- Even if the PNG becomes ready a second later, countdown
-                    -- progress is already one second into the four-second fuse.
+                    -- progress is already one second into the fuse.
                     spawned_at = track.spawned_at,
                 }
             end
@@ -24756,7 +24856,7 @@ function FALLEN_GRENADE_PUSH_TRAIL_POINT(track, pos)
         table.remove(points, 1)
     end
 
-    -- Keep almost the whole four-second flight, but cap it for performance.
+    -- Keep the recent flight trail, capped for performance.
     while #points > 2
         and now - (points[1].t or now) > 3.85
     do
