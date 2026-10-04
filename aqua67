@@ -41311,8 +41311,10 @@ end)
 -- Custom Anti Aim runtime
 -- Spin/Jitter behavior from the supplied reference, implemented only with
 -- the documented custom rbx instance API.
--- Backwards Down faces opposite the camera and pitches the character down;
--- holding Mouse1 temporarily returns to a normal camera-facing pose.
+-- Backwards Down faces opposite the camera while keeping HumanoidRootPart
+-- physically upright. The downward bend is driven through the game's own
+-- Character > TorsoController > Look remote, so it does not tip/fall the body.
+-- Holding Mouse1 temporarily returns to a normal camera-facing pose.
 -- =========================================================
 
 local function FALLEN_ANTIAIM_ATAN2(y, x)
@@ -41377,33 +41379,120 @@ local function FALLEN_ANTIAIM_YAW_MATRIX(deg)
     }
 end
 
-local function FALLEN_ANTIAIM_YAW_PITCH_MATRIX(
-    yaw_deg,
-    pitch_deg
+local function FALLEN_ANTIAIM_LOOK_REMOTE()
+    if not rbx
+        or type(rbx.local_character) ~= "function"
+    then
+        return nil
+    end
+
+    local char = nil
+
+    local ok_char, out =
+        pcall(
+            rbx.local_character
+        )
+
+    if ok_char then
+        char = out
+    end
+
+    if not char then
+        return nil
+    end
+
+    local torso = nil
+
+    pcall(function()
+        torso =
+            char:find_first_child(
+                "TorsoController"
+            )
+    end)
+
+    if not torso then
+        return nil
+    end
+
+    local look = nil
+
+    pcall(function()
+        look =
+            torso:find_first_child(
+                "Look"
+            )
+    end)
+
+    if not look then
+        return nil
+    end
+
+    local valid = true
+
+    pcall(function()
+        if type(look.is_valid) == "function" then
+            valid =
+                look:is_valid()
+                == true
+        end
+    end)
+
+    if not valid then
+        return nil
+    end
+
+    return look
+end
+
+local function FALLEN_ANTIAIM_SEND_LOOK(
+    pitch,
+    yaw,
+    force
 )
-    local y =
-        math.rad(
-            tonumber(yaw_deg)
-            or 0
+    local now = tick()
+
+    if force ~= true
+        and now - (A.misc_antiaim_look_last_send or -100) < 0.05
+    then
+        return false
+    end
+
+    local look =
+        FALLEN_ANTIAIM_LOOK_REMOTE()
+
+    if not look then
+        return false
+    end
+
+    local ok, fired =
+        pcall(function()
+            return look:fire_server(
+                tonumber(pitch) or 0,
+                tonumber(yaw) or 0
+            )
+        end)
+
+    if ok and fired ~= false then
+        A.misc_antiaim_look_last_send = now
+        return true
+    end
+
+    return false
+end
+
+local function FALLEN_ANTIAIM_RELEASE_LOOK()
+    if A.misc_antiaim_look_forced == true then
+        -- Stop leaving the server on the forced down-pitch when the mode is
+        -- disabled/changed or while Mouse1 is held. The normal game Look
+        -- updates can take over immediately after this neutral packet.
+        FALLEN_ANTIAIM_SEND_LOOK(
+            0,
+            0,
+            true
         )
+    end
 
-    local p =
-        math.rad(
-            tonumber(pitch_deg)
-            or 0
-        )
-
-    local cy = math.cos(y)
-    local sy = math.sin(y)
-    local cp = math.cos(p)
-    local sp = math.sin(p)
-
-    -- Ry * Rx, matching the matrix layout documented by rbx:set_rotation().
-    return {
-        cy,      sy * sp,  -sy * cp,
-        0,       cp,        sp,
-        sy,     -cy * sp,   cy * cp,
-    }
+    A.misc_antiaim_look_forced = false
 end
 
 local function FALLEN_ANTIAIM_CAMERA_YAW()
@@ -41469,6 +41558,7 @@ function FALLEN_ANTIAIM_TICK()
     end
 
     if not hrp then
+        FALLEN_ANTIAIM_RELEASE_LOOK()
         A.misc_antiaim_was_enabled = false
         A.misc_antiaim_saved_rotation = nil
         A.misc_antiaim_hrp_addr = nil
@@ -41492,6 +41582,8 @@ function FALLEN_ANTIAIM_TICK()
     A.misc_antiaim_hrp_addr = hrp_addr
 
     if not enabled then
+        FALLEN_ANTIAIM_RELEASE_LOOK()
+
         if A.misc_antiaim_was_enabled
             and type(A.misc_antiaim_saved_rotation) == "table"
         then
@@ -41543,8 +41635,9 @@ function FALLEN_ANTIAIM_TICK()
             or "Spin"
         )
 
-    -- Static backwards/down pose. It is always relative to the current camera,
-    -- so moving the view keeps the character exactly 180 degrees behind it.
+    -- Static backwards/down pose. HRP only gets a flat Y-axis yaw, never a
+    -- pitch, so physics stays upright. The actual bent/down-looking pose is
+    -- replicated through Fallen's TorsoController.Look RemoteEvent.
     if mode == "Backwards Down" then
         local camera_yaw =
             FALLEN_ANTIAIM_CAMERA_YAW()
@@ -41553,7 +41646,10 @@ function FALLEN_ANTIAIM_TICK()
             key_down(VK_LBUTTON)
 
         if mouse1 then
-            -- While shooting/holding Mouse1, return to a normal upright pose.
+            -- While shooting/holding Mouse1, immediately release the forced
+            -- torso pitch and face normally again.
+            FALLEN_ANTIAIM_RELEASE_LOOK()
+
             if camera_yaw ~= nil then
                 pcall(function()
                     hrp:set_rotation(
@@ -41592,17 +41688,31 @@ function FALLEN_ANTIAIM_TICK()
                 backwards_yaw - 360
         end
 
+        -- Physical root: 180 degrees backwards, but still perfectly upright.
         pcall(function()
             hrp:set_rotation(
-                FALLEN_ANTIAIM_YAW_PITCH_MATRIX(
-                    backwards_yaw,
-                    60
+                FALLEN_ANTIAIM_YAW_MATRIX(
+                    backwards_yaw
                 )
             )
         end)
 
+        -- In the supplied Insulin script, LookUp forces pitch=-1.5 on the
+        -- same TorsoController.Look remote. Positive 1.5 therefore gives the
+        -- opposite extreme: looking/bending down without tipping the HRP.
+        if FALLEN_ANTIAIM_SEND_LOOK(
+            1.5,
+            0,
+            false
+        ) then
+            A.misc_antiaim_look_forced = true
+        end
+
         return
     end
+
+    -- Leaving Backwards Down for Spin/Jitter must also stop the torso pose.
+    FALLEN_ANTIAIM_RELEASE_LOOK()
 
     local speed =
         clamp(
