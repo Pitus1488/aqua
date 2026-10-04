@@ -12122,9 +12122,14 @@ end
 
 
 function FALLEN_SHARED_AIM_SECTION()
-    -- IMPORTANT: our custom Aimbot must NEVER read or write cheat.aimbot.
-    -- Keep this legacy helper inert so old Silent compatibility paths cannot
-    -- accidentally touch the stock Aimbot menu/module.
+    -- Silent FOV mirrors ONLY the stock Aimbot FOV visual controls.
+    -- This does not enable stock Aimbot and does not touch its targeting logic.
+    if cheat
+        and cheat.aimbot
+    then
+        return cheat.aimbot
+    end
+
     return nil
 end
 
@@ -12208,6 +12213,14 @@ function FALLEN_SHARED_AIM_FIND_KEY(
             "showfov",
             "fov_enabled",
             "fovenabled",
+            "draw_fov",
+            "drawfov",
+            "display_fov",
+            "displayfov",
+            "render_fov",
+            "renderfov",
+            "fov_visible",
+            "fovvisible",
             "aimbot_fov",
             "aimbotfov",
         }
@@ -12339,6 +12352,10 @@ function FALLEN_SHARED_AIM_FIND_KEY(
                         1,
                         true
                     ) ~= nil
+                    or string.find(kn, "draw", 1, true) ~= nil
+                    or string.find(kn, "display", 1, true) ~= nil
+                    or string.find(kn, "render", 1, true) ~= nil
+                    or string.find(kn, "visible", 1, true) ~= nil
                 )
         elseif purpose == "fov" then
             matched =
@@ -13555,22 +13572,42 @@ function FALLEN_SYNC_STOCK_FOV_VISUAL(
         end)
     end
 
-    -- This is the actual built-in MENU checkbox shown as:
-    -- Aimbot FOV -> Enabled
-    --
-    -- Only Silent calls this mirror path. Custom Aimbot does not.
+    -- This is the actual built-in MENU FOV control. Resolve the live key
+    -- through the documented section introspection so builds that expose
+    -- show_fov / fov_enabled / draw_fov still stay synchronized.
+    local stock_fov_enabled =
+        S.silent_fov_enabled == true
+
+    local wrote_show =
+        FALLEN_SHARED_AIM_WRITE(
+            "show_fov",
+            stock_fov_enabled
+        )
+
+    local wrote_radius =
+        FALLEN_SHARED_AIM_WRITE(
+            "fov",
+            radius
+        )
+
+    -- Documented exact-name fallback. This changes only the FOV visual fields;
+    -- stock Aimbot itself remains disabled/untouched.
     if cheat
         and cheat.aimbot
     then
-        pcall(function()
-            cheat.aimbot.show_fov =
-                S.silent_fov_enabled == true
-        end)
+        if not wrote_show then
+            pcall(function()
+                cheat.aimbot.show_fov =
+                    stock_fov_enabled
+            end)
+        end
 
-        pcall(function()
-            cheat.aimbot.fov =
-                radius
-        end)
+        if not wrote_radius then
+            pcall(function()
+                cheat.aimbot.fov =
+                    radius
+            end)
+        end
     end
 
     -- Shared stock FOV color used by the menu renderer.
