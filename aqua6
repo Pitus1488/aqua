@@ -123,9 +123,9 @@ local defaults = {
     misc_antiaim_speed = 100,
     misc_antiaim_yaw_min = -90,
     misc_antiaim_yaw_max = 90,
-    -- TorsoController.Look pitch used by Backwards Down.
-    -- -1.5 = max up, 0 = neutral, +1.5 = max down.
-    misc_antiaim_look_pitch = 1.5,
+    -- Custom manipulation spoof. While Mouse1 is held the HRP is moved
+    -- +5 studs for the server/physics state while the local camera is pinned.
+    misc_manipulation_enabled = false,
 
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
@@ -593,6 +593,16 @@ local A = {
     misc_antiaim_saved_rotation = nil,
     misc_antiaim_was_enabled = false,
     misc_antiaim_hrp_addr = nil,
+
+    -- Misc Manipulation runtime.
+    misc_manipulation_spoofed = false,
+    misc_manipulation_saved_pos = nil,
+    misc_manipulation_saved_rot = nil,
+    misc_manipulation_saved_vel = nil,
+    misc_manipulation_camera_anchor = nil,
+    misc_manipulation_can_hit = false,
+    misc_manipulation_target_name = nil,
+    misc_manipulation_last_error = 0,
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -34139,7 +34149,7 @@ end
 local FALLEN_ANTIAIM_MODES = {
     "Spin",
     "Jitter",
-    "Backwards Down",
+    "Backwards",
 }
 
 function FALLEN_ANTIAIM_SETTINGS_STEP()
@@ -34425,13 +34435,13 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
     local jitter =
         mode == "Jitter"
 
-    local backwards_down =
-        mode == "Backwards Down"
+    local backwards =
+        mode == "Backwards"
 
     local pw = 300
     local ph =
         jitter and 206
-        or (backwards_down and 176 or 124)
+        or (backwards and 86 or 124)
 
     local base_px =
         dots_x - pw + 28
@@ -34611,58 +34621,21 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
             )
         end
 
-        if shell_h > 116 then
-            if backwards_down then
-                text(
-                    px + 21,
-                    py + 91,
-                    "Hold Mouse1: normal pose",
-                    C.text_dim
-                )
-
-                if shell_h > 128 then
-                    line(
-                        px + 12,
-                        py + 108,
-                        px + pw - 12,
-                        py + 108,
-                        C.divider,
-                        1
-                    )
-                end
-
-                if shell_h > 166 then
-                    slider_row(
-                        mx,
-                        my,
-                        controls_clicked,
-                        lmb,
-                        px + 8,
-                        py + 109,
-                        pw - 16,
-                        "Look Pitch",
-                        "misc_antiaim_look_pitch",
-                        -1.5,
-                        1.5,
-                        "float"
-                    )
-                end
-            else
-                slider_row(
-                    mx,
-                    my,
-                    controls_clicked,
-                    lmb,
-                    px + 8,
-                    py + 76,
-                    pw - 16,
-                    "Yaw Speed",
-                    "misc_antiaim_speed",
-                    0,
-                    100,
-                    "int"
-                )
-            end
+        if shell_h > 116 and not backwards then
+            slider_row(
+                mx,
+                my,
+                controls_clicked,
+                lmb,
+                px + 8,
+                py + 76,
+                pw - 16,
+                "Yaw Speed",
+                "misc_antiaim_speed",
+                0,
+                100,
+                "int"
+            )
         end
 
         if jitter then
@@ -36253,7 +36226,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            142,
+            183,
             11
         )
 
@@ -36361,6 +36334,27 @@ hooks.on_render(function()
             lmb,
             antiaim_dots_x,
             antiaim_dots_y
+        )
+
+        line(
+            page_x + 12,
+            page_y + 154,
+            page_x + page_w - 12,
+            page_y + 154,
+            C.divider,
+            1
+        )
+
+        toggle_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            page_x,
+            page_y + 155,
+            page_w,
+            "Manipulation",
+            "misc_manipulation_enabled",
+            false
         )
 
         local boulder_gap =
@@ -41344,10 +41338,8 @@ end)
 -- Custom Anti Aim runtime
 -- Spin/Jitter behavior from the supplied reference, implemented only with
 -- the documented custom rbx instance API.
--- Backwards Down faces opposite the camera while keeping HumanoidRootPart
--- physically upright. The downward bend is driven through the game's own
--- Character > TorsoController > Look remote, so it does not tip/fall the body.
--- Holding Mouse1 temporarily returns to a normal camera-facing pose.
+-- Backwards faces exactly 180 degrees opposite the camera. No pitch is sent
+-- and the HumanoidRootPart stays physically upright in this Anti Aim mode.
 -- =========================================================
 
 local function FALLEN_ANTIAIM_ATAN2(y, x)
@@ -41412,143 +41404,6 @@ local function FALLEN_ANTIAIM_YAW_MATRIX(deg)
     }
 end
 
-local function FALLEN_ANTIAIM_LOOK_REMOTE()
-    if not rbx
-        or type(rbx.local_character) ~= "function"
-    then
-        return nil
-    end
-
-    local char = nil
-
-    local ok_char, out =
-        pcall(
-            rbx.local_character
-        )
-
-    if ok_char then
-        char = out
-    end
-
-    if not char then
-        return nil
-    end
-
-    local torso = nil
-
-    pcall(function()
-        torso =
-            char:find_first_child(
-                "TorsoController"
-            )
-    end)
-
-    if not torso then
-        return nil
-    end
-
-    local look = nil
-
-    pcall(function()
-        look =
-            torso:find_first_child(
-                "Look"
-            )
-    end)
-
-    if not look then
-        return nil
-    end
-
-    local valid = true
-
-    pcall(function()
-        if type(look.is_valid) == "function" then
-            valid =
-                look:is_valid()
-                == true
-        end
-    end)
-
-    if not valid then
-        return nil
-    end
-
-    return look
-end
-
-local function FALLEN_ANTIAIM_SEND_LOOK(
-    pitch,
-    yaw,
-    force
-)
-    local now = tick()
-
-    -- The game sends its own TorsoController.Look updates very often.
-    -- For Backwards Down we intentionally allow force=true every render so
-    -- our pitch is not immediately replaced by the normal look packet.
-    if force ~= true
-        and now - (A.misc_antiaim_look_last_send or -100) < 0.016
-    then
-        return false
-    end
-
-    local look =
-        FALLEN_ANTIAIM_LOOK_REMOTE()
-
-    if not look then
-        return false
-    end
-
-    local p = tonumber(pitch) or 0
-    local y = tonumber(yaw) or 0
-
-    local ok, fired =
-        pcall(function()
-            return look:fire_server(
-                p,
-                y
-            )
-        end)
-
-    -- API fallback: both forms are documented. Some builds expose the
-    -- instance method but route RemoteEvents more reliably through
-    -- fire_remote(remote, ...).
-    if (not ok or fired == false)
-        and type(fire_remote) == "function"
-    then
-        ok, fired =
-            pcall(
-                fire_remote,
-                look,
-                p,
-                y
-            )
-    end
-
-    if ok and fired ~= false then
-        A.misc_antiaim_look_last_send = now
-        return true
-    end
-
-    return false
-end
-
-local function FALLEN_ANTIAIM_RELEASE_LOOK()
-    if A.misc_antiaim_look_forced == true then
-        -- Stop leaving the server on the forced down-pitch when the mode is
-        -- disabled/changed or while Mouse1 is held. The normal game Look
-        -- updates can take over immediately after this neutral packet.
-        FALLEN_ANTIAIM_SEND_LOOK(
-            0,
-            0,
-            true
-        )
-    end
-
-    A.misc_antiaim_look_forced = false
-end
-
 local function FALLEN_ANTIAIM_CAMERA_YAW()
     if not rbx
         or type(rbx.camera) ~= "function"
@@ -41596,6 +41451,14 @@ function FALLEN_ANTIAIM_TICK()
     local enabled =
         S.misc_antiaim_enabled == true
 
+    -- Manipulation owns the root while Mouse1 is held so its 90-degree spoof
+    -- is not immediately flattened by Spin/Jitter/Backwards.
+    if S.misc_manipulation_enabled == true
+        and key_down(VK_LBUTTON) == true
+    then
+        return
+    end
+
     local hrp = nil
 
     if rbx
@@ -41612,7 +41475,6 @@ function FALLEN_ANTIAIM_TICK()
     end
 
     if not hrp then
-        FALLEN_ANTIAIM_RELEASE_LOOK()
         A.misc_antiaim_was_enabled = false
         A.misc_antiaim_saved_rotation = nil
         A.misc_antiaim_hrp_addr = nil
@@ -41636,8 +41498,6 @@ function FALLEN_ANTIAIM_TICK()
     A.misc_antiaim_hrp_addr = hrp_addr
 
     if not enabled then
-        FALLEN_ANTIAIM_RELEASE_LOOK()
-
         if A.misc_antiaim_was_enabled
             and type(A.misc_antiaim_saved_rotation) == "table"
         then
@@ -41689,39 +41549,10 @@ function FALLEN_ANTIAIM_TICK()
             or "Spin"
         )
 
-    -- Static backwards/down pose. HRP only gets a flat Y-axis yaw, never a
-    -- pitch, so physics stays upright. The actual bent/down-looking pose is
-    -- replicated through Fallen's TorsoController.Look RemoteEvent.
-    if mode == "Backwards Down" then
+    -- Static backwards pose: 180 degrees opposite the current camera yaw.
+    if mode == "Backwards" then
         local camera_yaw =
             FALLEN_ANTIAIM_CAMERA_YAW()
-
-        local mouse1 =
-            key_down(VK_LBUTTON)
-
-        if mouse1 then
-            -- While shooting/holding Mouse1, immediately release the forced
-            -- torso pitch and face normally again.
-            FALLEN_ANTIAIM_RELEASE_LOOK()
-
-            if camera_yaw ~= nil then
-                pcall(function()
-                    hrp:set_rotation(
-                        FALLEN_ANTIAIM_YAW_MATRIX(
-                            camera_yaw
-                        )
-                    )
-                end)
-            elseif type(A.misc_antiaim_saved_rotation) == "table" then
-                pcall(function()
-                    hrp:set_rotation(
-                        A.misc_antiaim_saved_rotation
-                    )
-                end)
-            end
-
-            return
-        end
 
         local base_yaw =
             camera_yaw
@@ -41742,7 +41573,6 @@ function FALLEN_ANTIAIM_TICK()
                 backwards_yaw - 360
         end
 
-        -- Physical root: 180 degrees backwards, but still perfectly upright.
         pcall(function()
             hrp:set_rotation(
                 FALLEN_ANTIAIM_YAW_MATRIX(
@@ -41751,33 +41581,8 @@ function FALLEN_ANTIAIM_TICK()
             )
         end)
 
-        -- In the supplied Insulin script, LookUp forces pitch=-1.5 on the
-        -- same TorsoController.Look remote. This value is user-adjustable:
-        -- -1.5 = up, 0 = neutral, +1.5 = down. HRP stays physically upright.
-        local look_pitch =
-            clamp(
-                tonumber(S.misc_antiaim_look_pitch)
-                or 1.5,
-                -1.5,
-                1.5
-            )
-
-        -- Force the selected pitch every render. The original game also
-        -- sends Look packets continuously, so a throttled one-shot can be
-        -- overwritten before the bent head/torso pose becomes visible.
-        if FALLEN_ANTIAIM_SEND_LOOK(
-            look_pitch,
-            0,
-            true
-        ) then
-            A.misc_antiaim_look_forced = true
-        end
-
         return
     end
-
-    -- Leaving Backwards Down for Spin/Jitter must also stop the torso pose.
-    FALLEN_ANTIAIM_RELEASE_LOOK()
 
     local speed =
         clamp(
@@ -41870,6 +41675,416 @@ hooks.on_render(function()
             end
         end
     end
+end)
+
+-- =========================================================
+-- Custom Manipulation runtime
+-- Fixed +5-stud vertical spoof while Mouse1 is held. Each render begins by
+-- restoring the prior real state, then applies a fresh spoof for that frame.
+-- The camera position is pinned to the point where Mouse1 was first pressed,
+-- which keeps the local view visually stable while the HRP is moved/flipped.
+-- =========================================================
+
+local FALLEN_MANIPULATION_HEIGHT = 5.0
+local FALLEN_MANIPULATION_FLIP_DEG = 90.0
+
+local function FALLEN_MANIPULATION_MATRIX_MUL(a, b)
+    if type(a) ~= "table" or type(b) ~= "table" then
+        return nil
+    end
+
+    return {
+        (a[1] or 0)*(b[1] or 0) + (a[2] or 0)*(b[4] or 0) + (a[3] or 0)*(b[7] or 0),
+        (a[1] or 0)*(b[2] or 0) + (a[2] or 0)*(b[5] or 0) + (a[3] or 0)*(b[8] or 0),
+        (a[1] or 0)*(b[3] or 0) + (a[2] or 0)*(b[6] or 0) + (a[3] or 0)*(b[9] or 0),
+        (a[4] or 0)*(b[1] or 0) + (a[5] or 0)*(b[4] or 0) + (a[6] or 0)*(b[7] or 0),
+        (a[4] or 0)*(b[2] or 0) + (a[5] or 0)*(b[5] or 0) + (a[6] or 0)*(b[8] or 0),
+        (a[4] or 0)*(b[3] or 0) + (a[5] or 0)*(b[6] or 0) + (a[6] or 0)*(b[9] or 0),
+        (a[7] or 0)*(b[1] or 0) + (a[8] or 0)*(b[4] or 0) + (a[9] or 0)*(b[7] or 0),
+        (a[7] or 0)*(b[2] or 0) + (a[8] or 0)*(b[5] or 0) + (a[9] or 0)*(b[8] or 0),
+        (a[7] or 0)*(b[3] or 0) + (a[8] or 0)*(b[6] or 0) + (a[9] or 0)*(b[9] or 0),
+    }
+end
+
+local function FALLEN_MANIPULATION_PITCH_MATRIX(deg)
+    local r = math.rad(tonumber(deg) or 0)
+    local c = math.cos(r)
+    local s = math.sin(r)
+
+    return {
+        1, 0, 0,
+        0, c, -s,
+        0, s, c,
+    }
+end
+
+local function FALLEN_MANIPULATION_RESTORE(hrp)
+    if A.misc_manipulation_spoofed ~= true then
+        return
+    end
+
+    if hrp then
+        if A.misc_manipulation_saved_pos then
+            pcall(function()
+                hrp:set_position(
+                    A.misc_manipulation_saved_pos
+                )
+            end)
+        end
+
+        if type(A.misc_manipulation_saved_rot) == "table" then
+            pcall(function()
+                hrp:set_rotation(
+                    A.misc_manipulation_saved_rot
+                )
+            end)
+        end
+
+        if A.misc_manipulation_saved_vel then
+            pcall(function()
+                hrp:set_velocity(
+                    A.misc_manipulation_saved_vel
+                )
+            end)
+        end
+    end
+
+    A.misc_manipulation_spoofed = false
+    A.misc_manipulation_saved_pos = nil
+    A.misc_manipulation_saved_rot = nil
+    A.misc_manipulation_saved_vel = nil
+end
+
+local function FALLEN_MANIPULATION_CURSOR_POS()
+    local p = nil
+
+    if type(mouse_pos) == "function" then
+        pcall(function()
+            p = mouse_pos()
+        end)
+    end
+
+    if not p and type(crosshair_pos) == "function" then
+        pcall(function()
+            p = crosshair_pos()
+        end)
+    end
+
+    if not p and type(ScreenSize) == "function" then
+        local d = nil
+        pcall(function()
+            d = ScreenSize()
+        end)
+        if d then
+            p = {
+                X = (tonumber(d.Width or d.X) or 0) * 0.5,
+                Y = (tonumber(d.Height or d.Y) or 0) * 0.5,
+            }
+        end
+    end
+
+    return p
+end
+
+local function FALLEN_MANIPULATION_TARGET()
+    if not players or type(players.get_all) ~= "function" then
+        return nil, nil
+    end
+
+    local cursor = FALLEN_MANIPULATION_CURSOR_POS()
+    if not cursor then
+        return nil, nil
+    end
+
+    local best = nil
+    local best_pos = nil
+    local best_d2 = 500 * 500
+    local list = nil
+
+    pcall(function()
+        list = players.get_all()
+    end)
+
+    if type(list) ~= "table" then
+        return nil, nil
+    end
+
+    for _, p in ipairs(list) do
+        if p
+            and p.is_self ~= true
+            and p.is_teammate ~= true
+            and (tonumber(p.health) or 0) > 0
+            and p.is_knocked ~= true
+        then
+            local pos = p.head_pos or p.position
+            if pos then
+                local scr = nil
+                pcall(function()
+                    if rbx and type(rbx.world_to_screen) == "function" then
+                        scr = rbx.world_to_screen(pos)
+                    elseif aim and type(aim.world_to_screen) == "function" then
+                        scr = aim.world_to_screen(pos)
+                    end
+                end)
+
+                if scr and scr.visible ~= false then
+                    local sx = tonumber(scr.X or scr.x or scr[1])
+                    local sy = tonumber(scr.Y or scr.y or scr[2])
+                    if sx and sy then
+                        local dx = sx - (tonumber(cursor.X or cursor.x or cursor[1]) or 0)
+                        local dy = sy - (tonumber(cursor.Y or cursor.y or cursor[2]) or 0)
+                        local d2 = dx*dx + dy*dy
+                        if d2 < best_d2 then
+                            best_d2 = d2
+                            best = p
+                            best_pos = pos
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return best, best_pos
+end
+
+local function FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, center)
+    if not origin or not target_pos then
+        return false
+    end
+
+    -- Reuse the script's custom oriented-box world collision cache. Build it
+    -- on demand even when the Rain visual is disabled.
+    if A.world_rain_geo == nil and center then
+        pcall(function()
+            FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(
+                center,
+                300
+            )
+        end)
+    end
+
+    if type(A.world_rain_geo) ~= "table" then
+        return false
+    end
+
+    local dx = target_pos.X - origin.X
+    local dy = target_pos.Y - origin.Y
+    local dz = target_pos.Z - origin.Z
+    local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+    if dist <= 0.25 then
+        return true
+    end
+
+    dx, dy, dz = dx/dist, dy/dist, dz/dist
+
+    -- Stop before the target body so only intervening map geometry counts.
+    local check_dist = math.max(0, dist - 2.6)
+    local hit = nil
+
+    pcall(function()
+        hit = FALLEN_WORLD_RAIN_RAYCAST_GRID(
+            origin.X,
+            origin.Y,
+            origin.Z,
+            dx,
+            dy,
+            dz,
+            check_dist
+        )
+    end)
+
+    return hit == nil
+end
+
+local function FALLEN_MANIPULATION_DRAW_INDICATOR()
+    if S.misc_manipulation_enabled ~= true
+        or type(DrawTextWithOutline) ~= "function"
+    then
+        return
+    end
+
+    local center = FALLEN_MANIPULATION_CURSOR_POS()
+    if not center then
+        return
+    end
+
+    local can_hit = A.misc_manipulation_can_hit == true
+    local has_target = A.misc_manipulation_target_name ~= nil
+    local label = "MANIPULATION: NO TARGET"
+    local r, g, b = 0.72, 0.72, 0.76
+
+    if has_target then
+        if can_hit then
+            label = "MANIPULATION: CAN HIT"
+            r, g, b = 0.35, 1.00, 0.48
+        else
+            label = "MANIPULATION: BLOCKED"
+            r, g, b = 1.00, 0.35, 0.35
+        end
+    end
+
+    DrawTextWithOutline(
+        (tonumber(center.X or center.x or center[1]) or 0),
+        (tonumber(center.Y or center.y or center[2]) or 0) + 58,
+        label,
+        r, g, b, 1,
+        0, 0, 0, 0.95
+    )
+end
+
+function FALLEN_MANIPULATION_TICK()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    local hrp = nil
+    local head = nil
+    local cam = nil
+
+    if rbx then
+        if type(rbx.local_hrp) == "function" then
+            pcall(function() hrp = rbx.local_hrp() end)
+        end
+        if type(rbx.local_head) == "function" then
+            pcall(function() head = rbx.local_head() end)
+        end
+        if type(rbx.camera) == "function" then
+            pcall(function() cam = rbx.camera() end)
+        end
+    end
+
+    -- Restore the spoof from the previous render before calculating this one.
+    FALLEN_MANIPULATION_RESTORE(hrp)
+
+    if S.misc_manipulation_enabled ~= true or not hrp then
+        A.misc_manipulation_camera_anchor = nil
+        A.misc_manipulation_can_hit = false
+        A.misc_manipulation_target_name = nil
+        return
+    end
+
+    local hrp_pos = nil
+    local hrp_rot = nil
+    local hrp_vel = nil
+    local head_pos = nil
+
+    pcall(function() hrp_pos = hrp:get_position() end)
+    pcall(function() hrp_rot = hrp:get_rotation() end)
+    pcall(function() hrp_vel = hrp:get_velocity() end)
+    if head then
+        pcall(function() head_pos = head:get_position() end)
+    end
+
+    if not hrp_pos then
+        return
+    end
+
+    local target, target_pos = FALLEN_MANIPULATION_TARGET()
+    local origin_base = head_pos or hrp_pos
+    local prospective_origin = Vector3(
+        origin_base.X,
+        origin_base.Y + FALLEN_MANIPULATION_HEIGHT,
+        origin_base.Z
+    )
+
+    A.misc_manipulation_target_name =
+        target and tostring(target.name or target.display_name or "target") or nil
+
+    A.misc_manipulation_can_hit =
+        target_pos ~= nil
+        and FALLEN_MANIPULATION_CAN_HIT(
+            prospective_origin,
+            target_pos,
+            hrp_pos
+        )
+        or false
+
+    if key_down(VK_LBUTTON) ~= true then
+        A.misc_manipulation_camera_anchor = nil
+        return
+    end
+
+    A.misc_manipulation_saved_pos = hrp_pos
+    A.misc_manipulation_saved_rot = hrp_rot
+    A.misc_manipulation_saved_vel = hrp_vel
+
+    if cam and A.misc_manipulation_camera_anchor == nil then
+        pcall(function()
+            A.misc_manipulation_camera_anchor = cam:camera_pos()
+        end)
+    end
+
+    local cam_rot = nil
+    if cam then
+        pcall(function()
+            cam_rot = cam:camera_rotation()
+        end)
+    end
+
+    -- Server/physics spoof position: +5 studs on Y.
+    pcall(function()
+        hrp:set_position(
+            Vector3(
+                hrp_pos.X,
+                hrp_pos.Y + FALLEN_MANIPULATION_HEIGHT,
+                hrp_pos.Z
+            )
+        )
+    end)
+
+    -- Match the old "falling/sideways" anti-aim effect while shooting by
+    -- applying a 90-degree X pitch to the root for the spoofed frame.
+    if type(hrp_rot) == "table" then
+        local flipped = FALLEN_MANIPULATION_MATRIX_MUL(
+            hrp_rot,
+            FALLEN_MANIPULATION_PITCH_MATRIX(
+                FALLEN_MANIPULATION_FLIP_DEG
+            )
+        )
+
+        if flipped then
+            pcall(function()
+                hrp:set_rotation(flipped)
+            end)
+        end
+    end
+
+    -- Keep the local view where it was before the spoof. Rotation is allowed
+    -- to follow the mouse, only the camera position is pinned.
+    if cam then
+        if A.misc_manipulation_camera_anchor then
+            pcall(function()
+                cam:set_camera_pos(
+                    A.misc_manipulation_camera_anchor
+                )
+            end)
+        end
+        if type(cam_rot) == "table" then
+            pcall(function()
+                cam:set_camera_rotation(cam_rot)
+            end)
+        end
+    end
+
+    A.misc_manipulation_spoofed = true
+end
+
+hooks.on_render(function()
+    local ok, err = pcall(FALLEN_MANIPULATION_TICK)
+
+    if not ok then
+        local now = tick()
+        if now - (A.misc_manipulation_last_error or 0) > 2 then
+            A.misc_manipulation_last_error = now
+            if type(warn) == "function" then
+                warn(SYS .. "Manipulation: " .. tostring(err))
+            end
+        end
+    end
+
+    pcall(FALLEN_MANIPULATION_DRAW_INDICATOR)
 end)
 
 -- =========================================================
