@@ -581,6 +581,9 @@ local A = {
     misc_antiaim_settings_open = false,
     misc_antiaim_settings_anim = 0,
     misc_antiaim_settings_last_t = nil,
+    misc_antiaim_mode_dropdown_open = false,
+    misc_antiaim_mode_dropdown_anim = 0,
+    misc_antiaim_mode_dropdown_last_t = nil,
     misc_antiaim_last_update = -100,
     misc_antiaim_spin_yaw = 0,
     misc_antiaim_target_yaw = 0,
@@ -3908,6 +3911,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.fov_picker_open = false
         A.world_settings_open = false
         A.misc_antiaim_settings_open = false
+        A.misc_antiaim_mode_dropdown_open = false
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
@@ -34129,6 +34133,12 @@ end
 -- Misc Anti Aim settings popup
 -- =========================================================
 
+local FALLEN_ANTIAIM_MODES = {
+    "Spin",
+    "Jitter",
+    "Backwards Down",
+}
+
 function FALLEN_ANTIAIM_SETTINGS_STEP()
     local now = tick()
 
@@ -34179,6 +34189,199 @@ function FALLEN_ANTIAIM_SETTINGS_STEP()
         )
 end
 
+function FALLEN_ANTIAIM_MODE_DROPDOWN_STEP()
+    local now = tick()
+
+    if A.misc_antiaim_mode_dropdown_last_t == nil then
+        A.misc_antiaim_mode_dropdown_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.misc_antiaim_mode_dropdown_last_t,
+            0,
+            0.05
+        )
+
+    A.misc_antiaim_mode_dropdown_last_t = now
+
+    local target =
+        A.misc_antiaim_mode_dropdown_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.misc_antiaim_mode_dropdown_anim or 0)
+        and 17
+        or 13
+
+    A.misc_antiaim_mode_dropdown_anim =
+        exp_chase(
+            A.misc_antiaim_mode_dropdown_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if math.abs(
+        (A.misc_antiaim_mode_dropdown_anim or 0)
+        - target
+    ) < 0.0015
+    then
+        A.misc_antiaim_mode_dropdown_anim = target
+    end
+
+    return
+        clamp(
+            A.misc_antiaim_mode_dropdown_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_ANTIAIM_MODE_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    local anim =
+        FALLEN_ANTIAIM_MODE_DROPDOWN_STEP()
+
+    if anim <= 0.004
+        and not A.misc_antiaim_mode_dropdown_open
+    then
+        return false, false
+    end
+
+    local item_h = 27
+    local full_h =
+        #FALLEN_ANTIAIM_MODES
+        * item_h
+
+    local eased =
+        ease_out_cubic(anim)
+
+    local visible_h =
+        full_h
+        * eased
+
+    local panel_h =
+        math.max(
+            2,
+            visible_h
+        )
+
+    FALLEN_POPUP_GLOW(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        0.9
+    )
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        { 0.070, 0.074, 0.087, 1 }
+    )
+
+    local panel_hot =
+        hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            panel_h
+        )
+
+    for i, option in ipairs(FALLEN_ANTIAIM_MODES) do
+        local iy =
+            y
+            + (i - 1) * item_h
+
+        local reveal =
+            clamp(
+                (visible_h - (i - 1) * item_h)
+                / item_h,
+                0,
+                1
+            )
+
+        if reveal > 0.12 then
+            local item_hot =
+                reveal > 0.92
+                and hover(
+                    mx,
+                    my,
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4
+                )
+
+            if item_hot then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4,
+                    5,
+                    { 0.105, 0.111, 0.132, 1 }
+                )
+            end
+
+            if option == S.misc_antiaim_mode then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    3,
+                    item_h - 4,
+                    1,
+                    C.accent
+                )
+            end
+
+            text(
+                x + 12,
+                iy + 8,
+                option,
+                FALLEN_HOVER_TEXT(
+                    "antiaim_mode_option:"
+                    .. tostring(option),
+                    item_hot,
+                    option == S.misc_antiaim_mode
+                        and C.text
+                        or C.text_dim
+                )
+            )
+
+            if clicked
+                and item_hot
+                and A.misc_antiaim_mode_dropdown_open
+            then
+                S.misc_antiaim_mode = option
+                A.misc_antiaim_mode_dropdown_open = false
+
+                if numeric_stop then
+                    numeric_stop(true)
+                end
+
+                return true, true
+            end
+        end
+    end
+
+    return panel_hot, false
+end
+
 function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
     mx,
     my,
@@ -34193,6 +34396,8 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
     if raw <= 0.001
         and not A.misc_antiaim_settings_open
     then
+        A.misc_antiaim_mode_dropdown_open = false
+        A.misc_antiaim_mode_dropdown_anim = 0
         return false
     end
 
@@ -34208,9 +34413,17 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
         and ease_out_cubic(raw)
         or ease_in_out_cubic(raw)
 
+    local mode =
+        tostring(
+            S.misc_antiaim_mode
+            or "Spin"
+        )
+
     local jitter =
-        tostring(S.misc_antiaim_mode or "Spin")
-        == "Jitter"
+        mode == "Jitter"
+
+    local backwards_down =
+        mode == "Backwards Down"
 
     local pw = 300
     local ph = jitter and 206 or 124
@@ -34251,6 +34464,14 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
         clicked
         and interactive
 
+    local dropdown_active =
+        A.misc_antiaim_mode_dropdown_open == true
+        or (A.misc_antiaim_mode_dropdown_anim or 0) > 0.02
+
+    local controls_clicked =
+        ui_clicked
+        and not dropdown_active
+
     FALLEN_POPUP_GLOW(
         px,
         py,
@@ -34287,18 +34508,92 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
         )
     end
 
+    local mode_field_x = nil
+    local mode_field_y = nil
+    local mode_field_w = nil
+    local mode_field_h = 25
+    local mode_field_hot = false
+
     if raw > 0.42 then
-        dropdown_row(
+        local row_x = px + 8
+        local row_y = py + 35
+        local row_w = pw - 16
+
+        row_hover(
             mx,
             my,
-            ui_clicked,
-            px + 8,
-            py + 35,
-            pw - 16,
-            "Mode",
-            "misc_antiaim_mode",
-            { "Spin", "Jitter" }
+            row_x,
+            row_y,
+            row_w,
+            41
         )
+
+        text(
+            row_x + 13,
+            row_y + 14,
+            "Mode",
+            C.text
+        )
+
+        mode_field_w = 142
+        mode_field_x =
+            row_x
+            + row_w
+            - mode_field_w
+            - 4
+
+        mode_field_y =
+            row_y + 8
+
+        mode_field_hot =
+            hover(
+                mx,
+                my,
+                mode_field_x,
+                mode_field_y,
+                mode_field_w,
+                mode_field_h
+            )
+
+        rounded_fill(
+            mode_field_x,
+            mode_field_y,
+            mode_field_w,
+            mode_field_h,
+            6,
+            mode_field_hot
+                and { 0.110, 0.115, 0.135, 1 }
+                or C.toggle_off
+        )
+
+        text(
+            mode_field_x + 10,
+            mode_field_y + 7,
+            mode,
+            C.text
+        )
+
+        text(
+            mode_field_x + mode_field_w - 18,
+            mode_field_y + 7,
+            A.misc_antiaim_mode_dropdown_open
+                and "^"
+                or "v",
+            C.text_dim
+        )
+
+        if ui_clicked
+            and mode_field_hot
+        then
+            A.misc_antiaim_mode_dropdown_open =
+                not A.misc_antiaim_mode_dropdown_open
+
+            if A.misc_antiaim_mode_dropdown_open
+                and numeric_stop
+            then
+                numeric_stop(true)
+            end
+        end
 
         if shell_h > 82 then
             line(
@@ -34312,20 +34607,29 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
         end
 
         if shell_h > 116 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 76,
-                pw - 16,
-                "Yaw Speed",
-                "misc_antiaim_speed",
-                0,
-                100,
-                "int"
-            )
+            if backwards_down then
+                text(
+                    px + 21,
+                    py + 91,
+                    "Hold Mouse1: normal pose",
+                    C.text_dim
+                )
+            else
+                slider_row(
+                    mx,
+                    my,
+                    controls_clicked,
+                    lmb,
+                    px + 8,
+                    py + 76,
+                    pw - 16,
+                    "Yaw Speed",
+                    "misc_antiaim_speed",
+                    0,
+                    100,
+                    "int"
+                )
+            end
         end
 
         if jitter then
@@ -34344,7 +34648,7 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
                 slider_row(
                     mx,
                     my,
-                    ui_clicked,
+                    controls_clicked,
                     lmb,
                     px + 8,
                     py + 117,
@@ -34372,7 +34676,7 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
                 slider_row(
                     mx,
                     my,
-                    ui_clicked,
+                    controls_clicked,
                     lmb,
                     px + 8,
                     py + 158,
@@ -34385,6 +34689,23 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
                 )
             end
         end
+    end
+
+    -- Draw the method list last so it cleanly unfolds above sliders beneath it.
+    local dropdown_hot = false
+    local option_selected = false
+
+    if mode_field_x ~= nil then
+        dropdown_hot,
+        option_selected =
+            FALLEN_DRAW_ANTIAIM_MODE_DROPDOWN(
+                mx,
+                my,
+                ui_clicked,
+                mode_field_x,
+                mode_field_y + mode_field_h + 5,
+                mode_field_w
+            )
     end
 
     local popup_hot =
@@ -34409,10 +34730,25 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
 
     if interactive
         and clicked
+        and A.misc_antiaim_mode_dropdown_open
+        and not mode_field_hot
+        and not dropdown_hot
+        and not option_selected
+    then
+        A.misc_antiaim_mode_dropdown_open = false
+        MENU_RENDER_ALPHA = parent_alpha
+        return true
+    end
+
+    if interactive
+        and clicked
         and not popup_hot
         and not dots_hot
+        and not dropdown_hot
     then
         A.misc_antiaim_settings_open = false
+        A.misc_antiaim_mode_dropdown_open = false
+
         if numeric_stop then
             numeric_stop(true)
         end
@@ -34421,7 +34757,9 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
     MENU_RENDER_ALPHA =
         parent_alpha
 
-    return popup_hot
+    return
+        popup_hot
+        or dropdown_hot
 end
 
 -- =========================================================
@@ -34458,6 +34796,10 @@ hooks.on_render(function()
 
             A.world_settings_open = false
             A.world_settings_anim = 0
+            A.misc_antiaim_settings_open = false
+            A.misc_antiaim_settings_anim = 0
+            A.misc_antiaim_mode_dropdown_open = false
+            A.misc_antiaim_mode_dropdown_anim = 0
             A.world_color_picker_open = false
             A.world_color_picker_drag = nil
             A.base_box_settings_open = false
@@ -40969,6 +41311,8 @@ end)
 -- Custom Anti Aim runtime
 -- Spin/Jitter behavior from the supplied reference, implemented only with
 -- the documented custom rbx instance API.
+-- Backwards Down faces opposite the camera and pitches the character down;
+-- holding Mouse1 temporarily returns to a normal camera-facing pose.
 -- =========================================================
 
 local function FALLEN_ANTIAIM_ATAN2(y, x)
@@ -41031,6 +41375,74 @@ local function FALLEN_ANTIAIM_YAW_MATRIX(deg)
         0, 1, 0,
         s, 0, c,
     }
+end
+
+local function FALLEN_ANTIAIM_YAW_PITCH_MATRIX(
+    yaw_deg,
+    pitch_deg
+)
+    local y =
+        math.rad(
+            tonumber(yaw_deg)
+            or 0
+        )
+
+    local p =
+        math.rad(
+            tonumber(pitch_deg)
+            or 0
+        )
+
+    local cy = math.cos(y)
+    local sy = math.sin(y)
+    local cp = math.cos(p)
+    local sp = math.sin(p)
+
+    -- Ry * Rx, matching the matrix layout documented by rbx:set_rotation().
+    return {
+        cy,      sy * sp,  -sy * cp,
+        0,       cp,        sp,
+        sy,     -cy * sp,   cy * cp,
+    }
+end
+
+local function FALLEN_ANTIAIM_CAMERA_YAW()
+    if not rbx
+        or type(rbx.camera) ~= "function"
+    then
+        return nil
+    end
+
+    local cam = nil
+
+    local ok_cam, out =
+        pcall(
+            rbx.camera
+        )
+
+    if ok_cam then
+        cam = out
+    end
+
+    if not cam then
+        return nil
+    end
+
+    local rot = nil
+
+    pcall(function()
+        rot =
+            cam:camera_rotation()
+    end)
+
+    if type(rot) ~= "table" then
+        return nil
+    end
+
+    return
+        FALLEN_ANTIAIM_YAW_FROM_MATRIX(
+            rot
+        )
 end
 
 function FALLEN_ANTIAIM_TICK()
@@ -41130,6 +41542,67 @@ function FALLEN_ANTIAIM_TICK()
             S.misc_antiaim_mode
             or "Spin"
         )
+
+    -- Static backwards/down pose. It is always relative to the current camera,
+    -- so moving the view keeps the character exactly 180 degrees behind it.
+    if mode == "Backwards Down" then
+        local camera_yaw =
+            FALLEN_ANTIAIM_CAMERA_YAW()
+
+        local mouse1 =
+            key_down(VK_LBUTTON)
+
+        if mouse1 then
+            -- While shooting/holding Mouse1, return to a normal upright pose.
+            if camera_yaw ~= nil then
+                pcall(function()
+                    hrp:set_rotation(
+                        FALLEN_ANTIAIM_YAW_MATRIX(
+                            camera_yaw
+                        )
+                    )
+                end)
+            elseif type(A.misc_antiaim_saved_rotation) == "table" then
+                pcall(function()
+                    hrp:set_rotation(
+                        A.misc_antiaim_saved_rotation
+                    )
+                end)
+            end
+
+            return
+        end
+
+        local base_yaw =
+            camera_yaw
+
+        if base_yaw == nil then
+            base_yaw =
+                FALLEN_ANTIAIM_YAW_FROM_MATRIX(
+                    A.misc_antiaim_saved_rotation
+                )
+        end
+
+        local backwards_yaw =
+            (tonumber(base_yaw) or 0)
+            + 180
+
+        if backwards_yaw > 180 then
+            backwards_yaw =
+                backwards_yaw - 360
+        end
+
+        pcall(function()
+            hrp:set_rotation(
+                FALLEN_ANTIAIM_YAW_PITCH_MATRIX(
+                    backwards_yaw,
+                    60
+                )
+            )
+        end)
+
+        return
+    end
 
     local speed =
         clamp(
