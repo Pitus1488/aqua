@@ -124,8 +124,9 @@ local defaults = {
     misc_antiaim_yaw_min = -90,
     misc_antiaim_yaw_max = 90,
     -- Custom manipulation spoof. While Mouse1 is held the HRP is moved
-    -- +5 studs for the server/physics state while the local camera is pinned.
+    -- upward by the selected distance while the local camera stays pinned.
     misc_manipulation_enabled = false,
+    misc_manipulation_distance = 5.0,
 
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
@@ -602,6 +603,9 @@ local A = {
     misc_manipulation_camera_anchor = nil,
     misc_manipulation_can_hit = false,
     misc_manipulation_target_name = nil,
+    misc_manipulation_target_addr = nil,
+    misc_manipulation_geo_center_x = nil,
+    misc_manipulation_geo_center_z = nil,
     misc_manipulation_last_error = 0,
 
     -- Shot on air runtime.
@@ -36226,7 +36230,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            183,
+            224,
             11
         )
 
@@ -36355,6 +36359,21 @@ hooks.on_render(function()
             "Manipulation",
             "misc_manipulation_enabled",
             false
+        )
+
+        slider_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            lmb,
+            page_x,
+            page_y + 188,
+            page_w,
+            "Distance",
+            "misc_manipulation_distance",
+            5,
+            10,
+            "float"
         )
 
         local boulder_gap =
@@ -41685,7 +41704,6 @@ end)
 -- which keeps the local view visually stable while the HRP is moved/flipped.
 -- =========================================================
 
-local FALLEN_MANIPULATION_HEIGHT = 5.0
 local FALLEN_MANIPULATION_FLIP_DEG = 90.0
 
 local function FALLEN_MANIPULATION_MATRIX_MUL(a, b)
@@ -41758,15 +41776,16 @@ end
 local function FALLEN_MANIPULATION_CURSOR_POS()
     local p = nil
 
-    if type(mouse_pos) == "function" then
+    -- Manipulation is tied to the actual game crosshair, not the menu mouse.
+    if type(crosshair_pos) == "function" then
         pcall(function()
-            p = mouse_pos()
+            p = crosshair_pos()
         end)
     end
 
-    if not p and type(crosshair_pos) == "function" then
+    if not p and type(mouse_pos) == "function" then
         pcall(function()
-            p = crosshair_pos()
+            p = mouse_pos()
         end)
     end
 
@@ -41796,48 +41815,104 @@ local function FALLEN_MANIPULATION_TARGET()
         return nil, nil
     end
 
-    local best = nil
-    local best_pos = nil
-    local best_d2 = 500 * 500
     local list = nil
+    local me = nil
 
     pcall(function()
         list = players.get_all()
+    end)
+
+    pcall(function()
+        if type(players.get_local) == "function" then
+            me = players.get_local()
+        end
     end)
 
     if type(list) ~= "table" then
         return nil, nil
     end
 
-    for _, p in ipairs(list) do
-        if p
-            and p.is_self ~= true
-            and p.is_teammate ~= true
-            and (tonumber(p.health) or 0) > 0
-            and p.is_knocked ~= true
-        then
-            local pos = p.head_pos or p.position
-            if pos then
-                local scr = nil
-                pcall(function()
-                    if rbx and type(rbx.world_to_screen) == "function" then
-                        scr = rbx.world_to_screen(pos)
-                    elseif aim and type(aim.world_to_screen) == "function" then
-                        scr = aim.world_to_screen(pos)
-                    end
-                end)
+    local my_team_addr =
+        type(me) == "table"
+        and tonumber(me.team_addr)
+        or 0
 
-                if scr and scr.visible ~= false then
-                    local sx = tonumber(scr.X or scr.x or scr[1])
-                    local sy = tonumber(scr.Y or scr.y or scr[2])
-                    if sx and sy then
-                        local dx = sx - (tonumber(cursor.X or cursor.x or cursor[1]) or 0)
-                        local dy = sy - (tonumber(cursor.Y or cursor.y or cursor[2]) or 0)
-                        local d2 = dx*dx + dy*dy
-                        if d2 < best_d2 then
-                            best_d2 = d2
-                            best = p
-                            best_pos = pos
+    local my_team_name =
+        type(me) == "table"
+        and tostring(me.team_name or "")
+        or ""
+
+    local cx =
+        tonumber(cursor.X or cursor.x or cursor[1])
+        or 0
+
+    local cy =
+        tonumber(cursor.Y or cursor.y or cursor[2])
+        or 0
+
+    local best = nil
+    local best_pos = nil
+    local best_d2 = 600 * 600
+
+    for _, p in ipairs(list) do
+        if p and p.is_self ~= true then
+            local same_team =
+                p.is_teammate == true
+
+            if not same_team
+                and my_team_addr ~= 0
+                and tonumber(p.team_addr or 0) ~= 0
+                and tonumber(p.team_addr or 0) == my_team_addr
+            then
+                same_team = true
+            end
+
+            if not same_team
+                and my_team_name ~= ""
+                and tostring(p.team_name or "") ~= ""
+                and tostring(p.team_name or "") == my_team_name
+            then
+                same_team = true
+            end
+
+            if not same_team
+                and (tonumber(p.health) or 0) > 0
+                and p.is_knocked ~= true
+            then
+                local pos = p.head_pos or p.position
+
+                if pos then
+                    local scr = nil
+
+                    pcall(function()
+                        if rbx
+                            and type(rbx.world_to_screen) == "function"
+                        then
+                            scr = rbx.world_to_screen(pos)
+                        elseif aim
+                            and type(aim.world_to_screen) == "function"
+                        then
+                            scr = aim.world_to_screen(pos)
+                        end
+                    end)
+
+                    if scr and scr.visible ~= false then
+                        local sx =
+                            tonumber(scr.X or scr.x or scr[1])
+
+                        local sy =
+                            tonumber(scr.Y or scr.y or scr[2])
+
+                        if sx and sy then
+                            local dx = sx - cx
+                            local dy = sy - cy
+                            local d2 = dx * dx + dy * dy
+
+                            if d2 < best_d2 then
+                                best_d2 = d2
+                                best = p
+                                best_pos = pos
+                            end
                         end
                     end
                 end
@@ -41853,15 +41928,35 @@ local function FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, center)
         return false
     end
 
-    -- Reuse the script's custom oriented-box world collision cache. Build it
-    -- on demand even when the Rain visual is disabled.
-    if A.world_rain_geo == nil and center then
-        pcall(function()
-            FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(
-                center,
-                300
-            )
-        end)
+    -- Reuse the script's custom oriented-box collision cache, but rebuild it
+    -- when the local player has moved far enough that the old grid is stale.
+    if center then
+        local rebuild = A.world_rain_geo == nil
+
+        if type(A.world_rain_geo) == "table" then
+            local gx = tonumber(A.world_rain_geo.cx)
+            local gz = tonumber(A.world_rain_geo.cz)
+
+            if gx and gz then
+                local dx = center.X - gx
+                local dz = center.Z - gz
+
+                if (dx * dx + dz * dz) > (220 * 220) then
+                    rebuild = true
+                end
+            end
+        end
+
+        if rebuild then
+            A.world_rain_geo = nil
+
+            pcall(function()
+                FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(
+                    center,
+                    300
+                )
+            end)
+        end
     end
 
     if type(A.world_rain_geo) ~= "table" then
@@ -41871,16 +41966,16 @@ local function FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, center)
     local dx = target_pos.X - origin.X
     local dy = target_pos.Y - origin.Y
     local dz = target_pos.Z - origin.Z
-    local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+    local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
 
     if dist <= 0.25 then
         return true
     end
 
-    dx, dy, dz = dx/dist, dy/dist, dz/dist
+    dx, dy, dz = dx / dist, dy / dist, dz / dist
 
-    -- Stop before the target body so only intervening map geometry counts.
-    local check_dist = math.max(0, dist - 2.6)
+    -- Stop before the target body so its own collision does not count as map.
+    local check_dist = math.max(0, dist - 3.0)
     local hit = nil
 
     pcall(function()
@@ -41899,9 +41994,7 @@ local function FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, center)
 end
 
 local function FALLEN_MANIPULATION_DRAW_INDICATOR()
-    if S.misc_manipulation_enabled ~= true
-        or type(DrawTextWithOutline) ~= "function"
-    then
+    if S.misc_manipulation_enabled ~= true then
         return
     end
 
@@ -41910,28 +42003,107 @@ local function FALLEN_MANIPULATION_DRAW_INDICATOR()
         return
     end
 
-    local can_hit = A.misc_manipulation_can_hit == true
-    local has_target = A.misc_manipulation_target_name ~= nil
-    local label = "MANIPULATION: NO TARGET"
-    local r, g, b = 0.72, 0.72, 0.76
+    local can_hit =
+        A.misc_manipulation_can_hit == true
+
+    local has_target =
+        A.misc_manipulation_target_name ~= nil
+
+    local distance =
+        clamp(
+            tonumber(S.misc_manipulation_distance)
+            or 5,
+            5,
+            10
+        )
+
+    local label =
+        string.format(
+            "MANIP %.1f | NO TARGET",
+            distance
+        )
+
+    local r, g, b =
+        0.72,
+        0.72,
+        0.76
 
     if has_target then
         if can_hit then
-            label = "MANIPULATION: CAN HIT"
-            r, g, b = 0.35, 1.00, 0.48
+            label =
+                string.format(
+                    "MANIP %.1f | CAN HIT",
+                    distance
+                )
+
+            r, g, b =
+                0.35,
+                1.00,
+                0.48
         else
-            label = "MANIPULATION: BLOCKED"
-            r, g, b = 1.00, 0.35, 0.35
+            label =
+                string.format(
+                    "MANIP %.1f | BLOCKED",
+                    distance
+                )
+
+            r, g, b =
+                1.00,
+                0.35,
+                0.35
         end
     end
 
-    DrawTextWithOutline(
-        (tonumber(center.X or center.x or center[1]) or 0),
-        (tonumber(center.Y or center.y or center[2]) or 0) + 58,
-        label,
-        r, g, b, 1,
-        0, 0, 0, 0.95
-    )
+    local cx =
+        tonumber(
+            center.X
+            or center.x
+            or center[1]
+        )
+        or 0
+
+    local cy =
+        tonumber(
+            center.Y
+            or center.y
+            or center[2]
+        )
+        or 0
+
+    -- Keep it visibly ABOVE the crosshair, independent of LMB state.
+    local tx =
+        cx
+        - (#label * 3.35)
+
+    local ty =
+        cy
+        - 54
+
+    if type(DrawTextWithOutline) == "function" then
+        DrawTextWithOutline(
+            tx,
+            ty,
+            label,
+            r,
+            g,
+            b,
+            1,
+            0,
+            0,
+            0,
+            1
+        )
+    elseif type(DrawText) == "function" then
+        DrawText(
+            tx,
+            ty,
+            label,
+            r,
+            g,
+            b,
+            1
+        )
+    end
 end
 
 function FALLEN_MANIPULATION_TICK()
@@ -41962,6 +42134,7 @@ function FALLEN_MANIPULATION_TICK()
         A.misc_manipulation_camera_anchor = nil
         A.misc_manipulation_can_hit = false
         A.misc_manipulation_target_name = nil
+        A.misc_manipulation_target_addr = nil
         return
     end
 
@@ -41982,15 +42155,35 @@ function FALLEN_MANIPULATION_TICK()
     end
 
     local target, target_pos = FALLEN_MANIPULATION_TARGET()
+
+    local manip_distance =
+        clamp(
+            tonumber(S.misc_manipulation_distance)
+            or 5,
+            5,
+            10
+        )
+
     local origin_base = head_pos or hrp_pos
     local prospective_origin = Vector3(
         origin_base.X,
-        origin_base.Y + FALLEN_MANIPULATION_HEIGHT,
+        origin_base.Y + manip_distance,
         origin_base.Z
     )
 
     A.misc_manipulation_target_name =
-        target and tostring(target.name or target.display_name or "target") or nil
+        target
+        and tostring(
+            target.name
+            or target.display_name
+            or "target"
+        )
+        or nil
+
+    A.misc_manipulation_target_addr =
+        target
+        and tonumber(target.address or target.player_addr or 0)
+        or nil
 
     A.misc_manipulation_can_hit =
         target_pos ~= nil
@@ -42010,9 +42203,13 @@ function FALLEN_MANIPULATION_TICK()
     A.misc_manipulation_saved_rot = hrp_rot
     A.misc_manipulation_saved_vel = hrp_vel
 
-    if cam and A.misc_manipulation_camera_anchor == nil then
+    -- Capture the normal camera position AFTER the previous spoof has been
+    -- restored. Re-capture every frame so the view can still follow normal
+    -- player/camera movement while the spoof itself stays invisible locally.
+    if cam then
         pcall(function()
-            A.misc_manipulation_camera_anchor = cam:camera_pos()
+            A.misc_manipulation_camera_anchor =
+                cam:camera_pos()
         end)
     end
 
@@ -42028,7 +42225,7 @@ function FALLEN_MANIPULATION_TICK()
         hrp:set_position(
             Vector3(
                 hrp_pos.X,
-                hrp_pos.Y + FALLEN_MANIPULATION_HEIGHT,
+                hrp_pos.Y + manip_distance,
                 hrp_pos.Z
             )
         )
