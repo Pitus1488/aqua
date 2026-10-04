@@ -115,6 +115,7 @@ local defaults = {
     misc_fly_enabled = false,
     misc_upside_down_enabled = false,
     misc_shot_on_air_enabled = false,
+    misc_fps_enabled = false,
 
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
@@ -148,6 +149,13 @@ local defaults = {
     -- Visual hit effect: fires only when the locked Aimbot target loses HP.
     hit_effect_enabled = false,
     hit_effect_style = "Hit 1",
+    damage_numbers_enabled = false,
+    damage_numbers_size = 14,
+    damage_numbers_speed = 100,
+    damage_numbers_h = 0.625,
+    damage_numbers_s = 0.55,
+    damage_numbers_v = 0.92,
+    damage_numbers_alpha = 100,
     -- Armor ESP.
     armor_esp_enabled = false,
     armor_esp_mode = "Normal",
@@ -185,6 +193,12 @@ local defaults = {
     menu_gradient_b_v = 0.85,
     menu_gradient_b_alpha = 100,
 
+    -- Menu accent/style color. Changes small UI accents only; never the shell/background.
+    menu_style_h = 0.625,
+    menu_style_s = 0.55,
+    menu_style_v = 0.76,
+    menu_style_alpha = 100,
+
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
     menu_glow_strength = 100,
 
@@ -193,6 +207,13 @@ local defaults = {
     menu_rain = false,
     menu_lightning = false,
     menu_dark_background = false,
+
+    -- Hotkeys overlay.
+    keybinds_list_enabled = false,
+
+    -- Normalized screen position so drag placement scales with resolution.
+    hotkeys_pos_x = 0.008,
+    hotkeys_pos_y = 0.042,
 
     -- Custom profile avatar editor.
     avatar_display_size = 38,
@@ -227,6 +248,15 @@ local defaults = {
     world_base_esp_enabled = false,
     world_dropped_esp_enabled = false,
     world_body_bag_esp_enabled = false,
+    world_grenade_esp_enabled = false,
+
+    -- Visual Grenade: 3-second timer ring + flight trail.
+    world_color_grenade_h = 0.0200,
+    world_color_grenade_s = 0.8500,
+    world_color_grenade_v = 1.0000,
+    world_color_grenade_alpha = 100,
+    world_grenade_trail_enabled = true,
+    world_grenade_trail_thickness = 2.4,
 
     world_stone_node = false,
     world_metal_node = false,
@@ -494,6 +524,11 @@ local A = {
     silent_fov_settings_anim = 0,
     silent_fov_settings_last_t = nil,
 
+    -- Damage Numbers three-dots settings popup.
+    damage_numbers_settings_open = false,
+    damage_numbers_settings_anim = 0,
+    damage_numbers_settings_last_t = nil,
+
     -- Body-part dropdown inside Aimbot settings.
     aim_part_dropdown_open = false,
     aim_part_dropdown_anim = 0,
@@ -529,6 +564,11 @@ local A = {
 
     secret_desync_module = nil,
     secret_desync_last_state = nil,
+
+    -- Misc FPS FastFlags runtime.
+    misc_fps_last_state = false,
+    misc_fps_original = {},
+    misc_fps_applied = {},
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -676,6 +716,18 @@ local A = {
     menu_settings_open = false,
     menu_settings_anim = 0,
     menu_settings_last_t = nil,
+
+    -- Neverlose-style active keybind window.
+    keybinds_panel_anim = 0,
+    keybinds_panel_last_t = nil,
+    keybinds_item_anim = {},
+    keybinds_item_last_t = {},
+
+    -- Hotkeys panel dragging.
+    keybinds_panel_dragging = false,
+    keybinds_panel_drag_off_x = 0,
+    keybinds_panel_drag_off_y = 0,
+    keybinds_panel_prev_lmb = false,
 
     gear_hover_anim = 0,
     gear_hover_last_t = nil,
@@ -3005,6 +3057,222 @@ function FALLEN_ICON_MISC(x, y, c)
     circle_fill(x + 11, y + 11, 1.15, c)
 end
 
+-- Custom large brand image replacing the visible "Fallen-lua" title.
+_G.FALLEN_BRAND_IMAGE_PAGE_URL =
+    "https://fotovssylku.ru/i/6e2b034a-8d40-4fc0-b6bf-90909e3024ea-%281%29.Q8CyS"
+
+_G.FALLEN_BRAND_IMAGE_SOURCE =
+    _G.FALLEN_BRAND_IMAGE_SOURCE
+    or nil
+
+_G.FALLEN_BRAND_IMAGE_URL =
+    _G.FALLEN_BRAND_IMAGE_URL
+    or nil
+
+_G.FALLEN_BRAND_IMAGE_HANDLE =
+    _G.FALLEN_BRAND_IMAGE_HANDLE
+    or nil
+
+function FALLEN_BRAND_IMAGE_GET()
+    local page_url =
+        _G.FALLEN_BRAND_IMAGE_PAGE_URL
+
+    if _G.FALLEN_BRAND_IMAGE_SOURCE ~= page_url then
+        _G.FALLEN_BRAND_IMAGE_SOURCE = page_url
+        _G.FALLEN_BRAND_IMAGE_URL = nil
+        _G.FALLEN_BRAND_IMAGE_HANDLE = nil
+    end
+
+    if not _G.FALLEN_BRAND_IMAGE_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_BRAND_IMAGE_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_BRAND_IMAGE_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_BRAND_IMAGE_HANDLE =
+                LoadImage(
+                    _G.FALLEN_BRAND_IMAGE_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_BRAND_IMAGE_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
+-- Custom World nested-tab image icon.
+_G.FALLEN_WORLD_TAB_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-30-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-19-38-32-%281%29.Q85L8"
+
+_G.FALLEN_WORLD_TAB_ICON_SOURCE =
+    _G.FALLEN_WORLD_TAB_ICON_SOURCE
+    or nil
+
+_G.FALLEN_WORLD_TAB_ICON_URL =
+    _G.FALLEN_WORLD_TAB_ICON_URL
+    or nil
+
+_G.FALLEN_WORLD_TAB_ICON_HANDLE =
+    _G.FALLEN_WORLD_TAB_ICON_HANDLE
+    or nil
+
+function FALLEN_WORLD_TAB_ICON_GET()
+    local page_url =
+        _G.FALLEN_WORLD_TAB_ICON_PAGE_URL
+
+    if _G.FALLEN_WORLD_TAB_ICON_SOURCE ~= page_url then
+        _G.FALLEN_WORLD_TAB_ICON_SOURCE = page_url
+        _G.FALLEN_WORLD_TAB_ICON_URL = nil
+        _G.FALLEN_WORLD_TAB_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_WORLD_TAB_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_WORLD_TAB_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_WORLD_TAB_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_WORLD_TAB_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_WORLD_TAB_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_WORLD_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
+-- Custom Armor nested-tab image icon.
+_G.FALLEN_ARMOR_TAB_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-30-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-19-44-16-%281%29.Q8McN"
+
+_G.FALLEN_ARMOR_TAB_ICON_SOURCE =
+    _G.FALLEN_ARMOR_TAB_ICON_SOURCE
+    or nil
+
+_G.FALLEN_ARMOR_TAB_ICON_URL =
+    _G.FALLEN_ARMOR_TAB_ICON_URL
+    or nil
+
+_G.FALLEN_ARMOR_TAB_ICON_HANDLE =
+    _G.FALLEN_ARMOR_TAB_ICON_HANDLE
+    or nil
+
+function FALLEN_ARMOR_TAB_ICON_GET()
+    local page_url =
+        _G.FALLEN_ARMOR_TAB_ICON_PAGE_URL
+
+    if _G.FALLEN_ARMOR_TAB_ICON_SOURCE ~= page_url then
+        _G.FALLEN_ARMOR_TAB_ICON_SOURCE = page_url
+        _G.FALLEN_ARMOR_TAB_ICON_URL = nil
+        _G.FALLEN_ARMOR_TAB_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_ARMOR_TAB_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_ARMOR_TAB_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_ARMOR_TAB_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_ARMOR_TAB_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_ARMOR_TAB_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_ARMOR_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
 -- Misc sidebar image icon.
 _G.FALLEN_MISC_TAB_ICON_PAGE_URL =
     "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-27-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-13-40-07-%281%29.fRH4W"
@@ -3126,6 +3394,78 @@ function FALLEN_SILENT_TAB_ICON_GET()
 
     local handle =
         _G.FALLEN_SILENT_TAB_ICON_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
+-- Hotkeys panel header image icon.
+_G.FALLEN_HOTKEYS_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%91%D0%B5%D0%BB%D1%8B%D0%B5-%D1%81%D0%BB%D0%B0%D0%B9%D0%B4%D0%B5%D1%80%D1%8B-%D0%BD%D0%B0-%D1%87%D1%91%D1%80%D0%BD%D0%BE%D0%BC-%D1%84%D0%BE%D0%BD%D0%B5-%281%29.QFS0k"
+
+_G.FALLEN_HOTKEYS_ICON_SOURCE =
+    _G.FALLEN_HOTKEYS_ICON_SOURCE
+    or nil
+
+_G.FALLEN_HOTKEYS_ICON_URL =
+    _G.FALLEN_HOTKEYS_ICON_URL
+    or nil
+
+_G.FALLEN_HOTKEYS_ICON_HANDLE =
+    _G.FALLEN_HOTKEYS_ICON_HANDLE
+    or nil
+
+function FALLEN_HOTKEYS_ICON_GET()
+    local page_url =
+        _G.FALLEN_HOTKEYS_ICON_PAGE_URL
+
+    if _G.FALLEN_HOTKEYS_ICON_SOURCE ~= page_url then
+        _G.FALLEN_HOTKEYS_ICON_SOURCE = page_url
+        _G.FALLEN_HOTKEYS_ICON_URL = nil
+        _G.FALLEN_HOTKEYS_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_HOTKEYS_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_HOTKEYS_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_HOTKEYS_ICON_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_HOTKEYS_ICON_HANDLE =
+                LoadImage(
+                    _G.FALLEN_HOTKEYS_ICON_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_HOTKEYS_ICON_HANDLE
 
     if not handle then
         return nil
@@ -3427,17 +3767,21 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
                 a
             )
 
-        -- Small gray hover lift while inactive.
-        if hot
-            and not active
-        then
-            ic =
-                mix_color(
-                    ic,
-                    C.text,
-                    0.10
-                )
-        end
+        -- Use the SAME hover progress as the tab text:
+        -- smoothly brighten toward white and grow a little.
+        local icon_hover =
+            clamp(
+                tonumber(col[5]) or 0,
+                0,
+                1
+            )
+
+        ic =
+            mix_color(
+                ic,
+                C.white,
+                icon_hover
+            )
 
         ic[4] = 1
 
@@ -3484,6 +3828,10 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
                     20
                     * transform_scale
                     * requested_icon_scale
+                    * (
+                        1
+                        + 0.12 * icon_hover
+                    )
                     + 0.5
                 )
 
@@ -3538,6 +3886,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.silent_part_dropdown_open = false
         A.fov_settings_open = false
         A.silent_fov_settings_open = false
+        A.damage_numbers_settings_open = false
         A.fov_picker_open = false
         A.world_settings_open = false
         A.world_color_picker_open = false
@@ -6341,10 +6690,39 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
         end
     end
 
-    -- IMPORTANT:
-    -- LMB outside does NOT close this popup.
-    -- Silent FOV settings are opened/closed only by repeated RMB
-    -- on the Silent FOV row.
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            shell_h
+        )
+
+    local dots_hot =
+        hover(
+            mx,
+            my,
+            dots_x,
+            dots_y,
+            27,
+            25
+        )
+
+    -- Same behavior as the Aimbot FOV popup:
+    -- repeated RMB on the FOV row toggles it,
+    -- while LMB on empty space outside closes it.
+    if interactive
+        and clicked
+        and not popup_hot
+        and not dots_hot
+        and not A.world_color_picker_open
+    then
+        A.silent_fov_settings_open =
+            false
+    end
+
     MENU_RENDER_ALPHA =
         parent_menu_alpha
 end
@@ -8548,6 +8926,9 @@ local function draw_world_settings_popup(
     local is_bodybag =
         group == "bodybag"
 
+    local is_grenade =
+        group == "grenade"
+
     local title = "World ESP settings"
     local pw = 328
     local ph = 174
@@ -8572,6 +8953,10 @@ local function draw_world_settings_popup(
         ph = 92
     elseif is_bodybag then
         title = "Body Bag ESP settings"
+        pw = 306
+        ph = 92
+    elseif is_grenade then
+        title = "Visual Grenade settings"
         pw = 306
         ph = 92
     end
@@ -9324,6 +9709,79 @@ local function draw_world_settings_popup(
         end
 
     -- =========================================================
+    -- VISUAL GRENADE settings.
+    -- One shared color controls both the flight trail and the timer outline.
+    -- =========================================================
+    elseif is_grenade then
+        local row_x = px + 8
+        local row_y = py + 39
+        local row_w = pw - 16
+
+        local color_prefix =
+            "world_color_grenade"
+
+        local swatch_s = 18
+        local swatch_x =
+            row_x + row_w - swatch_s - 12
+        local swatch_y =
+            row_y + 11
+
+        local swatch_hot =
+            hover(
+                mx, my,
+                swatch_x - 5, swatch_y - 5,
+                swatch_s + 10, swatch_s + 10
+            )
+
+        text(
+            row_x + 13,
+            row_y + 14,
+            "Trail / Ring Color",
+            FALLEN_HOVER_TEXT(
+                "world_grenade_color",
+                swatch_hot,
+                C.text
+            )
+        )
+
+        world_square_swatch(
+            swatch_x,
+            swatch_y,
+            swatch_s,
+            world_color_from_prefix(
+                color_prefix
+            )
+        )
+
+        if ui_clicked
+            and swatch_hot
+        then
+            FALLEN_COLOR_INPUT_STOP(true)
+
+            if A.world_color_picker_open
+                and A.world_color_picker_key == color_prefix
+            then
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+            else
+                A.world_color_picker_key = color_prefix
+                A.world_color_picker_open = true
+                A.world_color_picker_drag = nil
+                A.fov_picker_open = false
+                A.fov_picker_drag = nil
+            end
+
+            A.world_color_picker_anchor_x =
+                FALLEN_UI_X(swatch_x)
+            A.world_color_picker_anchor_y =
+                FALLEN_UI_Y(swatch_y)
+            A.world_color_picker_anchor_w =
+                FALLEN_UI_LEN(swatch_s)
+            A.world_color_picker_anchor_h =
+                FALLEN_UI_LEN(swatch_s)
+        end
+
+    -- =========================================================
     -- BASE item settings.
     -- =========================================================
     elseif is_bases
@@ -9469,7 +9927,7 @@ local function draw_visuals_page(
         cx,
         cy + 25,
         cw,
-        6 * 41 + 8,
+        7 * 41 + 8,
         11
     )
 
@@ -9489,6 +9947,7 @@ local function draw_visuals_page(
     local base_y = plant_y + 41
     local drops_y = base_y + 41
     local bodybag_y = drops_y + 41
+    local grenade_y = bodybag_y + 41
 
     local global_dots_x = cx + cw - 79
     local global_dots_y = global_y + 8
@@ -9502,6 +9961,8 @@ local function draw_visuals_page(
     local drops_dots_y = drops_y + 8
     local bodybag_dots_x = cx + cw - 79
     local bodybag_dots_y = bodybag_y + 8
+    local grenade_dots_x = cx + cw - 79
+    local grenade_dots_y = grenade_y + 8
 
     local global_dots_hot = hover(mx, my, global_dots_x, global_dots_y, 27, 25)
     local node_dots_hot = hover(mx, my, node_dots_x, node_dots_y, 27, 25)
@@ -9509,6 +9970,7 @@ local function draw_visuals_page(
     local base_dots_hot = hover(mx, my, base_dots_x, base_dots_y, 27, 25)
     local drops_dots_hot = hover(mx, my, drops_dots_x, drops_dots_y, 27, 25)
     local bodybag_dots_hot = hover(mx, my, bodybag_dots_x, bodybag_dots_y, 27, 25)
+    local grenade_dots_hot = hover(mx, my, grenade_dots_x, grenade_dots_y, 27, 25)
 
     -- GLOBAL MASTER.
     local old_global = S.world_esp_enabled == true
@@ -9555,6 +10017,29 @@ local function draw_visuals_page(
     toggle_row(mx, my, base_clicked and not bodybag_dots_hot, cx, bodybag_y, cw, "Body Bag ESP", "world_body_bag_esp_enabled", true)
     if old_bodybag ~= (S.world_body_bag_esp_enabled == true) then
         _G.FALLEN_WORLD_FORCE_RESCAN = true
+    end
+    line(cx + 12, bodybag_y + 40, cx + cw - 12, bodybag_y + 40, C.divider, 1)
+
+    -- VISUAL GRENADE.
+    -- Independent from the World ESP master: watches Workspace/VFX directly.
+    local old_grenade = S.world_grenade_esp_enabled == true
+    toggle_row(
+        mx,
+        my,
+        base_clicked and not grenade_dots_hot,
+        cx,
+        grenade_y,
+        cw,
+        "Visual Grenade",
+        "world_grenade_esp_enabled",
+        true
+    )
+
+    if old_grenade ~= (S.world_grenade_esp_enabled == true) then
+        -- WORLD_ESP is declared later in the script, so communicate through
+        -- globals here and let the runtime reset its private cache safely.
+        _G.FALLEN_GRENADE_FORCE_RESCAN = true
+        _G.FALLEN_GRENADE_RESET_TRACKS = true
     end
 
     -- Aimbot-style RMB ellipsis popups. Only one World popup at a time.
@@ -9641,6 +10126,20 @@ local function draw_visuals_page(
         A.fov_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
         if numeric_stop then numeric_stop(true) end
+
+    elseif rmb_clicked and grenade_dots_hot then
+        if A.world_settings_open and A.world_settings_group == "grenade" then
+            A.world_settings_open = false
+        else
+            A.world_settings_group = "grenade"
+            A.world_settings_open = true
+        end
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+        A.fov_picker_open = false
+        A.fov_picker_drag = nil
+        FALLEN_COLOR_INPUT_STOP(true)
+        if numeric_stop then numeric_stop(true) end
     end
 
     local popup_dots_x = global_dots_x
@@ -9661,6 +10160,9 @@ local function draw_visuals_page(
     elseif A.world_settings_group == "bodybag" then
         popup_dots_x = bodybag_dots_x
         popup_dots_y = bodybag_dots_y
+    elseif A.world_settings_group == "grenade" then
+        popup_dots_x = grenade_dots_x
+        popup_dots_y = grenade_dots_y
     end
 
     draw_world_settings_popup(
@@ -10633,6 +11135,9 @@ local function fap_find_target(cross, cam)
             600
         )
 
+    local use_fov =
+        S.aim_fov_enabled == true
+
     local best = nil
     local best_sd = math.huge
 
@@ -10694,9 +11199,9 @@ local function fap_find_target(cross, cam)
                     )
 
                 if (
-                    S.aim_fov_enabled ~= true
-                    or sd <= fov
-                )
+                        not use_fov
+                        or sd <= fov
+                    )
                     and sd < best_sd
                 then
                     best_sd = sd
@@ -10715,6 +11220,222 @@ local function fap_find_target(cross, cam)
 
     return best
 end
+
+
+function FALLEN_CUSTOM_AIMBOT_TICK()
+    -- This is OUR custom Aimbot runtime.
+    -- Never enable or depend on cheat.aimbot here.
+    if S.aim_enabled ~= true then
+        fap_clear_lock()
+        return
+    end
+
+    -- Hold-bind behavior from the original custom Aimbot.
+    if not fap_hold_down() then
+        fap_clear_lock()
+        return
+    end
+
+    if not aim
+        or type(aim.world_to_screen) ~= "function"
+        or type(aim.get_camera_position) ~= "function"
+    then
+        fap_clear_lock()
+        return
+    end
+
+    -- Auto Prediction actually updates weapon-specific speed/gravity.
+    -- When the toggle is OFF, fap_refresh_weapon() resets to the
+    -- neutral/default prediction values and fap_predict() returns raw pos.
+    fap_refresh_weapon()
+
+    local cam = nil
+
+    pcall(function()
+        cam =
+            aim.get_camera_position()
+    end)
+
+    if not cam then
+        fap_clear_lock()
+        return
+    end
+
+    -- Use the exact same center as the visible custom FOV renderer.
+    local mx, my =
+        FALLEN_CUSTOM_FOV_CENTER()
+
+    mx =
+        tonumber(mx)
+
+    my =
+        tonumber(my)
+
+    if not mx
+        or not my
+    then
+        fap_clear_lock()
+        return
+    end
+
+    local cross = {
+        X = mx,
+        Y = my,
+    }
+
+    local target =
+        fap_find_target(
+            cross,
+            cam
+        )
+
+    if not target then
+        fap_clear_lock()
+        return
+    end
+
+    local base_pos =
+        fap_target_pos(
+            target
+        )
+
+    if not base_pos then
+        fap_clear_lock()
+        return
+    end
+
+    local target_pos =
+        fap_predict(
+            target,
+            base_pos,
+            cam
+        )
+        or base_pos
+
+    if not target_pos then
+        fap_clear_lock()
+        return
+    end
+
+    -- Make sure the final predicted point is on screen before snapping.
+    local screen = nil
+
+    pcall(function()
+        screen =
+            aim.world_to_screen(
+                target_pos
+            )
+    end)
+
+    if not screen
+        or screen.visible == false
+    then
+        fap_clear_lock()
+        return
+    end
+
+    -- Keep runtime target state alive for the existing hit/tracer/target effects.
+    FAP.current_target_addr =
+        target.address
+
+    FAP.current_target_name =
+        target.name
+        or target.display_name
+        or target.Name
+
+    FAP.current_target_pos = {
+        X = target_pos.X,
+        Y = target_pos.Y,
+        Z = target_pos.Z,
+    }
+
+    FAP.current_target_health =
+        tonumber(
+            target.health
+        )
+
+    FAP.current_auto_prediction =
+        S.aim_auto_prediction == true
+
+    FAP.current_prediction_time =
+        tonumber(
+            target_pos.time
+        )
+        or 0
+
+    FAP.current_prediction_gravity =
+        S.aim_auto_prediction == true
+        and (
+            tonumber(FAP.gravity)
+            or 0
+        )
+        or 0
+
+    FAP.current_prediction_speed =
+        S.aim_auto_prediction == true
+        and (
+            tonumber(FAP.bullet_speed)
+            or 0
+        )
+        or 0
+
+    FAP.current_target_seen =
+        tick()
+
+    -- Original custom Aimbot behavior: rotate the camera directly
+    -- toward the selected/predicted world point.
+    if type(aim.look_at_matrix) == "function"
+        and type(aim.set_camera_rotation) == "function"
+    then
+        local mat = nil
+
+        pcall(function()
+            mat =
+                aim.look_at_matrix(
+                    cam,
+                    target_pos
+                )
+        end)
+
+        if mat then
+            pcall(function()
+                aim.set_camera_rotation(
+                    mat
+                )
+            end)
+
+            return
+        end
+    end
+
+    -- Compatibility fallback for API builds without look_at_matrix.
+    -- This still moves toward the same predicted screen point.
+    if type(aim.move_mouse) == "function" then
+        pcall(function()
+            aim.move_mouse({
+                X = screen.X,
+                Y = screen.Y,
+            })
+        end)
+    end
+end
+
+
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    local ok =
+        pcall(
+            FALLEN_CUSTOM_AIMBOT_TICK
+        )
+
+    if not ok then
+        -- Never spam the console from an aim render callback.
+        fap_clear_lock()
+    end
+end)
 
 
 
@@ -11401,11 +12122,15 @@ end
 
 
 function FALLEN_SHARED_AIM_SECTION()
-    if not cheat then
-        return nil
+    -- Silent FOV mirrors ONLY the stock Aimbot FOV visual controls.
+    -- This does not enable stock Aimbot and does not touch its targeting logic.
+    if cheat
+        and cheat.aimbot
+    then
+        return cheat.aimbot
     end
 
-    return cheat.aimbot
+    return nil
 end
 
 
@@ -11488,6 +12213,14 @@ function FALLEN_SHARED_AIM_FIND_KEY(
             "showfov",
             "fov_enabled",
             "fovenabled",
+            "draw_fov",
+            "drawfov",
+            "display_fov",
+            "displayfov",
+            "render_fov",
+            "renderfov",
+            "fov_visible",
+            "fovvisible",
             "aimbot_fov",
             "aimbotfov",
         }
@@ -11619,6 +12352,10 @@ function FALLEN_SHARED_AIM_FIND_KEY(
                         1,
                         true
                     ) ~= nil
+                    or string.find(kn, "draw", 1, true) ~= nil
+                    or string.find(kn, "display", 1, true) ~= nil
+                    or string.find(kn, "render", 1, true) ~= nil
+                    or string.find(kn, "visible", 1, true) ~= nil
                 )
         elseif purpose == "fov" then
             matched =
@@ -11729,12 +12466,6 @@ function FALLEN_SILENT_SET_TEAM_CHECK(
     S.silent_team_check =
         value
 
-    -- This is a shared Aimbot selector in the stock cheat.
-    FALLEN_SHARED_AIM_WRITE(
-        "team_check",
-        value
-    )
-
     -- Mirror into silent_aim too when this build exposes the same field.
     FALLEN_SILENT_WRITE_FIELD(
         "team_check",
@@ -11751,15 +12482,6 @@ function FALLEN_SILENT_SET_STICKY(
 
     S.silent_sticky_aim =
         value
-
-    -- Keep our normal Aimbot state in sync because this selector is shared.
-    S.sticky_aim =
-        value
-
-    FALLEN_SHARED_AIM_WRITE(
-        "sticky",
-        value
-    )
 
     FALLEN_SILENT_WRITE_FIELD(
         "sticky",
@@ -11784,15 +12506,6 @@ function FALLEN_SILENT_SET_MAX_DISTANCE(
 
     S.silent_max_dist =
         distance
-
-    -- Shared selection distance used by the built-in aim system.
-    S.aim_max_dist =
-        distance
-
-    FALLEN_SHARED_AIM_WRITE(
-        "max_distance",
-        distance
-    )
 
     -- Mirror to silent section too if available.
     FALLEN_SILENT_WRITE_FIELD(
@@ -11824,15 +12537,6 @@ function FALLEN_SILENT_SET_TARGET_PART(
 
     S.silent_target_part =
         part
-
-    -- Keep our Aimbot popup and the built-in shared selector aligned.
-    S.aim_target_part =
-        part
-
-    FALLEN_SHARED_AIM_WRITE(
-        "target_part",
-        index
-    )
 
     -- Some builds also expose target_part inside silent_aim; mirror it.
     FALLEN_SILENT_WRITE_FIELD(
@@ -12057,54 +12761,16 @@ end
 function FALLEN_FOV_DEBUG_FOUND_FIELDS(
     value
 )
-    -- Print only on explicit UI interaction, never from the render tick.
-    local found = {}
-
-    local aimbot =
-        FALLEN_SHARED_AIM_SECTION()
-
-    local a_keys =
-        FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
-            aimbot,
-            value,
-            "aimbot"
-        )
-
-    for _, name in ipairs(a_keys) do
-        found[#found + 1] =
-            name
-    end
-
+    -- Silent-only debug. Stock cheat.aimbot is intentionally untouched.
     local silent =
         FALLEN_SILENT_LIVE_SECTION()
 
-    local s_keys =
+    local found =
         FALLEN_FOV_WRITE_ALL_BOOL_FIELDS(
             silent,
             value,
             "silent_aim"
         )
-
-    for _, name in ipairs(s_keys) do
-        found[#found + 1] =
-            name
-    end
-
-    if #found > 0 then
-        print(
-            "[Fallen-lua FOV] "
-            .. tostring(value)
-            .. " -> "
-            .. table.concat(
-                found,
-                ", "
-            )
-        )
-    else
-        print(
-            "[Fallen-lua FOV] no boolean FOV field found"
-        )
-    end
 
     return found
 end
@@ -12343,8 +13009,8 @@ end
 
 
 function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
-    -- Enabled is custom-menu authoritative while our menu is open.
-    -- Only import the stock value when the custom menu is closed.
+    -- Silent reads only from cheat.silent_aim. Never import anything from
+    -- cheat.aimbot: our normal Aimbot is entirely custom/local.
     if not S.visible then
         local live_enabled =
             FALLEN_SILENT_READ_FIELD(
@@ -12355,103 +13021,63 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
             S.silent_enabled =
                 live_enabled == true
         end
-    end
 
-    -- These four values are shared with the built-in Aimbot selector.
-    local team =
-        FALLEN_SHARED_AIM_READ(
-            "team_check"
-        )
+        local live_team =
+            FALLEN_SILENT_READ_FIELD(
+                "team_check"
+            )
 
-    if team ~= nil then
-        S.silent_team_check =
-            team == true
-    end
+        if live_team ~= nil then
+            S.silent_team_check =
+                live_team == true
+        end
 
-    local sticky =
-        FALLEN_SHARED_AIM_READ(
-            "sticky"
-        )
+        local live_sticky =
+            FALLEN_SILENT_READ_FIELD(
+                "sticky"
+            )
 
-    if sticky ~= nil then
-        S.silent_sticky_aim =
-            sticky == true
+        if live_sticky ~= nil then
+            S.silent_sticky_aim =
+                live_sticky == true
+        end
 
-        S.sticky_aim =
-            sticky == true
-    end
-
-    local editing_distance =
-        A.active_slider == "silent_max_dist"
-        or (
-            A.numeric
-            and A.numeric.active_key
-                == "silent_max_dist"
-        )
-
-    -- While the custom menu is open, our slider is authoritative.
-    -- Otherwise stock-cheat readback can arrive one frame later and
-    -- snap the knob back to an old endpoint during/after dragging.
-    local allow_distance_readback =
-        S.visible ~= true
-        or A.silent_distance_force_sync == true
-
-    if not editing_distance
-        and allow_distance_readback
-    then
-        local distance =
+        local live_distance =
             tonumber(
-                FALLEN_SHARED_AIM_READ(
+                FALLEN_SILENT_READ_FIELD(
                     "max_distance"
                 )
             )
 
-        if distance then
-            distance =
+        if live_distance then
+            S.silent_max_dist =
                 clamp(
-                    distance,
+                    live_distance,
                     50,
                     3000
                 )
-
-            S.silent_max_dist =
-                distance
-
-            S.aim_max_dist =
-                distance
-
-            A.slider_target.silent_max_dist =
-                distance
-
-            A.slider_visual.silent_max_dist =
-                distance
         end
-    end
 
-    local part =
-        tonumber(
-            FALLEN_SHARED_AIM_READ(
-                "target_part"
+        local live_part =
+            tonumber(
+                FALLEN_SILENT_READ_FIELD(
+                    "target_part"
+                )
             )
-        )
 
-    if part ~= nil then
-        if part == 2 then
-            S.silent_target_part =
-                "Closest"
-        elseif part == 1 then
-            S.silent_target_part =
-                "Torso"
-        else
-            S.silent_target_part =
-                "Head"
+        if live_part ~= nil then
+            if live_part == 1 then
+                S.silent_target_part =
+                    "Torso"
+            elseif live_part == 2 then
+                S.silent_target_part =
+                    "Closest"
+            else
+                S.silent_target_part =
+                    "Head"
+            end
         end
 
-        S.aim_target_part =
-            S.silent_target_part
-    end
-
-    if not A.silent_bind_listening then
         local live_key =
             tonumber(
                 FALLEN_SILENT_READ_FIELD(
@@ -12459,7 +13085,9 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
                 )
             )
 
-        if live_key ~= nil then
+        if live_key ~= nil
+            and not A.silent_bind_listening
+        then
             S.silent_key =
                 math.floor(
                     clamp(
@@ -12470,80 +13098,23 @@ function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
                     + 0.5
                 )
         end
-    end
 
-    -- Follow the built-in Aimbot FOV switch.
-    local live_fov_enabled =
-        FALLEN_SHARED_AIM_READ(
-            "show_fov"
-        )
-
-    if live_fov_enabled ~= nil then
-        S.silent_fov_enabled =
-            live_fov_enabled == true
-    else
-        local live_fov_only =
-            FALLEN_SILENT_READ_FIELD(
-                "fov_only"
-            )
-
-        if live_fov_only ~= nil then
-            S.silent_fov_enabled =
-                live_fov_only == true
-        end
-    end
-
-    local editing_fov =
-        A.active_slider == "silent_fov"
-        or (
-            A.numeric
-            and A.numeric.active_key
-                == "silent_fov"
-        )
-
-    local allow_fov_readback =
-        S.visible ~= true
-        or A.silent_distance_force_sync == true
-
-    if not editing_fov
-        and allow_fov_readback
-    then
         local live_fov =
             tonumber(
-                FALLEN_SHARED_AIM_READ(
+                FALLEN_SILENT_READ_FIELD(
                     "fov"
                 )
             )
 
-        if not live_fov then
-            live_fov =
-                tonumber(
-                    FALLEN_SILENT_READ_FIELD(
-                        "fov"
-                    )
-                )
-        end
-
         if live_fov then
-            live_fov =
+            S.silent_fov =
                 clamp(
                     live_fov,
                     10,
                     600
                 )
-
-            S.silent_fov =
-                live_fov
-
-            A.slider_target.silent_fov =
-                live_fov
-
-            A.slider_visual.silent_fov =
-                live_fov
         end
-    end
 
-    if not S.visible then
         local magic =
             FALLEN_SILENT_READ_FIELD(
                 "magic_bullet"
@@ -13015,6 +13586,80 @@ function FALLEN_SYNC_STOCK_FOV_VISUAL(
 end
 
 
+function FALLEN_CUSTOM_DRAW_CIRCLE(
+    cx,
+    cy,
+    radius,
+    color,
+    thickness
+)
+    local fn =
+        DrawCircle
+
+    if type(fn) ~= "function"
+        and Drawing
+        and type(Drawing.DrawCircle) == "function"
+    then
+        fn =
+            Drawing.DrawCircle
+    end
+
+    if type(fn) ~= "function" then
+        return false
+    end
+
+    pcall(
+        fn,
+        cx,
+        cy,
+        radius,
+        color[1],
+        color[2],
+        color[3],
+        color[4] or 1,
+        thickness or 1
+    )
+
+    return true
+end
+
+
+function FALLEN_CUSTOM_DRAW_CIRCLE_FILLED(
+    cx,
+    cy,
+    radius,
+    color
+)
+    local fn =
+        DrawCircleFilled
+
+    if type(fn) ~= "function"
+        and Drawing
+        and type(Drawing.DrawCircleFilled) == "function"
+    then
+        fn =
+            Drawing.DrawCircleFilled
+    end
+
+    if type(fn) ~= "function" then
+        return false
+    end
+
+    pcall(
+        fn,
+        cx,
+        cy,
+        radius,
+        color[1],
+        color[2],
+        color[3],
+        color[4] or 1
+    )
+
+    return true
+end
+
+
 function FALLEN_DRAW_ONE_CUSTOM_FOV(
     enabled,
     radius,
@@ -13025,9 +13670,7 @@ function FALLEN_DRAW_ONE_CUSTOM_FOV(
     glow_spread,
     filled
 )
-    if enabled ~= true
-        or type(DrawCircle) ~= "function"
-    then
+    if enabled ~= true then
         return
     end
 
@@ -13056,18 +13699,18 @@ function FALLEN_DRAW_ONE_CUSTOM_FOV(
         glow_color
         or color
 
-    if filled == true
-        and type(DrawCircleFilled) == "function"
-    then
-        DrawCircleFilled(
+    if filled == true then
+        FALLEN_CUSTOM_DRAW_CIRCLE_FILLED(
             cx,
             cy,
             radius,
-            color[1],
-            color[2],
-            color[3],
-            (color[4] or 1)
-                * 0.075
+            {
+                color[1],
+                color[2],
+                color[3],
+                (color[4] or 1)
+                    * 0.075,
+            }
         )
     end
 
@@ -13108,28 +13751,27 @@ function FALLEN_DRAW_ONE_CUSTOM_FOV(
                 * falloff
                 * 0.20
 
-            DrawCircle(
+            FALLEN_CUSTOM_DRAW_CIRCLE(
                 cx,
                 cy,
                 gr,
-                glow_color[1],
-                glow_color[2],
-                glow_color[3],
-                ga,
+                {
+                    glow_color[1],
+                    glow_color[2],
+                    glow_color[3],
+                    ga,
+                },
                 1.15
                     + falloff * 0.55
             )
         end
     end
 
-    DrawCircle(
+    FALLEN_CUSTOM_DRAW_CIRCLE(
         cx,
         cy,
         radius,
-        color[1],
-        color[2],
-        color[3],
-        color[4] or 1,
+        color,
         1.25
     )
 end
@@ -13208,10 +13850,19 @@ end)
 FALLEN_BT = FALLEN_BT or {
     items = {},
     last_error = 0,
-    last_shot = 0,
     local_name = nil,
     local_name_scan = 0,
+
+    -- VFX impact detector.
+    vfx_seen = {},
+    vfx_prev_lmb = false,
+    vfx_watch_until = 0,
+    vfx_shot_time = nil,
 }
+
+FALLEN_BT.vfx_seen =
+    FALLEN_BT.vfx_seen
+    or {}
 
 
 function FALLEN_BT_LOCAL_NAME()
@@ -13490,85 +14141,619 @@ function FALLEN_BT_DRAW_IMAGE_NODE(
     end
 end
 
-function FALLEN_BT_HAS_GUN()
-    local weapon = FAP.weapon
-
-    if not weapon or weapon == "" then
-        pcall(function()
-            weapon = fap_detect_weapon()
-        end)
-    end
-
-    if not weapon or weapon == "" then
+function FALLEN_BT_WEAPON_READY()
+    -- EXACT same weapon detector used by custom Aimbot Auto Prediction.
+    -- No Aimbot/Silent target checks are involved.
+    if type(fap_detect_weapon) ~= "function" then
         return false
     end
 
-    local lower = string.lower(tostring(weapon))
+    local weapon = nil
 
-    local bad = {
-        "rock",
-        "stone hatchet",
-        "pickaxe",
-        "hammer",
-        "building",
-        "torch",
-        "bandage",
-        "medkit",
-        "syringe",
+    pcall(function()
+        weapon =
+            fap_detect_weapon()
+    end)
+
+    return
+        weapon ~= nil
+        and tostring(weapon) ~= ""
+end
+
+
+function FALLEN_BT_VFX_ROOT()
+    if not rbx
+        or type(rbx.workspace) ~= "function"
+    then
+        return nil
+    end
+
+    local workspace = nil
+
+    pcall(function()
+        workspace =
+            rbx.workspace()
+    end)
+
+    if not workspace then
+        return nil
+    end
+
+    local vfx = nil
+
+    pcall(function()
+        vfx =
+            workspace:find_first_child(
+                "VFX"
+            )
+    end)
+
+    if not vfx then
+        return nil
+    end
+
+    local valid =
+        true
+
+    pcall(function()
+        if type(vfx.is_valid) == "function" then
+            valid =
+                vfx:is_valid()
+                == true
+        end
+    end)
+
+    if not valid then
+        return nil
+    end
+
+    return vfx
+end
+
+
+function FALLEN_BT_VFX_INSTANCE_VALID(
+    inst
+)
+    if not inst then
+        return false
+    end
+
+    local valid =
+        true
+
+    pcall(function()
+        if type(inst.is_valid) == "function" then
+            valid =
+                inst:is_valid()
+                == true
+        end
+    end)
+
+    return
+        valid == true
+end
+
+
+function FALLEN_BT_VFX_SCAN()
+    local root =
+        FALLEN_BT_VFX_ROOT()
+
+    if not root then
+        return {}
+    end
+
+    local out = {}
+    local queue = {
+        root,
     }
 
-    for _, word in ipairs(bad) do
-        if string.find(lower, word, 1, true) then
-            return false
+    local qi =
+        1
+
+    -- Pure instance-tree walk. No raw memory/pointers.
+    while qi <= #queue do
+        local inst =
+            queue[qi]
+
+        qi =
+            qi + 1
+
+        if FALLEN_BT_VFX_INSTANCE_VALID(
+            inst
+        )
+        then
+            local addr =
+                inst.addr
+
+            if addr
+                and addr ~= 0
+            then
+                out[
+                    tostring(addr)
+                ] =
+                    inst
+            end
+
+            local children = nil
+
+            pcall(function()
+                children =
+                    inst:get_children()
+            end)
+
+            if type(children) == "table" then
+                for _, child in ipairs(children) do
+                    if FALLEN_BT_VFX_INSTANCE_VALID(
+                        child
+                    )
+                    then
+                        queue[#queue + 1] =
+                            child
+                    end
+                end
+            end
         end
     end
 
-    return true
+    return out
 end
 
-function FALLEN_BT_ACTIVE_TARGET()
-    if S.aim_enabled ~= true then
-        return nil
+
+function FALLEN_BT_VFX_IS_IMPACT_NAME(
+    inst
+)
+    if not FALLEN_BT_VFX_INSTANCE_VALID(
+        inst
+    )
+    then
+        return false
     end
 
-    if not FAP.current_target_pos
-        or tick() - (FAP.current_target_seen or 0) > 0.18
+    local name = nil
+
+    pcall(function()
+        name =
+            inst:get_name()
+    end)
+
+    name =
+        string.lower(
+            tostring(
+                name or ""
+            )
+        )
+
+    return
+        name == "hole"
+        or name == "metalhole"
+        or name == "bloodpart"
+        or name == "casinglarge"
+        or name == "casingsmall"
+end
+
+
+function FALLEN_BT_VFX_POSITION(
+    inst
+)
+    if not FALLEN_BT_VFX_IS_IMPACT_NAME(
+        inst
+    )
     then
         return nil
     end
 
-    local my_name = FALLEN_BT_LOCAL_NAME()
+    local impact_name = nil
 
-    if my_name
-        and FAP.current_target_name
-        and FAP.current_target_name ~= ""
-        and string.lower(FAP.current_target_name)
-            == string.lower(my_name)
+    pcall(function()
+        impact_name =
+            string.lower(
+                tostring(
+                    inst:get_name()
+                    or ""
+                )
+            )
+    end)
+
+    -- CasingLarge / CasingSmall are only container Models.
+    -- Their actual positional MeshPart is:
+    -- CasingLarge -> Main
+    -- CasingSmall -> Main
+    if impact_name == "casinglarge"
+        or impact_name == "casingsmall"
+    then
+        local main = nil
+
+        pcall(function()
+            main =
+                inst:find_first_child(
+                    "Main"
+                )
+        end)
+
+        if main
+            and FALLEN_BT_VFX_INSTANCE_VALID(
+                main
+            )
+        then
+            local class_name = nil
+
+            pcall(function()
+                class_name =
+                    main:get_class()
+            end)
+
+            if class_name == "MeshPart"
+                or class_name == "Part"
+                or class_name == "UnionOperation"
+                or class_name == "BasePart"
+            then
+                local main_pos = nil
+
+                pcall(function()
+                    main_pos =
+                        main:get_position()
+                end)
+
+                if main_pos
+                    and main_pos.X ~= nil
+                    and main_pos.Y ~= nil
+                    and main_pos.Z ~= nil
+                then
+                    return {
+                        X = main_pos.X,
+                        Y = main_pos.Y,
+                        Z = main_pos.Z,
+                    }
+                end
+            end
+        end
+
+        -- Do not fall back to the Model or some unrelated child.
+        return nil
+    end
+
+    -- Hole / MetalHole / BloodPart:
+    -- first use the object itself if it has a world position.
+    local pos = nil
+
+    pcall(function()
+        pos =
+            inst:get_position()
+    end)
+
+    if pos
+        and pos.X ~= nil
+        and pos.Y ~= nil
+        and pos.Z ~= nil
+    then
+        return {
+            X = pos.X,
+            Y = pos.Y,
+            Z = pos.Z,
+        }
+    end
+
+    -- If one of those is a Model/Folder, keep the old direct-child fallback.
+    local children = nil
+
+    pcall(function()
+        children =
+            inst:get_children()
+    end)
+
+    if type(children) == "table" then
+        for _, child in ipairs(children) do
+            if FALLEN_BT_VFX_INSTANCE_VALID(
+                child
+            )
+            then
+                local class_name = nil
+
+                pcall(function()
+                    class_name =
+                        child:get_class()
+                end)
+
+                if class_name == "MeshPart"
+                    or class_name == "Part"
+                    or class_name == "UnionOperation"
+                    or class_name == "BasePart"
+                then
+                    local child_pos = nil
+
+                    pcall(function()
+                        child_pos =
+                            child:get_position()
+                    end)
+
+                    if child_pos
+                        and child_pos.X ~= nil
+                        and child_pos.Y ~= nil
+                        and child_pos.Z ~= nil
+                    then
+                        return {
+                            X = child_pos.X,
+                            Y = child_pos.Y,
+                            Z = child_pos.Z,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+
+function FALLEN_BT_ORIGIN()
+    -- Start from the player's face/head, not camera.
+    local head = nil
+
+    pcall(function()
+        if rbx
+            and type(rbx.local_head) == "function"
+        then
+            head =
+                rbx.local_head()
+        end
+    end)
+
+    if head then
+        local valid =
+            true
+
+        pcall(function()
+            if type(head.is_valid) == "function" then
+                valid =
+                    head:is_valid()
+                    == true
+            end
+        end)
+
+        if valid then
+            local p = nil
+
+            pcall(function()
+                p =
+                    head:get_position()
+            end)
+
+            if p
+                and p.X ~= nil
+                and p.Y ~= nil
+                and p.Z ~= nil
+            then
+                return {
+                    X = p.X,
+                    Y = p.Y,
+                    Z = p.Z,
+                }
+            end
+        end
+    end
+
+    -- Camera only as fallback if Head is temporarily unavailable.
+    local cam = nil
+
+    pcall(function()
+        if aim
+            and type(aim.get_camera_position) == "function"
+        then
+            cam =
+                aim.get_camera_position()
+        end
+    end)
+
+    if cam
+        and cam.X ~= nil
+        and cam.Y ~= nil
+        and cam.Z ~= nil
+    then
+        return {
+            X = cam.X,
+            Y = cam.Y,
+            Z = cam.Z,
+        }
+    end
+
+    return nil
+end
+
+
+function FALLEN_BT_FOV_RADIUS()
+    if key_down(0x02) == true then
+        return 20
+    end
+
+    return 40
+end
+
+
+function FALLEN_BT_FOV_CENTER()
+    local cx, cy = nil, nil
+
+    if type(crosshair_pos) == "function" then
+        pcall(function()
+            local c = crosshair_pos()
+
+            if c then
+                cx = tonumber(c.X or c.x or c[1])
+                cy = tonumber(c.Y or c.y or c[2])
+            end
+        end)
+    end
+
+    if (cx == nil or cy == nil)
+        and type(FALLEN_CUSTOM_FOV_CENTER) == "function"
+    then
+        pcall(function()
+            cx, cy = FALLEN_CUSTOM_FOV_CENTER()
+        end)
+    end
+
+    return tonumber(cx), tonumber(cy)
+end
+
+
+function FALLEN_BT_FOV_CHECK(pos)
+    if not pos
+        or not aim
+        or type(aim.world_to_screen) ~= "function"
+    then
+        return false, nil
+    end
+
+    local screen = nil
+
+    pcall(function()
+        screen = aim.world_to_screen(pos)
+    end)
+
+    if not screen
+        or screen.visible ~= true
+        or screen.X == nil
+        or screen.Y == nil
+    then
+        return false, nil
+    end
+
+    local cx, cy = FALLEN_BT_FOV_CENTER()
+
+    if not cx or not cy then
+        return false, nil
+    end
+
+    local dx = tonumber(screen.X) - cx
+    local dy = tonumber(screen.Y) - cy
+    local dist_sq = dx * dx + dy * dy
+    local radius = FALLEN_BT_FOV_RADIUS()
+
+    return
+        dist_sq <= radius * radius,
+        dist_sq
+end
+
+
+function FALLEN_BT_VFX_KIND(inst)
+    if not inst
+        or not FALLEN_BT_VFX_INSTANCE_VALID(inst)
     then
         return nil
     end
 
-    return {
-        X = FAP.current_target_pos.X,
-        Y = FAP.current_target_pos.Y,
-        Z = FAP.current_target_pos.Z,
+    local name = nil
 
-        auto_prediction =
-            FAP.current_auto_prediction == true,
+    pcall(function()
+        name = inst:get_name()
+    end)
 
-        prediction_time =
-            tonumber(FAP.current_prediction_time)
-            or 0,
+    name = string.lower(tostring(name or ""))
 
-        gravity =
-            tonumber(FAP.current_prediction_gravity)
-            or 0,
+    if name == "hole"
+        or name == "metalhole"
+    then
+        return "hole"
+    end
 
-        bullet_speed =
-            tonumber(FAP.current_prediction_speed)
-            or 0,
-    }
+    if name == "bloodpart" then
+        return "bloodpart"
+    end
+
+    if name == "casinglarge"
+        or name == "casingsmall"
+    then
+        return "casing"
+    end
+
+    return nil
 end
+
+
+function FALLEN_BT_VFX_FIND_NEW_IMPACT(
+    previous,
+    current,
+    origin,
+    shot_age
+)
+    if type(current) ~= "table"
+        or not origin
+    then
+        return nil
+    end
+
+    previous =
+        type(previous) == "table"
+        and previous
+        or {}
+
+    shot_age = tonumber(shot_age) or 999
+
+    local best_pos = nil
+    local best_screen_dist_sq = nil
+
+    for key, inst in pairs(current) do
+        if previous[key] == nil then
+            local kind =
+                FALLEN_BT_VFX_KIND(inst)
+
+            local allowed = false
+
+            if kind == "hole" then
+                allowed = shot_age <= 0.50
+
+            elseif kind == "bloodpart" then
+                allowed = shot_age <= 1.00
+
+            elseif kind == "casing" then
+                allowed = shot_age <= 1.00
+            end
+
+            if allowed then
+                local pos =
+                    FALLEN_BT_VFX_POSITION(inst)
+
+                if pos then
+                    local dx = tonumber(pos.X) - tonumber(origin.X)
+                    local dy = tonumber(pos.Y) - tonumber(origin.Y)
+                    local dz = tonumber(pos.Z) - tonumber(origin.Z)
+                    local world_dist_sq =
+                        dx * dx + dy * dy + dz * dz
+
+                    if world_dist_sq >= 4 then
+                        local inside, screen_dist_sq =
+                            FALLEN_BT_FOV_CHECK(pos)
+
+                        if inside
+                            and screen_dist_sq ~= nil
+                            and (
+                                best_screen_dist_sq == nil
+                                or screen_dist_sq < best_screen_dist_sq
+                            )
+                        then
+                            best_screen_dist_sq = screen_dist_sq
+
+                            best_pos = {
+                                X = pos.X,
+                                Y = pos.Y,
+                                Z = pos.Z,
+
+                                auto_prediction = false,
+                                prediction_time = 0,
+                                gravity = 0,
+                                bullet_speed = 0,
+                                source = "vfx_impact",
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return best_pos
+end
+
 
 function FALLEN_BT_ADD(origin, target)
     if not origin or not target then
@@ -13641,58 +14826,89 @@ end
 
 function FALLEN_BT_SHOT_TICK()
     if S.bullet_tracer_enabled ~= true then
+        FALLEN_BT.vfx_seen = {}
+        FALLEN_BT.vfx_prev_lmb = false
+        FALLEN_BT.vfx_watch_until = 0
+        FALLEN_BT.vfx_shot_time = nil
         return
     end
 
-    -- Mouse1 belongs to the local client.
-    if key_down(0x01) ~= true then
-        return
-    end
-
-    local target = FALLEN_BT_ACTIVE_TARGET()
-
-    if not target then
-        return
-    end
-
-    if FALLEN_BT_HAS_GUN() ~= true then
+    if not FALLEN_BT_WEAPON_READY() then
+        FALLEN_BT.vfx_seen = {}
+        FALLEN_BT.vfx_prev_lmb = false
+        FALLEN_BT.vfx_watch_until = 0
+        FALLEN_BT.vfx_shot_time = nil
         return
     end
 
     local now = tick()
+    local lmb = key_down(0x01) == true
 
-    local delay =
-        clamp(
-            tonumber(S.bullet_tracer_delay) or 0.13,
-            0.04,
-            0.50
+    if not lmb
+        and now >= (tonumber(FALLEN_BT.vfx_watch_until) or 0)
+    then
+        FALLEN_BT.vfx_seen =
+            FALLEN_BT_VFX_SCAN()
+
+        FALLEN_BT.vfx_prev_lmb = false
+        FALLEN_BT.vfx_shot_time = nil
+        return
+    end
+
+    if lmb
+        and FALLEN_BT.vfx_prev_lmb ~= true
+    then
+        FALLEN_BT.vfx_shot_time = now
+        FALLEN_BT.vfx_watch_until = now + 1.00
+
+    elseif lmb then
+        FALLEN_BT.vfx_shot_time = now
+        FALLEN_BT.vfx_watch_until = now + 1.00
+    end
+
+    FALLEN_BT.vfx_prev_lmb = lmb
+
+    if not lmb
+        and now > (tonumber(FALLEN_BT.vfx_watch_until) or 0)
+    then
+        return
+    end
+
+    local previous =
+        FALLEN_BT.vfx_seen
+        or {}
+
+    local current =
+        FALLEN_BT_VFX_SCAN()
+
+    local origin =
+        FALLEN_BT_ORIGIN()
+
+    local shot_age =
+        now - (tonumber(FALLEN_BT.vfx_shot_time) or now)
+
+    local impact =
+        FALLEN_BT_VFX_FIND_NEW_IMPACT(
+            previous,
+            current,
+            origin,
+            shot_age
         )
 
-    if now - (FALLEN_BT.last_shot or 0) < delay then
+    FALLEN_BT.vfx_seen = current
+
+    if not origin
+        or not impact
+    then
         return
     end
-
-    local cam = nil
-
-    pcall(function()
-        if aim
-            and type(aim.get_camera_position) == "function"
-        then
-            cam = aim.get_camera_position()
-        end
-    end)
-
-    if not cam then
-        return
-    end
-
-    FALLEN_BT.last_shot = now
 
     FALLEN_BT_ADD(
-        cam,
-        target
+        origin,
+        impact
     )
 end
+
 
 function FALLEN_BT_DRAW_PATH(
     tr,
@@ -14029,6 +15245,505 @@ function FALLEN_BT_TICK()
     FALLEN_BT_DRAW()
 end
 
+FALLEN_DMGNUM = FALLEN_DMGNUM or {
+    items = {},
+    last_spawn = 0,
+}
+
+function FALLEN_DMGNUM_TARGET_HEAD_SCREEN(
+    head_pos,
+    fallback_pos
+)
+    local world =
+        head_pos
+        or fallback_pos
+
+    -- Backwards-compatible Aimbot fallback.
+    if not world
+        and FAP.current_target_pos
+    then
+        world =
+            FAP.current_target_pos
+    end
+
+    if not world
+        or world.X == nil
+        or world.Y == nil
+        or world.Z == nil
+    then
+        return nil
+    end
+
+    local screen =
+        FALLEN_BT_PROJECT({
+            X = world.X,
+            Y = world.Y,
+            Z = world.Z,
+        })
+
+    if not screen then
+        return nil
+    end
+
+    return {
+        X = screen.X,
+        Y = screen.Y,
+    }
+end
+
+
+function FALLEN_DMGNUM_ADD(
+    damage,
+    head_pos,
+    fallback_pos
+)
+    damage =
+        tonumber(damage)
+
+    if not damage
+        or damage <= 0
+    then
+        return
+    end
+
+    local screen =
+        FALLEN_DMGNUM_TARGET_HEAD_SCREEN(
+            head_pos,
+            fallback_pos
+        )
+
+    if not screen then
+        return
+    end
+
+    -- Freeze the SCREEN coordinate at the exact hit moment.
+    -- No target address/world position is retained, so this number cannot
+    -- follow the opponent after spawning.
+    FALLEN_DMGNUM.items[#FALLEN_DMGNUM.items + 1] = {
+        x = screen.X,
+        y = screen.Y - 7,
+        damage =
+            math.max(
+                1,
+                math.floor(
+                    damage + 0.5
+                )
+            ),
+        created = tick(),
+    }
+
+    while #FALLEN_DMGNUM.items > 32 do
+        table.remove(
+            FALLEN_DMGNUM.items,
+            1
+        )
+    end
+end
+
+
+_G.FALLEN_DMGNUM_GLYPHS =
+    _G.FALLEN_DMGNUM_GLYPHS
+    or {
+        ["0"] = {
+            "01110",
+            "10001",
+            "10011",
+            "10101",
+            "11001",
+            "10001",
+            "01110",
+        },
+        ["1"] = {
+            "00100",
+            "01100",
+            "00100",
+            "00100",
+            "00100",
+            "00100",
+            "01110",
+        },
+        ["2"] = {
+            "01110",
+            "10001",
+            "00001",
+            "00010",
+            "00100",
+            "01000",
+            "11111",
+        },
+        ["3"] = {
+            "11110",
+            "00001",
+            "00001",
+            "01110",
+            "00001",
+            "00001",
+            "11110",
+        },
+        ["4"] = {
+            "00010",
+            "00110",
+            "01010",
+            "10010",
+            "11111",
+            "00010",
+            "00010",
+        },
+        ["5"] = {
+            "11111",
+            "10000",
+            "10000",
+            "11110",
+            "00001",
+            "00001",
+            "11110",
+        },
+        ["6"] = {
+            "01110",
+            "10000",
+            "10000",
+            "11110",
+            "10001",
+            "10001",
+            "01110",
+        },
+        ["7"] = {
+            "11111",
+            "00001",
+            "00010",
+            "00100",
+            "01000",
+            "01000",
+            "01000",
+        },
+        ["8"] = {
+            "01110",
+            "10001",
+            "10001",
+            "01110",
+            "10001",
+            "10001",
+            "01110",
+        },
+        ["9"] = {
+            "01110",
+            "10001",
+            "10001",
+            "01111",
+            "00001",
+            "00001",
+            "01110",
+        },
+        ["-"] = {
+            "00000",
+            "00000",
+            "00000",
+            "11111",
+            "00000",
+            "00000",
+            "00000",
+        },
+    }
+
+
+function FALLEN_DMGNUM_COLOR()
+    local r, g, b =
+        hsv_to_rgb(
+            tonumber(S.damage_numbers_h) or 0.625,
+            tonumber(S.damage_numbers_s) or 0.55,
+            tonumber(S.damage_numbers_v) or 0.92
+        )
+
+    return {
+        r,
+        g,
+        b,
+        clamp(
+            (tonumber(S.damage_numbers_alpha) or 100) / 100,
+            0,
+            1
+        ),
+    }
+end
+
+
+function FALLEN_DMGNUM_TEXT_WIDTH(
+    label,
+    size
+)
+    label =
+        tostring(
+            label or ""
+        )
+
+    size =
+        clamp(
+            tonumber(size) or 14,
+            8,
+            30
+        )
+
+    local cell =
+        size / 7
+
+    local gap =
+        cell * 0.16
+
+    local glyph_w =
+        cell * 5
+        + gap * 4
+
+    local char_gap =
+        cell * 0.75
+
+    if #label <= 0 then
+        return 0
+    end
+
+    return
+        #label * glyph_w
+        + (#label - 1) * char_gap
+end
+
+
+function FALLEN_DMGNUM_DRAW_SCALED_TEXT(
+    center_x,
+    y,
+    label,
+    size,
+    color,
+    alpha_value
+)
+    if type(DrawBoxFilled) ~= "function" then
+        return
+    end
+
+    label =
+        tostring(
+            label or ""
+        )
+
+    size =
+        clamp(
+            tonumber(size) or 14,
+            8,
+            30
+        )
+
+    color =
+        color
+        or { 1, 1, 1, 1 }
+
+    local cell =
+        size / 7
+
+    local gap =
+        cell * 0.16
+
+    local glyph_w =
+        cell * 5
+        + gap * 4
+
+    local char_gap =
+        cell * 0.75
+
+    local total_w =
+        FALLEN_DMGNUM_TEXT_WIDTH(
+            label,
+            size
+        )
+
+    local cursor_x =
+        center_x
+        - total_w * 0.5
+
+    local outline =
+        clamp(
+            cell * 0.34,
+            0.55,
+            1.35
+        )
+
+    for ci = 1, #label do
+        local ch =
+            string.sub(
+                label,
+                ci,
+                ci
+            )
+
+        local glyph =
+            _G.FALLEN_DMGNUM_GLYPHS[ch]
+
+        if glyph then
+            for row = 1, 7 do
+                local bits =
+                    glyph[row]
+
+                for col = 1, 5 do
+                    if string.sub(
+                        bits,
+                        col,
+                        col
+                    ) == "1"
+                    then
+                        local px =
+                            cursor_x
+                            + (col - 1)
+                            * (cell + gap)
+
+                        local py =
+                            y
+                            + (row - 1)
+                            * (cell + gap)
+
+                        DrawBoxFilled(
+                            px - outline,
+                            py - outline,
+                            px + cell + outline,
+                            py + cell + outline,
+                            0,
+                            0,
+                            0,
+                            alpha_value * 0.72
+                        )
+
+                        DrawBoxFilled(
+                            px,
+                            py,
+                            px + cell,
+                            py + cell,
+                            color[1],
+                            color[2],
+                            color[3],
+                            alpha_value
+                                * (color[4] or 1)
+                        )
+                    end
+                end
+            end
+        end
+
+        cursor_x =
+            cursor_x
+            + glyph_w
+            + char_gap
+    end
+end
+
+
+function FALLEN_DMGNUM_DRAW()
+    if type(FALLEN_DMGNUM.items) ~= "table" then
+        FALLEN_DMGNUM.items = {}
+    end
+
+    local now =
+        tick()
+
+    local speed =
+        clamp(
+            (tonumber(S.damage_numbers_speed) or 100) / 100,
+            0.50,
+            2.00
+        )
+
+    local life =
+        1.05 / speed
+
+    local size =
+        clamp(
+            tonumber(S.damage_numbers_size) or 14,
+            8,
+            30
+        )
+
+    local col =
+        FALLEN_DMGNUM_COLOR()
+
+    for i = #FALLEN_DMGNUM.items, 1, -1 do
+        local item =
+            FALLEN_DMGNUM.items[i]
+
+        local age =
+            now
+            - (
+                item.created
+                or now
+            )
+
+        if age >= life
+            or S.damage_numbers_enabled ~= true
+        then
+            table.remove(
+                FALLEN_DMGNUM.items,
+                i
+            )
+        else
+            local t =
+                clamp(
+                    age / life,
+                    0,
+                    1
+                )
+
+            -- Same final travel, but Animation Speed changes how quickly
+            -- the number reaches it and disappears.
+            local rise =
+                43
+                * (
+                    1
+                    - (1 - t)
+                    * (1 - t)
+                    * (1 - t)
+                )
+
+            local fade_in =
+                clamp(
+                    age / (0.09 / speed),
+                    0,
+                    1
+                )
+
+            local fade_out =
+                1
+                - clamp(
+                    (t - 0.28) / 0.72,
+                    0,
+                    1
+                )
+
+            fade_out =
+                fade_out
+                * fade_out
+
+            local alpha_value =
+                fade_in
+                * fade_out
+
+            local label =
+                "-"
+                .. tostring(
+                    item.damage
+                    or 0
+                )
+
+            local draw_y =
+                item.y
+                - rise
+
+            FALLEN_DMGNUM_DRAW_SCALED_TEXT(
+                item.x,
+                draw_y,
+                label,
+                size,
+                col,
+                alpha_value
+            )
+        end
+    end
+end
+
+
 FALLEN_HITFX = FALLEN_HITFX or {
     items = {},
     target_key = nil,
@@ -14036,9 +15751,16 @@ FALLEN_HITFX = FALLEN_HITFX or {
     last_seen = 0,
     last_spawn = 0,
 
-    -- TEMP TEST: one Spark on a fresh LMB press while Aimbot is locked.
-    test_lmb_was_down = false,
+    -- Hit Effect now has its own VFX/BloodPart trigger.
+    vfx_seen = {},
+    vfx_prev_lmb = false,
+    vfx_watch_until = 0,
+    vfx_shot_time = nil,
 }
+
+FALLEN_HITFX.vfx_seen =
+    FALLEN_HITFX.vfx_seen
+    or {}
 
 function FALLEN_HITFX_COLOR()
     -- No tinting: preserve the original image colors.
@@ -14476,11 +16198,535 @@ function FALLEN_HITFX_DRAW_FALLEN(
     end
 end
 
-function FALLEN_HITFX_TARGET_KEY()
+function FALLEN_HITFX_FIND_PLAYER(
+    address,
+    name
+)
+    if not players
+        or type(players.get_all) ~= "function"
+    then
+        return nil
+    end
+
+    local list = nil
+
+    pcall(function()
+        list =
+            players.get_all()
+    end)
+
+    if type(list) ~= "table" then
+        return nil
+    end
+
+    for _, p in ipairs(list) do
+        if address ~= nil
+            and p.address ~= nil
+            and p.address == address
+        then
+            return p
+        end
+
+        if name ~= nil then
+            local pn =
+                p.name
+                or p.display_name
+                or p.Name
+
+            if pn ~= nil
+                and tostring(pn)
+                    == tostring(name)
+            then
+                return p
+            end
+        end
+    end
+
+    return nil
+end
+
+
+function FALLEN_HITFX_PLAYER_HEAD_POS(
+    p,
+    fallback
+)
+    if p
+        and p.head_pos
+        and p.head_pos.X ~= nil
+        and p.head_pos.Y ~= nil
+        and p.head_pos.Z ~= nil
+    then
+        return {
+            X = p.head_pos.X,
+            Y = p.head_pos.Y,
+            Z = p.head_pos.Z,
+        }
+    end
+
+    if p
+        and type(p.bones) == "table"
+        and type(fap_find_bone_pos) == "function"
+    then
+        local head =
+            fap_find_bone_pos(
+                p,
+                { "Head" }
+            )
+
+        if head then
+            return head
+        end
+    end
+
+    if fallback
+        and fallback.X ~= nil
+        and fallback.Y ~= nil
+        and fallback.Z ~= nil
+    then
+        return {
+            X = fallback.X,
+            Y = fallback.Y,
+            Z = fallback.Z,
+        }
+    end
+
+    return nil
+end
+
+
+function FALLEN_HITFX_SILENT_PART_POS(
+    p
+)
+    if not p then
+        return nil
+    end
+
+    local part =
+        tostring(
+            S.silent_target_part
+            or "Head"
+        )
+
+    if part == "Head" then
+        return
+            FALLEN_HITFX_PLAYER_HEAD_POS(
+                p,
+                p.position
+            )
+    end
+
+    if part == "Torso" then
+        if type(fap_find_bone_pos) == "function" then
+            local torso =
+                fap_find_bone_pos(
+                    p,
+                    {
+                        "UpperTorso",
+                        "Torso",
+                        "LowerTorso",
+                    }
+                )
+
+            if torso then
+                return torso
+            end
+        end
+
+        if p.position
+            and p.position.X ~= nil
+            and p.position.Y ~= nil
+            and p.position.Z ~= nil
+        then
+            return {
+                X = p.position.X,
+                Y = p.position.Y + 1.2,
+                Z = p.position.Z,
+            }
+        end
+    end
+
+    -- The stock Silent target_part index used by this script maps the
+    -- "Closest"/third option to Feet.
+    if type(fap_find_bone_pos) == "function" then
+        local foot =
+            fap_find_bone_pos(
+                p,
+                {
+                    "LeftFoot",
+                    "RightFoot",
+                    "Left Leg",
+                    "Right Leg",
+                }
+            )
+
+        if foot then
+            return foot
+        end
+    end
+
+    if p.position
+        and p.position.X ~= nil
+        and p.position.Y ~= nil
+        and p.position.Z ~= nil
+    then
+        return {
+            X = p.position.X,
+            Y = p.position.Y - 2.0,
+            Z = p.position.Z,
+        }
+    end
+
+    return nil
+end
+
+
+function FALLEN_HITFX_SILENT_BIND_DOWN()
+    if S.silent_enabled ~= true then
+        return false
+    end
+
+    local vk =
+        math.floor(
+            tonumber(S.silent_key)
+            or 0
+        )
+
     return
+        vk > 0
+        and key_down(vk) == true
+end
+
+
+function FALLEN_HITFX_SILENT_VALID_PLAYER(
+    p
+)
+    if not p
+        or p.is_self == true
+    then
+        return false
+    end
+
+    local hp =
+        tonumber(
+            p.health
+        )
+
+    if hp == nil
+        or hp <= 0
+    then
+        return false
+    end
+
+    if S.silent_team_check == true
+        and p.is_teammate == true
+    then
+        return false
+    end
+
+    local max_dist =
+        clamp(
+            tonumber(S.silent_max_dist)
+            or 1200,
+            50,
+            3000
+        )
+
+    local dist =
+        tonumber(
+            p.distance
+        )
+
+    if dist
+        and dist > max_dist
+    then
+        return false
+    end
+
+    return
+        FALLEN_HITFX_SILENT_PART_POS(p)
+        ~= nil
+end
+
+
+function FALLEN_HITFX_SILENT_TARGET()
+    if not FALLEN_HITFX_SILENT_BIND_DOWN() then
+        A.hitfx_silent_locked_addr =
+            nil
+
+        return nil
+    end
+
+    if not players
+        or type(players.get_all) ~= "function"
+    then
+        return nil
+    end
+
+    local list = nil
+
+    pcall(function()
+        list =
+            players.get_all()
+    end)
+
+    if type(list) ~= "table" then
+        return nil
+    end
+
+    -- Sticky Aim: keep the same Silent target while its physical bind is held.
+    if S.silent_sticky_aim == true
+        and A.hitfx_silent_locked_addr
+    then
+        for _, p in ipairs(list) do
+            if p.address
+                == A.hitfx_silent_locked_addr
+                and FALLEN_HITFX_SILENT_VALID_PLAYER(p)
+            then
+                local pos =
+                    FALLEN_HITFX_SILENT_PART_POS(p)
+
+                if pos
+                    and FALLEN_BT_PROJECT(pos)
+                then
+                    return p
+                end
+            end
+        end
+
+        A.hitfx_silent_locked_addr =
+            nil
+    end
+
+    local mx, my = nil, nil
+
+    if type(mouse_pos) == "function" then
+        pcall(function()
+            mx, my =
+                mouse_pos()
+        end)
+    end
+
+    mx =
+        tonumber(mx)
+
+    my =
+        tonumber(my)
+
+    if not mx
+        or not my
+    then
+        return nil
+    end
+
+    local best =
+        nil
+
+    local best_sd =
+        math.huge
+
+    local use_fov =
+        S.silent_fov_enabled == true
+
+    local fov =
+        clamp(
+            tonumber(S.silent_fov)
+            or 180,
+            10,
+            600
+        )
+
+    for _, p in ipairs(list) do
+        if FALLEN_HITFX_SILENT_VALID_PLAYER(p) then
+            local pos =
+                FALLEN_HITFX_SILENT_PART_POS(p)
+
+            local s =
+                FALLEN_BT_PROJECT(pos)
+
+            if s then
+                local dx =
+                    (tonumber(s.X) or 0)
+                    - mx
+
+                local dy =
+                    (tonumber(s.Y) or 0)
+                    - my
+
+                local sd =
+                    math.sqrt(
+                        dx * dx
+                        + dy * dy
+                    )
+
+                if (
+                        not use_fov
+                        or sd <= fov
+                    )
+                    and sd < best_sd
+                then
+                    best_sd =
+                        sd
+
+                    best =
+                        p
+                end
+            end
+        end
+    end
+
+    if best
+        and S.silent_sticky_aim == true
+    then
+        A.hitfx_silent_locked_addr =
+            best.address
+    end
+
+    return best
+end
+
+
+function FALLEN_HITFX_AIMBOT_TARGET()
+    if S.aim_enabled ~= true
+        or not FAP.current_target_pos
+        or tick() - (FAP.current_target_seen or 0) > 0.18
+    then
+        return nil
+    end
+
+    local p =
+        FALLEN_HITFX_FIND_PLAYER(
+            FAP.current_target_addr,
+            FAP.current_target_name
+        )
+
+    local hp =
+        tonumber(
+            FAP.current_target_health
+        )
+
+    if hp == nil
+        and p
+    then
+        hp =
+            tonumber(
+                p.health
+            )
+    end
+
+    if hp == nil then
+        return nil
+    end
+
+    local pos = {
+        X = FAP.current_target_pos.X,
+        Y = FAP.current_target_pos.Y,
+        Z = FAP.current_target_pos.Z,
+    }
+
+    local head =
+        FALLEN_HITFX_PLAYER_HEAD_POS(
+            p,
+            pos
+        )
+
+    local raw_key =
         FAP.current_target_addr
         or FAP.current_target_name
+
+    if raw_key == nil then
+        return nil
+    end
+
+    return {
+        source = "aimbot",
+        key =
+            "aimbot:"
+            .. tostring(raw_key),
+        hp = hp,
+        pos = pos,
+        head_pos = head,
+    }
 end
+
+
+function FALLEN_HITFX_SILENT_RESOLVED_TARGET()
+    local p =
+        FALLEN_HITFX_SILENT_TARGET()
+
+    if not p then
+        return nil
+    end
+
+    local pos =
+        FALLEN_HITFX_SILENT_PART_POS(p)
+
+    local head =
+        FALLEN_HITFX_PLAYER_HEAD_POS(
+            p,
+            pos
+        )
+
+    local hp =
+        tonumber(
+            p.health
+        )
+
+    local raw_key =
+        p.address
+        or p.name
+        or p.display_name
+
+    if not pos
+        or hp == nil
+        or raw_key == nil
+    then
+        return nil
+    end
+
+    return {
+        source = "silent",
+        key =
+            "silent:"
+            .. tostring(raw_key),
+        hp = hp,
+        player = p,
+        pos = {
+            X = pos.X,
+            Y = pos.Y,
+            Z = pos.Z,
+        },
+        head_pos = head,
+    }
+end
+
+
+function FALLEN_HITFX_ACTIVE_TARGET()
+    -- When Silent's physical HOLD bind is down, its target is authoritative
+    -- for hit effects/damage numbers. If it has no valid target, fall back to
+    -- the custom Aimbot target so both systems can coexist.
+    if FALLEN_HITFX_SILENT_BIND_DOWN() then
+        local silent =
+            FALLEN_HITFX_SILENT_RESOLVED_TARGET()
+
+        if silent then
+            return silent
+        end
+    end
+
+    return
+        FALLEN_HITFX_AIMBOT_TARGET()
+end
+
+
+function FALLEN_HITFX_TARGET_KEY(
+    target
+)
+    return
+        target
+        and target.key
+        or nil
+end
+
 
 function FALLEN_HITFX_ADD(pos)
     if not pos then
@@ -14505,39 +16751,49 @@ function FALLEN_HITFX_ADD(pos)
     end
 end
 
-function FALLEN_HITFX_SCAN_HP()
-    if S.hit_effect_enabled ~= true
-        or S.aim_enabled ~= true
-    then
-        FALLEN_HITFX.target_key = nil
-        FALLEN_HITFX.last_hp = nil
-        FALLEN_HITFX.test_lmb_was_down = false
+function FALLEN_DMGNUM_SCAN_HP()
+    -- Damage Numbers keep the existing HP-drop target logic.
+    -- Hit Effect is intentionally NOT triggered here anymore.
+    if S.damage_numbers_enabled ~= true then
+        FALLEN_HITFX.target_key =
+            nil
+
+        FALLEN_HITFX.last_hp =
+            nil
+
+        A.hitfx_silent_locked_addr =
+            nil
+
         return
     end
 
-    -- The target must still be actively held by our Aimbot.
-    if not FAP.current_target_pos
-        or tick() - (FAP.current_target_seen or 0) > 0.18
+    local target =
+        FALLEN_HITFX_ACTIVE_TARGET()
+
+    if not target
+        or not target.pos
     then
-        FALLEN_HITFX.target_key = nil
-        FALLEN_HITFX.last_hp = nil
-        FALLEN_HITFX.test_lmb_was_down = false
+        FALLEN_HITFX.target_key =
+            nil
+
+        FALLEN_HITFX.last_hp =
+            nil
+
         return
     end
 
     local key =
-        FALLEN_HITFX_TARGET_KEY()
+        FALLEN_HITFX_TARGET_KEY(
+            target
+        )
 
     if not key then
         return
     end
 
-    -- FINAL LOGIC:
-    -- effect only fires while this exact target is still locked
-    -- and the same locked target loses at least 15 HP.
     local hp =
         tonumber(
-            FAP.current_target_health
+            target.hp
         )
 
     if hp == nil then
@@ -14545,9 +16801,15 @@ function FALLEN_HITFX_SCAN_HP()
     end
 
     if FALLEN_HITFX.target_key ~= key then
-        FALLEN_HITFX.target_key = key
-        FALLEN_HITFX.last_hp = hp
-        FALLEN_HITFX.last_seen = tick()
+        FALLEN_HITFX.target_key =
+            key
+
+        FALLEN_HITFX.last_hp =
+            hp
+
+        FALLEN_HITFX.last_seen =
+            tick()
+
         return
     end
 
@@ -14564,18 +16826,396 @@ function FALLEN_HITFX_SCAN_HP()
     if damage >= 15
         and tick() - (FALLEN_HITFX.last_spawn or 0) > 0.008
     then
-        FALLEN_HITFX.last_spawn = tick()
+        FALLEN_HITFX.last_spawn =
+            tick()
 
-        FALLEN_HITFX_ADD({
-            X = FAP.current_target_pos.X,
-            Y = FAP.current_target_pos.Y,
-            Z = FAP.current_target_pos.Z,
-        })
+        FALLEN_DMGNUM_ADD(
+            damage,
+            target.head_pos,
+            target.pos
+        )
     end
 
-    FALLEN_HITFX.last_hp = hp
-    FALLEN_HITFX.last_seen = tick()
+    FALLEN_HITFX.last_hp =
+        hp
+
+    FALLEN_HITFX.last_seen =
+        tick()
 end
+
+
+function FALLEN_HITFX_VFX_KIND(
+    inst
+)
+    if not inst
+        or not FALLEN_BT_VFX_INSTANCE_VALID(
+            inst
+        )
+    then
+        return nil
+    end
+
+    local name = nil
+
+    pcall(function()
+        name =
+            inst:get_name()
+    end)
+
+    name =
+        string.lower(
+            tostring(
+                name or ""
+            )
+        )
+
+    if name == "bloodpart" then
+        return "bloodpart"
+    end
+
+    if name == "hole"
+        or name == "metalhole"
+    then
+        return "hole"
+    end
+
+    return nil
+end
+
+
+function FALLEN_HITFX_FOV_RADIUS()
+    -- Hidden validation FOV.
+    if key_down(0x02) == true then
+        return 20
+    end
+
+    return 40
+end
+
+
+function FALLEN_HITFX_FOV_CENTER()
+    local cx, cy =
+        nil,
+        nil
+
+    if type(crosshair_pos) == "function" then
+        pcall(function()
+            local c =
+                crosshair_pos()
+
+            if c then
+                cx =
+                    tonumber(
+                        c.X
+                        or c.x
+                        or c[1]
+                    )
+
+                cy =
+                    tonumber(
+                        c.Y
+                        or c.y
+                        or c[2]
+                    )
+            end
+        end)
+    end
+
+    if (
+            cx == nil
+            or cy == nil
+        )
+        and type(FALLEN_CUSTOM_FOV_CENTER) == "function"
+    then
+        pcall(function()
+            cx, cy =
+                FALLEN_CUSTOM_FOV_CENTER()
+        end)
+    end
+
+    return
+        tonumber(cx),
+        tonumber(cy)
+end
+
+
+function FALLEN_HITFX_FOV_CHECK(
+    pos
+)
+    if not pos
+        or not aim
+        or type(aim.world_to_screen) ~= "function"
+    then
+        return false, nil
+    end
+
+    local screen = nil
+
+    pcall(function()
+        screen =
+            aim.world_to_screen(
+                pos
+            )
+    end)
+
+    if not screen
+        or screen.visible ~= true
+        or screen.X == nil
+        or screen.Y == nil
+    then
+        return false, nil
+    end
+
+    local cx, cy =
+        FALLEN_HITFX_FOV_CENTER()
+
+    if not cx
+        or not cy
+    then
+        return false, nil
+    end
+
+    local dx =
+        tonumber(screen.X)
+        - cx
+
+    local dy =
+        tonumber(screen.Y)
+        - cy
+
+    local dist_sq =
+        dx * dx
+        + dy * dy
+
+    local radius =
+        FALLEN_HITFX_FOV_RADIUS()
+
+    if dist_sq
+        > radius
+        * radius
+    then
+        return false, nil
+    end
+
+    return
+        true,
+        dist_sq
+end
+
+
+function FALLEN_HITFX_FIND_NEW_IMPACT(
+    previous,
+    current,
+    shot_age
+)
+    if type(current) ~= "table" then
+        return nil
+    end
+
+    previous =
+        type(previous) == "table"
+        and previous
+        or {}
+
+    shot_age =
+        tonumber(shot_age)
+        or 999
+
+    local best_pos =
+        nil
+
+    local best_screen_dist_sq =
+        nil
+
+    for key, inst in pairs(current) do
+        if previous[key] == nil then
+            local kind =
+                FALLEN_HITFX_VFX_KIND(
+                    inst
+                )
+
+            local allowed =
+                false
+
+            if kind == "hole" then
+                -- Hole / MetalHole must appear almost immediately.
+                allowed =
+                    shot_age <= 0.50
+
+            elseif kind == "bloodpart" then
+                -- BloodPart has a longer window than Hole/MetalHole.
+                allowed =
+                    shot_age <= 1.00
+            end
+
+            if allowed then
+                local pos =
+                    FALLEN_BT_VFX_POSITION(
+                        inst
+                    )
+
+                if pos then
+                    local inside, screen_dist_sq =
+                        FALLEN_HITFX_FOV_CHECK(
+                            pos
+                        )
+
+                    if inside
+                        and screen_dist_sq ~= nil
+                        and (
+                            best_screen_dist_sq == nil
+                            or screen_dist_sq < best_screen_dist_sq
+                        )
+                    then
+                        best_screen_dist_sq =
+                            screen_dist_sq
+
+                        best_pos = {
+                            X = pos.X,
+                            Y = pos.Y,
+                            Z = pos.Z,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    return best_pos
+end
+
+
+function FALLEN_HITFX_VFX_TICK()
+    if S.hit_effect_enabled ~= true then
+        FALLEN_HITFX.vfx_seen =
+            {}
+
+        FALLEN_HITFX.vfx_prev_lmb =
+            false
+
+        FALLEN_HITFX.vfx_watch_until =
+            0
+
+        FALLEN_HITFX.vfx_shot_time =
+            nil
+
+        return
+    end
+
+    if not FALLEN_BT_WEAPON_READY() then
+        FALLEN_HITFX.vfx_seen =
+            {}
+
+        FALLEN_HITFX.vfx_prev_lmb =
+            false
+
+        FALLEN_HITFX.vfx_watch_until =
+            0
+
+        FALLEN_HITFX.vfx_shot_time =
+            nil
+
+        return
+    end
+
+    local now =
+        tick()
+
+    local lmb =
+        key_down(0x01)
+        == true
+
+    if not lmb
+        and now
+            >= (
+                tonumber(
+                    FALLEN_HITFX.vfx_watch_until
+                )
+                or 0
+            )
+    then
+        FALLEN_HITFX.vfx_seen =
+            FALLEN_BT_VFX_SCAN()
+
+        FALLEN_HITFX.vfx_prev_lmb =
+            false
+
+        FALLEN_HITFX.vfx_shot_time =
+            nil
+
+        return
+    end
+
+    if lmb
+        and FALLEN_HITFX.vfx_prev_lmb ~= true
+    then
+        FALLEN_HITFX.vfx_shot_time =
+            now
+
+        -- Longest required window is BloodPart = 1.0 s.
+        FALLEN_HITFX.vfx_watch_until =
+            now + 1.00
+
+    elseif lmb then
+        -- Automatic fire: treat the current held-fire frame as a fresh shot
+        -- opportunity so Hole/MetalHole still get their own 0.5 s window.
+        FALLEN_HITFX.vfx_shot_time =
+            now
+
+        FALLEN_HITFX.vfx_watch_until =
+            now + 1.00
+    end
+
+    FALLEN_HITFX.vfx_prev_lmb =
+        lmb
+
+    if not lmb
+        and now
+            > (
+                tonumber(
+                    FALLEN_HITFX.vfx_watch_until
+                )
+                or 0
+            )
+    then
+        return
+    end
+
+    local previous =
+        FALLEN_HITFX.vfx_seen
+        or {}
+
+    local current =
+        FALLEN_BT_VFX_SCAN()
+
+    local shot_age =
+        now
+        - (
+            tonumber(
+                FALLEN_HITFX.vfx_shot_time
+            )
+            or now
+        )
+
+    local impact_pos =
+        FALLEN_HITFX_FIND_NEW_IMPACT(
+            previous,
+            current,
+            shot_age
+        )
+
+    FALLEN_HITFX.vfx_seen =
+        current
+
+    if not impact_pos then
+        return
+    end
+
+    FALLEN_HITFX_ADD(
+        impact_pos
+    )
+end
+
 
 function FALLEN_HITFX_DRAW_ONE(hit, age, life)
     local s =
@@ -14883,8 +17523,10 @@ function FALLEN_HITFX_TICK()
         return
     end
 
-    FALLEN_HITFX_SCAN_HP()
+    FALLEN_HITFX_VFX_TICK()
+    FALLEN_DMGNUM_SCAN_HP()
     FALLEN_HITFX_DRAW()
+    FALLEN_DMGNUM_DRAW()
 end
 
 hooks.on_render(function()
@@ -20072,12 +22714,20 @@ local WORLD_ESP = {
         Plants = nil,
         Bases = nil,
         Drops = nil,
+        VFX = nil,
     },
 
     entries = {},
     base_entries = {},
     drop_entries = {},
     body_bag_entries = {},
+
+    -- Visual Grenade runtime is independent from the World ESP master.
+    grenade_entries = {},
+    grenade_tracks = {},
+    grenade_last_scan = -100,
+    grenade_icon = nil,
+
     last_scan = -100,
 
     icons = {},
@@ -21817,14 +24467,806 @@ function world_draw_base_entry(
     end
 end
 
-local function world_esp_tick()
-    if _G.FallenMenuReady ~= true
-        or S.world_esp_enabled ~= true
+-- =========================================================
+-- Visual Grenade
+-- Workspace/VFX -> Military Grenade [Model] (DIRECT CHILD ONLY; VFX/VMS ignored)
+-- Draws the supplied grenade icon, a 4-second disappearing timer outline,
+-- and a screen-space trail following the grenade's real flight path.
+-- =========================================================
+
+FALLEN_GRENADE_ICON_URLS =
+    FALLEN_GRENADE_ICON_URLS
+    or {
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e8/Military_Grenade.png/revision/latest/scale-to-width-down/55?cb=20250406121732",
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e8/Military_Grenade.png/revision/latest?format=original",
+        "https://static.wikia.nocookie.net/fallen-survival-new/images/e/e8/Military_Grenade.png",
+    }
+
+FALLEN_GRENADE_FUSE_TIME = 3.0
+-- Timer origin is the exact first frame where the thrown grenade is seen as a direct child of Workspace/VFX.
+-- Image loading is completely independent from this timestamp.
+FALLEN_GRENADE_SPAWN_SYNC = 0.0
+
+function FALLEN_GRENADE_INSTANCE_KEY(inst)
+    if not inst then
+        return nil
+    end
+
+    local key = nil
+
+    pcall(function()
+        key = tostring(inst.addr or inst)
+    end)
+
+    return key or tostring(inst)
+end
+
+function FALLEN_GRENADE_NAME_MATCH(name)
+    local s =
+        string.lower(
+            tostring(name or "")
+        )
+
+    s = string.gsub(s, "%s*%(%s*clone%s*%)%s*$", "")
+    s = string.gsub(s, "[%s_%-%[%]%(%)]+", "")
+
+    return
+        s == "militarygrenade"
+        or s == "grenade"
+        or string.find(
+            s,
+            "militarygrenade",
+            1,
+            true
+        ) ~= nil
+end
+
+function FALLEN_GRENADE_COLOR()
+    return
+        world_color_from_prefix(
+            "world_color_grenade"
+        )
+end
+
+function FALLEN_GRENADE_ICON_GET()
+    if type(LoadImage) ~= "function" then
+        return nil
+    end
+
+    local st =
+        WORLD_ESP.grenade_icon
+
+    if not st then
+        st = {
+            index = 1,
+            handle = nil,
+            dead = false,
+        }
+
+        WORLD_ESP.grenade_icon = st
+    end
+
+    if st.dead then
+        return nil
+    end
+
+    -- Reuse the startup-preloaded handle directly. This makes the grenade icon
+    -- independent from when the first grenade appears in VFX.
+    if not st.handle
+        and type(_G.FALLEN_IMAGE_PRELOAD_HANDLES) == "table"
+        and FALLEN_GRENADE_ICON_URLS[st.index]
+    then
+        local preloaded =
+            _G.FALLEN_IMAGE_PRELOAD_HANDLES[
+                FALLEN_GRENADE_ICON_URLS[st.index]
+            ]
+
+        if preloaded then
+            st.handle = preloaded
+        end
+    end
+
+    if not st.handle
+        and FALLEN_GRENADE_ICON_URLS[st.index]
+    then
+        local ok, handle =
+            pcall(
+                LoadImage,
+                FALLEN_GRENADE_ICON_URLS[st.index]
+            )
+
+        if ok and handle then
+            st.handle = handle
+        end
+    end
+
+    if st.handle
+        and type(IsImageReady) == "function"
+    then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                st.handle
+            )
+
+        if ok and ready == true then
+            return st.handle
+        end
+    end
+
+    if st.handle
+        and type(IsImageFailed) == "function"
+    then
+        local ok, failed =
+            pcall(
+                IsImageFailed,
+                st.handle
+            )
+
+        if ok and failed == true then
+            st.index = st.index + 1
+            st.handle = nil
+
+            if not FALLEN_GRENADE_ICON_URLS[st.index] then
+                st.dead = true
+            end
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_GRENADE_SCAN_VFX_ROOT(
+    vfx,
+    entries,
+    seen,
+    now
+)
+    -- IMPORTANT: only direct children of Workspace/VFX count.
+    -- Never walk VFX/VMS or any other nested folder/model, otherwise
+    -- the held/viewmodel grenade gets picked up as a world grenade.
+    if not vfx
+        or not world_inst_valid(vfx)
+        or #entries >= 96
     then
         return
     end
 
-    world_refresh_cache(false)
+    for _, inst in ipairs(world_children(vfx)) do
+        if #entries >= 96 then
+            break
+        end
+
+        local class =
+            world_inst_class(inst)
+
+        local name =
+            world_inst_name(inst)
+
+        -- The real thrown grenade appears as a Model directly under VFX.
+        -- Nested VMS contents are intentionally ignored completely.
+        if class == "Model"
+            and name
+            and FALLEN_GRENADE_NAME_MATCH(name)
+        then
+            local key =
+                FALLEN_GRENADE_INSTANCE_KEY(inst)
+
+            if key
+                and not seen[key]
+            then
+                seen[key] = true
+
+                local track =
+                    WORLD_ESP.grenade_tracks[key]
+
+                if not track then
+                    -- IMPORTANT: this timestamp is created immediately when the
+                    -- grenade first exists DIRECTLY in Workspace/VFX. It does
+                    -- not depend on icon loading, WorldToScreen or drawing.
+                    track = {
+                        spawned_at = now,
+                        born = now, -- backward-compatible alias
+                        last_seen = now,
+                        points = {},
+                        inst = inst,
+                    }
+
+                    WORLD_ESP.grenade_tracks[key] = track
+                else
+                    if track.spawned_at == nil then
+                        track.spawned_at =
+                            tonumber(track.born)
+                            or now
+                    end
+
+                    track.born = track.spawned_at
+                    track.last_seen = now
+                    track.inst = inst
+                end
+
+                entries[#entries + 1] = {
+                    inst = inst,
+                    key = key,
+                    name = name,
+                    -- Copy the immutable VFX-spawn timestamp into the entry too.
+                    -- Even if the PNG becomes ready a second later, countdown
+                    -- progress is already one second into the fuse.
+                    spawned_at = track.spawned_at,
+                }
+            end
+        end
+    end
+end
+
+function FALLEN_GRENADE_REFRESH(force)
+    if _G.FALLEN_GRENADE_RESET_TRACKS == true then
+        WORLD_ESP.grenade_entries = {}
+        WORLD_ESP.grenade_tracks = {}
+        WORLD_ESP.grenade_last_scan = -100
+        _G.FALLEN_GRENADE_RESET_TRACKS = false
+    end
+
+    if _G.FALLEN_GRENADE_FORCE_RESCAN == true then
+        force = true
+        _G.FALLEN_GRENADE_FORCE_RESCAN = false
+    end
+
+    if S.world_grenade_esp_enabled ~= true then
+        WORLD_ESP.grenade_entries = {}
+        return
+    end
+
+    local now = tick()
+
+    if not force
+        and now - (WORLD_ESP.grenade_last_scan or -100) < 0.012
+    then
+        return
+    end
+
+    WORLD_ESP.grenade_last_scan = now
+
+    local ws = nil
+
+    pcall(function()
+        if rbx
+            and type(rbx.workspace) == "function"
+        then
+            ws = rbx.workspace()
+        end
+    end)
+
+    if not ws then
+        WORLD_ESP.grenade_entries = {}
+        return
+    end
+
+    local vfx =
+        world_find_child(
+            ws,
+            "VFX"
+        )
+
+    WORLD_ESP.folders.VFX = vfx
+
+    if not vfx
+        or not world_inst_valid(vfx)
+    then
+        WORLD_ESP.grenade_entries = {}
+        return
+    end
+
+    local entries = {}
+    local seen = {}
+
+    FALLEN_GRENADE_SCAN_VFX_ROOT(
+        vfx,
+        entries,
+        seen,
+        now
+    )
+
+    WORLD_ESP.grenade_entries = entries
+
+    for key, track in pairs(WORLD_ESP.grenade_tracks) do
+        if not seen[key]
+            and now - (track.last_seen or 0) > 0.70
+        then
+            WORLD_ESP.grenade_tracks[key] = nil
+        end
+    end
+end
+
+function FALLEN_GRENADE_PUSH_TRAIL_POINT(track, pos)
+    if not track
+        or not pos
+    then
+        return
+    end
+
+    track.points =
+        type(track.points) == "table"
+        and track.points
+        or {}
+
+    local now = tick()
+    local points = track.points
+    local last = points[#points]
+    local push = false
+
+    if not last then
+        push = true
+    else
+        local dx = (pos.X or 0) - (last.x or 0)
+        local dy = (pos.Y or 0) - (last.y or 0)
+        local dz = (pos.Z or 0) - (last.z or 0)
+
+        local dist =
+            math.sqrt(
+                dx * dx
+                + dy * dy
+                + dz * dz
+            )
+
+        if dist >= 0.16
+            or now - (last.t or 0) >= 0.045
+        then
+            push = true
+        end
+    end
+
+    if push then
+        points[#points + 1] = {
+            x = pos.X or 0,
+            y = pos.Y or 0,
+            z = pos.Z or 0,
+            t = now,
+        }
+    end
+
+    while #points > 72 do
+        table.remove(points, 1)
+    end
+
+    -- Keep the recent flight trail, capped for performance.
+    while #points > 2
+        and now - (points[1].t or now) > 3.85
+    do
+        table.remove(points, 1)
+    end
+end
+
+function FALLEN_GRENADE_DRAW_TRAIL(points, alpha_mul)
+    if S.world_grenade_trail_enabled ~= true
+        or type(DrawLine) ~= "function"
+        or type(points) ~= "table"
+        or #points < 2
+    then
+        return
+    end
+
+    local color =
+        FALLEN_GRENADE_COLOR()
+
+    local base_alpha =
+        (color[4] or 1)
+        * clamp(
+            tonumber(alpha_mul) or 1,
+            0,
+            1
+        )
+
+    local thickness =
+        clamp(
+            tonumber(S.world_grenade_trail_thickness) or 2.4,
+            0.5,
+            6
+        )
+
+    if base_alpha <= 0.001 then
+        return
+    end
+
+    local count = #points
+
+    for i = 2, count do
+        local a = points[i - 1]
+        local b = points[i]
+
+        local pa = nil
+        local pb = nil
+
+        pcall(function()
+            pa = Vector3(a.x, a.y, a.z)
+            pb = Vector3(b.x, b.y, b.z)
+        end)
+
+        local sa =
+            pa
+            and world_screen(pa)
+            or nil
+
+        local sb =
+            pb
+            and world_screen(pb)
+            or nil
+
+        if sa and sb then
+            local t =
+                (i - 1)
+                / math.max(1, count - 1)
+
+            -- Tail is almost transparent, head is bright and thicker.
+            local fade = t * t
+
+            DrawLine(
+                sa.X,
+                sa.Y,
+                sb.X,
+                sb.Y,
+                color[1],
+                color[2],
+                color[3],
+                base_alpha
+                    * (0.08 + fade * 0.82),
+                thickness
+                    * (0.55 + t * 0.45)
+            )
+        end
+    end
+end
+
+function FALLEN_GRENADE_DRAW_TIMER_RING(
+    x,
+    y,
+    radius,
+    remaining,
+    alpha_mul
+)
+    if type(DrawLine) ~= "function" then
+        return
+    end
+
+    remaining =
+        clamp(
+            tonumber(remaining) or 0,
+            0,
+            1
+        )
+
+    local color =
+        FALLEN_GRENADE_COLOR()
+
+    local alpha_value =
+        (color[4] or 1)
+        * clamp(
+            tonumber(alpha_mul) or 1,
+            0,
+            1
+        )
+
+    if alpha_value <= 0.001 then
+        return
+    end
+
+    -- Very faint full outline stays under the active countdown.
+    if type(DrawCircle) == "function" then
+        DrawCircle(
+            x,
+            y,
+            radius,
+            color[1],
+            color[2],
+            color[3],
+            alpha_value * 0.13,
+            1.15
+        )
+    end
+
+    if remaining <= 0 then
+        return
+    end
+
+    local segments = 64
+    local active =
+        math.floor(
+            segments * remaining
+        )
+
+    if active <= 0 then
+        return
+    end
+
+    local start_angle =
+        -math.pi * 0.5
+
+    local step =
+        (math.pi * 2)
+        / segments
+
+    -- Clockwise CS-style fuse ring: circumference disappears as time runs out.
+    for i = 1, active do
+        local a0 =
+            start_angle
+            + (i - 1) * step
+
+        local a1 =
+            start_angle
+            + i * step
+
+        DrawLine(
+            x + math.cos(a0) * radius,
+            y + math.sin(a0) * radius,
+            x + math.cos(a1) * radius,
+            y + math.sin(a1) * radius,
+            color[1],
+            color[2],
+            color[3],
+            alpha_value,
+            2.15
+        )
+    end
+end
+
+function FALLEN_GRENADE_DRAW_ICON(
+    handle,
+    x,
+    y,
+    size,
+    alpha_mul,
+    remaining
+)
+    if not handle
+        or type(DrawImage) ~= "function"
+    then
+        return false
+    end
+
+    size =
+        clamp(
+            tonumber(size) or 24,
+            14,
+            58
+        )
+
+    alpha_mul =
+        clamp(
+            tonumber(alpha_mul) or 1,
+            0,
+            1
+        )
+
+    local radius =
+        size * 0.5 + 4
+
+    if type(DrawCircleFilled) == "function" then
+        DrawCircleFilled(
+            x,
+            y,
+            radius,
+            0.018,
+            0.020,
+            0.026,
+            0.92 * alpha_mul
+        )
+    end
+
+    -- The outline itself is the fuse timer requested by the user.
+    FALLEN_GRENADE_DRAW_TIMER_RING(
+        x,
+        y,
+        radius,
+        remaining,
+        alpha_mul
+    )
+
+    DrawImage(
+        handle,
+        x - size * 0.5,
+        y - size * 0.5,
+        size,
+        size,
+        1,
+        1,
+        1,
+        alpha_mul,
+        math.max(2, size * 0.12)
+    )
+
+    return true
+end
+
+function FALLEN_GRENADE_DRAW(entry, my_pos)
+    if S.world_grenade_esp_enabled ~= true
+        or not entry
+        or not world_inst_valid(entry.inst)
+    then
+        return
+    end
+
+    local pos =
+        world_part_pos(
+            entry.inst,
+            0
+        )
+
+    if not pos then
+        return
+    end
+
+    local dist =
+        world_distance_m(
+            pos,
+            my_pos
+        )
+
+    if not dist then
+        return
+    end
+
+    local max_dist =
+        clamp(
+            tonumber(S.world_max_dist) or 500,
+            25,
+            2000
+        )
+
+    if dist > max_dist then
+        return
+    end
+
+    local key =
+        entry.key
+        or FALLEN_GRENADE_INSTANCE_KEY(entry.inst)
+
+    if not key then
+        return
+    end
+
+    local now = tick()
+    local track =
+        WORLD_ESP.grenade_tracks[key]
+
+    if not track then
+        -- Fallback only. Normally the track is created by the VFX scanner
+        -- before this draw function is ever reached. Preserve entry.spawned_at
+        -- so rendering can never restart the grenade timer.
+        local spawned_at =
+            tonumber(entry.spawned_at)
+            or now
+
+        track = {
+            spawned_at = spawned_at,
+            born = spawned_at,
+            last_seen = now,
+            points = {},
+            inst = entry.inst,
+        }
+
+        WORLD_ESP.grenade_tracks[key] = track
+    end
+
+    if track.spawned_at == nil then
+        track.spawned_at =
+            tonumber(entry.spawned_at)
+            or tonumber(track.born)
+            or now
+    end
+
+    -- Never move this timestamp forward. The timer belongs to the thrown VFX
+    -- instance, not to the moment the image handle becomes ready.
+    entry.spawned_at = track.spawned_at
+    track.born = track.spawned_at
+    track.last_seen = now
+    track.inst = entry.inst
+
+    FALLEN_GRENADE_PUSH_TRAIL_POINT(
+        track,
+        pos
+    )
+
+    local color =
+        FALLEN_GRENADE_COLOR()
+
+    local fade =
+        color[4] or 1
+
+    if S.world_fade_distance == true
+        and max_dist > 0
+    then
+        fade =
+            fade
+            * clamp(
+                1 - (dist / max_dist) * 0.78,
+                0.18,
+                1
+            )
+    end
+
+    -- Trail is intentionally drawn first so the icon always stays above it.
+    FALLEN_GRENADE_DRAW_TRAIL(
+        track.points,
+        fade
+    )
+
+    local screen =
+        world_screen(pos)
+
+    if not screen then
+        return
+    end
+
+    -- Fuse progress is calculated BEFORE touching the image handle.
+    -- Therefore a slow PNG load can never restart or delay the 4-second timer.
+    local spawned_at =
+        tonumber(track.spawned_at)
+        or tonumber(entry.spawned_at)
+        or tonumber(track.born)
+        or now
+
+    local elapsed =
+        math.max(
+            0,
+            now - spawned_at
+        )
+
+    local remaining =
+        clamp(
+            1
+            - elapsed
+                / FALLEN_GRENADE_FUSE_TIME,
+            0,
+            1
+        )
+
+    local handle =
+        FALLEN_GRENADE_ICON_GET()
+
+    if not handle then
+        return
+    end
+
+    local icon_size =
+        clamp(
+            (tonumber(S.world_icon_size) or 18) + 6,
+            18,
+            58
+        )
+
+    FALLEN_GRENADE_DRAW_ICON(
+        handle,
+        screen.X,
+        screen.Y - 24,
+        icon_size,
+        fade,
+        remaining
+    )
+end
+
+local function world_esp_tick()
+    local world_active =
+        S.world_esp_enabled == true
+
+    local grenade_active =
+        S.world_grenade_esp_enabled == true
+
+    if _G.FallenMenuReady ~= true
+        or (
+            not world_active
+            and not grenade_active
+        )
+    then
+        return
+    end
+
+    if world_active then
+        world_refresh_cache(false)
+    end
+
+    if grenade_active then
+        FALLEN_GRENADE_REFRESH(false)
+    end
 
     local my_pos =
         world_local_pos()
@@ -21833,40 +25275,53 @@ local function world_esp_tick()
         return
     end
 
-    for _, entry in ipairs(
-        WORLD_ESP.entries
-    ) do
-        world_draw_entry(
-            entry,
-            my_pos
-        )
+    if world_active then
+        for _, entry in ipairs(
+            WORLD_ESP.entries
+        ) do
+            world_draw_entry(
+                entry,
+                my_pos
+            )
+        end
+
+        for _, entry in ipairs(
+            WORLD_ESP.base_entries
+        ) do
+            world_draw_base_entry(
+                entry,
+                my_pos
+            )
+        end
+
+        for _, entry in ipairs(
+            WORLD_ESP.drop_entries or {}
+        ) do
+            FALLEN_WORLD_DRAW_DROPPED_ITEM(
+                entry,
+                my_pos
+            )
+        end
+
+        for _, entry in ipairs(
+            WORLD_ESP.body_bag_entries or {}
+        ) do
+            FALLEN_WORLD_DRAW_BODY_BAG(
+                entry,
+                my_pos
+            )
+        end
     end
 
-    for _, entry in ipairs(
-        WORLD_ESP.base_entries
-    ) do
-        world_draw_base_entry(
-            entry,
-            my_pos
-        )
-    end
-
-    for _, entry in ipairs(
-        WORLD_ESP.drop_entries or {}
-    ) do
-        FALLEN_WORLD_DRAW_DROPPED_ITEM(
-            entry,
-            my_pos
-        )
-    end
-
-    for _, entry in ipairs(
-        WORLD_ESP.body_bag_entries or {}
-    ) do
-        FALLEN_WORLD_DRAW_BODY_BAG(
-            entry,
-            my_pos
-        )
+    if grenade_active then
+        for _, entry in ipairs(
+            WORLD_ESP.grenade_entries or {}
+        ) do
+            FALLEN_GRENADE_DRAW(
+                entry,
+                my_pos
+            )
+        end
     end
 end
 
@@ -22411,23 +25866,30 @@ end
 -- Menu appearance helpers
 -- =========================================================
 
-function FALLEN_POPUP_GLOW(x, y, w, h, radius, strength)
-    local amount = tonumber(strength) or 1
-
-    for i = 1, 14 do
-        local t = (i - 1) / 13
-        local falloff = 1 - t
-        local a = 0.12 * amount * falloff * falloff
-
-        FALLEN_DRAW_ROUNDED_GLOW_FRAME(
-            x - i, y - i,
-            w + i * 2, h + i * 2,
-            radius + i,
-            { 0, 0, 0, a },
-            1
-        )
-    end
+function FALLEN_POPUP_GLOW(
+    x,
+    y,
+    w,
+    h,
+    radius,
+    strength
+)
+    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+        x,
+        y,
+        w,
+        h,
+        radius,
+        { 0, 0, 0, 1 },
+        clamp(
+            tonumber(strength) or 1,
+            0,
+            2
+        ),
+        14 / 3
+    )
 end
+
 
 FALLEN_MENU_GRADIENT_TEXTURE =
     FALLEN_MENU_GRADIENT_TEXTURE
@@ -22943,10 +26405,44 @@ function FALLEN_APPLY_STYLE_COLOR()
         tostring(S.menu_type or "glass")
         :lower()
 
-    -- Accent stays blue; only the shell material changes.
-    C.accent = { 0.340, 0.450, 0.760, 1.00 }
-    C.accent_dim = { 0.240, 0.320, 0.600, 1.00 }
-    C.accent_soft = { 0.210, 0.260, 0.430, 0.65 }
+    -- Accent color is user-controlled and is intentionally independent
+    -- from the menu shell/background material. Only small UI details use it.
+    local accent_r, accent_g, accent_b =
+        hsv_to_rgb(
+            tonumber(S.menu_style_h) or 0.625,
+            tonumber(S.menu_style_s) or 0.55,
+            tonumber(S.menu_style_v) or 0.76
+        )
+
+    local accent_a =
+        clamp(
+            (tonumber(S.menu_style_alpha) or 100) / 100,
+            0,
+            1
+        )
+
+    C.accent = {
+        accent_r,
+        accent_g,
+        accent_b,
+        accent_a,
+    }
+
+    -- Derived accent variants keep sliders/toggles/soft highlights in the
+    -- same chosen hue instead of leaving old hard-coded blue pieces behind.
+    C.accent_dim = {
+        accent_r * 0.76,
+        accent_g * 0.76,
+        accent_b * 0.79,
+        accent_a,
+    }
+
+    C.accent_soft = {
+        accent_r * 0.62,
+        accent_g * 0.62,
+        accent_b * 0.62,
+        0.65 * accent_a,
+    }
 
     if t == "default" then
         -- Original dark Fallen-lua default theme.
@@ -23115,129 +26611,142 @@ function FALLEN_DRAW_ROUNDED_GLOW_FRAME(
     color,
     thickness
 )
-    radius =
-        math.max(
-            1,
-            math.min(
-                tonumber(radius) or 1,
-                math.min(w, h) * 0.5
-            )
-        )
-
-    thickness =
-        thickness
-        or 1
-
-    -- Straight sides stop before the rounded corners.
-    line(
-        x + radius,
-        y,
-        x + w - radius,
-        y,
-        color,
-        thickness
-    )
-
-    line(
-        x + radius,
-        y + h,
-        x + w - radius,
-        y + h,
-        color,
-        thickness
-    )
-
-    line(
+    -- Do not construct the glow from lines/arcs.
+    -- A line-based perimeter can rasterize different joins on different
+    -- sides and leave single-pixel holes.
+    --
+    -- Instead every glow level is one COMPLETE rounded surface.
+    -- The caller expands every level equally:
+    --   x - i, y - i, w + i*2, h + i*2, radius + i
+    -- so spacing is exactly symmetric on left/right/top/bottom and corners.
+    --
+    -- The actual menu/panel is drawn afterwards, covering the interior.
+    -- Therefore only the outside part of these complete surfaces is visible.
+    rounded_fill(
         x,
-        y + radius,
-        x,
-        y + h - radius,
-        color,
-        thickness
-    )
-
-    line(
-        x + w,
-        y + radius,
-        x + w,
-        y + h - radius,
-        color,
-        thickness
-    )
-
-    -- Rounded corners made from short line segments.
-    -- Six segments per quarter is enough for a soft glow edge.
-    local segments = 6
-
-    local function arc(cx, cy, a0, a1)
-        local px =
-            cx
-            + math.cos(a0)
-            * radius
-
-        local py =
-            cy
-            + math.sin(a0)
-            * radius
-
-        for n = 1, segments do
-            local a =
-                a0
-                + (a1 - a0)
-                * (n / segments)
-
-            local nx =
-                cx
-                + math.cos(a)
-                * radius
-
-            local ny =
-                cy
-                + math.sin(a)
-                * radius
-
-            line(
-                px,
-                py,
-                nx,
-                ny,
-                color,
-                thickness
-            )
-
-            px = nx
-            py = ny
-        end
-    end
-
-    arc(
-        x + radius,
-        y + radius,
-        math.pi,
-        math.pi * 1.5
-    )
-
-    arc(
-        x + w - radius,
-        y + radius,
-        math.pi * 1.5,
-        math.pi * 2
-    )
-
-    arc(
-        x + w - radius,
-        y + h - radius,
-        0,
-        math.pi * 0.5
-    )
-
-    arc(
-        x + radius,
-        y + h - radius,
-        math.pi * 0.5,
-        math.pi
+        y,
+        w,
+        h,
+        radius,
+        color
     )
 end
+
+
+function FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+    x,
+    y,
+    w,
+    h,
+    radius,
+    color,
+    strength,
+    spread
+)
+    color =
+        color
+        or { 0, 0, 0, 1 }
+
+    strength =
+        clamp(
+            tonumber(strength) or 1,
+            0,
+            2
+        )
+
+    spread =
+        clamp(
+            tonumber(spread) or 6,
+            1,
+            12
+        )
+
+    if strength <= 0.001
+        or (color[4] or 0) <= 0.001
+    then
+        return
+    end
+
+    -- Exact Aimbot FOV glow sampling.
+    local total_spread =
+        spread * 3.0
+
+    local layers =
+        28
+
+    -- Full rounded surfaces overlap. Convert the FOV target opacity at each
+    -- distance into the incremental alpha needed for this surface so the
+    -- FINAL visible falloff equals the FOV curve instead of over-darkening.
+    --
+    -- target_i = 0.20 * colorAlpha * strength * (1 - t)^2
+    -- target_i = 1 - (1 - layerAlpha_i) * (1 - target_{i+1})
+    local next_target =
+        0
+
+    for layer = layers - 1, 0, -1 do
+        local t =
+            layer / (layers - 1)
+
+        local falloff =
+            1 - t
+
+        local offset =
+            t * total_spread
+
+        local target_alpha =
+            clamp(
+                (color[4] or 1)
+                * strength
+                * falloff
+                * falloff
+                * 0.20,
+                0,
+                0.95
+            )
+
+        local layer_alpha =
+            0
+
+        if target_alpha > next_target then
+            layer_alpha =
+                1
+                - (
+                    (1 - target_alpha)
+                    / math.max(
+                        0.0001,
+                        1 - next_target
+                    )
+                )
+        end
+
+        layer_alpha =
+            clamp(
+                layer_alpha,
+                0,
+                0.95
+            )
+
+        if layer_alpha > 0.0001 then
+            rounded_fill(
+                x - offset,
+                y - offset,
+                w + offset * 2,
+                h + offset * 2,
+                radius + offset,
+                {
+                    color[1],
+                    color[2],
+                    color[3],
+                    layer_alpha
+                }
+            )
+        end
+
+        next_target =
+            target_alpha
+    end
+end
+
 
 function FALLEN_GEAR_HOVER_STEP(hot)
     local now = tick()
@@ -23960,7 +27469,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or menu_type_lower == "blur"
 
     local ph =
-        385
+        467
         + (
             gradient_selected
             and 82
@@ -23983,6 +27492,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
     if A.world_color_picker_open
         and (
             A.world_color_picker_key == "menu_glow"
+            or A.world_color_picker_key == "menu_style"
             or A.world_color_picker_key == "menu_gradient_a"
             or A.world_color_picker_key == "menu_gradient_b"
         )
@@ -24357,15 +27867,16 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
-        -- Secret setting is completely absent until the hidden brand gesture.
-        if A.secret_unlocked
-            and shell_h > 410 + weather_offset
-        then
+        local keybinds_y =
+            py + 368
+            + weather_offset
+
+        if shell_h > 410 + weather_offset then
             line(
                 px + 12,
-                py + 367 + weather_offset,
+                keybinds_y - 1,
                 px + pw - 12,
-                py + 367 + weather_offset,
+                keybinds_y - 1,
                 C.divider,
                 1
             )
@@ -24375,7 +27886,55 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 my,
                 row_clicked,
                 px + 8,
-                py + 368 + weather_offset,
+                keybinds_y,
+                pw - 16,
+                "Hotkeys",
+                "keybinds_list_enabled",
+                false
+            )
+        end
+
+        if shell_h > 451 + weather_offset then
+            line(
+                px + 12,
+                py + 408 + weather_offset,
+                px + pw - 12,
+                py + 408 + weather_offset,
+                C.divider,
+                1
+            )
+
+            FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
+                mx,
+                my,
+                row_clicked,
+                px + 8,
+                py + 409 + weather_offset,
+                pw - 16,
+                "Menu Style Color",
+                "menu_style"
+            )
+        end
+
+        -- Secret setting is completely absent until the hidden brand gesture.
+        if A.secret_unlocked
+            and shell_h > 492 + weather_offset
+        then
+            line(
+                px + 12,
+                py + 449 + weather_offset,
+                px + pw - 12,
+                py + 449 + weather_offset,
+                C.divider,
+                1
+            )
+
+            toggle_row(
+                mx,
+                my,
+                row_clicked,
+                px + 8,
+                py + 450 + weather_offset,
                 pw - 16,
                 "???",
                 "secret_enabled",
@@ -24448,6 +28007,981 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or scale_dropdown_hot
         or type_dropdown_hot
 end
+
+
+-- =========================================================
+-- Simple Hotkeys overlay
+-- =========================================================
+
+function FALLEN_KEYBINDS_STEP()
+    local now =
+        tick()
+
+    if A.keybinds_panel_last_t == nil then
+        A.keybinds_panel_last_t =
+            now
+    end
+
+    local dt =
+        clamp(
+            now - A.keybinds_panel_last_t,
+            0,
+            0.05
+        )
+
+    A.keybinds_panel_last_t =
+        now
+
+    local target =
+        S.keybinds_list_enabled == true
+        and 1
+        or 0
+
+    A.keybinds_panel_anim =
+        exp_chase(
+            A.keybinds_panel_anim or 0,
+            target,
+            target > (A.keybinds_panel_anim or 0)
+                and 12
+                or 9,
+            dt
+        )
+
+    if target == 0
+        and (A.keybinds_panel_anim or 0) < 0.015
+    then
+        A.keybinds_panel_anim =
+            0
+    elseif target == 1
+        and (A.keybinds_panel_anim or 0) > 0.992
+    then
+        A.keybinds_panel_anim =
+            1
+    end
+
+    return
+        clamp(
+            A.keybinds_panel_anim or 0,
+            0,
+            1
+        )
+end
+
+
+function FALLEN_HOTKEYS_ROUNDED_FILL(
+    x,
+    y,
+    w,
+    h,
+    radius,
+    color
+)
+    -- Pixel-lock the whole shape first.
+    x =
+        math.floor(
+            tonumber(x) or 0
+            + 0.5
+        )
+
+    y =
+        math.floor(
+            tonumber(y) or 0
+            + 0.5
+        )
+
+    w =
+        math.max(
+            1,
+            math.floor(
+                tonumber(w) or 1
+                + 0.5
+            )
+        )
+
+    h =
+        math.max(
+            1,
+            math.floor(
+                tonumber(h) or 1
+                + 0.5
+            )
+        )
+
+    radius =
+        math.floor(
+            clamp(
+                tonumber(radius) or 0,
+                0,
+                math.min(w, h) * 0.5
+            )
+            + 0.5
+        )
+
+    if radius <= 0 then
+        fill(
+            x,
+            y,
+            w,
+            h,
+            color
+        )
+
+        return
+    end
+
+    local x2 =
+        x + w
+
+    local y2 =
+        y + h
+
+    local rr =
+        radius * radius
+
+    -- Top and bottom corner rows are each ONE continuous horizontal strip.
+    -- That guarantees perfect left/right symmetry at this small 120x35 size.
+    for yy = 0, radius - 1 do
+        local dy =
+            radius
+            - yy
+            - 0.5
+
+        local dx =
+            math.floor(
+                math.sqrt(
+                    math.max(
+                        0,
+                        rr - dy * dy
+                    )
+                )
+                + 0.5
+            )
+
+        local left =
+            x
+            + radius
+            - dx
+
+        local right =
+            x2
+            - radius
+            + dx
+
+        local strip_w =
+            math.max(
+                0,
+                right - left
+            )
+
+        if strip_w > 0 then
+            fill(
+                left,
+                y + yy,
+                strip_w,
+                1,
+                color
+            )
+
+            fill(
+                left,
+                y2 - yy - 1,
+                strip_w,
+                1,
+                color
+            )
+        end
+    end
+
+    local middle_h =
+        h
+        - radius * 2
+
+    if middle_h > 0 then
+        fill(
+            x,
+            y + radius,
+            w,
+            middle_h,
+            color
+        )
+    end
+end
+
+
+function FALLEN_DRAW_HOTKEYS_FOV_GLOW(
+    x,
+    y,
+    w,
+    h,
+    radius
+)
+    -- Final tuned values:
+    -- Strength 158, Spread 5, Alpha 100.
+    local strength =
+        1.58
+
+    local spread =
+        5
+
+    local total_spread =
+        spread * 3.0
+
+    local layers =
+        28
+
+    local next_target =
+        0
+
+    for layer = layers - 1, 0, -1 do
+        local t =
+            layer / (layers - 1)
+
+        local falloff =
+            1 - t
+
+        local offset =
+            t * total_spread
+
+        local target_alpha =
+            clamp(
+                1.0
+                * strength
+                * falloff
+                * falloff
+                * 0.20,
+                0,
+                0.95
+            )
+
+        local layer_alpha =
+            0
+
+        if target_alpha > next_target then
+            layer_alpha =
+                1
+                - (
+                    (1 - target_alpha)
+                    / math.max(
+                        0.0001,
+                        1 - next_target
+                    )
+                )
+        end
+
+        layer_alpha =
+            clamp(
+                layer_alpha,
+                0,
+                0.95
+            )
+
+        if layer_alpha > 0.0001 then
+            FALLEN_HOTKEYS_ROUNDED_FILL(
+                x - offset,
+                y - offset,
+                w + offset * 2,
+                h + offset * 2,
+                radius + offset,
+                {
+                    0,
+                    0,
+                    0,
+                    layer_alpha
+                }
+            )
+        end
+
+        next_target =
+            target_alpha
+    end
+end
+
+
+
+function FALLEN_HOTKEYS_ITEM_ROWS()
+    local rows = {}
+
+    if S.aim_enabled == true then
+        rows[#rows + 1] = {
+            id = "aimbot",
+            label = "Aimbot",
+            icon = "aimbot",
+            active =
+                (
+                    tonumber(S.aim_hold_key)
+                    or 0
+                ) > 0
+                and fap_hold_down() == true
+                or false,
+        }
+    end
+
+    if S.silent_enabled == true then
+        local silent_vk =
+            math.floor(
+                tonumber(S.silent_key)
+                or 0
+            )
+
+        rows[#rows + 1] = {
+            id = "silent",
+            label = "Silent",
+            icon = "silent",
+            active =
+                silent_vk > 0
+                and key_down(
+                    silent_vk
+                ) == true
+                or false,
+        }
+    end
+
+    return rows
+end
+
+
+function FALLEN_HOTKEYS_ITEM_STEP(
+    id,
+    target
+)
+    id =
+        tostring(
+            id or "item"
+        )
+
+    local now =
+        tick()
+
+    if type(A.keybinds_item_last_t) ~= "table" then
+        A.keybinds_item_last_t =
+            {}
+    end
+
+    local last =
+        tonumber(
+            A.keybinds_item_last_t[id]
+        )
+
+    if not last then
+        last =
+            now
+    end
+
+    local dt =
+        clamp(
+            now - last,
+            0,
+            0.05
+        )
+
+    -- IMPORTANT: one timestamp per hotkey row.
+    -- Aimbot can no longer consume Silent's dt in the same render frame.
+    A.keybinds_item_last_t[id] =
+        now
+
+    local current =
+        tonumber(
+            A.keybinds_item_anim[id]
+        )
+        or 0
+
+    current =
+        exp_chase(
+            current,
+            target and 1 or 0,
+            target and 17 or 12,
+            dt
+        )
+
+    A.keybinds_item_anim[id] =
+        current
+
+    return
+        clamp(
+            current,
+            0,
+            1
+        )
+end
+
+
+function FALLEN_DRAW_HOTKEYS_SWITCH(
+    x,
+    y,
+    w,
+    h,
+    t,
+    rounding
+)
+    t =
+        clamp(
+            tonumber(t) or 0,
+            0,
+            1
+        )
+
+    local track =
+        mix_color(
+            { 0.080, 0.084, 0.095, 0.95 },
+            { 0.180, 0.185, 0.205, 0.98 },
+            t
+        )
+
+    local knob =
+        mix_color(
+            { 0.52, 0.54, 0.60, 1.00 },
+            { 0.96, 0.96, 0.99, 1.00 },
+            t
+        )
+
+    local track_rounding =
+        clamp(
+            tonumber(rounding)
+            or 8,
+            0,
+            h * 0.5
+        )
+
+    FALLEN_HOTKEYS_ROUNDED_FILL(
+        x,
+        y,
+        w,
+        h,
+        track_rounding,
+        track
+    )
+
+    local pad =
+        1.5
+
+    local knob_d =
+        h - pad * 2
+
+    local knob_x =
+        lerp(
+            x + pad,
+            x + w - pad - knob_d,
+            t
+        )
+
+    circle_fill(
+        knob_x + knob_d * 0.5,
+        y + h * 0.5,
+        knob_d * 0.5,
+        knob
+    )
+end
+
+
+function FALLEN_DRAW_HOTKEYS_ITEM(
+    x,
+    y,
+    row
+)
+    local t =
+        FALLEN_HOTKEYS_ITEM_STEP(
+            tostring(
+                row.id or "item"
+            ),
+            row.active == true
+        )
+
+    local switch_pill_w =
+        34
+
+    local item_h =
+        23
+
+    local gap =
+        6
+
+    local label_pill_w =
+        72
+
+    local child_rounding =
+        clamp(
+            8,
+            0,
+            item_h * 0.5
+        )
+
+    local child_fill =
+        {
+            0.008,
+            0.008,
+            0.010,
+            0.62
+        }
+
+    local child_glow_color =
+        { 0, 0, 0, 1 }
+
+    -- Same style as Hotkeys header, glow only a little weaker.
+    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+        x,
+        y,
+        switch_pill_w,
+        item_h,
+        child_rounding,
+        child_glow_color,
+        1.05,
+        3.9
+    )
+
+    FALLEN_HOTKEYS_ROUNDED_FILL(
+        x,
+        y,
+        switch_pill_w,
+        item_h,
+        child_rounding,
+        child_fill
+    )
+
+    FALLEN_DRAW_HOTKEYS_SWITCH(
+        x + 7,
+        y + 6.5,
+        20,
+        10,
+        t,
+        child_rounding
+    )
+
+    local label_x =
+        x
+        + switch_pill_w
+        + gap
+
+    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+        label_x,
+        y,
+        label_pill_w,
+        item_h,
+        child_rounding,
+        child_glow_color,
+        1.05,
+        3.9
+    )
+
+    FALLEN_HOTKEYS_ROUNDED_FILL(
+        label_x,
+        y,
+        label_pill_w,
+        item_h,
+        child_rounding,
+        child_fill
+    )
+
+    local item_icon =
+        nil
+
+    if row.icon == "aimbot" then
+        item_icon =
+            FALLEN_AIMBOT_TAB_ICON_GET()
+    elseif row.icon == "silent" then
+        item_icon =
+            FALLEN_SILENT_TAB_ICON_GET()
+    end
+
+    local text_x =
+        label_x + 10
+
+    if item_icon
+        and type(DrawImage) == "function"
+    then
+        local icon_size =
+            12
+
+        pcall(
+            DrawImage,
+            item_icon,
+            FALLEN_UI_X(
+                label_x + 8
+            ),
+            FALLEN_UI_Y(
+                y + 5.5
+            ),
+            math.floor(
+                FALLEN_UI_LEN(icon_size)
+                + 0.5
+            ),
+            math.floor(
+                FALLEN_UI_LEN(icon_size)
+                + 0.5
+            ),
+            1,
+            1,
+            1,
+            MENU_RENDER_ALPHA,
+            0
+        )
+
+        text_x =
+            label_x + 25
+    end
+
+    text(
+        text_x,
+        y + 6,
+        tostring(
+            row.label or "Bind"
+        ),
+        mix_color(
+            {
+                0.72,
+                0.73,
+                0.77,
+                1
+            },
+            {
+                0.96,
+                0.96,
+                0.99,
+                1
+            },
+            t * 0.55
+        )
+    )
+
+    return
+        switch_pill_w
+        + gap
+        + label_pill_w,
+        item_h
+end
+
+
+function FALLEN_DRAW_KEYBINDS_LIST()
+    local panel_anim =
+        FALLEN_KEYBINDS_STEP()
+
+    if panel_anim <= 0.002
+        and S.keybinds_list_enabled ~= true
+    then
+        return
+    end
+
+    local rows =
+        FALLEN_HOTKEYS_ITEM_ROWS()
+
+    local row_count =
+        #rows
+
+    local sw, sh =
+        screen_size()
+
+    -- Header NEVER gets taller when binds appear.
+    local panel_w =
+        120
+
+    local panel_h =
+        35
+
+    local panel_rounding =
+        clamp(
+            8,
+            0,
+            panel_h * 0.5
+        )
+
+    local child_h =
+        23
+
+    local child_gap =
+        6
+
+    local child_start_gap =
+        8
+
+    -- Only used to keep the detached pills on screen while dragging.
+    local total_visual_h =
+        panel_h
+        + (
+            row_count > 0
+            and (
+                child_start_gap
+                + row_count * child_h
+                + math.max(
+                    0,
+                    row_count - 1
+                ) * child_gap
+            )
+            or 0
+        )
+
+    local base_x =
+        math.floor(
+            sw
+            * clamp(
+                tonumber(S.hotkeys_pos_x) or 0.008,
+                0,
+                1
+            )
+            + 0.5
+        )
+
+    local base_y =
+        math.floor(
+            sh
+            * clamp(
+                tonumber(S.hotkeys_pos_y) or 0.042,
+                0,
+                1
+            )
+            + 0.5
+        )
+
+    base_x =
+        clamp(
+            base_x,
+            0,
+            math.max(
+                0,
+                sw - panel_w
+            )
+        )
+
+    base_y =
+        clamp(
+            base_y,
+            0,
+            math.max(
+                0,
+                sh - total_visual_h
+            )
+        )
+
+    local open_ease =
+        ease_out_cubic(
+            panel_anim
+        )
+
+    local x =
+        base_x
+        - (1 - open_ease) * 8
+
+    local y =
+        base_y
+
+    local mx, my =
+        mouse_pos()
+
+    local lmb =
+        key_down(
+            VK_LBUTTON
+        )
+
+    local pressed =
+        lmb
+        and A.keybinds_panel_prev_lmb ~= true
+
+    -- Drag ONLY by the Hotkeys header, not by the detached bind pills.
+    if pressed
+        and hover(
+            mx,
+            my,
+            x,
+            y,
+            panel_w,
+            panel_h
+        )
+    then
+        A.keybinds_panel_dragging =
+            true
+
+        A.keybinds_panel_drag_off_x =
+            mx - base_x
+
+        A.keybinds_panel_drag_off_y =
+            my - base_y
+
+        A.active_slider =
+            nil
+    end
+
+    if A.keybinds_panel_dragging
+        and lmb
+    then
+        base_x =
+            clamp(
+                mx
+                - (
+                    tonumber(
+                        A.keybinds_panel_drag_off_x
+                    )
+                    or 0
+                ),
+                0,
+                math.max(
+                    0,
+                    sw - panel_w
+                )
+            )
+
+        base_y =
+            clamp(
+                my
+                - (
+                    tonumber(
+                        A.keybinds_panel_drag_off_y
+                    )
+                    or 0
+                ),
+                0,
+                math.max(
+                    0,
+                    sh - total_visual_h
+                )
+            )
+
+        S.hotkeys_pos_x =
+            sw > 0
+            and base_x / sw
+            or 0
+
+        S.hotkeys_pos_y =
+            sh > 0
+            and base_y / sh
+            or 0
+
+        x =
+            base_x
+
+        y =
+            base_y
+    elseif not lmb then
+        A.keybinds_panel_dragging =
+            false
+    end
+
+    A.keybinds_panel_prev_lmb =
+        lmb == true
+
+    local old_alpha =
+        MENU_RENDER_ALPHA
+
+    local old_transform =
+        MENU_UI_TRANSFORM_ACTIVE
+
+    MENU_RENDER_ALPHA =
+        open_ease
+
+    MENU_UI_TRANSFORM_ACTIVE =
+        false
+
+    -- Only the 120x35 header gets the main Hotkeys glow/background.
+    FALLEN_DRAW_HOTKEYS_FOV_GLOW(
+        x,
+        y,
+        panel_w,
+        panel_h,
+        panel_rounding
+    )
+
+    FALLEN_HOTKEYS_ROUNDED_FILL(
+        x,
+        y,
+        panel_w,
+        panel_h,
+        panel_rounding,
+        {
+            0.008,
+            0.008,
+            0.010,
+            0.62
+        }
+    )
+
+    local header_icon =
+        FALLEN_HOTKEYS_ICON_GET()
+
+    if header_icon
+        and type(DrawImage) == "function"
+    then
+        -- Bigger than before: 17px instead of 12px.
+        local icon_size =
+            17
+
+        pcall(
+            DrawImage,
+            header_icon,
+            FALLEN_UI_X(
+                x + 8
+            ),
+            FALLEN_UI_Y(
+                y + 9
+            ),
+            math.floor(
+                FALLEN_UI_LEN(
+                    icon_size
+                )
+                + 0.5
+            ),
+            math.floor(
+                FALLEN_UI_LEN(
+                    icon_size
+                )
+                + 0.5
+            ),
+            1,
+            1,
+            1,
+            MENU_RENDER_ALPHA,
+            0
+        )
+
+        text(
+            x + 31,
+            y + 9,
+            "Hotkeys",
+            {
+                0.92,
+                0.92,
+                0.95,
+                1
+            }
+        )
+    else
+        text(
+            x + 13,
+            y + 9,
+            "Hotkeys",
+            {
+                0.92,
+                0.92,
+                0.95,
+                1
+            }
+        )
+    end
+
+    -- Detached pills underneath. There is NO big parent background behind them.
+    if row_count > 0 then
+        local child_y =
+            y
+            + panel_h
+            + child_start_gap
+
+        for _, row in ipairs(rows) do
+            FALLEN_DRAW_HOTKEYS_ITEM(
+                x,
+                child_y,
+                row
+            )
+
+            child_y =
+                child_y
+                + child_h
+                + child_gap
+        end
+    end
+
+    MENU_RENDER_ALPHA =
+        old_alpha
+
+    MENU_UI_TRANSFORM_ACTIVE =
+        old_transform
+end
+
 
 -- =========================================================
 -- Animated menu-background weather
@@ -26607,6 +31141,373 @@ function FALLEN_DRAW_WORLD_THUNDER_SETTINGS_POPUP(
 end
 
 
+function FALLEN_DMGNUM_SETTINGS_STEP_ANIM()
+    local now =
+        tick()
+
+    if A.damage_numbers_settings_last_t == nil then
+        A.damage_numbers_settings_last_t =
+            now
+    end
+
+    local dt =
+        clamp(
+            now - A.damage_numbers_settings_last_t,
+            0,
+            0.05
+        )
+
+    A.damage_numbers_settings_last_t =
+        now
+
+    local target =
+        A.damage_numbers_settings_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.damage_numbers_settings_anim or 0)
+        and 13
+        or 10
+
+    A.damage_numbers_settings_anim =
+        exp_chase(
+            A.damage_numbers_settings_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if target == 0
+        and (A.damage_numbers_settings_anim or 0) < 0.02
+    then
+        A.damage_numbers_settings_anim =
+            0
+    elseif target == 1
+        and (A.damage_numbers_settings_anim or 0) > 0.992
+    then
+        A.damage_numbers_settings_anim =
+            1
+    end
+
+    return
+        clamp(
+            A.damage_numbers_settings_anim or 0,
+            0,
+            1
+        )
+end
+
+
+function FALLEN_DRAW_DMGNUM_SETTINGS_POPUP(
+    mx,
+    my,
+    clicked,
+    lmb,
+    dots_x,
+    dots_y
+)
+    local raw =
+        FALLEN_DMGNUM_SETTINGS_STEP_ANIM()
+
+    if raw <= 0.001
+        and not A.damage_numbers_settings_open
+    then
+        return false
+    end
+
+    local parent_alpha =
+        MENU_RENDER_ALPHA
+
+    local fade =
+        ease_out_cubic(raw)
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+        * fade
+
+    local anim =
+        A.damage_numbers_settings_open
+        and ease_out_cubic(raw)
+        or ease_in_out_cubic(raw)
+
+    local pw =
+        300
+
+    local ph =
+        165
+
+    local base_px =
+        dots_x
+        - pw
+        + 28
+
+    local base_py =
+        dots_y
+        + 31
+
+    local retract =
+        1 - anim
+
+    local px =
+        snap(
+            base_px
+            + retract * 14
+        )
+
+    local py =
+        snap(
+            base_py
+            - retract * 34
+        )
+
+    local shell_h =
+        math.max(
+            29,
+            ph
+            - retract * 58
+        )
+
+    local interactive =
+        raw > 0.96
+        and A.damage_numbers_settings_open
+
+    local ui_clicked =
+        clicked
+        and interactive
+        and not A.world_color_picker_open
+
+    FALLEN_POPUP_GLOW(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        1
+    )
+
+    rounded_fill(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        { 0.062, 0.066, 0.077, 1 }
+    )
+
+    text(
+        px + 13,
+        py + 12,
+        "Damage Numbers settings",
+        C.text
+    )
+
+    if shell_h > 39 then
+        line(
+            px + 12,
+            py + 34,
+            px + pw - 12,
+            py + 34,
+            C.divider,
+            1
+        )
+    end
+
+    if shell_h > 76 then
+        slider_row(
+            mx,
+            my,
+            ui_clicked,
+            lmb,
+            px + 8,
+            py + 35,
+            pw - 16,
+            "Size",
+            "damage_numbers_size",
+            8,
+            30,
+            "int"
+        )
+    end
+
+    if shell_h > 86 then
+        line(
+            px + 12,
+            py + 75,
+            px + pw - 12,
+            py + 75,
+            C.divider,
+            1
+        )
+    end
+
+    if shell_h > 117 then
+        local row_y =
+            py + 76
+
+        local color_hot =
+            row_hover(
+                mx,
+                my,
+                px + 8,
+                row_y,
+                pw - 16,
+                41
+            )
+
+        text(
+            px + 21,
+            row_y + 14,
+            "Color",
+            FALLEN_HOVER_TEXT(
+                "damage_numbers_color",
+                color_hot,
+                C.text
+            )
+        )
+
+        local swatch_s =
+            18
+
+        local swatch_x =
+            px + pw - 49
+
+        local swatch_y =
+            row_y + 11
+
+        color_preview(
+            swatch_x,
+            swatch_y,
+            swatch_s,
+            swatch_s,
+            FALLEN_DMGNUM_COLOR()
+        )
+
+        if ui_clicked
+            and hover(
+                mx,
+                my,
+                swatch_x,
+                swatch_y,
+                swatch_s,
+                swatch_s
+            )
+        then
+            FALLEN_COLOR_INPUT_STOP(true)
+
+            local prefix =
+                "damage_numbers"
+
+            if A.world_color_picker_open
+                and A.world_color_picker_key == prefix
+            then
+                A.world_color_picker_open =
+                    false
+
+                A.world_color_picker_drag =
+                    nil
+            else
+                A.world_color_picker_key =
+                    prefix
+
+                A.world_color_picker_open =
+                    true
+
+                A.world_color_picker_drag =
+                    nil
+
+                A.world_color_picker_anchor_x =
+                    FALLEN_UI_X(
+                        swatch_x
+                    )
+
+                A.world_color_picker_anchor_y =
+                    FALLEN_UI_Y(
+                        swatch_y
+                    )
+
+                A.world_color_picker_anchor_w =
+                    FALLEN_UI_LEN(
+                        swatch_s
+                    )
+
+                A.world_color_picker_anchor_h =
+                    FALLEN_UI_LEN(
+                        swatch_s
+                    )
+            end
+
+            numeric_stop(true)
+        end
+    end
+
+    if shell_h > 127 then
+        line(
+            px + 12,
+            py + 116,
+            px + pw - 12,
+            py + 116,
+            C.divider,
+            1
+        )
+    end
+
+    if shell_h > 153 then
+        slider_row(
+            mx,
+            my,
+            ui_clicked,
+            lmb,
+            px + 8,
+            py + 117,
+            pw - 16,
+            "Animation Speed",
+            "damage_numbers_speed",
+            50,
+            200,
+            "int"
+        )
+    end
+
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            shell_h
+        )
+
+    local dots_hot =
+        hover(
+            mx,
+            my,
+            dots_x,
+            dots_y,
+            27,
+            25
+        )
+
+    if interactive
+        and clicked
+        and not popup_hot
+        and not dots_hot
+        and not A.world_color_picker_open
+    then
+        A.damage_numbers_settings_open =
+            false
+
+        numeric_stop(true)
+    end
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+
+    return popup_hot
+end
+
+
 function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     mx,
     my,
@@ -26635,11 +31536,16 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         or A.world_thunder_settings_open
         or (A.world_thunder_settings_anim or 0) > 0.02
 
+    local damage_popup_open =
+        A.damage_numbers_settings_open
+        or (A.damage_numbers_settings_anim or 0) > 0.02
+
     local controls_clicked =
         clicked
         and not dropdown_open
         and not A.world_color_picker_open
         and not weather_popup_open
+        and not damage_popup_open
 
     section_title(
         x,
@@ -26954,7 +31860,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         right_x,
         y + 25,
         right_w,
-        96,
+        137,
         11
     )
 
@@ -27075,17 +31981,96 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         numeric_stop(true)
     end
 
+    line(
+        right_x + 12,
+        y + 113,
+        right_x + right_w - 12,
+        y + 113,
+        C.divider,
+        1
+    )
+
+    local damage_dots_x =
+        right_x
+        + right_w
+        - 79
+
+    local damage_dots_y =
+        y + 122
+
+    local damage_dots_hot =
+        hover(
+            mx,
+            my,
+            damage_dots_x,
+            damage_dots_y,
+            27,
+            25
+        )
+
+    local damage_row_hot =
+        hover(
+            mx,
+            my,
+            right_x,
+            y + 114,
+            right_w,
+            41
+        )
+
+    toggle_row(
+        mx,
+        my,
+        controls_clicked
+            and not damage_dots_hot,
+        right_x,
+        y + 114,
+        right_w,
+        "Damage Numbers",
+        "damage_numbers_enabled",
+        true
+    )
+
+    if (
+            clicked
+            and damage_dots_hot
+        )
+        or (
+            rmb_clicked
+            and damage_row_hot
+        )
+    then
+        if not A.world_color_picker_open then
+            A.damage_numbers_settings_open =
+                not A.damage_numbers_settings_open
+
+            A.world_rain_settings_open =
+                false
+
+            A.world_thunder_settings_open =
+                false
+
+            A.bullet_tracer_style_open =
+                false
+
+            A.hit_effect_style_open =
+                false
+
+            numeric_stop(true)
+        end
+    end
+
     -- World Weather: compact master rows. Settings live behind the Aimbot-style
     -- ellipsis popups and open ONLY with RMB on the three dots.
     section_title(
         right_x,
-        y + 145,
+        y + 186,
         "World Weather"
     )
 
     card(
         right_x,
-        y + 170,
+        y + 211,
         right_w,
         101,
         11
@@ -27097,7 +32082,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         - 79
 
     local rain_dots_y =
-        y + 185
+        y + 226
 
     local rain_dots_hot =
         hover(
@@ -27115,7 +32100,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         controls_clicked
             and not rain_dots_hot,
         right_x,
-        y + 177,
+        y + 218,
         right_w,
         "World Rain",
         "world_rain_enabled",
@@ -27124,9 +32109,9 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
 
     line(
         right_x + 12,
-        y + 217,
+        y + 258,
         right_x + right_w - 12,
-        y + 217,
+        y + 258,
         C.divider,
         1
     )
@@ -27137,7 +32122,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         - 79
 
     local thunder_dots_y =
-        y + 226
+        y + 267
 
     local thunder_dots_hot =
         hover(
@@ -27155,7 +32140,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         controls_clicked
             and not thunder_dots_hot,
         right_x,
-        y + 218,
+        y + 259,
         right_w,
         "Thunderstorm",
         "world_thunder_enabled",
@@ -27170,6 +32155,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
             not A.world_rain_settings_open
 
         A.world_thunder_settings_open = false
+        A.damage_numbers_settings_open = false
         A.world_thunder_settings_anim = 0
         A.world_thunder_settings_last_t = tick()
         A.bullet_tracer_style_open = false
@@ -27185,6 +32171,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
             not A.world_thunder_settings_open
 
         A.world_rain_settings_open = false
+        A.damage_numbers_settings_open = false
         A.world_rain_settings_anim = 0
         A.world_rain_settings_last_t = tick()
         A.bullet_tracer_style_open = false
@@ -27249,6 +32236,15 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         lmb,
         thunder_dots_x,
         thunder_dots_y
+    )
+
+    FALLEN_DRAW_DMGNUM_SETTINGS_POPUP(
+        mx,
+        my,
+        clicked,
+        lmb,
+        damage_dots_x,
+        damage_dots_y
     )
 
 
@@ -29392,46 +34388,31 @@ hooks.on_render(function()
         )
     end
 
-    -- 35 line based glow frames around the entire menu.
-    -- Every line uses the selected Glow Color directly.
-    -- The alpha fades from the edge outward, like a real soft glow.
+    -- Same glow profile as the custom Aimbot FOV.
     local glow_rgb = {1, 1, 1, 1}
+
     pcall(function()
-        glow_rgb = FALLEN_GLOW_COLOR()
+        glow_rgb =
+            FALLEN_GLOW_COLOR()
     end)
 
     local glow_strength =
-        clamp((tonumber(S.menu_glow_strength) or 100) / 100, 0, 2)
-
-    for i = 0, 34 do
-        local t =
-            i / 34
-
-        local falloff =
-            1 - t
-
-        local glow_alpha =
-            0.165
-            * glow_strength
-            * falloff
-            * falloff
-            * (glow_rgb[4] or 1)
-
-        FALLEN_DRAW_ROUNDED_GLOW_FRAME(
-            wx - i,
-            wy - i,
-            WIN_W + i * 2,
-            WIN_H + i * 2,
-            OUTER_R + i,
-            {
-                glow_rgb[1],
-                glow_rgb[2],
-                glow_rgb[3],
-                glow_alpha,
-            },
-            1
+        clamp(
+            (tonumber(S.menu_glow_strength) or 100) / 100,
+            0,
+            2
         )
-    end
+
+    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+        wx,
+        wy,
+        WIN_W,
+        WIN_H,
+        OUTER_R,
+        glow_rgb,
+        glow_strength,
+        34 / 3
+    )
 
     -- Base surfaces are genuinely transparent during the transition, but
     -- sidebar/content are now two DISJOINT rounded shapes. Nothing is drawn
@@ -29537,8 +34518,28 @@ hooks.on_render(function()
         )
     end
 
-    -- Brand. PRO badge intentionally removed.
-    text(wx + 26, wy + 27, "Fallen-lua", C.text)
+    -- Brand image. Replaces the old visible "Fallen-lua" text.
+    -- Large on purpose; easy to tune later without touching the sidebar layout.
+    local brand_handle =
+        FALLEN_BRAND_IMAGE_GET()
+
+    if brand_handle
+        and type(DrawImage) == "function"
+    then
+        pcall(
+            DrawImage,
+            brand_handle,
+            FALLEN_UI_X(wx + 16),
+            FALLEN_UI_Y(wy + 12),
+            FALLEN_UI_LEN(140),
+            FALLEN_UI_LEN(48),
+            1,
+            1,
+            1,
+            MENU_RENDER_ALPHA,
+            0
+        )
+    end
 
     -- Hidden gesture: three quick clicks on the brand reveal the ??? setting.
     -- The hitbox has no hover color, cursor effect, glow, tooltip, or other hint.
@@ -29546,10 +34547,10 @@ hooks.on_render(function()
         and hover(
             mx,
             my,
-            wx + 16,
-            wy + 14,
-            122,
-            38
+            wx + 14,
+            wy + 10,
+            144,
+            52
         )
     then
         FALLEN_SECRET_BRAND_CLICK()
@@ -29905,16 +34906,70 @@ hooks.on_render(function()
                     or C.text_dim
             )
 
-        FALLEN_ICON_GLOBE(
-            child_x + 10,
-            world_y + 7,
-            (
-                S.tab == 2
-                and (tonumber(S.visuals_subtab) or 0) == 1
+        local world_icon_handle =
+            FALLEN_WORLD_TAB_ICON_GET()
+
+        if world_icon_handle
+            and type(DrawImage) == "function"
+        then
+            local world_icon_hover =
+                clamp(
+                    tonumber(world_col[5]) or 0,
+                    0,
+                    1
+                )
+
+            local world_icon_col =
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 0) == 1
+                )
+                    and C.accent
+                    or C.text_dim
+
+            world_icon_col =
+                mix_color(
+                    world_icon_col,
+                    C.white,
+                    world_icon_hover
+                )
+
+            local world_icon_size =
+                18
+                * (
+                    1
+                    + 0.12 * world_icon_hover
+                )
+
+            local world_icon_px =
+                FALLEN_UI_LEN(
+                    world_icon_size
+                )
+
+            local world_icon_cx =
+                FALLEN_UI_X(
+                    child_x + 19
+                )
+
+            local world_icon_cy =
+                FALLEN_UI_Y(
+                    world_y + 16
+                )
+
+            pcall(
+                DrawImage,
+                world_icon_handle,
+                world_icon_cx - world_icon_px * 0.5,
+                world_icon_cy - world_icon_px * 0.5,
+                world_icon_px,
+                world_icon_px,
+                world_icon_col[1],
+                world_icon_col[2],
+                world_icon_col[3],
+                MENU_RENDER_ALPHA,
+                0
             )
-                and C.accent
-                or C.text_dim
-        )
+        end
 
         text(
             child_x + 36,
@@ -29952,16 +35007,70 @@ hooks.on_render(function()
                     or C.text_dim
             )
 
-        FALLEN_ICON_ARMOR(
-            child_x + 10,
-            armor_y + 7,
-            (
-                S.tab == 2
-                and (tonumber(S.visuals_subtab) or 0) == 2
+        local armor_icon_handle =
+            FALLEN_ARMOR_TAB_ICON_GET()
+
+        if armor_icon_handle
+            and type(DrawImage) == "function"
+        then
+            local armor_icon_hover =
+                clamp(
+                    tonumber(armor_col[5]) or 0,
+                    0,
+                    1
+                )
+
+            local armor_icon_col =
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 0) == 2
+                )
+                    and C.accent
+                    or C.text_dim
+
+            armor_icon_col =
+                mix_color(
+                    armor_icon_col,
+                    C.white,
+                    armor_icon_hover
+                )
+
+            local armor_icon_size =
+                18
+                * (
+                    1
+                    + 0.12 * armor_icon_hover
+                )
+
+            local armor_icon_px =
+                FALLEN_UI_LEN(
+                    armor_icon_size
+                )
+
+            local armor_icon_cx =
+                FALLEN_UI_X(
+                    child_x + 19
+                )
+
+            local armor_icon_cy =
+                FALLEN_UI_Y(
+                    armor_y + 16
+                )
+
+            pcall(
+                DrawImage,
+                armor_icon_handle,
+                armor_icon_cx - armor_icon_px * 0.5,
+                armor_icon_cy - armor_icon_px * 0.5,
+                armor_icon_px,
+                armor_icon_px,
+                armor_icon_col[1],
+                armor_icon_col[2],
+                armor_icon_col[3],
+                MENU_RENDER_ALPHA,
+                0
             )
-                and C.accent
-                or C.text_dim
-        )
+        end
 
         text(
             child_x + 36,
@@ -30438,18 +35547,22 @@ hooks.on_render(function()
             "Misc"
         )
 
+        local misc_controls_clicked =
+            page_clicked
+            and not A.world_color_picker_open
+
         card(
             page_x,
             page_y + 25,
             page_w,
-            60,
+            101,
             11
         )
 
         toggle_row(
             mx,
             my,
-            page_clicked,
+            misc_controls_clicked,
             page_x,
             page_y + 32,
             page_w,
@@ -30457,6 +35570,45 @@ hooks.on_render(function()
             "misc_shot_on_air_enabled",
             false
         )
+
+        line(
+            page_x + 12,
+            page_y + 72,
+            page_x + page_w - 12,
+            page_y + 72,
+            C.divider,
+            1
+        )
+
+        toggle_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            page_x,
+            page_y + 73,
+            page_w,
+            "FPS",
+            "misc_fps_enabled",
+            false
+        )
+
+        local boulder_gap =
+            16
+
+        local boulder_col_w =
+            math.floor(
+                (page_w - boulder_gap)
+                * 0.5
+            )
+
+        local boulder_left_x =
+            page_x
+
+        local boulder_right_x =
+            page_x
+            + boulder_col_w
+            + boulder_gap
+
     elseif S.tab == 4
         and A.secret_unlocked
         and S.secret_enabled == true
@@ -30874,6 +36026,24 @@ hooks.on_render(function()
     end
 end)
 
+
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    if S.keybinds_list_enabled ~= true
+        and (A.keybinds_panel_anim or 0) <= 0.002
+    then
+        return
+    end
+
+    pcall(
+        FALLEN_DRAW_KEYBINDS_LIST
+    )
+end)
+
+
 print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA1)")
 
 
@@ -30964,8 +36134,474 @@ function FALLEN_LOADER_RESOLVE_IMAGE_URL(url)
     return resolved
 end
 
-local loader_source_url =
-    _G.FALLEN_LOADER_PRODUCT_PAGE_URL
+-- =========================================================
+-- Startup image preloader (sequential / low-stutter)
+-- Every image is requested during Lua startup, but NOT all at once.
+-- One logical image is started, we wait for ready/fail (or a timeout),
+-- then move to the next one. This prevents a huge LoadImage burst.
+-- =========================================================
+
+_G.FALLEN_IMAGE_PRELOAD_HANDLES =
+    _G.FALLEN_IMAGE_PRELOAD_HANDLES
+    or {}
+
+_G.FALLEN_IMAGE_PRELOAD_QUEUE = {}
+_G.FALLEN_IMAGE_PRELOAD_QUEUED = {}
+_G.FALLEN_IMAGE_PRELOAD_STARTED = false
+_G.FALLEN_IMAGE_PRELOAD_DONE = false
+_G.FALLEN_IMAGE_PRELOAD_INDEX = 0
+_G.FALLEN_IMAGE_PRELOAD_TOTAL = 0
+
+function FALLEN_PRELOAD_QUEUE_URL(url)
+    if type(url) ~= "string"
+        or url == ""
+    then
+        return
+    end
+
+    if _G.FALLEN_IMAGE_PRELOAD_QUEUED[url] then
+        return
+    end
+
+    _G.FALLEN_IMAGE_PRELOAD_QUEUED[url] = true
+
+    table.insert(
+        _G.FALLEN_IMAGE_PRELOAD_QUEUE,
+        url
+    )
+end
+
+-- URL tables in this script usually store fallback URLs as an array.
+-- Only queue the FIRST URL from each fallback array. If it later fails,
+-- the normal runtime resolver can still advance to the next fallback.
+function FALLEN_PRELOAD_QUEUE_PRIMARY(value, seen)
+    if type(value) == "string" then
+        FALLEN_PRELOAD_QUEUE_URL(value)
+        return
+    end
+
+    if type(value) ~= "table" then
+        return
+    end
+
+    seen = seen or {}
+
+    if seen[value] then
+        return
+    end
+
+    seen[value] = true
+
+    local n =
+        #value
+
+    if n > 0 then
+        for i = 1, n do
+            if type(value[i]) == "string"
+                and value[i] ~= ""
+            then
+                FALLEN_PRELOAD_QUEUE_URL(
+                    value[i]
+                )
+                return
+            end
+        end
+    end
+
+    for _, child in pairs(value) do
+        if type(child) == "string" then
+            FALLEN_PRELOAD_QUEUE_URL(child)
+        elseif type(child) == "table" then
+            FALLEN_PRELOAD_QUEUE_PRIMARY(
+                child,
+                seen
+            )
+        end
+    end
+end
+
+function FALLEN_PRELOAD_WAIT_HANDLE(handle, timeout_seconds)
+    if not handle then
+        return false
+    end
+
+    local timeout =
+        tonumber(timeout_seconds)
+        or 3.0
+
+    local started =
+        tick()
+
+    while tick() - started < timeout do
+        if type(IsImageReady) == "function" then
+            local ok, ready =
+                pcall(
+                    IsImageReady,
+                    handle
+                )
+
+            if ok and ready == true then
+                return true
+            end
+        end
+
+        if type(IsImageFailed) == "function" then
+            local ok, failed =
+                pcall(
+                    IsImageFailed,
+                    handle
+                )
+
+            if ok and failed == true then
+                return false
+            end
+        end
+
+        -- This runs only in the preload worker, never in on_render.
+        if type(wait) == "function" then
+            wait(0.035)
+        else
+            break
+        end
+    end
+
+    return false
+end
+
+function FALLEN_PRELOAD_IMAGE_URL_SEQUENTIAL(url)
+    if type(url) ~= "string"
+        or url == ""
+        or type(LoadImage) ~= "function"
+    then
+        return nil
+    end
+
+    local handle =
+        _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
+
+    if not handle then
+        local ok, loaded =
+            pcall(
+                LoadImage,
+                url
+            )
+
+        if ok and loaded then
+            handle = loaded
+
+            _G.FALLEN_IMAGE_PRELOAD_HANDLES[url] =
+                loaded
+        end
+    end
+
+    if handle then
+        FALLEN_PRELOAD_WAIT_HANDLE(
+            handle,
+            3.0
+        )
+    end
+
+    -- Tiny spacing between downloads keeps texture creation smooth.
+    if type(wait) == "function" then
+        wait(0.025)
+    end
+
+    return handle
+end
+
+function FALLEN_PRELOAD_WAIT_GETTER(getter, timeout_seconds)
+    if type(getter) ~= "function" then
+        return nil
+    end
+
+    local timeout =
+        tonumber(timeout_seconds)
+        or 4.0
+
+    local started =
+        tick()
+
+    while tick() - started < timeout do
+        local ok, handle =
+            pcall(
+                getter
+            )
+
+        if ok and handle then
+            return handle
+        end
+
+        if type(wait) == "function" then
+            wait(0.040)
+        else
+            break
+        end
+    end
+
+    return nil
+end
+
+function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
+    _G.FALLEN_IMAGE_PRELOAD_QUEUE = {}
+    _G.FALLEN_IMAGE_PRELOAD_QUEUED = {}
+
+    -- IMPORTANT: grenade first. It must be ready before gameplay VFX needs it.
+    FALLEN_PRELOAD_QUEUE_PRIMARY(
+        FALLEN_GRENADE_ICON_URLS
+    )
+
+    -- Then normal item / armor / weapon assets.
+    FALLEN_PRELOAD_QUEUE_PRIMARY(
+        FALLEN_ARMOR_ICON_URLS
+    )
+
+    FALLEN_PRELOAD_QUEUE_PRIMARY(
+        FALLEN_WEAPON_ICON_URLS
+    )
+
+    FALLEN_PRELOAD_QUEUE_PRIMARY(
+        FALLEN_WEAPON_DIRECT_ICON_URLS
+    )
+
+    FALLEN_PRELOAD_QUEUE_PRIMARY(
+        FALLEN_KEYCARD_ICON_URLS
+    )
+
+    -- Resource / plant icons. Each direct_urls list is a fallback chain,
+    -- therefore only its primary URL is queued.
+    if type(WORLD_UI_ITEMS) == "table" then
+        for _, cfg in ipairs(WORLD_UI_ITEMS) do
+            if cfg
+                and type(cfg.direct_urls) == "table"
+            then
+                FALLEN_PRELOAD_QUEUE_PRIMARY(
+                    cfg.direct_urls
+                )
+            end
+        end
+    end
+
+    _G.FALLEN_IMAGE_PRELOAD_TOTAL =
+        #_G.FALLEN_IMAGE_PRELOAD_QUEUE
+end
+
+function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
+    if _G.FALLEN_IMAGE_PRELOAD_DONE == true then
+        return
+    end
+
+    -- First preload special UI images one-by-one. Their getters may resolve
+    -- a page URL before calling LoadImage, so keeping them sequential avoids
+    -- simultaneous HTTP/page-resolution spikes.
+    local getters = {
+        FALLEN_GRENADE_ICON_GET,
+        FALLEN_BRAND_IMAGE_GET,
+        FALLEN_AIMBOT_TAB_ICON_GET,
+        FALLEN_VISUALS_TAB_ICON_GET,
+        FALLEN_MISC_TAB_ICON_GET,
+        FALLEN_SILENT_TAB_ICON_GET,
+        FALLEN_WORLD_TAB_ICON_GET,
+        FALLEN_ARMOR_TAB_ICON_GET,
+        FALLEN_HOTKEYS_ICON_GET,
+        FALLEN_WORLD_BODY_BAG_ICON,
+    }
+
+    for _, getter in ipairs(getters) do
+        FALLEN_PRELOAD_WAIT_GETTER(
+            getter,
+            4.0
+        )
+
+        if type(wait) == "function" then
+            wait(0.030)
+        end
+    end
+
+    FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
+
+    for i, url in ipairs(
+        _G.FALLEN_IMAGE_PRELOAD_QUEUE
+    ) do
+        _G.FALLEN_IMAGE_PRELOAD_INDEX = i
+
+        FALLEN_PRELOAD_IMAGE_URL_SEQUENTIAL(
+            url
+        )
+    end
+
+    -- Prime runtime caches only AFTER the sequential queue has completed.
+    -- Drawing.LoadImage caches by URL, so these getter calls should reuse the
+    -- already-created texture handles instead of causing a new download burst.
+    pcall(function()
+        if type(FALLEN_ARMOR_ICON_URLS) == "table"
+            and type(FALLEN_ARMOR_ICON) == "function"
+        then
+            for name, _ in pairs(FALLEN_ARMOR_ICON_URLS) do
+                pcall(
+                    FALLEN_ARMOR_ICON,
+                    name
+                )
+            end
+        end
+    end)
+
+    pcall(function()
+        if type(FALLEN_WEAPON_DIRECT_ICON_URLS) == "table"
+            and type(FALLEN_WEAPON_ICON) == "function"
+        then
+            for name, _ in pairs(FALLEN_WEAPON_DIRECT_ICON_URLS) do
+                pcall(
+                    FALLEN_WEAPON_ICON,
+                    name
+                )
+            end
+        end
+    end)
+
+    pcall(function()
+        if type(FALLEN_KEYCARD_ICON_URLS) == "table"
+            and type(FALLEN_KEYCARD_ICON) == "function"
+        then
+            for name, _ in pairs(FALLEN_KEYCARD_ICON_URLS) do
+                pcall(
+                    FALLEN_KEYCARD_ICON,
+                    name
+                )
+            end
+        end
+    end)
+
+    pcall(function()
+        if type(WORLD_UI_ITEMS) == "table"
+            and type(world_load_direct_icon) == "function"
+        then
+            for _, cfg in ipairs(WORLD_UI_ITEMS) do
+                pcall(
+                    world_load_direct_icon,
+                    cfg
+                )
+            end
+        end
+    end)
+
+    if type(FALLEN_CUSTOM_AVATAR_LOAD) == "function" then
+        pcall(
+            FALLEN_CUSTOM_AVATAR_LOAD
+        )
+    end
+
+    if type(update_profile) == "function" then
+        pcall(
+            update_profile
+        )
+    end
+
+    _G.FALLEN_IMAGE_PRELOAD_DONE = true
+end
+
+function FALLEN_START_IMAGE_PRELOAD()
+    if _G.FALLEN_IMAGE_PRELOAD_STARTED == true then
+        return
+    end
+
+    _G.FALLEN_IMAGE_PRELOAD_STARTED = true
+
+    local create =
+        thread
+        and (
+            thread.create
+            or thread.Create
+        )
+
+    local stop =
+        thread
+        and (
+            thread.stop
+            or thread.Stop
+        )
+
+    if type(create) == "function" then
+        local worker_id = nil
+
+        local function worker()
+            if _G.FALLEN_IMAGE_PRELOAD_DONE ~= true then
+                pcall(
+                    FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL
+                )
+            end
+
+            if worker_id
+                and type(stop) == "function"
+            then
+                pcall(
+                    stop,
+                    worker_id
+                )
+            end
+        end
+
+        local ok, id =
+            pcall(
+                create,
+                worker,
+                25
+            )
+
+        if ok and id then
+            worker_id = id
+            _G.FALLEN_IMAGE_PRELOAD_WORKER = id
+            return
+        end
+    end
+
+    -- Fallback: if thread.* does not exist, do not hammer LoadImage with the
+    -- entire library. Start only the critical grenade + UI icons immediately.
+    pcall(
+        FALLEN_GRENADE_ICON_GET
+    )
+
+    pcall(
+        FALLEN_BRAND_IMAGE_GET
+    )
+
+    pcall(
+        FALLEN_AIMBOT_TAB_ICON_GET
+    )
+
+    pcall(
+        FALLEN_VISUALS_TAB_ICON_GET
+    )
+
+    pcall(
+        FALLEN_MISC_TAB_ICON_GET
+    )
+
+    pcall(
+        FALLEN_SILENT_TAB_ICON_GET
+    )
+
+    pcall(
+        FALLEN_WORLD_TAB_ICON_GET
+    )
+
+    pcall(
+        FALLEN_ARMOR_TAB_ICON_GET
+    )
+
+    pcall(
+        FALLEN_HOTKEYS_ICON_GET
+    )
+end
+
+-- Start immediately during Lua initialization, before the loader/menu is used.
+FALLEN_START_IMAGE_PRELOAD()
+
+do
+    -- Loader state is deliberately block-scoped.
+    -- Its render callback captures these locals, while they stop consuming
+    -- active local slots in the main chunk after this block ends.
+    local loader_source_url =
+        _G.FALLEN_LOADER_PRODUCT_PAGE_URL
 
 -- If the loader artwork URL changed between script reloads, discard the
 -- previous cached image handle so the new picture is actually requested.
@@ -33321,6 +38957,8 @@ hooks.on_render(function()
     end
 end)
 
+end -- loader local-state scope
+
 
 print("[Fallen loader] ready | v44 syntax fix")
 
@@ -34930,6 +40568,477 @@ hooks.on_render(function()
     pcall(FALLEN_WORLD_RAIN_TICK)
     pcall(FALLEN_WORLD_THUNDER_TICK)
 end)
+
+-- =========================================================
+-- Misc FPS FastFlags
+--
+-- The user bundle is kept by ORIGINAL Roblox flag name below.
+-- This API exposes FFlag-style globals only when a matching memory.offsets
+-- entry exists. Prefixes (FFlag/DFInt/etc.) are stripped when resolving the
+-- runtime offset. Unknown flags are skipped instead of writing a guessed addr.
+-- FString globals are deliberately not raw-written because this API does not
+-- document the in-memory string layout for those globals.
+-- =========================================================
+
+function FALLEN_MISC_FPS_FLAG_SPECS()
+    return {
+        {
+            name = "FFlagHandleAltEnterFullscreenManually",
+            kind = "bool",
+            value = false,
+        },
+        {
+            name = "FLogNetwork",
+            kind = "i32",
+            value = 7,
+        },
+        {
+            name = "DFIntTaskSchedulerTargetFps",
+            kind = "f32",
+            value = 360,
+        },
+        {
+            name = "FFlagDebugForceFutureIsBrightPhase3",
+            kind = "bool",
+            value = true,
+        },
+        {
+            name = "FFlagDisableNewIGMinDUA",
+            kind = "bool",
+            value = true,
+        },
+        {
+            name = "FFlagFixGraphicsQuality",
+            kind = "bool",
+            value = true,
+        },
+        {
+            name = "FStringPartTexturePackTablePre2022",
+            kind = "string",
+            value = "",
+        },
+        {
+            name = "FStringTerrainMaterialTable2022",
+            kind = "string",
+            value = "",
+        },
+        {
+            name = "FStringTerrainMaterialTablePre2022",
+            kind = "string",
+            value = "",
+        },
+        {
+            name = "FStringPartTexturePackTable2022",
+            kind = "string",
+            value = "",
+        },
+        {
+            name = "FIntDebugForceMSAASamples",
+            kind = "i32",
+            value = 1,
+        },
+        {
+            name = "DFFlagTextureQualityOverrideEnabled",
+            kind = "bool",
+            value = true,
+        },
+        {
+            name = "DFIntTextureQualityOverride",
+            kind = "i32",
+            value = 0,
+        },
+        {
+            name = "FIntRenderShadowIntensity",
+            kind = "i32",
+            value = 0,
+        },
+        {
+            name = "DFIntDebugFRMQualityLevelOverride",
+            kind = "i32",
+            value = 1,
+        },
+        {
+            name = "DFIntCSGLevelOfDetailSwitchingDistance",
+            kind = "i32",
+            value = 100,
+        },
+        {
+            name = "DFIntCSGLevelOfDetailSwitchingDistanceL12",
+            kind = "i32",
+            value = 200,
+        },
+        {
+            name = "DFIntCSGLevelOfDetailSwitchingDistanceL23",
+            kind = "i32",
+            value = 400,
+        },
+        {
+            name = "DFIntCSGLevelOfDetailSwitchingDistanceL34",
+            kind = "i32",
+            value = 800,
+        },
+        {
+            name = "DFFlagDebugPauseVoxelizer",
+            kind = "bool",
+            value = true,
+        },
+        {
+            name = "FIntFRMMinGrassDistance",
+            kind = "f32",
+            value = 0,
+        },
+        {
+            name = "FIntFRMMaxGrassDistance",
+            kind = "f32",
+            value = 0,
+        },
+        {
+            name = "FIntRenderGrassDetailStrands",
+            kind = "i32",
+            value = 0,
+        },
+        {
+            name = "FIntRenderGrassHeightScaler",
+            kind = "i32",
+            value = 0,
+        },
+        {
+            name = "FIntTerrainArraySliceSize",
+            kind = "i32",
+            value = 0,
+        },
+    }
+end
+
+
+function FALLEN_MISC_FPS_STRIPPED_NAME(
+    name
+)
+    name =
+        tostring(
+            name or ""
+        )
+
+    local prefixes = {
+        "DFFlag",
+        "DFInt",
+        "FFlag",
+        "FInt",
+        "FString",
+        "FLog",
+    }
+
+    for _, prefix in ipairs(prefixes) do
+        if string.sub(
+            name,
+            1,
+            #prefix
+        ) == prefix
+        then
+            return
+                string.sub(
+                    name,
+                    #prefix + 1
+                )
+        end
+    end
+
+    return name
+end
+
+
+function FALLEN_MISC_FPS_RESOLVE_OFFSET(
+    flag_name
+)
+    if not memory
+        or type(memory.offsets) ~= "table"
+    then
+        return nil, nil
+    end
+
+    local full =
+        tostring(
+            flag_name or ""
+        )
+
+    local stripped =
+        FALLEN_MISC_FPS_STRIPPED_NAME(
+            full
+        )
+
+    local off =
+        memory.offsets[full]
+
+    if off ~= nil then
+        return off, full
+    end
+
+    off =
+        memory.offsets[stripped]
+
+    if off ~= nil then
+        return off, stripped
+    end
+
+    return nil, nil
+end
+
+
+function FALLEN_MISC_FPS_READ_VALUE(
+    addr,
+    kind
+)
+    if not memory
+        or not addr
+    then
+        return nil
+    end
+
+    local value = nil
+
+    if kind == "bool"
+        and type(memory.read_bool) == "function"
+    then
+        pcall(function()
+            value =
+                memory.read_bool(
+                    addr
+                )
+        end)
+
+    elseif kind == "f32"
+        and type(memory.read_f32) == "function"
+    then
+        pcall(function()
+            value =
+                memory.read_f32(
+                    addr
+                )
+        end)
+
+    elseif kind == "i32"
+        and type(memory.read_i32) == "function"
+    then
+        pcall(function()
+            value =
+                memory.read_i32(
+                    addr
+                )
+        end)
+    end
+
+    return value
+end
+
+
+function FALLEN_MISC_FPS_WRITE_VALUE(
+    addr,
+    kind,
+    value
+)
+    if not memory
+        or not addr
+    then
+        return false
+    end
+
+    local wrote = false
+
+    if kind == "bool"
+        and type(memory.write_bool) == "function"
+    then
+        pcall(function()
+            wrote =
+                memory.write_bool(
+                    addr,
+                    value == true
+                )
+                ~= false
+        end)
+
+    elseif kind == "f32"
+        and type(memory.write_f32) == "function"
+    then
+        pcall(function()
+            wrote =
+                memory.write_f32(
+                    addr,
+                    tonumber(value) or 0
+                )
+                ~= false
+        end)
+
+    elseif kind == "i32"
+        and type(memory.write_i32) == "function"
+    then
+        pcall(function()
+            wrote =
+                memory.write_i32(
+                    addr,
+                    math.floor(
+                        tonumber(value) or 0
+                    )
+                )
+                ~= false
+        end)
+    end
+
+    return wrote
+end
+
+
+function FALLEN_MISC_FPS_ENABLE()
+    if not memory
+        or type(memory.module_base) ~= "function"
+    then
+        return false
+    end
+
+    local base = nil
+
+    pcall(function()
+        base =
+            memory.module_base()
+    end)
+
+    if not base
+        or base == 0
+    then
+        return false
+    end
+
+    A.misc_fps_original =
+        A.misc_fps_original
+        or {}
+
+    A.misc_fps_applied =
+        {}
+
+    local changed =
+        0
+
+    for _, spec in ipairs(
+        FALLEN_MISC_FPS_FLAG_SPECS()
+    ) do
+        -- FString globals need a documented string-object layout before they
+        -- can be modified safely in-process. Keep them in the bundle but skip.
+        if spec.kind ~= "string" then
+            local off, resolved_key =
+                FALLEN_MISC_FPS_RESOLVE_OFFSET(
+                    spec.name
+                )
+
+            if off ~= nil then
+                local addr =
+                    base + off
+
+                local original =
+                    FALLEN_MISC_FPS_READ_VALUE(
+                        addr,
+                        spec.kind
+                    )
+
+                if original ~= nil then
+                    if A.misc_fps_original[spec.name] == nil then
+                        A.misc_fps_original[spec.name] = {
+                            addr = addr,
+                            kind = spec.kind,
+                            value = original,
+                            key = resolved_key,
+                        }
+                    end
+
+                    if FALLEN_MISC_FPS_WRITE_VALUE(
+                        addr,
+                        spec.kind,
+                        spec.value
+                    )
+                    then
+                        A.misc_fps_applied[spec.name] =
+                            true
+
+                        changed =
+                            changed + 1
+                    end
+                end
+            end
+        end
+    end
+
+    return
+        changed > 0
+end
+
+
+function FALLEN_MISC_FPS_DISABLE()
+    local originals =
+        A.misc_fps_original
+
+    if type(originals) ~= "table" then
+        return false
+    end
+
+    local restored =
+        0
+
+    for _, info in pairs(originals) do
+        if info
+            and info.addr
+            and info.kind
+            and info.value ~= nil
+        then
+            if FALLEN_MISC_FPS_WRITE_VALUE(
+                info.addr,
+                info.kind,
+                info.value
+            )
+            then
+                restored =
+                    restored + 1
+            end
+        end
+    end
+
+    A.misc_fps_original =
+        {}
+
+    A.misc_fps_applied =
+        {}
+
+    return
+        restored > 0
+end
+
+
+function FALLEN_MISC_FPS_TICK()
+    local desired =
+        S.misc_fps_enabled == true
+
+    if A.misc_fps_last_state == desired then
+        return
+    end
+
+    A.misc_fps_last_state =
+        desired
+
+    if desired then
+        FALLEN_MISC_FPS_ENABLE()
+    else
+        FALLEN_MISC_FPS_DISABLE()
+    end
+end
+
+
+hooks.on_render(function()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    pcall(
+        FALLEN_MISC_FPS_TICK
+    )
+end)
+
 
 -- =========================================================
 -- Shot on air bridge
