@@ -117,6 +117,13 @@ local defaults = {
     misc_shot_on_air_enabled = false,
     misc_fps_enabled = false,
 
+    -- Custom Anti Aim (ported behavior, custom API implementation).
+    misc_antiaim_enabled = false,
+    misc_antiaim_mode = "Spin",
+    misc_antiaim_speed = 100,
+    misc_antiaim_yaw_min = -90,
+    misc_antiaim_yaw_max = 90,
+
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
     world_rain_amount = 34,
@@ -569,6 +576,17 @@ local A = {
     misc_fps_last_state = false,
     misc_fps_original = {},
     misc_fps_applied = {},
+
+    -- Misc Anti Aim popup/runtime.
+    misc_antiaim_settings_open = false,
+    misc_antiaim_settings_anim = 0,
+    misc_antiaim_settings_last_t = nil,
+    misc_antiaim_last_update = -100,
+    misc_antiaim_spin_yaw = 0,
+    misc_antiaim_target_yaw = 0,
+    misc_antiaim_saved_rotation = nil,
+    misc_antiaim_was_enabled = false,
+    misc_antiaim_hrp_addr = nil,
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -3889,6 +3907,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.damage_numbers_settings_open = false
         A.fov_picker_open = false
         A.world_settings_open = false
+        A.misc_antiaim_settings_open = false
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
@@ -34107,6 +34126,305 @@ function FALLEN_DRAW_AVATAR_EDITOR(
 end
 
 -- =========================================================
+-- Misc Anti Aim settings popup
+-- =========================================================
+
+function FALLEN_ANTIAIM_SETTINGS_STEP()
+    local now = tick()
+
+    if A.misc_antiaim_settings_last_t == nil then
+        A.misc_antiaim_settings_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.misc_antiaim_settings_last_t,
+            0,
+            0.05
+        )
+
+    A.misc_antiaim_settings_last_t = now
+
+    local target =
+        A.misc_antiaim_settings_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.misc_antiaim_settings_anim or 0)
+        and 15
+        or 11
+
+    A.misc_antiaim_settings_anim =
+        exp_chase(
+            A.misc_antiaim_settings_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if math.abs(
+        (A.misc_antiaim_settings_anim or 0)
+        - target
+    ) < 0.0015
+    then
+        A.misc_antiaim_settings_anim = target
+    end
+
+    return
+        clamp(
+            A.misc_antiaim_settings_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
+    mx,
+    my,
+    clicked,
+    lmb,
+    dots_x,
+    dots_y
+)
+    local raw =
+        FALLEN_ANTIAIM_SETTINGS_STEP()
+
+    if raw <= 0.001
+        and not A.misc_antiaim_settings_open
+    then
+        return false
+    end
+
+    local parent_alpha =
+        MENU_RENDER_ALPHA
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+        * ease_out_cubic(raw)
+
+    local anim =
+        A.misc_antiaim_settings_open
+        and ease_out_cubic(raw)
+        or ease_in_out_cubic(raw)
+
+    local jitter =
+        tostring(S.misc_antiaim_mode or "Spin")
+        == "Jitter"
+
+    local pw = 300
+    local ph = jitter and 206 or 124
+
+    local base_px =
+        dots_x - pw + 28
+
+    local base_py =
+        dots_y + 31
+
+    local retract =
+        1 - anim
+
+    local px =
+        snap(
+            base_px
+            + retract * 14
+        )
+
+    local py =
+        snap(
+            base_py
+            - retract * 34
+        )
+
+    local shell_h =
+        math.max(
+            28,
+            ph
+            - retract * 58
+        )
+
+    local interactive =
+        raw > 0.96
+        and A.misc_antiaim_settings_open
+
+    local ui_clicked =
+        clicked
+        and interactive
+
+    FALLEN_POPUP_GLOW(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        1
+    )
+
+    rounded_fill(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        { 0.062, 0.066, 0.077, 1 }
+    )
+
+    text(
+        px + 13,
+        py + 12,
+        "Anti Aim settings",
+        C.text
+    )
+
+    if shell_h > 39 then
+        line(
+            px + 12,
+            py + 34,
+            px + pw - 12,
+            py + 34,
+            C.divider,
+            1
+        )
+    end
+
+    if raw > 0.42 then
+        dropdown_row(
+            mx,
+            my,
+            ui_clicked,
+            px + 8,
+            py + 35,
+            pw - 16,
+            "Mode",
+            "misc_antiaim_mode",
+            { "Spin", "Jitter" }
+        )
+
+        if shell_h > 82 then
+            line(
+                px + 12,
+                py + 75,
+                px + pw - 12,
+                py + 75,
+                C.divider,
+                1
+            )
+        end
+
+        if shell_h > 116 then
+            slider_row(
+                mx,
+                my,
+                ui_clicked,
+                lmb,
+                px + 8,
+                py + 76,
+                pw - 16,
+                "Yaw Speed",
+                "misc_antiaim_speed",
+                0,
+                100,
+                "int"
+            )
+        end
+
+        if jitter then
+            if shell_h > 123 then
+                line(
+                    px + 12,
+                    py + 116,
+                    px + pw - 12,
+                    py + 116,
+                    C.divider,
+                    1
+                )
+            end
+
+            if shell_h > 157 then
+                slider_row(
+                    mx,
+                    my,
+                    ui_clicked,
+                    lmb,
+                    px + 8,
+                    py + 117,
+                    pw - 16,
+                    "Yaw Min",
+                    "misc_antiaim_yaw_min",
+                    -180,
+                    180,
+                    "int"
+                )
+            end
+
+            if shell_h > 164 then
+                line(
+                    px + 12,
+                    py + 157,
+                    px + pw - 12,
+                    py + 157,
+                    C.divider,
+                    1
+                )
+            end
+
+            if shell_h > 198 then
+                slider_row(
+                    mx,
+                    my,
+                    ui_clicked,
+                    lmb,
+                    px + 8,
+                    py + 158,
+                    pw - 16,
+                    "Yaw Max",
+                    "misc_antiaim_yaw_max",
+                    -180,
+                    180,
+                    "int"
+                )
+            end
+        end
+    end
+
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            shell_h
+        )
+
+    local dots_hot =
+        hover(
+            mx,
+            my,
+            dots_x,
+            dots_y,
+            27,
+            25
+        )
+
+    if interactive
+        and clicked
+        and not popup_hot
+        and not dots_hot
+    then
+        A.misc_antiaim_settings_open = false
+        if numeric_stop then
+            numeric_stop(true)
+        end
+    end
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+
+    return popup_hot
+end
+
+-- =========================================================
 -- Render
 -- =========================================================
 
@@ -35547,15 +35865,20 @@ hooks.on_render(function()
             "Misc"
         )
 
+        local antiaim_popup_active =
+            A.misc_antiaim_settings_open == true
+            or (A.misc_antiaim_settings_anim or 0) > 0.02
+
         local misc_controls_clicked =
             page_clicked
             and not A.world_color_picker_open
+            and not antiaim_popup_active
 
         card(
             page_x,
             page_y + 25,
             page_w,
-            101,
+            142,
             11
         )
 
@@ -35590,6 +35913,79 @@ hooks.on_render(function()
             "FPS",
             "misc_fps_enabled",
             false
+        )
+
+        line(
+            page_x + 12,
+            page_y + 113,
+            page_x + page_w - 12,
+            page_y + 113,
+            C.divider,
+            1
+        )
+
+        local antiaim_y =
+            page_y + 114
+
+        local antiaim_dots_x =
+            page_x + page_w - 79
+
+        local antiaim_dots_y =
+            antiaim_y + 8
+
+        local antiaim_dots_hot =
+            hover(
+                mx,
+                my,
+                antiaim_dots_x,
+                antiaim_dots_y,
+                27,
+                25
+            )
+
+        local antiaim_row_hot =
+            hover(
+                mx,
+                my,
+                page_x,
+                antiaim_y,
+                page_w,
+                41
+            )
+
+        toggle_row(
+            mx,
+            my,
+            misc_controls_clicked
+                and not antiaim_dots_hot,
+            page_x,
+            antiaim_y,
+            page_w,
+            "Anti Aim",
+            "misc_antiaim_enabled",
+            true
+        )
+
+        if (page_clicked and antiaim_dots_hot)
+            or (page_rmb_clicked and antiaim_row_hot)
+        then
+            A.misc_antiaim_settings_open =
+                not A.misc_antiaim_settings_open
+
+            if not A.misc_antiaim_settings_open
+                and numeric_stop
+            then
+                numeric_stop(true)
+            end
+        end
+
+        FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
+            mx,
+            my,
+            page_clicked,
+            lmb,
+            antiaim_dots_x,
+            antiaim_dots_y
         )
 
         local boulder_gap =
@@ -40567,6 +40963,265 @@ hooks.on_render(function()
 
     pcall(FALLEN_WORLD_RAIN_TICK)
     pcall(FALLEN_WORLD_THUNDER_TICK)
+end)
+
+-- =========================================================
+-- Custom Anti Aim runtime
+-- Spin/Jitter behavior from the supplied reference, implemented only with
+-- the documented custom rbx instance API.
+-- =========================================================
+
+local function FALLEN_ANTIAIM_ATAN2(y, x)
+    y = tonumber(y) or 0
+    x = tonumber(x) or 0
+
+    if math.atan2 then
+        return math.atan2(y, x)
+    end
+
+    if x > 0 then
+        return math.atan(y / x)
+    elseif x < 0 and y >= 0 then
+        return math.atan(y / x) + math.pi
+    elseif x < 0 and y < 0 then
+        return math.atan(y / x) - math.pi
+    elseif x == 0 and y > 0 then
+        return math.pi * 0.5
+    elseif x == 0 and y < 0 then
+        return -math.pi * 0.5
+    end
+
+    return 0
+end
+
+local function FALLEN_ANTIAIM_YAW_FROM_MATRIX(m)
+    if type(m) ~= "table" then
+        return 0
+    end
+
+    local x =
+        tonumber(m[1])
+        or 1
+
+    local y =
+        tonumber(m[7])
+        or 0
+
+    return
+        math.deg(
+            FALLEN_ANTIAIM_ATAN2(
+                y,
+                x
+            )
+        )
+end
+
+local function FALLEN_ANTIAIM_YAW_MATRIX(deg)
+    local r =
+        math.rad(
+            tonumber(deg)
+            or 0
+        )
+
+    local c = math.cos(r)
+    local s = math.sin(r)
+
+    return {
+        c, 0, -s,
+        0, 1, 0,
+        s, 0, c,
+    }
+end
+
+function FALLEN_ANTIAIM_TICK()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    local enabled =
+        S.misc_antiaim_enabled == true
+
+    local hrp = nil
+
+    if rbx
+        and type(rbx.local_hrp) == "function"
+    then
+        local ok, out =
+            pcall(
+                rbx.local_hrp
+            )
+
+        if ok then
+            hrp = out
+        end
+    end
+
+    if not hrp then
+        A.misc_antiaim_was_enabled = false
+        A.misc_antiaim_saved_rotation = nil
+        A.misc_antiaim_hrp_addr = nil
+        return
+    end
+
+    local hrp_addr = nil
+    pcall(function()
+        hrp_addr = hrp.addr
+    end)
+
+    if A.misc_antiaim_hrp_addr ~= nil
+        and hrp_addr ~= nil
+        and A.misc_antiaim_hrp_addr ~= hrp_addr
+    then
+        A.misc_antiaim_was_enabled = false
+        A.misc_antiaim_saved_rotation = nil
+        A.misc_antiaim_last_update = -100
+    end
+
+    A.misc_antiaim_hrp_addr = hrp_addr
+
+    if not enabled then
+        if A.misc_antiaim_was_enabled
+            and type(A.misc_antiaim_saved_rotation) == "table"
+        then
+            pcall(function()
+                hrp:set_rotation(
+                    A.misc_antiaim_saved_rotation
+                )
+            end)
+        end
+
+        A.misc_antiaim_was_enabled = false
+        A.misc_antiaim_saved_rotation = nil
+        A.misc_antiaim_hrp_addr = nil
+        A.misc_antiaim_last_update = -100
+        return
+    end
+
+    if not A.misc_antiaim_was_enabled then
+        local current = nil
+
+        pcall(function()
+            current =
+                hrp:get_rotation()
+        end)
+
+        if type(current) == "table" then
+            A.misc_antiaim_saved_rotation = current
+
+            local yaw =
+                FALLEN_ANTIAIM_YAW_FROM_MATRIX(
+                    current
+                )
+
+            A.misc_antiaim_spin_yaw = yaw
+            A.misc_antiaim_target_yaw = yaw
+        else
+            A.misc_antiaim_saved_rotation = nil
+            A.misc_antiaim_spin_yaw = 0
+            A.misc_antiaim_target_yaw = 0
+        end
+
+        A.misc_antiaim_last_update = -100
+        A.misc_antiaim_was_enabled = true
+    end
+
+    local mode =
+        tostring(
+            S.misc_antiaim_mode
+            or "Spin"
+        )
+
+    local speed =
+        clamp(
+            tonumber(S.misc_antiaim_speed)
+            or 100,
+            0,
+            100
+        )
+
+    -- Same timing model as the supplied script:
+    -- 0 = update once per second, 100 = update every render frame.
+    local interval =
+        1 - (speed / 100)
+
+    local now = tick()
+
+    if interval <= 0
+        or now - (A.misc_antiaim_last_update or -100) >= interval
+    then
+        if mode == "Jitter" then
+            local yaw_min =
+                clamp(
+                    tonumber(S.misc_antiaim_yaw_min)
+                    or -90,
+                    -180,
+                    180
+                )
+
+            local yaw_max =
+                clamp(
+                    tonumber(S.misc_antiaim_yaw_max)
+                    or 90,
+                    -180,
+                    180
+                )
+
+            if math.random(1, 2) == 1 then
+                A.misc_antiaim_target_yaw = yaw_min
+            else
+                A.misc_antiaim_target_yaw = yaw_max
+            end
+        else
+            A.misc_antiaim_spin_yaw =
+                (tonumber(A.misc_antiaim_spin_yaw) or 0)
+                + 1
+
+            if A.misc_antiaim_spin_yaw > 180 then
+                A.misc_antiaim_spin_yaw =
+                    A.misc_antiaim_spin_yaw - 360
+            end
+
+            A.misc_antiaim_target_yaw =
+                A.misc_antiaim_spin_yaw
+        end
+
+        A.misc_antiaim_last_update = now
+    end
+
+    -- Pin the selected yaw every frame so Roblox character auto-rotation does
+    -- not immediately overwrite the anti-aim between timed updates.
+    pcall(function()
+        hrp:set_rotation(
+            FALLEN_ANTIAIM_YAW_MATRIX(
+                A.misc_antiaim_target_yaw
+            )
+        )
+    end)
+end
+
+hooks.on_render(function()
+    local ok, err =
+        pcall(
+            FALLEN_ANTIAIM_TICK
+        )
+
+    if not ok then
+        A.misc_antiaim_last_error =
+            A.misc_antiaim_last_error
+            or 0
+
+        if tick() - A.misc_antiaim_last_error > 2 then
+            A.misc_antiaim_last_error = tick()
+
+            if type(warn) == "function" then
+                warn(
+                    SYS
+                    .. "Anti Aim: "
+                    .. tostring(err)
+                )
+            end
+        end
+    end
 end)
 
 -- =========================================================
