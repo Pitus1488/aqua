@@ -117,6 +117,10 @@ local defaults = {
     misc_shot_on_air_enabled = false,
     misc_fps_enabled = false,
 
+    -- Third Person (drives the built-in custom-API feature).
+    misc_thirdperson_enabled = false,
+    misc_thirdperson_distance = 5,
+
     -- Custom Anti Aim (ported behavior, custom API implementation).
     misc_antiaim_enabled = false,
     misc_antiaim_mode = "Spin",
@@ -593,6 +597,16 @@ local A = {
     misc_antiaim_saved_rotation = nil,
     misc_antiaim_was_enabled = false,
     misc_antiaim_hrp_addr = nil,
+
+    -- Misc Third Person popup/runtime.
+    misc_thirdperson_settings_open = false,
+    misc_thirdperson_settings_anim = 0,
+    misc_thirdperson_settings_last_t = nil,
+    misc_thirdperson_last_enabled = nil,
+    misc_thirdperson_last_distance = nil,
+    misc_thirdperson_last_apply = -100,
+    misc_thirdperson_distance_section = nil,
+    misc_thirdperson_distance_key = nil,
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -3915,6 +3929,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.world_settings_open = false
         A.misc_antiaim_settings_open = false
         A.misc_antiaim_mode_dropdown_open = false
+        A.misc_thirdperson_settings_open = false
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
@@ -34796,6 +34811,219 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
 end
 
 -- =========================================================
+-- Misc Third Person settings popup
+-- =========================================================
+
+function FALLEN_THIRDPERSON_SETTINGS_STEP()
+    local now = tick()
+
+    if A.misc_thirdperson_settings_last_t == nil then
+        A.misc_thirdperson_settings_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.misc_thirdperson_settings_last_t,
+            0,
+            0.05
+        )
+
+    A.misc_thirdperson_settings_last_t = now
+
+    local target =
+        A.misc_thirdperson_settings_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.misc_thirdperson_settings_anim or 0)
+        and 15
+        or 11
+
+    A.misc_thirdperson_settings_anim =
+        exp_chase(
+            A.misc_thirdperson_settings_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if math.abs(
+        (A.misc_thirdperson_settings_anim or 0)
+        - target
+    ) < 0.0015
+    then
+        A.misc_thirdperson_settings_anim = target
+    end
+
+    return
+        clamp(
+            A.misc_thirdperson_settings_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_THIRDPERSON_SETTINGS_POPUP(
+    mx,
+    my,
+    clicked,
+    lmb,
+    dots_x,
+    dots_y
+)
+    local raw =
+        FALLEN_THIRDPERSON_SETTINGS_STEP()
+
+    if raw <= 0.001
+        and not A.misc_thirdperson_settings_open
+    then
+        return false
+    end
+
+    local parent_alpha =
+        MENU_RENDER_ALPHA
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+        * ease_out_cubic(raw)
+
+    local anim =
+        A.misc_thirdperson_settings_open
+        and ease_out_cubic(raw)
+        or ease_in_out_cubic(raw)
+
+    local pw = 300
+    local ph = 84
+
+    local base_px =
+        dots_x - pw + 28
+
+    local base_py =
+        dots_y + 31
+
+    local retract =
+        1 - anim
+
+    local px =
+        snap(
+            base_px
+            + retract * 14
+        )
+
+    local py =
+        snap(
+            base_py
+            - retract * 30
+        )
+
+    local shell_h =
+        math.max(
+            28,
+            ph
+            - retract * 45
+        )
+
+    local interactive =
+        raw > 0.96
+        and A.misc_thirdperson_settings_open
+
+    local ui_clicked =
+        clicked
+        and interactive
+
+    FALLEN_POPUP_GLOW(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        1
+    )
+
+    rounded_fill(
+        px,
+        py,
+        pw,
+        shell_h,
+        11,
+        { 0.062, 0.066, 0.077, 1 }
+    )
+
+    text(
+        px + 13,
+        py + 12,
+        "Third Person settings",
+        C.text
+    )
+
+    if shell_h > 39 then
+        line(
+            px + 12,
+            py + 34,
+            px + pw - 12,
+            py + 34,
+            C.divider,
+            1
+        )
+    end
+
+    if shell_h > 76 then
+        slider_row(
+            mx,
+            my,
+            ui_clicked,
+            lmb,
+            px + 8,
+            py + 35,
+            pw - 16,
+            "Distance",
+            "misc_thirdperson_distance",
+            1,
+            20,
+            "float"
+        )
+    end
+
+    local popup_hot =
+        hover(
+            mx,
+            my,
+            px,
+            py,
+            pw,
+            shell_h
+        )
+
+    local dots_hot =
+        hover(
+            mx,
+            my,
+            dots_x,
+            dots_y,
+            27,
+            25
+        )
+
+    if interactive
+        and clicked
+        and not popup_hot
+        and not dots_hot
+    then
+        A.misc_thirdperson_settings_open = false
+
+        if numeric_stop then
+            numeric_stop(true)
+        end
+    end
+
+    MENU_RENDER_ALPHA =
+        parent_alpha
+
+    return popup_hot
+end
+
+-- =========================================================
 -- Render
 -- =========================================================
 
@@ -36244,16 +36472,21 @@ hooks.on_render(function()
             A.misc_antiaim_settings_open == true
             or (A.misc_antiaim_settings_anim or 0) > 0.02
 
+        local thirdperson_popup_active =
+            A.misc_thirdperson_settings_open == true
+            or (A.misc_thirdperson_settings_anim or 0) > 0.02
+
         local misc_controls_clicked =
             page_clicked
             and not A.world_color_picker_open
             and not antiaim_popup_active
+            and not thirdperson_popup_active
 
         card(
             page_x,
             page_y + 25,
             page_w,
-            142,
+            183,
             11
         )
 
@@ -36347,6 +36580,10 @@ hooks.on_render(function()
             A.misc_antiaim_settings_open =
                 not A.misc_antiaim_settings_open
 
+            if A.misc_antiaim_settings_open then
+                A.misc_thirdperson_settings_open = false
+            end
+
             if not A.misc_antiaim_settings_open
                 and numeric_stop
             then
@@ -36361,6 +36598,84 @@ hooks.on_render(function()
             lmb,
             antiaim_dots_x,
             antiaim_dots_y
+        )
+
+        line(
+            page_x + 12,
+            page_y + 154,
+            page_x + page_w - 12,
+            page_y + 154,
+            C.divider,
+            1
+        )
+
+        local thirdperson_y =
+            page_y + 155
+
+        local thirdperson_dots_x =
+            page_x + page_w - 79
+
+        local thirdperson_dots_y =
+            thirdperson_y + 8
+
+        local thirdperson_dots_hot =
+            hover(
+                mx,
+                my,
+                thirdperson_dots_x,
+                thirdperson_dots_y,
+                27,
+                25
+            )
+
+        local thirdperson_row_hot =
+            hover(
+                mx,
+                my,
+                page_x,
+                thirdperson_y,
+                page_w,
+                41
+            )
+
+        toggle_row(
+            mx,
+            my,
+            misc_controls_clicked
+                and not thirdperson_dots_hot,
+            page_x,
+            thirdperson_y,
+            page_w,
+            "Third Person",
+            "misc_thirdperson_enabled",
+            true
+        )
+
+        if (page_clicked and thirdperson_dots_hot)
+            or (page_rmb_clicked and thirdperson_row_hot)
+        then
+            A.misc_thirdperson_settings_open =
+                not A.misc_thirdperson_settings_open
+
+            if A.misc_thirdperson_settings_open then
+                A.misc_antiaim_settings_open = false
+                A.misc_antiaim_mode_dropdown_open = false
+            end
+
+            if not A.misc_thirdperson_settings_open
+                and numeric_stop
+            then
+                numeric_stop(true)
+            end
+        end
+
+        FALLEN_DRAW_THIRDPERSON_SETTINGS_POPUP(
+            mx,
+            my,
+            page_clicked,
+            lmb,
+            thirdperson_dots_x,
+            thirdperson_dots_y
         )
 
         local boulder_gap =
@@ -41841,6 +42156,332 @@ hooks.on_render(function()
                 warn(
                     SYS
                     .. "Anti Aim: "
+                    .. tostring(err)
+                )
+            end
+        end
+    end
+end)
+
+-- =========================================================
+-- Misc Third Person bridge
+-- =========================================================
+-- The supplied scripts force Roblox camera zoom/classic mode. In this menu we
+-- stay inside the documented custom API and drive its built-in thirdperson
+-- feature. Distance is discovered from the live cheat schema when available.
+function FALLEN_THIRDPERSON_NORMALIZE(value)
+    return string.lower(
+        string.gsub(
+            tostring(value or ""),
+            "[^%w]",
+            ""
+        )
+    )
+end
+
+function FALLEN_THIRDPERSON_FIND_DISTANCE_FIELD()
+    if A.misc_thirdperson_distance_section
+        and A.misc_thirdperson_distance_key
+    then
+        return
+            A.misc_thirdperson_distance_section,
+            A.misc_thirdperson_distance_key
+    end
+
+    if not cheat
+        or type(cheat._schema) ~= "function"
+    then
+        return nil, nil
+    end
+
+    local schema = nil
+
+    local ok, out =
+        pcall(function()
+            return cheat._schema()
+        end)
+
+    if ok
+        and type(out) == "table"
+    then
+        schema = out
+    end
+
+    if type(schema) ~= "table" then
+        return nil, nil
+    end
+
+    for _, field in ipairs(schema) do
+        if type(field) == "table" then
+            local section =
+                tostring(field.section or "")
+
+            local key =
+                tostring(field.key or "")
+
+            local field_type =
+                string.lower(
+                    tostring(field.type or "")
+                )
+
+            local sn =
+                FALLEN_THIRDPERSON_NORMALIZE(section)
+
+            local kn =
+                FALLEN_THIRDPERSON_NORMALIZE(key)
+
+            local combined =
+                sn .. kn
+
+            local thirdperson =
+                string.find(
+                    combined,
+                    "thirdperson",
+                    1,
+                    true
+                ) ~= nil
+
+            local distance =
+                string.find(
+                    kn,
+                    "distance",
+                    1,
+                    true
+                ) ~= nil
+                or string.find(
+                    kn,
+                    "dist",
+                    1,
+                    true
+                ) ~= nil
+
+            local numeric =
+                field_type == "int"
+                or field_type == "float"
+                or field_type == "number"
+                or field_type == "double"
+
+            if thirdperson
+                and distance
+                and numeric
+                and cheat[section]
+            then
+                A.misc_thirdperson_distance_section = section
+                A.misc_thirdperson_distance_key = key
+
+                return section, key
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+function FALLEN_THIRDPERSON_WRITE_DISTANCE(value)
+    value =
+        clamp(
+            tonumber(value) or 5,
+            1,
+            20
+        )
+
+    S.misc_thirdperson_distance = value
+
+    local section, key =
+        FALLEN_THIRDPERSON_FIND_DISTANCE_FIELD()
+
+    if section
+        and key
+        and cheat
+        and cheat[section]
+    then
+        local ok =
+            pcall(function()
+                cheat[section][key] = value
+            end)
+
+        if ok then
+            return true
+        end
+    end
+
+    -- Compatibility fallbacks for builds where _schema() omits the setting.
+    local section_names = {
+        "camera",
+        "misc",
+        "mobility",
+        "exploit",
+    }
+
+    local key_names = {
+        "thirdperson_distance",
+        "third_person_distance",
+        "thirdperson_dist",
+        "third_person_dist",
+    }
+
+    for _, section_name in ipairs(section_names) do
+        local section_obj =
+            cheat
+            and cheat[section_name]
+
+        if section_obj then
+            for _, candidate in ipairs(key_names) do
+                local ok_write =
+                    pcall(function()
+                        section_obj[candidate] = value
+                    end)
+
+                if ok_write then
+                    local ok_read, readback =
+                        pcall(function()
+                            return section_obj[candidate]
+                        end)
+
+                    if ok_read
+                        and tonumber(readback) ~= nil
+                    then
+                        A.misc_thirdperson_distance_section = section_name
+                        A.misc_thirdperson_distance_key = candidate
+                        return true
+                    end
+                end
+            end
+        end
+    end
+
+    return false
+end
+
+function FALLEN_THIRDPERSON_SET_ENABLED(value)
+    value =
+        value == true
+
+    S.misc_thirdperson_enabled = value
+
+    if not cheat then
+        return false
+    end
+
+    local changed = false
+
+    if type(cheat.enable) == "function" then
+        local ok =
+            pcall(function()
+                return cheat.enable(
+                    "thirdperson",
+                    value
+                )
+            end)
+
+        if ok then
+            changed = true
+        end
+    end
+
+    if cheat.keybinds then
+        pcall(function()
+            cheat.keybinds.thirdperson_toggled = value
+        end)
+
+        pcall(function()
+            cheat.keybinds.thirdperson_active = value
+        end)
+    end
+
+    if value then
+        FALLEN_THIRDPERSON_WRITE_DISTANCE(
+            S.misc_thirdperson_distance
+        )
+    end
+
+    return changed
+end
+
+function FALLEN_THIRDPERSON_TICK()
+    if _G.FallenMenuReady ~= true then
+        return
+    end
+
+    local desired =
+        S.misc_thirdperson_enabled == true
+
+    if A.misc_thirdperson_last_enabled ~= desired then
+        FALLEN_THIRDPERSON_SET_ENABLED(
+            desired
+        )
+
+        A.misc_thirdperson_last_enabled = desired
+    elseif desired
+        and cheat
+        and type(cheat.is_enabled) == "function"
+    then
+        local ok, live =
+            pcall(function()
+                return cheat.is_enabled(
+                    "thirdperson"
+                )
+            end)
+
+        if ok
+            and live == false
+        then
+            FALLEN_THIRDPERSON_SET_ENABLED(true)
+        end
+    end
+
+    if not desired then
+        return
+    end
+
+    if cheat
+        and cheat.keybinds
+    then
+        pcall(function()
+            cheat.keybinds.thirdperson_toggled = true
+        end)
+    end
+
+    local distance =
+        clamp(
+            tonumber(S.misc_thirdperson_distance)
+            or 5,
+            1,
+            20
+        )
+
+    local now = tick()
+
+    if A.misc_thirdperson_last_distance ~= distance
+        or now - (A.misc_thirdperson_last_apply or -100) > 0.25
+    then
+        FALLEN_THIRDPERSON_WRITE_DISTANCE(
+            distance
+        )
+
+        A.misc_thirdperson_last_distance = distance
+        A.misc_thirdperson_last_apply = now
+    end
+end
+
+hooks.on_render(function()
+    local ok, err =
+        pcall(
+            FALLEN_THIRDPERSON_TICK
+        )
+
+    if not ok then
+        A.misc_thirdperson_last_error =
+            A.misc_thirdperson_last_error
+            or 0
+
+        if tick() - A.misc_thirdperson_last_error > 2 then
+            A.misc_thirdperson_last_error = tick()
+
+            if type(warn) == "function" then
+                warn(
+                    SYS
+                    .. "Third Person: "
                     .. tostring(err)
                 )
             end
