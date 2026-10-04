@@ -117,7 +117,7 @@ local defaults = {
     misc_shot_on_air_enabled = false,
     misc_fps_enabled = false,
 
-    -- Third Person (drives the built-in custom-API feature).
+    -- Third Person (fully custom camera offset; does not use cheat.thirdperson).
     misc_thirdperson_enabled = false,
     misc_thirdperson_distance = 5,
 
@@ -42164,238 +42164,108 @@ hooks.on_render(function()
 end)
 
 -- =========================================================
--- Misc Third Person bridge
+-- Misc Third Person (fully custom)
 -- =========================================================
--- The supplied scripts force Roblox camera zoom/classic mode. In this menu we
--- stay inside the documented custom API and drive its built-in thirdperson
--- feature. Distance is discovered from the live cheat schema when available.
-function FALLEN_THIRDPERSON_NORMALIZE(value)
-    return string.lower(
-        string.gsub(
-            tostring(value or ""),
-            "[^%w]",
-            ""
+-- This does NOT use cheat.enable("thirdperson"), cheat.keybinds, or any
+-- built-in overlay/menu Third Person state. We only offset the live Camera
+-- through the documented rbx Camera instance API every render frame.
+local function FALLEN_THIRDPERSON_CAMERA()
+    if not rbx
+        or type(rbx.camera) ~= "function"
+    then
+        return nil
+    end
+
+    local ok, cam =
+        pcall(
+            rbx.camera
         )
-    )
+
+    if ok and cam then
+        return cam
+    end
+
+    return nil
 end
 
-function FALLEN_THIRDPERSON_FIND_DISTANCE_FIELD()
-    if A.misc_thirdperson_distance_section
-        and A.misc_thirdperson_distance_key
-    then
-        return
-            A.misc_thirdperson_distance_section,
-            A.misc_thirdperson_distance_key
+local function FALLEN_THIRDPERSON_FOCUS_POS()
+    if not rbx then
+        return nil
     end
 
-    if not cheat
-        or type(cheat._schema) ~= "function"
-    then
-        return nil, nil
-    end
+    -- Head gives the natural orbit point for a third-person camera.
+    if type(rbx.local_head) == "function" then
+        local ok_head, head =
+            pcall(
+                rbx.local_head
+            )
 
-    local schema = nil
+        if ok_head and head then
+            local ok_pos, pos =
+                pcall(function()
+                    return head:get_position()
+                end)
 
-    local ok, out =
-        pcall(function()
-            return cheat._schema()
-        end)
-
-    if ok
-        and type(out) == "table"
-    then
-        schema = out
-    end
-
-    if type(schema) ~= "table" then
-        return nil, nil
-    end
-
-    for _, field in ipairs(schema) do
-        if type(field) == "table" then
-            local section =
-                tostring(field.section or "")
-
-            local key =
-                tostring(field.key or "")
-
-            local field_type =
-                string.lower(
-                    tostring(field.type or "")
-                )
-
-            local sn =
-                FALLEN_THIRDPERSON_NORMALIZE(section)
-
-            local kn =
-                FALLEN_THIRDPERSON_NORMALIZE(key)
-
-            local combined =
-                sn .. kn
-
-            local thirdperson =
-                string.find(
-                    combined,
-                    "thirdperson",
-                    1,
-                    true
-                ) ~= nil
-
-            local distance =
-                string.find(
-                    kn,
-                    "distance",
-                    1,
-                    true
-                ) ~= nil
-                or string.find(
-                    kn,
-                    "dist",
-                    1,
-                    true
-                ) ~= nil
-
-            local numeric =
-                field_type == "int"
-                or field_type == "float"
-                or field_type == "number"
-                or field_type == "double"
-
-            if thirdperson
-                and distance
-                and numeric
-                and cheat[section]
-            then
-                A.misc_thirdperson_distance_section = section
-                A.misc_thirdperson_distance_key = key
-
-                return section, key
+            if ok_pos and pos then
+                return pos
             end
         end
     end
 
-    return nil, nil
-end
+    -- Fallback for moments where Head is not ready yet.
+    if type(rbx.local_hrp) == "function" then
+        local ok_hrp, hrp =
+            pcall(
+                rbx.local_hrp
+            )
 
-function FALLEN_THIRDPERSON_WRITE_DISTANCE(value)
-    value =
-        clamp(
-            tonumber(value) or 5,
-            1,
-            20
-        )
+        if ok_hrp and hrp then
+            local ok_pos, pos =
+                pcall(function()
+                    return hrp:get_position()
+                end)
 
-    S.misc_thirdperson_distance = value
-
-    local section, key =
-        FALLEN_THIRDPERSON_FIND_DISTANCE_FIELD()
-
-    if section
-        and key
-        and cheat
-        and cheat[section]
-    then
-        local ok =
-            pcall(function()
-                cheat[section][key] = value
-            end)
-
-        if ok then
-            return true
-        end
-    end
-
-    -- Compatibility fallbacks for builds where _schema() omits the setting.
-    local section_names = {
-        "camera",
-        "misc",
-        "mobility",
-        "exploit",
-    }
-
-    local key_names = {
-        "thirdperson_distance",
-        "third_person_distance",
-        "thirdperson_dist",
-        "third_person_dist",
-    }
-
-    for _, section_name in ipairs(section_names) do
-        local section_obj =
-            cheat
-            and cheat[section_name]
-
-        if section_obj then
-            for _, candidate in ipairs(key_names) do
-                local ok_write =
-                    pcall(function()
-                        section_obj[candidate] = value
-                    end)
-
-                if ok_write then
-                    local ok_read, readback =
-                        pcall(function()
-                            return section_obj[candidate]
-                        end)
-
-                    if ok_read
-                        and tonumber(readback) ~= nil
-                    then
-                        A.misc_thirdperson_distance_section = section_name
-                        A.misc_thirdperson_distance_key = candidate
-                        return true
-                    end
-                end
+            if ok_pos and pos then
+                return Vector3(
+                    pos.X,
+                    pos.Y + 1.5,
+                    pos.Z
+                )
             end
         end
     end
 
-    return false
+    return nil
 end
 
-function FALLEN_THIRDPERSON_SET_ENABLED(value)
-    value =
-        value == true
-
-    S.misc_thirdperson_enabled = value
-
-    if not cheat then
-        return false
+local function FALLEN_THIRDPERSON_BACK_VECTOR(rot)
+    if type(rot) ~= "table" then
+        return nil
     end
 
-    local changed = false
+    -- Camera rotation is a 3x3 row-major matrix. The third column is the
+    -- camera BackVector (the opposite of LookVector), which is exactly the
+    -- direction in which a third-person camera has to be displaced.
+    local x = tonumber(rot[3])
+    local y = tonumber(rot[6])
+    local z = tonumber(rot[9])
 
-    if type(cheat.enable) == "function" then
-        local ok =
-            pcall(function()
-                return cheat.enable(
-                    "thirdperson",
-                    value
-                )
-            end)
-
-        if ok then
-            changed = true
-        end
+    if not x or not y or not z then
+        return nil
     end
 
-    if cheat.keybinds then
-        pcall(function()
-            cheat.keybinds.thirdperson_toggled = value
-        end)
-
-        pcall(function()
-            cheat.keybinds.thirdperson_active = value
-        end)
-    end
-
-    if value then
-        FALLEN_THIRDPERSON_WRITE_DISTANCE(
-            S.misc_thirdperson_distance
+    local len =
+        math.sqrt(
+            x * x
+            + y * y
+            + z * z
         )
+
+    if len <= 0.0001 then
+        return nil
     end
 
-    return changed
+    return x / len, y / len, z / len
 end
 
 function FALLEN_THIRDPERSON_TICK()
@@ -42403,43 +42273,49 @@ function FALLEN_THIRDPERSON_TICK()
         return
     end
 
-    local desired =
-        S.misc_thirdperson_enabled == true
-
-    if A.misc_thirdperson_last_enabled ~= desired then
-        FALLEN_THIRDPERSON_SET_ENABLED(
-            desired
-        )
-
-        A.misc_thirdperson_last_enabled = desired
-    elseif desired
-        and cheat
-        and type(cheat.is_enabled) == "function"
-    then
-        local ok, live =
-            pcall(function()
-                return cheat.is_enabled(
-                    "thirdperson"
-                )
-            end)
-
-        if ok
-            and live == false
-        then
-            FALLEN_THIRDPERSON_SET_ENABLED(true)
-        end
-    end
-
-    if not desired then
+    if S.misc_thirdperson_enabled ~= true then
+        A.misc_thirdperson_custom_active = false
         return
     end
 
-    if cheat
-        and cheat.keybinds
-    then
+    local cam =
+        FALLEN_THIRDPERSON_CAMERA()
+
+    if not cam then
+        A.misc_thirdperson_custom_active = false
+        return
+    end
+
+    local focus =
+        FALLEN_THIRDPERSON_FOCUS_POS()
+
+    if not focus then
+        A.misc_thirdperson_custom_active = false
+        return
+    end
+
+    local rot = nil
+
+    local ok_rot =
         pcall(function()
-            cheat.keybinds.thirdperson_toggled = true
+            rot = cam:camera_rotation()
         end)
+
+    if not ok_rot
+        or type(rot) ~= "table"
+    then
+        A.misc_thirdperson_custom_active = false
+        return
+    end
+
+    local bx, by, bz =
+        FALLEN_THIRDPERSON_BACK_VECTOR(
+            rot
+        )
+
+    if not bx then
+        A.misc_thirdperson_custom_active = false
+        return
     end
 
     local distance =
@@ -42450,18 +42326,24 @@ function FALLEN_THIRDPERSON_TICK()
             20
         )
 
-    local now = tick()
+    S.misc_thirdperson_distance = distance
 
-    if A.misc_thirdperson_last_distance ~= distance
-        or now - (A.misc_thirdperson_last_apply or -100) > 0.25
-    then
-        FALLEN_THIRDPERSON_WRITE_DISTANCE(
-            distance
+    local desired =
+        Vector3(
+            focus.X + bx * distance,
+            focus.Y + by * distance,
+            focus.Z + bz * distance
         )
 
-        A.misc_thirdperson_last_distance = distance
-        A.misc_thirdperson_last_apply = now
-    end
+    local ok_set =
+        pcall(function()
+            return cam:set_camera_pos(
+                desired
+            )
+        end)
+
+    A.misc_thirdperson_custom_active =
+        ok_set == true
 end
 
 hooks.on_render(function()
