@@ -117,10 +117,6 @@ local defaults = {
     misc_shot_on_air_enabled = false,
     misc_fps_enabled = false,
 
-    -- Third Person (fully custom camera offset; does not use cheat.thirdperson).
-    misc_thirdperson_enabled = false,
-    misc_thirdperson_distance = 5,
-
     -- Custom Anti Aim (ported behavior, custom API implementation).
     misc_antiaim_enabled = false,
     misc_antiaim_mode = "Spin",
@@ -597,16 +593,6 @@ local A = {
     misc_antiaim_saved_rotation = nil,
     misc_antiaim_was_enabled = false,
     misc_antiaim_hrp_addr = nil,
-
-    -- Misc Third Person popup/runtime.
-    misc_thirdperson_settings_open = false,
-    misc_thirdperson_settings_anim = 0,
-    misc_thirdperson_settings_last_t = nil,
-    misc_thirdperson_last_enabled = nil,
-    misc_thirdperson_last_distance = nil,
-    misc_thirdperson_last_apply = -100,
-    misc_thirdperson_distance_section = nil,
-    misc_thirdperson_distance_key = nil,
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -3929,7 +3915,6 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         A.world_settings_open = false
         A.misc_antiaim_settings_open = false
         A.misc_antiaim_mode_dropdown_open = false
-        A.misc_thirdperson_settings_open = false
         A.world_color_picker_open = false
         A.world_color_picker_drag = nil
         FALLEN_COLOR_INPUT_STOP(true)
@@ -34811,219 +34796,6 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
 end
 
 -- =========================================================
--- Misc Third Person settings popup
--- =========================================================
-
-function FALLEN_THIRDPERSON_SETTINGS_STEP()
-    local now = tick()
-
-    if A.misc_thirdperson_settings_last_t == nil then
-        A.misc_thirdperson_settings_last_t = now
-    end
-
-    local dt =
-        clamp(
-            now - A.misc_thirdperson_settings_last_t,
-            0,
-            0.05
-        )
-
-    A.misc_thirdperson_settings_last_t = now
-
-    local target =
-        A.misc_thirdperson_settings_open
-        and 1
-        or 0
-
-    local speed =
-        target > (A.misc_thirdperson_settings_anim or 0)
-        and 15
-        or 11
-
-    A.misc_thirdperson_settings_anim =
-        exp_chase(
-            A.misc_thirdperson_settings_anim or 0,
-            target,
-            speed,
-            dt
-        )
-
-    if math.abs(
-        (A.misc_thirdperson_settings_anim or 0)
-        - target
-    ) < 0.0015
-    then
-        A.misc_thirdperson_settings_anim = target
-    end
-
-    return
-        clamp(
-            A.misc_thirdperson_settings_anim or 0,
-            0,
-            1
-        )
-end
-
-function FALLEN_DRAW_THIRDPERSON_SETTINGS_POPUP(
-    mx,
-    my,
-    clicked,
-    lmb,
-    dots_x,
-    dots_y
-)
-    local raw =
-        FALLEN_THIRDPERSON_SETTINGS_STEP()
-
-    if raw <= 0.001
-        and not A.misc_thirdperson_settings_open
-    then
-        return false
-    end
-
-    local parent_alpha =
-        MENU_RENDER_ALPHA
-
-    MENU_RENDER_ALPHA =
-        parent_alpha
-        * ease_out_cubic(raw)
-
-    local anim =
-        A.misc_thirdperson_settings_open
-        and ease_out_cubic(raw)
-        or ease_in_out_cubic(raw)
-
-    local pw = 300
-    local ph = 84
-
-    local base_px =
-        dots_x - pw + 28
-
-    local base_py =
-        dots_y + 31
-
-    local retract =
-        1 - anim
-
-    local px =
-        snap(
-            base_px
-            + retract * 14
-        )
-
-    local py =
-        snap(
-            base_py
-            - retract * 30
-        )
-
-    local shell_h =
-        math.max(
-            28,
-            ph
-            - retract * 45
-        )
-
-    local interactive =
-        raw > 0.96
-        and A.misc_thirdperson_settings_open
-
-    local ui_clicked =
-        clicked
-        and interactive
-
-    FALLEN_POPUP_GLOW(
-        px,
-        py,
-        pw,
-        shell_h,
-        11,
-        1
-    )
-
-    rounded_fill(
-        px,
-        py,
-        pw,
-        shell_h,
-        11,
-        { 0.062, 0.066, 0.077, 1 }
-    )
-
-    text(
-        px + 13,
-        py + 12,
-        "Third Person settings",
-        C.text
-    )
-
-    if shell_h > 39 then
-        line(
-            px + 12,
-            py + 34,
-            px + pw - 12,
-            py + 34,
-            C.divider,
-            1
-        )
-    end
-
-    if shell_h > 76 then
-        slider_row(
-            mx,
-            my,
-            ui_clicked,
-            lmb,
-            px + 8,
-            py + 35,
-            pw - 16,
-            "Distance",
-            "misc_thirdperson_distance",
-            1,
-            20,
-            "float"
-        )
-    end
-
-    local popup_hot =
-        hover(
-            mx,
-            my,
-            px,
-            py,
-            pw,
-            shell_h
-        )
-
-    local dots_hot =
-        hover(
-            mx,
-            my,
-            dots_x,
-            dots_y,
-            27,
-            25
-        )
-
-    if interactive
-        and clicked
-        and not popup_hot
-        and not dots_hot
-    then
-        A.misc_thirdperson_settings_open = false
-
-        if numeric_stop then
-            numeric_stop(true)
-        end
-    end
-
-    MENU_RENDER_ALPHA =
-        parent_alpha
-
-    return popup_hot
-end
-
--- =========================================================
 -- Render
 -- =========================================================
 
@@ -36472,21 +36244,16 @@ hooks.on_render(function()
             A.misc_antiaim_settings_open == true
             or (A.misc_antiaim_settings_anim or 0) > 0.02
 
-        local thirdperson_popup_active =
-            A.misc_thirdperson_settings_open == true
-            or (A.misc_thirdperson_settings_anim or 0) > 0.02
-
         local misc_controls_clicked =
             page_clicked
             and not A.world_color_picker_open
             and not antiaim_popup_active
-            and not thirdperson_popup_active
 
         card(
             page_x,
             page_y + 25,
             page_w,
-            183,
+            142,
             11
         )
 
@@ -36580,10 +36347,6 @@ hooks.on_render(function()
             A.misc_antiaim_settings_open =
                 not A.misc_antiaim_settings_open
 
-            if A.misc_antiaim_settings_open then
-                A.misc_thirdperson_settings_open = false
-            end
-
             if not A.misc_antiaim_settings_open
                 and numeric_stop
             then
@@ -36598,84 +36361,6 @@ hooks.on_render(function()
             lmb,
             antiaim_dots_x,
             antiaim_dots_y
-        )
-
-        line(
-            page_x + 12,
-            page_y + 154,
-            page_x + page_w - 12,
-            page_y + 154,
-            C.divider,
-            1
-        )
-
-        local thirdperson_y =
-            page_y + 155
-
-        local thirdperson_dots_x =
-            page_x + page_w - 79
-
-        local thirdperson_dots_y =
-            thirdperson_y + 8
-
-        local thirdperson_dots_hot =
-            hover(
-                mx,
-                my,
-                thirdperson_dots_x,
-                thirdperson_dots_y,
-                27,
-                25
-            )
-
-        local thirdperson_row_hot =
-            hover(
-                mx,
-                my,
-                page_x,
-                thirdperson_y,
-                page_w,
-                41
-            )
-
-        toggle_row(
-            mx,
-            my,
-            misc_controls_clicked
-                and not thirdperson_dots_hot,
-            page_x,
-            thirdperson_y,
-            page_w,
-            "Third Person",
-            "misc_thirdperson_enabled",
-            true
-        )
-
-        if (page_clicked and thirdperson_dots_hot)
-            or (page_rmb_clicked and thirdperson_row_hot)
-        then
-            A.misc_thirdperson_settings_open =
-                not A.misc_thirdperson_settings_open
-
-            if A.misc_thirdperson_settings_open then
-                A.misc_antiaim_settings_open = false
-                A.misc_antiaim_mode_dropdown_open = false
-            end
-
-            if not A.misc_thirdperson_settings_open
-                and numeric_stop
-            then
-                numeric_stop(true)
-            end
-        end
-
-        FALLEN_DRAW_THIRDPERSON_SETTINGS_POPUP(
-            mx,
-            my,
-            page_clicked,
-            lmb,
-            thirdperson_dots_x,
-            thirdperson_dots_y
         )
 
         local boulder_gap =
@@ -41799,8 +41484,11 @@ local function FALLEN_ANTIAIM_SEND_LOOK(
 )
     local now = tick()
 
+    -- The game sends its own TorsoController.Look updates very often.
+    -- For Backwards Down we intentionally allow force=true every render so
+    -- our pitch is not immediately replaced by the normal look packet.
     if force ~= true
-        and now - (A.misc_antiaim_look_last_send or -100) < 0.05
+        and now - (A.misc_antiaim_look_last_send or -100) < 0.016
     then
         return false
     end
@@ -41812,13 +41500,31 @@ local function FALLEN_ANTIAIM_SEND_LOOK(
         return false
     end
 
+    local p = tonumber(pitch) or 0
+    local y = tonumber(yaw) or 0
+
     local ok, fired =
         pcall(function()
             return look:fire_server(
-                tonumber(pitch) or 0,
-                tonumber(yaw) or 0
+                p,
+                y
             )
         end)
+
+    -- API fallback: both forms are documented. Some builds expose the
+    -- instance method but route RemoteEvents more reliably through
+    -- fire_remote(remote, ...).
+    if (not ok or fired == false)
+        and type(fire_remote) == "function"
+    then
+        ok, fired =
+            pcall(
+                fire_remote,
+                look,
+                p,
+                y
+            )
+    end
 
     if ok and fired ~= false then
         A.misc_antiaim_look_last_send = now
@@ -42056,10 +41762,13 @@ function FALLEN_ANTIAIM_TICK()
                 1.5
             )
 
+        -- Force the selected pitch every render. The original game also
+        -- sends Look packets continuously, so a throttled one-shot can be
+        -- overwritten before the bent head/torso pose becomes visible.
         if FALLEN_ANTIAIM_SEND_LOOK(
             look_pitch,
             0,
-            false
+            true
         ) then
             A.misc_antiaim_look_forced = true
         end
@@ -42156,214 +41865,6 @@ hooks.on_render(function()
                 warn(
                     SYS
                     .. "Anti Aim: "
-                    .. tostring(err)
-                )
-            end
-        end
-    end
-end)
-
--- =========================================================
--- Misc Third Person (fully custom)
--- =========================================================
--- This does NOT use cheat.enable("thirdperson"), cheat.keybinds, or any
--- built-in overlay/menu Third Person state. We only offset the live Camera
--- through the documented rbx Camera instance API every render frame.
-local function FALLEN_THIRDPERSON_CAMERA()
-    if not rbx
-        or type(rbx.camera) ~= "function"
-    then
-        return nil
-    end
-
-    local ok, cam =
-        pcall(
-            rbx.camera
-        )
-
-    if ok and cam then
-        return cam
-    end
-
-    return nil
-end
-
-local function FALLEN_THIRDPERSON_FOCUS_POS()
-    if not rbx then
-        return nil
-    end
-
-    -- Head gives the natural orbit point for a third-person camera.
-    if type(rbx.local_head) == "function" then
-        local ok_head, head =
-            pcall(
-                rbx.local_head
-            )
-
-        if ok_head and head then
-            local ok_pos, pos =
-                pcall(function()
-                    return head:get_position()
-                end)
-
-            if ok_pos and pos then
-                return pos
-            end
-        end
-    end
-
-    -- Fallback for moments where Head is not ready yet.
-    if type(rbx.local_hrp) == "function" then
-        local ok_hrp, hrp =
-            pcall(
-                rbx.local_hrp
-            )
-
-        if ok_hrp and hrp then
-            local ok_pos, pos =
-                pcall(function()
-                    return hrp:get_position()
-                end)
-
-            if ok_pos and pos then
-                return Vector3(
-                    pos.X,
-                    pos.Y + 1.5,
-                    pos.Z
-                )
-            end
-        end
-    end
-
-    return nil
-end
-
-local function FALLEN_THIRDPERSON_BACK_VECTOR(rot)
-    if type(rot) ~= "table" then
-        return nil
-    end
-
-    -- Camera rotation is a 3x3 row-major matrix. The third column is the
-    -- camera BackVector (the opposite of LookVector), which is exactly the
-    -- direction in which a third-person camera has to be displaced.
-    local x = tonumber(rot[3])
-    local y = tonumber(rot[6])
-    local z = tonumber(rot[9])
-
-    if not x or not y or not z then
-        return nil
-    end
-
-    local len =
-        math.sqrt(
-            x * x
-            + y * y
-            + z * z
-        )
-
-    if len <= 0.0001 then
-        return nil
-    end
-
-    return x / len, y / len, z / len
-end
-
-function FALLEN_THIRDPERSON_TICK()
-    if _G.FallenMenuReady ~= true then
-        return
-    end
-
-    if S.misc_thirdperson_enabled ~= true then
-        A.misc_thirdperson_custom_active = false
-        return
-    end
-
-    local cam =
-        FALLEN_THIRDPERSON_CAMERA()
-
-    if not cam then
-        A.misc_thirdperson_custom_active = false
-        return
-    end
-
-    local focus =
-        FALLEN_THIRDPERSON_FOCUS_POS()
-
-    if not focus then
-        A.misc_thirdperson_custom_active = false
-        return
-    end
-
-    local rot = nil
-
-    local ok_rot =
-        pcall(function()
-            rot = cam:camera_rotation()
-        end)
-
-    if not ok_rot
-        or type(rot) ~= "table"
-    then
-        A.misc_thirdperson_custom_active = false
-        return
-    end
-
-    local bx, by, bz =
-        FALLEN_THIRDPERSON_BACK_VECTOR(
-            rot
-        )
-
-    if not bx then
-        A.misc_thirdperson_custom_active = false
-        return
-    end
-
-    local distance =
-        clamp(
-            tonumber(S.misc_thirdperson_distance)
-            or 5,
-            1,
-            20
-        )
-
-    S.misc_thirdperson_distance = distance
-
-    local desired =
-        Vector3(
-            focus.X + bx * distance,
-            focus.Y + by * distance,
-            focus.Z + bz * distance
-        )
-
-    local ok_set =
-        pcall(function()
-            return cam:set_camera_pos(
-                desired
-            )
-        end)
-
-    A.misc_thirdperson_custom_active =
-        ok_set == true
-end
-
-hooks.on_render(function()
-    local ok, err =
-        pcall(
-            FALLEN_THIRDPERSON_TICK
-        )
-
-    if not ok then
-        A.misc_thirdperson_last_error =
-            A.misc_thirdperson_last_error
-            or 0
-
-        if tick() - A.misc_thirdperson_last_error > 2 then
-            A.misc_thirdperson_last_error = tick()
-
-            if type(warn) == "function" then
-                warn(
-                    SYS
-                    .. "Third Person: "
                     .. tostring(err)
                 )
             end
