@@ -123,6 +123,9 @@ local defaults = {
     misc_antiaim_speed = 100,
     misc_antiaim_yaw_min = -90,
     misc_antiaim_yaw_max = 90,
+    -- TorsoController.Look pitch used by Backwards Down.
+    -- -1.5 = max up, 0 = neutral, +1.5 = max down.
+    misc_antiaim_look_pitch = 1.5,
 
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
@@ -34426,7 +34429,9 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
         mode == "Backwards Down"
 
     local pw = 300
-    local ph = jitter and 206 or 124
+    local ph =
+        jitter and 206
+        or (backwards_down and 176 or 124)
 
     local base_px =
         dots_x - pw + 28
@@ -34614,6 +34619,34 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
                     "Hold Mouse1: normal pose",
                     C.text_dim
                 )
+
+                if shell_h > 128 then
+                    line(
+                        px + 12,
+                        py + 108,
+                        px + pw - 12,
+                        py + 108,
+                        C.divider,
+                        1
+                    )
+                end
+
+                if shell_h > 166 then
+                    slider_row(
+                        mx,
+                        my,
+                        controls_clicked,
+                        lmb,
+                        px + 8,
+                        py + 109,
+                        pw - 16,
+                        "Look Pitch",
+                        "misc_antiaim_look_pitch",
+                        -1.5,
+                        1.5,
+                        "float"
+                    )
+                end
             else
                 slider_row(
                     mx,
@@ -41698,10 +41731,18 @@ function FALLEN_ANTIAIM_TICK()
         end)
 
         -- In the supplied Insulin script, LookUp forces pitch=-1.5 on the
-        -- same TorsoController.Look remote. Positive 1.5 therefore gives the
-        -- opposite extreme: looking/bending down without tipping the HRP.
+        -- same TorsoController.Look remote. This value is user-adjustable:
+        -- -1.5 = up, 0 = neutral, +1.5 = down. HRP stays physically upright.
+        local look_pitch =
+            clamp(
+                tonumber(S.misc_antiaim_look_pitch)
+                or 1.5,
+                -1.5,
+                1.5
+            )
+
         if FALLEN_ANTIAIM_SEND_LOOK(
-            1.5,
+            look_pitch,
             0,
             false
         ) then
