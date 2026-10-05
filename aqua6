@@ -597,10 +597,15 @@ local A = {
 
     -- Misc Manipulation runtime.
     misc_manipulation_spoofed = false,
-    misc_manipulation_saved_pos = nil,
-    misc_manipulation_saved_rot = nil,
-    misc_manipulation_saved_vel = nil,
+    misc_manipulation_press_active = false,
+    misc_manipulation_press_pos = nil,
+    misc_manipulation_press_rot = nil,
+    misc_manipulation_press_upright_rot = nil,
+    misc_manipulation_press_vel = nil,
+    misc_manipulation_press_head_offset = nil,
     misc_manipulation_camera_anchor = nil,
+    misc_manipulation_direction = nil,
+    misc_manipulation_geo_refresh = 0,
     misc_manipulation_can_hit = false,
     misc_manipulation_target_name = nil,
     misc_manipulation_target_addr = nil,
@@ -41698,10 +41703,15 @@ end)
 
 -- =========================================================
 -- Custom Manipulation runtime
--- Fixed +5-stud vertical spoof while Mouse1 is held. Each render begins by
--- restoring the prior real state, then applies a fresh spoof for that frame.
--- The camera position is pinned to the point where Mouse1 was first pressed,
--- which keeps the local view visually stable while the HRP is moved/flipped.
+-- The spoof origin is frozen at the exact HRP/head position from the frame
+-- Mouse1 was FIRST pressed. Every following render returns the root to that
+-- base state before applying one temporary spoof, so the offset can never
+-- accumulate upward/sideways frame after frame.
+--
+-- Direction is selected automatically from several offsets (up/left/right/
+-- forward/back/down + diagonals). The first candidate that has a clean line
+-- to the current enemy becomes the active spoof direction. The local camera
+-- position stays anchored to the press-start camera position.
 -- =========================================================
 
 local FALLEN_MANIPULATION_FLIP_DEG = 90.0
@@ -41736,47 +41746,77 @@ local function FALLEN_MANIPULATION_PITCH_MATRIX(deg)
     }
 end
 
-local function FALLEN_MANIPULATION_RESTORE(hrp)
-    if A.misc_manipulation_spoofed ~= true then
+local function FALLEN_MANIPULATION_UPRIGHT_MATRIX(m)
+    if type(m) ~= "table" then
+        return {
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1,
+        }
+    end
+
+    -- Keep only yaw from the saved root rotation. Pitch/roll are discarded so
+    -- releasing Mouse1 always puts the character physically upright again.
+    local x = tonumber(m[1]) or 1
+    local z = tonumber(m[7]) or 0
+    local yaw = FALLEN_ANTIAIM_ATAN2(z, x)
+    local c = math.cos(yaw)
+    local s = math.sin(yaw)
+
+    return {
+        c, 0, -s,
+        0, 1, 0,
+        s, 0, c,
+    }
+end
+
+local function FALLEN_MANIPULATION_CLEAR_PRESS()
+    A.misc_manipulation_press_active = false
+    A.misc_manipulation_spoofed = false
+    A.misc_manipulation_press_pos = nil
+    A.misc_manipulation_press_rot = nil
+    A.misc_manipulation_press_upright_rot = nil
+    A.misc_manipulation_press_vel = nil
+    A.misc_manipulation_press_head_offset = nil
+    A.misc_manipulation_camera_anchor = nil
+    A.misc_manipulation_direction = nil
+end
+
+local function FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
+    if not hrp then
+        FALLEN_MANIPULATION_CLEAR_PRESS()
         return
     end
 
-    if hrp then
-        if A.misc_manipulation_saved_pos then
-            pcall(function()
-                hrp:set_position(
-                    A.misc_manipulation_saved_pos
-                )
-            end)
-        end
+    local base_pos = A.misc_manipulation_press_pos
+    local base_rot = A.misc_manipulation_press_upright_rot
+        or FALLEN_MANIPULATION_UPRIGHT_MATRIX(A.misc_manipulation_press_rot)
+    local base_vel = A.misc_manipulation_press_vel
 
-        if type(A.misc_manipulation_saved_rot) == "table" then
-            pcall(function()
-                hrp:set_rotation(
-                    A.misc_manipulation_saved_rot
-                )
-            end)
-        end
-
-        if A.misc_manipulation_saved_vel then
-            pcall(function()
-                hrp:set_velocity(
-                    A.misc_manipulation_saved_vel
-                )
-            end)
-        end
+    if base_pos then
+        pcall(function()
+            hrp:set_position(base_pos)
+        end)
     end
 
-    A.misc_manipulation_spoofed = false
-    A.misc_manipulation_saved_pos = nil
-    A.misc_manipulation_saved_rot = nil
-    A.misc_manipulation_saved_vel = nil
+    if type(base_rot) == "table" then
+        pcall(function()
+            hrp:set_rotation(base_rot)
+        end)
+    end
+
+    if base_vel then
+        pcall(function()
+            hrp:set_velocity(base_vel)
+        end)
+    end
+
+    FALLEN_MANIPULATION_CLEAR_PRESS()
 end
 
 local function FALLEN_MANIPULATION_CURSOR_POS()
     local p = nil
 
-    -- Manipulation is tied to the actual game crosshair, not the menu mouse.
     if type(crosshair_pos) == "function" then
         pcall(function()
             p = crosshair_pos()
@@ -41856,8 +41896,7 @@ local function FALLEN_MANIPULATION_TARGET()
 
     for _, p in ipairs(list) do
         if p and p.is_self ~= true then
-            local same_team =
-                p.is_teammate == true
+            local same_team = p.is_teammate == true
 
             if not same_team
                 and my_team_addr ~= 0
@@ -41897,11 +41936,8 @@ local function FALLEN_MANIPULATION_TARGET()
                     end)
 
                     if scr and scr.visible ~= false then
-                        local sx =
-                            tonumber(scr.X or scr.x or scr[1])
-
-                        local sy =
-                            tonumber(scr.Y or scr.y or scr[2])
+                        local sx = tonumber(scr.X or scr.x or scr[1])
+                        local sy = tonumber(scr.Y or scr.y or scr[2])
 
                         if sx and sy then
                             local dx = sx - cx
@@ -41928,8 +41964,6 @@ local function FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, center)
         return false
     end
 
-    -- Reuse the script's custom oriented-box collision cache, but rebuild it
-    -- when the local player has moved far enough that the old grid is stale.
     if center then
         local rebuild = A.world_rain_geo == nil
 
@@ -41941,19 +41975,27 @@ local function FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, center)
                 local dx = center.X - gx
                 local dz = center.Z - gz
 
-                if (dx * dx + dz * dz) > (220 * 220) then
+                if (dx * dx + dz * dz) > (80 * 80) then
                     rebuild = true
                 end
             end
         end
 
+        -- Refresh periodically too. Moving doors/parts otherwise leave a stale
+        -- answer and make CAN HIT look like it only worked once.
+        local now = tick()
+        if now - (A.misc_manipulation_geo_refresh or 0) > 0.35 then
+            rebuild = true
+        end
+
         if rebuild then
+            A.misc_manipulation_geo_refresh = now
             A.world_rain_geo = nil
 
             pcall(function()
                 FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(
                     center,
-                    300
+                    320
                 )
             end)
         end
@@ -41974,7 +42016,6 @@ local function FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, center)
 
     dx, dy, dz = dx / dist, dy / dist, dz / dist
 
-    -- Stop before the target body so its own collision does not count as map.
     local check_dist = math.max(0, dist - 3.0)
     local hit = nil
 
@@ -41993,6 +42034,110 @@ local function FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, center)
     return hit == nil
 end
 
+local function FALLEN_MANIPULATION_NORMALIZE3(x, y, z)
+    local len = math.sqrt(x*x + y*y + z*z)
+    if len <= 0.0001 then
+        return 0, 0, 0
+    end
+    return x / len, y / len, z / len
+end
+
+local function FALLEN_MANIPULATION_BASIS(rot)
+    -- Matrix columns are the local axes in world space for this custom API.
+    local rx, rz = 1, 0
+    local fx, fz = 0, -1
+
+    if type(rot) == "table" then
+        rx = tonumber(rot[1]) or rx
+        rz = tonumber(rot[7]) or rz
+        fx = -(tonumber(rot[3]) or 0)
+        fz = -(tonumber(rot[9]) or 1)
+    end
+
+    local rl = math.sqrt(rx*rx + rz*rz)
+    if rl > 0.0001 then
+        rx, rz = rx / rl, rz / rl
+    else
+        rx, rz = 1, 0
+    end
+
+    local fl = math.sqrt(fx*fx + fz*fz)
+    if fl > 0.0001 then
+        fx, fz = fx / fl, fz / fl
+    else
+        fx, fz = 0, -1
+    end
+
+    return rx, rz, fx, fz
+end
+
+local function FALLEN_MANIPULATION_CANDIDATES(rot)
+    local rx, rz, fx, fz = FALLEN_MANIPULATION_BASIS(rot)
+
+    return {
+        { name = "UP",        x = 0,          y = 1,  z = 0 },
+        { name = "RIGHT",     x = rx,         y = 0,  z = rz },
+        { name = "LEFT",      x = -rx,        y = 0,  z = -rz },
+        { name = "FORWARD",   x = fx,         y = 0,  z = fz },
+        { name = "BACK",      x = -fx,        y = 0,  z = -fz },
+        { name = "DOWN",      x = 0,          y = -1, z = 0 },
+        { name = "UP-RIGHT",  x = rx,         y = 1,  z = rz },
+        { name = "UP-LEFT",   x = -rx,        y = 1,  z = -rz },
+        { name = "UP-FWD",    x = fx,         y = 1,  z = fz },
+        { name = "UP-BACK",   x = -fx,        y = 1,  z = -fz },
+        { name = "RIGHT-FWD", x = rx + fx,    y = 0,  z = rz + fz },
+        { name = "LEFT-FWD",  x = -rx + fx,   y = 0,  z = -rz + fz },
+        { name = "RIGHT-BACK",x = rx - fx,    y = 0,  z = rz - fz },
+        { name = "LEFT-BACK", x = -rx - fx,   y = 0,  z = -rz - fz },
+    }
+end
+
+local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos, rot, distance)
+    local candidates = FALLEN_MANIPULATION_CANDIDATES(rot)
+    local preferred = A.misc_manipulation_direction
+
+    -- Keep the prior direction when it is still valid so the spoof does not
+    -- bounce between LEFT/RIGHT every render while both are possible.
+    if preferred and target_pos then
+        for _, c in ipairs(candidates) do
+            if c.name == preferred then
+                local nx, ny, nz = FALLEN_MANIPULATION_NORMALIZE3(c.x, c.y, c.z)
+                local ox, oy, oz = nx * distance, ny * distance, nz * distance
+                local origin = Vector3(
+                    base_origin.X + ox,
+                    base_origin.Y + oy,
+                    base_origin.Z + oz
+                )
+
+                if FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, base_pos) then
+                    return Vector3(ox, oy, oz), c.name, true
+                end
+                break
+            end
+        end
+    end
+
+    if target_pos then
+        for _, c in ipairs(candidates) do
+            local nx, ny, nz = FALLEN_MANIPULATION_NORMALIZE3(c.x, c.y, c.z)
+            local ox, oy, oz = nx * distance, ny * distance, nz * distance
+            local origin = Vector3(
+                base_origin.X + ox,
+                base_origin.Y + oy,
+                base_origin.Z + oz
+            )
+
+            if FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, base_pos) then
+                return Vector3(ox, oy, oz), c.name, true
+            end
+        end
+    end
+
+    -- No clean candidate: still use UP as the harmless/default spoof direction,
+    -- but expose BLOCKED in the indicator.
+    return Vector3(0, distance, 0), "UP", false
+end
+
 local function FALLEN_MANIPULATION_DRAW_INDICATOR()
     if S.misc_manipulation_enabled ~= true then
         return
@@ -42003,11 +42148,9 @@ local function FALLEN_MANIPULATION_DRAW_INDICATOR()
         return
     end
 
-    local can_hit =
-        A.misc_manipulation_can_hit == true
-
-    local has_target =
-        A.misc_manipulation_target_name ~= nil
+    local can_hit = A.misc_manipulation_can_hit == true
+    local has_target = A.misc_manipulation_target_name ~= nil
+    local direction = tostring(A.misc_manipulation_direction or "-")
 
     local distance =
         clamp(
@@ -42017,92 +42160,39 @@ local function FALLEN_MANIPULATION_DRAW_INDICATOR()
             10
         )
 
-    local label =
-        string.format(
-            "MANIP %.1f | NO TARGET",
-            distance
-        )
-
-    local r, g, b =
-        0.72,
-        0.72,
-        0.76
+    local label = string.format("MANIP %.1f | NO TARGET", distance)
+    local r, g, b = 0.72, 0.72, 0.76
 
     if has_target then
         if can_hit then
-            label =
-                string.format(
-                    "MANIP %.1f | CAN HIT",
-                    distance
-                )
-
-            r, g, b =
-                0.35,
-                1.00,
-                0.48
+            label = string.format(
+                "MANIP %.1f | CAN HIT [%s]",
+                distance,
+                direction
+            )
+            r, g, b = 0.35, 1.00, 0.48
         else
-            label =
-                string.format(
-                    "MANIP %.1f | BLOCKED",
-                    distance
-                )
-
-            r, g, b =
-                1.00,
-                0.35,
-                0.35
+            label = string.format(
+                "MANIP %.1f | BLOCKED",
+                distance
+            )
+            r, g, b = 1.00, 0.35, 0.35
         end
     end
 
-    local cx =
-        tonumber(
-            center.X
-            or center.x
-            or center[1]
-        )
-        or 0
-
-    local cy =
-        tonumber(
-            center.Y
-            or center.y
-            or center[2]
-        )
-        or 0
-
-    -- Keep it visibly ABOVE the crosshair, independent of LMB state.
-    local tx =
-        cx
-        - (#label * 3.35)
-
-    local ty =
-        cy
-        - 54
+    local cx = tonumber(center.X or center.x or center[1]) or 0
+    local cy = tonumber(center.Y or center.y or center[2]) or 0
+    local tx = cx - (#label * 3.35)
+    local ty = cy - 54
 
     if type(DrawTextWithOutline) == "function" then
         DrawTextWithOutline(
-            tx,
-            ty,
-            label,
-            r,
-            g,
-            b,
-            1,
-            0,
-            0,
-            0,
-            1
+            tx, ty, label,
+            r, g, b, 1,
+            0, 0, 0, 1
         )
     elseif type(DrawText) == "function" then
-        DrawText(
-            tx,
-            ty,
-            label,
-            r,
-            g,
-            b,
-            1
-        )
+        DrawText(tx, ty, label, r, g, b, 1)
     end
 end
 
@@ -42127,14 +42217,18 @@ function FALLEN_MANIPULATION_TICK()
         end
     end
 
-    -- Restore the spoof from the previous render before calculating this one.
-    FALLEN_MANIPULATION_RESTORE(hrp)
+    local enabled = S.misc_manipulation_enabled == true
+    local lmb = key_down(VK_LBUTTON) == true
 
-    if S.misc_manipulation_enabled ~= true or not hrp then
-        A.misc_manipulation_camera_anchor = nil
+    if not enabled or not hrp then
+        if A.misc_manipulation_press_active == true then
+            FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
+        end
+
         A.misc_manipulation_can_hit = false
         A.misc_manipulation_target_name = nil
         A.misc_manipulation_target_addr = nil
+        A.misc_manipulation_direction = nil
         return
     end
 
@@ -42154,7 +42248,20 @@ function FALLEN_MANIPULATION_TICK()
         return
     end
 
-    local target, target_pos = FALLEN_MANIPULATION_TARGET()
+    -- Mouse release: restore the ORIGINAL press position and a yaw-only upright
+    -- root, not the sideways spoof rotation. This is what prevents the fall.
+    if not lmb and A.misc_manipulation_press_active == true then
+        FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
+
+        -- Re-read the real restored state so the always-on indicator below is
+        -- calculated from the correct location on this same frame.
+        pcall(function() hrp_pos = hrp:get_position() end)
+        pcall(function() hrp_rot = hrp:get_rotation() end)
+        pcall(function() hrp_vel = hrp:get_velocity() end)
+        if head then
+            pcall(function() head_pos = head:get_position() end)
+        end
+    end
 
     local manip_distance =
         clamp(
@@ -42164,20 +42271,63 @@ function FALLEN_MANIPULATION_TICK()
             10
         )
 
-    local origin_base = head_pos or hrp_pos
-    local prospective_origin = Vector3(
-        origin_base.X,
-        origin_base.Y + manip_distance,
-        origin_base.Z
+    -- Freeze the base state exactly once, on the rising edge of Mouse1.
+    if lmb and A.misc_manipulation_press_active ~= true then
+        A.misc_manipulation_press_active = true
+        A.misc_manipulation_press_pos = hrp_pos
+        A.misc_manipulation_press_rot = hrp_rot
+        A.misc_manipulation_press_upright_rot =
+            FALLEN_MANIPULATION_UPRIGHT_MATRIX(hrp_rot)
+        A.misc_manipulation_press_vel = hrp_vel
+
+        if head_pos then
+            A.misc_manipulation_press_head_offset = Vector3(
+                head_pos.X - hrp_pos.X,
+                head_pos.Y - hrp_pos.Y,
+                head_pos.Z - hrp_pos.Z
+            )
+        else
+            A.misc_manipulation_press_head_offset = Vector3(0, 2, 0)
+        end
+
+        if cam then
+            pcall(function()
+                A.misc_manipulation_camera_anchor = cam:camera_pos()
+            end)
+        end
+    end
+
+    local base_pos =
+        (A.misc_manipulation_press_active == true
+            and A.misc_manipulation_press_pos)
+        or hrp_pos
+
+    local base_rot =
+        (A.misc_manipulation_press_active == true
+            and A.misc_manipulation_press_upright_rot)
+        or FALLEN_MANIPULATION_UPRIGHT_MATRIX(hrp_rot)
+
+    local base_head_offset =
+        (A.misc_manipulation_press_active == true
+            and A.misc_manipulation_press_head_offset)
+        or (head_pos and Vector3(
+            head_pos.X - hrp_pos.X,
+            head_pos.Y - hrp_pos.Y,
+            head_pos.Z - hrp_pos.Z
+        ))
+        or Vector3(0, 2, 0)
+
+    local base_origin = Vector3(
+        base_pos.X + base_head_offset.X,
+        base_pos.Y + base_head_offset.Y,
+        base_pos.Z + base_head_offset.Z
     )
+
+    local target, target_pos = FALLEN_MANIPULATION_TARGET()
 
     A.misc_manipulation_target_name =
         target
-        and tostring(
-            target.name
-            or target.display_name
-            or "target"
-        )
+        and tostring(target.name or target.display_name or "target")
         or nil
 
     A.misc_manipulation_target_addr =
@@ -42185,57 +42335,61 @@ function FALLEN_MANIPULATION_TICK()
         and tonumber(target.address or target.player_addr or 0)
         or nil
 
-    A.misc_manipulation_can_hit =
-        target_pos ~= nil
-        and FALLEN_MANIPULATION_CAN_HIT(
-            prospective_origin,
+    local offset, direction, can_hit =
+        FALLEN_MANIPULATION_PICK_OFFSET(
+            base_origin,
             target_pos,
-            hrp_pos
+            base_pos,
+            base_rot,
+            manip_distance
         )
-        or false
 
-    if key_down(VK_LBUTTON) ~= true then
+    A.misc_manipulation_direction = direction
+    A.misc_manipulation_can_hit = target_pos ~= nil and can_hit or false
+
+    -- Indicator is intentionally updated even with no LMB. Spoofing starts only
+    -- while Mouse1 is held.
+    if not lmb then
+        A.misc_manipulation_spoofed = false
         A.misc_manipulation_camera_anchor = nil
         return
     end
 
-    A.misc_manipulation_saved_pos = hrp_pos
-    A.misc_manipulation_saved_rot = hrp_rot
-    A.misc_manipulation_saved_vel = hrp_vel
+    -- First flatten the previous spoof back onto the ORIGINAL press state.
+    -- This is the important non-accumulating part: +10 is always pressY+10,
+    -- never currentY+10.
+    pcall(function()
+        hrp:set_position(base_pos)
+    end)
 
-    -- Capture the normal camera position AFTER the previous spoof has been
-    -- restored. Re-capture every frame so the view can still follow normal
-    -- player/camera movement while the spoof itself stays invisible locally.
-    if cam then
+    if type(base_rot) == "table" then
         pcall(function()
-            A.misc_manipulation_camera_anchor =
-                cam:camera_pos()
+            hrp:set_rotation(base_rot)
         end)
     end
 
-    local cam_rot = nil
-    if cam then
+    if A.misc_manipulation_press_vel then
         pcall(function()
-            cam_rot = cam:camera_rotation()
+            hrp:set_velocity(A.misc_manipulation_press_vel)
         end)
     end
 
-    -- Server/physics spoof position: +5 studs on Y.
+    -- Apply the one-frame positional spoof selected by the visibility test.
     pcall(function()
         hrp:set_position(
             Vector3(
-                hrp_pos.X,
-                hrp_pos.Y + manip_distance,
-                hrp_pos.Z
+                base_pos.X + offset.X,
+                base_pos.Y + offset.Y,
+                base_pos.Z + offset.Z
             )
         )
     end)
 
-    -- Match the old "falling/sideways" anti-aim effect while shooting by
-    -- applying a 90-degree X pitch to the root for the spoofed frame.
-    if type(hrp_rot) == "table" then
+    -- Sideways/falling body only exists during the spoof. Release always calls
+    -- FALLEN_MANIPULATION_RESTORE_RELEASE(), which strips pitch/roll again.
+    if type(base_rot) == "table" then
         local flipped = FALLEN_MANIPULATION_MATRIX_MUL(
-            hrp_rot,
+            base_rot,
             FALLEN_MANIPULATION_PITCH_MATRIX(
                 FALLEN_MANIPULATION_FLIP_DEG
             )
@@ -42248,21 +42402,12 @@ function FALLEN_MANIPULATION_TICK()
         end
     end
 
-    -- Keep the local view where it was before the spoof. Rotation is allowed
-    -- to follow the mouse, only the camera position is pinned.
-    if cam then
-        if A.misc_manipulation_camera_anchor then
-            pcall(function()
-                cam:set_camera_pos(
-                    A.misc_manipulation_camera_anchor
-                )
-            end)
-        end
-        if type(cam_rot) == "table" then
-            pcall(function()
-                cam:set_camera_rotation(cam_rot)
-            end)
-        end
+    -- Camera translation stays at the point where Mouse1 was FIRST pressed.
+    -- Camera rotation is left alone so the player can still look around.
+    if cam and A.misc_manipulation_camera_anchor then
+        pcall(function()
+            cam:set_camera_pos(A.misc_manipulation_camera_anchor)
+        end)
     end
 
     A.misc_manipulation_spoofed = true
