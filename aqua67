@@ -612,6 +612,16 @@ local A = {
     misc_manipulation_geo_center_x = nil,
     misc_manipulation_geo_center_z = nil,
     misc_manipulation_last_error = 0,
+    misc_manipulation_last_eval = 0,
+    misc_manipulation_cached_offset = nil,
+    misc_manipulation_weapon_last_scan = 0,
+    misc_manipulation_weapon_ready = false,
+    misc_manipulation_weapon_name = nil,
+    misc_manipulation_geo_building = false,
+    misc_manipulation_geo_queue = nil,
+    misc_manipulation_geo_queue_i = 1,
+    misc_manipulation_geo_build = nil,
+    misc_manipulation_geo_skip_chars = nil,
 
     -- Shot on air runtime.
     -- Temporarily owns Fly + Upside Down only while Space is held.
@@ -41478,7 +41488,10 @@ function FALLEN_ANTIAIM_TICK()
     -- Manipulation owns the root while Mouse1 is held so its 90-degree spoof
     -- is not immediately flattened by Spin/Jitter/Backwards.
     if S.misc_manipulation_enabled == true
-        and key_down(VK_LBUTTON) == true
+        and (
+            A.misc_manipulation_press_active == true
+            or A.misc_manipulation_spoofed == true
+        )
     then
         return
     end
@@ -41780,6 +41793,7 @@ local function FALLEN_MANIPULATION_CLEAR_PRESS()
     A.misc_manipulation_press_head_offset = nil
     A.misc_manipulation_camera_anchor = nil
     A.misc_manipulation_direction = nil
+    A.misc_manipulation_cached_offset = nil
 end
 
 local function FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
@@ -41843,6 +41857,300 @@ local function FALLEN_MANIPULATION_CURSOR_POS()
     end
 
     return p
+end
+
+local function FALLEN_MANIPULATION_HAS_WEAPON(force_scan)
+    local now = tick()
+
+    -- Auto Prediction already refreshes this exact detector every 0.25s.
+    -- Reuse its fresh result instead of scanning the character twice.
+    if S.aim_auto_prediction == true
+        and FAP
+        and (now - (tonumber(FAP.last_weapon_scan) or 0)) <= 0.35
+    then
+        local cached = FAP.weapon
+        A.misc_manipulation_weapon_name = cached
+        A.misc_manipulation_weapon_ready =
+            cached ~= nil
+            and tostring(cached) ~= ""
+        A.misc_manipulation_weapon_last_scan = now
+        return A.misc_manipulation_weapon_ready == true
+    end
+
+    if force_scan ~= true
+        and (now - (A.misc_manipulation_weapon_last_scan or 0)) < 0.25
+    then
+        return A.misc_manipulation_weapon_ready == true
+    end
+
+    A.misc_manipulation_weapon_last_scan = now
+
+    local weapon = nil
+    if type(fap_detect_weapon) == "function" then
+        pcall(function()
+            weapon = fap_detect_weapon()
+        end)
+    end
+
+    A.misc_manipulation_weapon_name = weapon
+    A.misc_manipulation_weapon_ready =
+        weapon ~= nil
+        and tostring(weapon) ~= ""
+
+    return A.misc_manipulation_weapon_ready == true
+end
+
+local FALLEN_MANIPULATION_PART_CLASSES = {
+    Part = true,
+    MeshPart = true,
+    UnionOperation = true,
+    TrussPart = true,
+    WedgePart = true,
+    CornerWedgePart = true,
+    Seat = true,
+    VehicleSeat = true,
+    SpawnLocation = true,
+}
+
+local function FALLEN_MANIPULATION_START_GEO_BUILD(center)
+    if not center or not rbx or type(rbx.workspace) ~= "function" then
+        return false
+    end
+
+    local ws = nil
+    pcall(function()
+        ws = rbx.workspace()
+    end)
+    if not ws then
+        return false
+    end
+
+    local roots = nil
+    pcall(function()
+        roots = ws:get_children()
+    end)
+    if type(roots) ~= "table" then
+        return false
+    end
+
+    local skip_chars = {}
+    if players and type(players.get_all) == "function" then
+        local plist = nil
+        pcall(function() plist = players.get_all() end)
+        if type(plist) == "table" then
+            for _, p in ipairs(plist) do
+                local a = p and tonumber(p.character_addr or 0) or 0
+                if a ~= 0 then
+                    skip_chars[a] = true
+                end
+            end
+        end
+    end
+
+    local local_char_addr = 0
+    pcall(function()
+        if type(rbx.local_character) == "function" then
+            local ch = rbx.local_character()
+            local_char_addr = ch and (tonumber(ch.addr) or 0) or 0
+        end
+    end)
+    if local_char_addr ~= 0 then
+        skip_chars[local_char_addr] = true
+    end
+
+    local cell = 36
+    local pad = 520
+
+    A.misc_manipulation_geo_queue = roots
+    A.misc_manipulation_geo_queue_i = 1
+    A.misc_manipulation_geo_skip_chars = skip_chars
+    A.misc_manipulation_geo_building = true
+    A.misc_manipulation_geo_build = {
+        time = tick(),
+        cx = center.X,
+        cz = center.Z,
+        center_y = center.Y,
+        radius = 80,
+        cell = cell,
+        scan_x1 = center.X - pad,
+        scan_x2 = center.X + pad,
+        scan_z1 = center.Z - pad,
+        scan_z2 = center.Z + pad,
+        parts = {},
+        grid = {},
+        ray_serial = 0,
+    }
+
+    return true
+end
+
+local function FALLEN_MANIPULATION_GEO_STEP(center, budget)
+    if not center then
+        return
+    end
+
+    local live_geo = A.world_rain_geo
+    local need_new = type(live_geo) ~= "table"
+
+    if type(live_geo) == "table" then
+        local gx = tonumber(live_geo.cx)
+        local gz = tonumber(live_geo.cz)
+        if gx and gz then
+            local dx = center.X - gx
+            local dz = center.Z - gz
+            -- Only rebuild after a genuinely large move, and do it progressively.
+            if (dx * dx + dz * dz) > (320 * 320) then
+                need_new = true
+            end
+        end
+    end
+
+    if need_new and A.misc_manipulation_geo_building ~= true then
+        FALLEN_MANIPULATION_START_GEO_BUILD(center)
+    end
+
+    if A.misc_manipulation_geo_building ~= true then
+        return
+    end
+
+    local geo = A.misc_manipulation_geo_build
+    local queue = A.misc_manipulation_geo_queue
+    local qi = tonumber(A.misc_manipulation_geo_queue_i) or 1
+
+    if type(geo) ~= "table" or type(queue) ~= "table" then
+        A.misc_manipulation_geo_building = false
+        return
+    end
+
+    budget = math.max(8, math.floor(tonumber(budget) or 28))
+    local processed = 0
+
+    while qi <= #queue and processed < budget do
+        local inst = queue[qi]
+        qi = qi + 1
+        processed = processed + 1
+
+        if inst then
+            local addr = tonumber(inst.addr) or 0
+            local skip_whole =
+                addr ~= 0
+                and type(A.misc_manipulation_geo_skip_chars) == "table"
+                and A.misc_manipulation_geo_skip_chars[addr] == true
+
+            local name = nil
+            local class = nil
+            pcall(function() name = inst:get_name() end)
+            pcall(function() class = inst:get_class() end)
+
+            if name == "VFX" or class == "Camera" or class == "Terrain" then
+                skip_whole = true
+            end
+
+            if not skip_whole then
+                if FALLEN_MANIPULATION_PART_CLASSES[tostring(class)] == true then
+                    local can_collide = true
+                    pcall(function()
+                        if type(inst.get_can_collide) == "function" then
+                            can_collide = inst:get_can_collide() == true
+                        end
+                    end)
+
+                    if can_collide and #geo.parts < 6500 then
+                        local pos, size, rot = nil, nil, nil
+                        pcall(function() pos = inst:get_position() end)
+                        pcall(function() size = inst:get_size() end)
+                        pcall(function() rot = inst:get_rotation() end)
+
+                        if pos and size then
+                            rot = type(rot) == "table" and rot or {1,0,0, 0,1,0, 0,0,1}
+
+                            local px = tonumber(pos.X or pos[1])
+                            local py = tonumber(pos.Y or pos[2])
+                            local pz = tonumber(pos.Z or pos[3])
+                            local sx = math.abs(tonumber(size.X or size[1]) or 0)
+                            local sy = math.abs(tonumber(size.Y or size[2]) or 0)
+                            local sz = math.abs(tonumber(size.Z or size[3]) or 0)
+
+                            if px and py and pz and sx > 0.04 and sy > 0.04 and sz > 0.04 then
+                                local hx, hy, hz = sx * 0.5, sy * 0.5, sz * 0.5
+                                local m1 = tonumber(rot[1]) or 1
+                                local m2 = tonumber(rot[2]) or 0
+                                local m3 = tonumber(rot[3]) or 0
+                                local m4 = tonumber(rot[4]) or 0
+                                local m5 = tonumber(rot[5]) or 1
+                                local m6 = tonumber(rot[6]) or 0
+                                local m7 = tonumber(rot[7]) or 0
+                                local m8 = tonumber(rot[8]) or 0
+                                local m9 = tonumber(rot[9]) or 1
+
+                                local ex = math.abs(m1) * hx + math.abs(m2) * hy + math.abs(m3) * hz
+                                local ez = math.abs(m7) * hx + math.abs(m8) * hy + math.abs(m9) * hz
+
+                                if px + ex >= geo.scan_x1 and px - ex <= geo.scan_x2
+                                    and pz + ez >= geo.scan_z1 and pz - ez <= geo.scan_z2
+                                    and math.abs(py - geo.center_y) <= 520 + hy
+                                then
+                                    local rec = {
+                                        x = px, y = py, z = pz,
+                                        hx = hx, hy = hy, hz = hz,
+                                        m1 = m1, m2 = m2, m3 = m3,
+                                        m4 = m4, m5 = m5, m6 = m6,
+                                        m7 = m7, m8 = m8, m9 = m9,
+                                        mark = 0,
+                                    }
+
+                                    geo.parts[#geo.parts + 1] = rec
+                                    local index = #geo.parts
+
+                                    local minx = math.max(px - ex, geo.scan_x1)
+                                    local maxx = math.min(px + ex, geo.scan_x2)
+                                    local minz = math.max(pz - ez, geo.scan_z1)
+                                    local maxz = math.min(pz + ez, geo.scan_z2)
+
+                                    local gx1 = math.floor(minx / geo.cell)
+                                    local gx2 = math.floor(maxx / geo.cell)
+                                    local gz1 = math.floor(minz / geo.cell)
+                                    local gz2 = math.floor(maxz / geo.cell)
+
+                                    for gx = gx1, gx2 do
+                                        for gz = gz1, gz2 do
+                                            local key = FALLEN_WORLD_RAIN_GRID_KEY(gx, gz)
+                                            local bucket = geo.grid[key]
+                                            if not bucket then
+                                                bucket = {}
+                                                geo.grid[key] = bucket
+                                            end
+                                            bucket[#bucket + 1] = index
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                else
+                    local children = nil
+                    pcall(function() children = inst:get_children() end)
+                    if type(children) == "table" then
+                        for _, child in ipairs(children) do
+                            queue[#queue + 1] = child
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    A.misc_manipulation_geo_queue_i = qi
+
+    if qi > #queue or #geo.parts >= 6500 then
+        -- Atomically swap only after the progressive build has finished.
+        A.world_rain_geo = geo
+        A.misc_manipulation_geo_building = false
+        A.misc_manipulation_geo_queue = nil
+        A.misc_manipulation_geo_queue_i = 1
+        A.misc_manipulation_geo_build = nil
+        A.misc_manipulation_geo_skip_chars = nil
+    end
 end
 
 local function FALLEN_MANIPULATION_TARGET()
@@ -41964,43 +42272,8 @@ local function FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, center)
         return false
     end
 
-    if center then
-        local rebuild = A.world_rain_geo == nil
-
-        if type(A.world_rain_geo) == "table" then
-            local gx = tonumber(A.world_rain_geo.cx)
-            local gz = tonumber(A.world_rain_geo.cz)
-
-            if gx and gz then
-                local dx = center.X - gx
-                local dz = center.Z - gz
-
-                if (dx * dx + dz * dz) > (80 * 80) then
-                    rebuild = true
-                end
-            end
-        end
-
-        -- Refresh periodically too. Moving doors/parts otherwise leave a stale
-        -- answer and make CAN HIT look like it only worked once.
-        local now = tick()
-        if now - (A.misc_manipulation_geo_refresh or 0) > 0.35 then
-            rebuild = true
-        end
-
-        if rebuild then
-            A.misc_manipulation_geo_refresh = now
-            A.world_rain_geo = nil
-
-            pcall(function()
-                FALLEN_WORLD_RAIN_UPDATE_GEOMETRY(
-                    center,
-                    320
-                )
-            end)
-        end
-    end
-
+    -- Geometry is built progressively by FALLEN_MANIPULATION_GEO_STEP().
+    -- Never perform a full Workspace descendant scan from a render/raycast call.
     if type(A.world_rain_geo) ~= "table" then
         return false
     end
@@ -42164,7 +42437,15 @@ local function FALLEN_MANIPULATION_DRAW_INDICATOR()
     local r, g, b = 0.72, 0.72, 0.76
 
     if has_target then
-        if can_hit then
+        if type(A.world_rain_geo) ~= "table"
+            and A.misc_manipulation_geo_building == true
+        then
+            label = string.format(
+                "MANIP %.1f | SCANNING",
+                distance
+            )
+            r, g, b = 1.00, 0.82, 0.30
+        elseif can_hit then
             label = string.format(
                 "MANIP %.1f | CAN HIT [%s]",
                 distance,
@@ -42218,7 +42499,7 @@ function FALLEN_MANIPULATION_TICK()
     end
 
     local enabled = S.misc_manipulation_enabled == true
-    local lmb = key_down(VK_LBUTTON) == true
+    local raw_lmb = key_down(VK_LBUTTON) == true
 
     if not enabled or not hrp then
         if A.misc_manipulation_press_active == true then
@@ -42229,8 +42510,20 @@ function FALLEN_MANIPULATION_TICK()
         A.misc_manipulation_target_name = nil
         A.misc_manipulation_target_addr = nil
         A.misc_manipulation_direction = nil
+        A.misc_manipulation_cached_offset = nil
         return
     end
+
+    -- Teleport/spoof is allowed only with a real weapon in hand.
+    -- This reuses the exact detector used by Auto Prediction.
+    local weapon_ready = false
+    if raw_lmb then
+        weapon_ready = FALLEN_MANIPULATION_HAS_WEAPON(
+            A.misc_manipulation_press_active ~= true
+        )
+    end
+
+    local lmb = raw_lmb and weapon_ready
 
     local hrp_pos = nil
     local hrp_rot = nil
@@ -42248,13 +42541,11 @@ function FALLEN_MANIPULATION_TICK()
         return
     end
 
-    -- Mouse release: restore the ORIGINAL press position and a yaw-only upright
-    -- root, not the sideways spoof rotation. This is what prevents the fall.
+    -- Mouse released OR weapon disappeared while Mouse1 is still held:
+    -- immediately restore the original press point/upright rotation.
     if not lmb and A.misc_manipulation_press_active == true then
         FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
 
-        -- Re-read the real restored state so the always-on indicator below is
-        -- calculated from the correct location on this same frame.
         pcall(function() hrp_pos = hrp:get_position() end)
         pcall(function() hrp_rot = hrp:get_rotation() end)
         pcall(function() hrp_vel = hrp:get_velocity() end)
@@ -42271,7 +42562,7 @@ function FALLEN_MANIPULATION_TICK()
             10
         )
 
-    -- Freeze the base state exactly once, on the rising edge of Mouse1.
+    -- Freeze base state exactly once on a valid Mouse1 + weapon rising edge.
     if lmb and A.misc_manipulation_press_active ~= true then
         A.misc_manipulation_press_active = true
         A.misc_manipulation_press_pos = hrp_pos
@@ -42295,6 +42586,9 @@ function FALLEN_MANIPULATION_TICK()
                 A.misc_manipulation_camera_anchor = cam:camera_pos()
             end)
         end
+
+        -- Force one target/direction refresh for the new shot press.
+        A.misc_manipulation_last_eval = 0
     end
 
     local base_pos =
@@ -42323,41 +42617,60 @@ function FALLEN_MANIPULATION_TICK()
         base_pos.Z + base_head_offset.Z
     )
 
-    local target, target_pos = FALLEN_MANIPULATION_TARGET()
+    -- Build collision geometry in tiny chunks instead of one giant Workspace scan.
+    -- This is what removes the long freeze when Manipulation is first enabled.
+    FALLEN_MANIPULATION_GEO_STEP(base_pos, 28)
 
-    A.misc_manipulation_target_name =
-        target
-        and tostring(target.name or target.display_name or "target")
-        or nil
+    -- Target selection + 14 directional visibility rays used to run EVERY frame.
+    -- 0.15s is fast enough for the HUD while removing most CPU/raycast load.
+    local now = tick()
+    local need_eval =
+        (now - (A.misc_manipulation_last_eval or 0)) >= 0.15
+        or A.misc_manipulation_cached_offset == nil
 
-    A.misc_manipulation_target_addr =
-        target
-        and tonumber(target.address or target.player_addr or 0)
-        or nil
+    if need_eval then
+        A.misc_manipulation_last_eval = now
 
-    local offset, direction, can_hit =
-        FALLEN_MANIPULATION_PICK_OFFSET(
-            base_origin,
-            target_pos,
-            base_pos,
-            base_rot,
-            manip_distance
-        )
+        local target, target_pos = FALLEN_MANIPULATION_TARGET()
 
-    A.misc_manipulation_direction = direction
-    A.misc_manipulation_can_hit = target_pos ~= nil and can_hit or false
+        A.misc_manipulation_target_name =
+            target
+            and tostring(target.name or target.display_name or "target")
+            or nil
 
-    -- Indicator is intentionally updated even with no LMB. Spoofing starts only
-    -- while Mouse1 is held.
+        A.misc_manipulation_target_addr =
+            target
+            and tonumber(target.address or target.player_addr or 0)
+            or nil
+
+        local offset, direction, can_hit =
+            FALLEN_MANIPULATION_PICK_OFFSET(
+                base_origin,
+                target_pos,
+                base_pos,
+                base_rot,
+                manip_distance
+            )
+
+        A.misc_manipulation_cached_offset = offset
+        A.misc_manipulation_direction = direction
+        A.misc_manipulation_can_hit = target_pos ~= nil and can_hit or false
+    end
+
+    -- Indicator remains always-on. Physical spoofing starts only on
+    -- Mouse1 + a weapon recognised by the Auto Prediction detector.
     if not lmb then
         A.misc_manipulation_spoofed = false
         A.misc_manipulation_camera_anchor = nil
         return
     end
 
-    -- First flatten the previous spoof back onto the ORIGINAL press state.
-    -- This is the important non-accumulating part: +10 is always pressY+10,
-    -- never currentY+10.
+    local offset =
+        A.misc_manipulation_cached_offset
+        or Vector3(0, manip_distance, 0)
+
+    -- Always return to the ORIGINAL click position before applying this frame's
+    -- spoof. The selected 5..10 stud offset therefore never accumulates.
     pcall(function()
         hrp:set_position(base_pos)
     end)
@@ -42374,7 +42687,6 @@ function FALLEN_MANIPULATION_TICK()
         end)
     end
 
-    -- Apply the one-frame positional spoof selected by the visibility test.
     pcall(function()
         hrp:set_position(
             Vector3(
@@ -42385,8 +42697,7 @@ function FALLEN_MANIPULATION_TICK()
         )
     end)
 
-    -- Sideways/falling body only exists during the spoof. Release always calls
-    -- FALLEN_MANIPULATION_RESTORE_RELEASE(), which strips pitch/roll again.
+    -- Sideways body spoof exists only while a valid armed LMB is held.
     if type(base_rot) == "table" then
         local flipped = FALLEN_MANIPULATION_MATRIX_MUL(
             base_rot,
@@ -42402,8 +42713,7 @@ function FALLEN_MANIPULATION_TICK()
         end
     end
 
-    -- Camera translation stays at the point where Mouse1 was FIRST pressed.
-    -- Camera rotation is left alone so the player can still look around.
+    -- Lock only camera translation; look rotation remains controllable.
     if cam and A.misc_manipulation_camera_anchor then
         pcall(function()
             cam:set_camera_pos(A.misc_manipulation_camera_anchor)
