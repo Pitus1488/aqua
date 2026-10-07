@@ -18558,6 +18558,62 @@ function FALLEN_HITFX_VFX_TICK()
 end
 
 
+function FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
+    if not hit then
+        return 48
+    end
+
+    local base = {
+        X = hit.x,
+        Y = hit.y,
+        Z = hit.z,
+    }
+
+    local world_size = 4.0
+    if kind == 1 then
+        -- fallen_ultimate Spark ParticleEmitter Size = 8
+        world_size = 8.0
+    elseif kind == 2 then
+        -- fallen_ultimate SmokeRing Size = 4
+        world_size = 4.0
+    elseif kind == 3 then
+        -- fallen_ultimate particles.js Size = 3
+        world_size = 3.0
+    end
+
+    local a = FALLEN_BT_PROJECT(base)
+    local b = FALLEN_BT_PROJECT({
+        X = hit.x,
+        Y = hit.y + world_size,
+        Z = hit.z,
+    })
+
+    if a and b then
+        local dx = (b.X or 0) - (a.X or 0)
+        local dy = (b.Y or 0) - (a.Y or 0)
+        local px = math.sqrt(dx * dx + dy * dy)
+
+        -- Preserve world-space perspective, but keep the effect practical
+        -- on screen at extreme near/far distances.
+        if kind == 1 then
+            return clamp(px, 34, 220)
+        elseif kind == 2 then
+            return clamp(px, 28, 170)
+        else
+            return clamp(px, 24, 145)
+        end
+    end
+
+    -- Fallback only if the offset point cannot be projected.
+    if kind == 1 then
+        return 86
+    elseif kind == 2 then
+        return 64
+    end
+
+    return 58
+end
+
 function FALLEN_HITFX_DRAW_ONE(hit, age, life)
     local s =
         FALLEN_BT_PROJECT({
@@ -18580,23 +18636,10 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
     local alpha =
         1 - t
 
-    -- Original fallen_ultimate uses fixed ParticleEmitter Size values:
-    -- Spark = 8, SmokeRing = 4, particles.js = 3.
-    -- Our renderer is 2D, so use fixed SCREEN sizes instead of shrinking
-    -- the effect with camera distance. This keeps hits readable at range.
+    -- Match fallen_ultimate's WORLD-space particle sizing instead of fixed
+    -- screen pixels. Near hits render larger; far hits render smaller.
     local kind = FALLEN_HITFX_STYLE_INDEX()
-    local size = 64
-
-    if kind == 1 then
-        -- Spark is the largest effect in the original (Size = 8).
-        size = 86
-    elseif kind == 2 then
-        -- SmokeRing original Size = 4.
-        size = 64
-    elseif kind == 3 then
-        -- particles.js original Size = 3; six sprites are emitted.
-        size = 58
-    end
+    local size = FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
 
     FALLEN_HITFX_DRAW_FALLEN(
         kind,
