@@ -16435,6 +16435,126 @@ function FALLEN_BT_DRAW_GALAXY(
     end
 end
 
+function FALLEN_BT_REVEALED_POINTS(points, reveal)
+    if type(points) ~= "table"
+        or #points == 0
+    then
+        return {}
+    end
+
+    local max_u =
+        clamp(
+            tonumber(reveal) or 0,
+            0,
+            1
+        )
+
+    local out = {}
+    local first = points[1]
+
+    if not first then
+        return out
+    end
+
+    -- Keep the first point so the tracer always has a stable origin.
+    out[#out + 1] = {
+        x = first.x,
+        y = first.y,
+        u = tonumber(first.u) or 0,
+        wx = first.wx,
+        wy = first.wy,
+        wz = first.wz,
+    }
+
+    if max_u <= (tonumber(first.u) or 0) then
+        return out
+    end
+
+    local prev = first
+
+    for i = 2, #points do
+        local cur = points[i]
+
+        if cur
+            and prev
+            and cur.x
+            and cur.y
+            and prev.x
+            and prev.y
+        then
+            local pu = tonumber(prev.u) or 0
+            local cu = tonumber(cur.u) or pu
+
+            if cu <= max_u + 0.000001 then
+                out[#out + 1] = {
+                    x = cur.x,
+                    y = cur.y,
+                    u = cu,
+                    wx = cur.wx,
+                    wy = cur.wy,
+                    wz = cur.wz,
+                }
+
+                prev = cur
+            else
+                -- Reveal ends inside this segment: draw a partial segment
+                -- instead of waiting until the next whole sampled point.
+                local span = cu - pu
+
+                if span > 0.000001
+                    and max_u > pu
+                then
+                    local t =
+                        clamp(
+                            (max_u - pu) / span,
+                            0,
+                            1
+                        )
+
+                    local p = {
+                        x =
+                            prev.x
+                            + (cur.x - prev.x) * t,
+
+                        y =
+                            prev.y
+                            + (cur.y - prev.y) * t,
+
+                        u = max_u,
+                    }
+
+                    if prev.wx ~= nil
+                        and prev.wy ~= nil
+                        and prev.wz ~= nil
+                        and cur.wx ~= nil
+                        and cur.wy ~= nil
+                        and cur.wz ~= nil
+                    then
+                        p.wx =
+                            prev.wx
+                            + (cur.wx - prev.wx) * t
+
+                        p.wy =
+                            prev.wy
+                            + (cur.wy - prev.wy) * t
+
+                        p.wz =
+                            prev.wz
+                            + (cur.wz - prev.wz) * t
+                    end
+
+                    out[#out + 1] = p
+                end
+
+                break
+            end
+        end
+    end
+
+    return out
+end
+
+
 function FALLEN_BT_DRAW_WATER(
     tr,
     points,
@@ -16459,6 +16579,16 @@ function FALLEN_BT_DRAW_WATER(
         return
     end
 
+    local visible_points =
+        FALLEN_BT_REVEALED_POINTS(
+            points,
+            max_u
+        )
+
+    if #visible_points < 2 then
+        return
+    end
+
     local col = FALLEN_BT_COLOR()
 
     -- Our Drawing API cannot rotate/wrap DrawImage along a tracer like a
@@ -16472,14 +16602,13 @@ function FALLEN_BT_DRAW_WATER(
 
     local previous = nil
 
-    for i = 1, #points do
-        local point = points[i]
+    for i = 1, #visible_points do
+        local point = visible_points[i]
 
         if point
             and point.x
             and point.y
             and point.u
-            and point.u <= max_u + 0.0001
         then
             if previous
                 and type(DrawLine) == "function"
@@ -16619,17 +16748,26 @@ function FALLEN_BT_DRAW_PATH(
             1
         )
 
+    local visible_points =
+        FALLEN_BT_REVEALED_POINTS(
+            points,
+            max_u
+        )
+
+    if #visible_points < 2 then
+        return
+    end
+
     local previous = nil
 
-    for i = 1, #points do
+    for i = 1, #visible_points do
         local point =
-            points[i]
+            visible_points[i]
 
         if point
             and point.x
             and point.y
             and point.u
-            and point.u <= max_u + 0.0001
         then
             local px = point.x
             local py = point.y
@@ -16782,7 +16920,7 @@ function FALLEN_BT_PREDICTION_PATH(tr)
         (impact_z - tr.oz)
         / total_time
 
-    local steps = 34
+    local steps = 48
 
     for i = 0, steps do
         local u = i / steps
@@ -16813,9 +16951,9 @@ end
 
 function FALLEN_BT_STRAIGHT_PATH(tr)
     local points = {}
-    local steps = 18
+    local steps = 32
 
-    for i = 1, steps do
+    for i = 0, steps do
         local u = i / steps
 
         local world = {
@@ -16849,12 +16987,19 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
             1.50
         )
 
-    local reveal =
+    local reveal_raw =
         clamp(
             age / reveal_time,
             0,
             1
         )
+
+    -- Smooth continuous reveal. Exact endpoint interpolation above prevents
+    -- the tracer tip from advancing sample-by-sample.
+    local reveal =
+        reveal_raw
+        * reveal_raw
+        * (3 - 2 * reveal_raw)
 
     local fade =
         clamp(
