@@ -160,6 +160,7 @@ local defaults = {
     -- Visual hit effect: fires only when the locked Aimbot target loses HP.
     hit_effect_enabled = false,
     hit_effect_style = "Spark",
+    hit_effect_size = 0.65,
     damage_numbers_enabled = false,
     damage_numbers_size = 14,
     damage_numbers_speed = 100,
@@ -19004,6 +19005,16 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
     local kind = FALLEN_HITFX_STYLE_INDEX()
     local size = FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
 
+    -- User scale for every hit effect. Default is intentionally smaller
+    -- than the previous build.
+    size =
+        size
+        * clamp(
+            tonumber(S.hit_effect_size) or 0.65,
+            0.25,
+            1.50
+        )
+
     FALLEN_HITFX_DRAW_FALLEN(
         kind,
         s.X,
@@ -33414,7 +33425,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         right_x,
         y + 25,
         right_w,
-        137,
+        178,
         11
     )
 
@@ -33544,13 +33555,36 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         1
     )
 
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        right_x,
+        y + 114,
+        right_w,
+        "Hit Effect Size",
+        "hit_effect_size",
+        0.25,
+        1.50
+    )
+
+    line(
+        right_x + 12,
+        y + 154,
+        right_x + right_w - 12,
+        y + 154,
+        C.divider,
+        1
+    )
+
     local damage_dots_x =
         right_x
         + right_w
         - 79
 
     local damage_dots_y =
-        y + 122
+        y + 163
 
     local damage_dots_hot =
         hover(
@@ -33567,7 +33601,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
             mx,
             my,
             right_x,
-            y + 114,
+            y + 155,
             right_w,
             41
         )
@@ -33578,7 +33612,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         controls_clicked
             and not damage_dots_hot,
         right_x,
-        y + 114,
+        y + 155,
         right_w,
         "Damage Numbers",
         "damage_numbers_enabled",
@@ -33618,13 +33652,13 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     -- ellipsis popups and open ONLY with RMB on the three dots.
     section_title(
         right_x,
-        y + 186,
+        y + 227,
         "World Weather"
     )
 
     card(
         right_x,
-        y + 211,
+        y + 252,
         right_w,
         101,
         11
@@ -33636,7 +33670,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         - 79
 
     local rain_dots_y =
-        y + 226
+        y + 267
 
     local rain_dots_hot =
         hover(
@@ -33654,7 +33688,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         controls_clicked
             and not rain_dots_hot,
         right_x,
-        y + 218,
+        y + 259,
         right_w,
         "World Rain",
         "world_rain_enabled",
@@ -33663,9 +33697,9 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
 
     line(
         right_x + 12,
-        y + 258,
+        y + 299,
         right_x + right_w - 12,
-        y + 258,
+        y + 299,
         C.divider,
         1
     )
@@ -33676,7 +33710,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         - 79
 
     local thunder_dots_y =
-        y + 267
+        y + 308
 
     local thunder_dots_hot =
         hover(
@@ -33694,7 +33728,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         controls_clicked
             and not thunder_dots_hot,
         right_x,
-        y + 259,
+        y + 300,
         right_w,
         "Thunderstorm",
         "world_thunder_enabled",
@@ -38897,6 +38931,15 @@ function FALLEN_START_IMAGE_PRELOAD()
         FALLEN_AIMBOT_TAB_ICON_GET
     )
 
+    -- No thread API: hit-effect sheets still begin loading immediately.
+    pcall(FALLEN_HITFX_SPARK_SHEET_GET)
+    pcall(FALLEN_HITFX_SMOKERING_SHEET_GET)
+    pcall(FALLEN_HITFX_PARTICLES_SHEET_GET)
+    pcall(FALLEN_HITFX_TEST1_SHEET_GET)
+    pcall(FALLEN_HITFX_TEST2_SHEET_GET)
+    pcall(FALLEN_HITFX_ICE_SHEET_GET)
+    pcall(FALLEN_HITFX_CRYSTAL_SHEET_GET)
+
     pcall(
         FALLEN_GALAXY_IMAGE_GET
     )
@@ -38926,7 +38969,31 @@ function FALLEN_START_IMAGE_PRELOAD()
     )
 end
 
--- Start immediately during Lua initialization, before the loader/menu is used.
+function FALLEN_PRELOAD_HITFX_IMMEDIATELY()
+    -- Kick every hit-effect sheet loader immediately at Lua startup.
+    -- The per-sheet getter caches its resolved URL + image handle, so the
+    -- later sequential preload only waits for the same handles to become ready.
+    local getters = {
+        FALLEN_HITFX_SPARK_SHEET_GET,
+        FALLEN_HITFX_SMOKERING_SHEET_GET,
+        FALLEN_HITFX_PARTICLES_SHEET_GET,
+        FALLEN_HITFX_TEST1_SHEET_GET,
+        FALLEN_HITFX_TEST2_SHEET_GET,
+        FALLEN_HITFX_ICE_SHEET_GET,
+        FALLEN_HITFX_CRYSTAL_SHEET_GET,
+    }
+
+    for _, getter in ipairs(getters) do
+        if type(getter) == "function" then
+            pcall(getter)
+        end
+    end
+end
+
+-- Hit effects start loading first, immediately when the Lua is executed.
+FALLEN_PRELOAD_HITFX_IMMEDIATELY()
+
+-- Then start the rest of the image preload pipeline.
 FALLEN_START_IMAGE_PRELOAD()
 
 do
