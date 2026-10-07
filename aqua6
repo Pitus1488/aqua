@@ -13988,23 +13988,20 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     -- User Galaxy tracer texture. Keep the exact URL: LoadImage handles it
     -- the same way as the other URL-backed menu/gameplay images.
     galaxy_url = "https://fotovssylku.ru/i/54545.rgXDj",
+    -- fotovssylku /i/... is an HTML image page. Startup resolves its
+    -- og:image/twitter:image to raw bytes before LoadImage.
+    galaxy_resolved_url = nil,
     spark_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2728.png",
     star_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2b50.png",
     flash_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a5.png",
     ring_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4ab.png",
     smoke_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a8.png",
-    boom_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548823359545016411/nwy9966m3ZxyeZg2yY7qRfyMUHDmG1knvQlNHz9odq2zEWGUtjPVaqiCSKK-mNBmmSMdL6xi12PZs_eIdFviRo8Ir7vv7MvEIzyP_1.png?ex=6aa875a8&is=6aa72428&hm=9b596e1dd0db49ede18049cac09f2701f9ede3166bf14aec9300a7fac0c1d109&",
-    user_smoke_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827221538373713/i-_2__1.png?ex=6aa87941&is=6aa727c1&hm=1ee45d81a647ee5169c400f33c1db3f3b0d0c928f9962b478ade3af141cf2e85&",
-    user_sparks_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827784342671370/i-_3__1.png?ex=6aa879c7&is=6aa72847&hm=0d8a98fa5a309eb38a94c26ad4fa0d409ac7170689aa935d6754b564eecf0d46&",
     galaxy = nil,
     spark = nil,
     star = nil,
     flash = nil,
     ring = nil,
     smoke = nil,
-    boom = nil,
-    user_smoke = nil,
-    user_sparks = nil,
 }
 
 function FALLEN_BT_STYLE_INDEX()
@@ -14113,6 +14110,208 @@ function FALLEN_BT_IMAGE_GET(key, url)
     end
 
     return handle
+end
+
+function FALLEN_BT_GALAXY_URL()
+    if type(FALLEN_BT_IMAGE) ~= "table" then
+        return nil
+    end
+
+    local resolved =
+        FALLEN_BT_IMAGE.galaxy_resolved_url
+
+    if type(resolved) == "string"
+        and resolved ~= ""
+    then
+        return resolved
+    end
+
+    return FALLEN_BT_IMAGE.galaxy_url
+end
+
+function FALLEN_BT_GALAXY_HANDLE()
+    local url =
+        FALLEN_BT_GALAXY_URL()
+
+    if not url then
+        return nil
+    end
+
+    return
+        FALLEN_BT_IMAGE_GET(
+            "galaxy",
+            url
+        )
+end
+
+-- Diagnostic preview requested by the user.
+-- It is intentionally drawn next to the menu so we can tell immediately
+-- whether the URL resolved/decoded independently from tracer logic.
+function FALLEN_BT_DRAW_GALAXY_PREVIEW()
+    if S.visible ~= true
+        or type(DrawBoxFilled) ~= "function"
+        or type(DrawText) ~= "function"
+    then
+        return
+    end
+
+    local rect =
+        FALLEN_WEATHER_MENU_RECT
+
+    if type(rect) ~= "table" then
+        return
+    end
+
+    local box_w = 122
+    local box_h = 122
+    local px =
+        (tonumber(rect.x) or 0)
+        + (tonumber(rect.w) or 0)
+        + 10
+
+    if px + box_w
+        > (tonumber(rect.screen_w) or 0) - 6
+    then
+        px =
+            (tonumber(rect.x) or 0)
+            - box_w
+            - 10
+    end
+
+    px =
+        math.max(
+            6,
+            px
+        )
+
+    local py =
+        math.max(
+            6,
+            (tonumber(rect.y) or 0) + 52
+        )
+
+    local url =
+        FALLEN_BT_GALAXY_URL()
+
+    local handle =
+        type(FALLEN_BT_IMAGE) == "table"
+        and FALLEN_BT_IMAGE.galaxy
+        or nil
+
+    if not handle
+        and type(_G.FALLEN_IMAGE_PRELOAD_HANDLES) == "table"
+        and url
+    then
+        handle =
+            _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
+    end
+
+    if not handle then
+        handle =
+            FALLEN_BT_GALAXY_HANDLE()
+    end
+
+    local ready = false
+    local failed = false
+
+    if handle
+        and type(IsImageReady) == "function"
+    then
+        pcall(function()
+            ready =
+                IsImageReady(handle)
+                == true
+        end)
+    elseif handle then
+        ready = true
+    end
+
+    if handle
+        and type(IsImageFailed) == "function"
+    then
+        pcall(function()
+            failed =
+                IsImageFailed(handle)
+                == true
+        end)
+    end
+
+    DrawBoxFilled(
+        px,
+        py,
+        box_w,
+        box_h,
+        0.035,
+        0.038,
+        0.047,
+        0.94 * MENU_RENDER_ALPHA
+    )
+
+    DrawBox(
+        px,
+        py,
+        box_w,
+        box_h,
+        0.23,
+        0.25,
+        0.31,
+        0.95 * MENU_RENDER_ALPHA,
+        1
+    )
+
+    if ready
+        and not failed
+        and type(DrawImage) == "function"
+    then
+        pcall(
+            DrawImage,
+            handle,
+            px + 17,
+            py + 12,
+            88,
+            88,
+            1,
+            1,
+            1,
+            MENU_RENDER_ALPHA,
+            6
+        )
+    else
+        DrawBoxFilled(
+            px + 17,
+            py + 12,
+            88,
+            88,
+            failed and 0.22 or 0.09,
+            failed and 0.04 or 0.10,
+            failed and 0.05 or 0.15,
+            0.92 * MENU_RENDER_ALPHA
+        )
+    end
+
+    local status =
+        ready and not failed
+        and "GALAXY READY"
+        or (
+            failed
+            and "GALAXY FAILED"
+            or "GALAXY LOADING"
+        )
+
+    local sr, sg, sb =
+        ready and not failed and 0.45 or 1.0,
+        ready and not failed and 1.0 or (failed and 0.32 or 0.82),
+        ready and not failed and 0.62 or (failed and 0.35 or 0.30)
+
+    DrawText(
+        px + 12,
+        py + 105,
+        status,
+        sr,
+        sg,
+        sb,
+        MENU_RENDER_ALPHA
+    )
 end
 
 function FALLEN_BT_DRAW_IMAGE_NODE(
@@ -15485,10 +15684,7 @@ function FALLEN_BT_DRAW_GALAXY(
     end
 
     local handle =
-        FALLEN_BT_IMAGE_GET(
-            "galaxy",
-            FALLEN_BT_IMAGE.galaxy_url
-        )
+        FALLEN_BT_GALAXY_HANDLE()
 
     if not handle then
         return
@@ -16418,7 +16614,7 @@ FALLEN_HITFX = FALLEN_HITFX or {
     last_seen = 0,
     last_spawn = 0,
 
-    -- Hit Effect now has its own VFX/BloodPart trigger.
+    -- Hit Effect has its own STRICT BloodPart-only VFX trigger.
     vfx_seen = {},
     vfx_prev_lmb = false,
     vfx_watch_until = 0,
@@ -16435,31 +16631,8 @@ function FALLEN_HITFX_COLOR()
 end
 
 function FALLEN_HITFX_STYLE_INDEX()
-    local style =
-        tostring(
-            S.hit_effect_style
-            or "Hit 1"
-        )
-
-    -- Backwards compatibility with old names.
-    if style == "Fallen Spark" then
-        S.hit_effect_style = "Hit 1"
-        style = "Hit 1"
-    elseif style == "Boom" then
-        S.hit_effect_style = "Hit 2"
-        style = "Hit 2"
-    elseif style == "Smoke Sparks" then
-        S.hit_effect_style = "Hit 3"
-        style = "Hit 3"
-    end
-
-    if style == "Hit 2" then
-        return 1
-    elseif style == "Hit 3" then
-        return 2
-    end
-
-    if style ~= "Hit 1" then
+    -- Hit 2 / Hit 3 were removed. Old configs are normalized to Hit 1.
+    if tostring(S.hit_effect_style or "Hit 1") ~= "Hit 1" then
         S.hit_effect_style = "Hit 1"
     end
 
@@ -17536,14 +17709,9 @@ function FALLEN_HITFX_VFX_KIND(
             )
         )
 
+    -- Hit Effects are STRICTLY BloodPart-only.
     if name == "bloodpart" then
         return "bloodpart"
-    end
-
-    if name == "hole"
-        or name == "metalhole"
-    then
-        return "hole"
     end
 
     return nil
@@ -17702,18 +17870,8 @@ function FALLEN_HITFX_FIND_NEW_IMPACT(
                 )
 
             local allowed =
-                false
-
-            if kind == "hole" then
-                -- Hole / MetalHole must appear almost immediately.
-                allowed =
-                    shot_age <= 0.50
-
-            elseif kind == "bloodpart" then
-                -- BloodPart has a longer window than Hole/MetalHole.
-                allowed =
-                    shot_age <= 1.00
-            end
+                kind == "bloodpart"
+                and shot_age <= 1.00
 
             if allowed then
                 local pos =
@@ -17819,13 +17977,12 @@ function FALLEN_HITFX_VFX_TICK()
         FALLEN_HITFX.vfx_shot_time =
             now
 
-        -- Longest required window is BloodPart = 1.0 s.
+        -- BloodPart-only hit window.
         FALLEN_HITFX.vfx_watch_until =
             now + 1.00
 
     elseif lmb then
-        -- Automatic fire: treat the current held-fire frame as a fresh shot
-        -- opportunity so Hole/MetalHole still get their own 0.5 s window.
+        -- Automatic fire: keep the BloodPart window fresh while firing.
         FALLEN_HITFX.vfx_shot_time =
             now
 
@@ -18007,143 +18164,19 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
         size = 32
     end
 
-    local style =
-        FALLEN_HITFX_STYLE_INDEX()
+    -- Only Hit 1 remains.
+    FALLEN_HITFX_STYLE_INDEX()
 
-    if style == 1 then
-        -- Boom: use the supplied PNG in its original colors.
-        local boom =
-            FALLEN_HITFX_IMAGE(
-                "boom",
-                FALLEN_BT_IMAGE.boom_url
-            )
-
-        if boom then
-            local out =
-                1
-                - (1 - t)
-                * (1 - t)
-
-            local fade =
-                math.max(
-                    0,
-                    1 - t * t
-                )
-
-            local draw_size =
-                size
-                * (
-                    0.88
-                    + 0.42 * out
-                )
-
-            FALLEN_HITFX_DRAW_IMAGE(
-                boom,
-                s.X - draw_size * 0.5,
-                s.Y - draw_size * 0.5,
-                draw_size,
-                draw_size,
-                1,
-                1,
-                1,
-                alpha * fade
-            )
-        end
-
-    elseif style == 2 then
-        -- Hit 3:
-        -- sparks only, no smoke.
-        local sparks_img =
-            FALLEN_HITFX_IMAGE(
-                "user_sparks",
-                FALLEN_BT_IMAGE.user_sparks_url
-            )
-
-        local fade =
-            math.max(
-                0,
-                1 - t
-            )
-
-        local grow =
-            smooth01(t)
-
-        if sparks_img then
-            for k = 1, 8 do
-                local seed =
-                    (hit.seed or 1)
-                    + k * 17.19
-
-                local ang =
-                    (k / 8)
-                    * math.pi
-                    * 2
-                    + math.sin(seed) * 0.33
-
-                local spread =
-                    size
-                    * (
-                        0.16
-                        + 1.20 * grow
-                    )
-                    * (
-                        0.90
-                        + math.abs(
-                            math.sin(seed * 1.31)
-                        ) * 0.55
-                    )
-
-                local px =
-                    s.X + math.cos(ang) * spread
-
-                local py =
-                    s.Y + math.sin(ang) * spread
-
-                local spark_size =
-                    size
-                    * (
-                        0.34
-                        + math.abs(
-                            math.sin(seed * 0.77)
-                        ) * 0.24
-                    )
-                    * (
-                        1.10
-                        - 0.22 * t
-                    )
-
-                FALLEN_HITFX_DRAW_IMAGE(
-                    sparks_img,
-                    px - spark_size * 0.5,
-                    py - spark_size * 0.5,
-                    spark_size,
-                    spark_size,
-                    1,
-                    1,
-                    1,
-                    alpha
-                        * (
-                            0.82
-                            - 0.32 * t
-                        )
-                        * fade
-                )
-            end
-        end
-
-    else
-        -- Fallen Spark.
-        FALLEN_HITFX_DRAW_FALLEN(
-            1,
-            s.X,
-            s.Y,
-            size,
-            t,
-            alpha,
-            { 1, 1, 1, 1 },
-            hit.seed
-        )
-    end
+    FALLEN_HITFX_DRAW_FALLEN(
+        1,
+        s.X,
+        s.Y,
+        size,
+        t,
+        alpha,
+        { 1, 1, 1, 1 },
+        hit.seed
+    )
 end
 
 function FALLEN_HITFX_DRAW()
@@ -18153,13 +18186,10 @@ function FALLEN_HITFX_DRAW()
 
     local now = tick()
 
-    local style =
-        FALLEN_HITFX_STYLE_INDEX()
+    FALLEN_HITFX_STYLE_INDEX()
 
     local life =
-        style == 2
-        and 1.50
-        or 0.74
+        0.74
 
     for i = #FALLEN_HITFX.items, 1, -1 do
         local hit =
@@ -31260,8 +31290,6 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
 
     local options = {
         "Hit 1",
-        "Hit 2",
-        "Hit 3",
     }
 
     local item_h = 27
@@ -31347,7 +31375,7 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
             local selected =
                 tostring(
                     S.hit_effect_style
-                    or "Fallen Combo"
+                    or "Hit 1"
                 ) == option
 
             if selected then
@@ -37353,6 +37381,12 @@ hooks.on_render(function()
         )
     end
 
+    -- Galaxy URL diagnostic preview. This is intentionally independent from
+    -- Bullet Tracer so the image loader can be tested just by opening the menu.
+    pcall(
+        FALLEN_BT_DRAW_GALAXY_PREVIEW
+    )
+
     -- Avatar editor is a true modal and renders above everything else.
     FALLEN_DRAW_AVATAR_EDITOR(
         mx,
@@ -37769,11 +37803,37 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
         FALLEN_GRENADE_ICON_URLS
     )
 
-    -- Galaxy tracer texture. It is loaded during startup exactly like the
-    -- gameplay/icon images, before the larger icon tables, so no first-shot load.
+    -- Galaxy tracer texture.
+    -- fotovssylku /i/... is a PAGE, so resolve its og:image first exactly like
+    -- the loader artwork does. LoadImage then receives actual image bytes.
     if type(FALLEN_BT_IMAGE) == "table" then
-        FALLEN_PRELOAD_QUEUE_PRIMARY(
+        local galaxy_page =
             FALLEN_BT_IMAGE.galaxy_url
+
+        local galaxy_direct =
+            galaxy_page
+
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) == "function" then
+            local ok, resolved =
+                pcall(
+                    FALLEN_LOADER_RESOLVE_IMAGE_URL,
+                    galaxy_page
+                )
+
+            if ok
+                and type(resolved) == "string"
+                and resolved ~= ""
+            then
+                galaxy_direct =
+                    resolved
+            end
+        end
+
+        FALLEN_BT_IMAGE.galaxy_resolved_url =
+            galaxy_direct
+
+        FALLEN_PRELOAD_QUEUE_PRIMARY(
+            galaxy_direct
         )
     end
 
@@ -37855,6 +37915,23 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
             url
         )
     end
+
+    -- Prime Galaxy first so tracer + debug preview use the exact preloaded handle.
+    pcall(function()
+        local url =
+            FALLEN_BT_GALAXY_URL()
+
+        if url
+            and type(_G.FALLEN_IMAGE_PRELOAD_HANDLES) == "table"
+        then
+            local h =
+                _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
+
+            if h then
+                FALLEN_BT_IMAGE.galaxy = h
+            end
+        end
+    end)
 
     -- Prime runtime caches only AFTER the sequential queue has completed.
     -- Drawing.LoadImage caches by URL, so these getter calls should reuse the
