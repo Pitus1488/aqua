@@ -13985,6 +13985,9 @@ function FALLEN_BT_COLOR()
 end
 
 FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
+    -- User Galaxy tracer texture. Keep the exact URL: LoadImage handles it
+    -- the same way as the other URL-backed menu/gameplay images.
+    galaxy_url = "https://fotovssylku.ru/i/54545.rgXDj",
     spark_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2728.png",
     star_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2b50.png",
     flash_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a5.png",
@@ -13993,6 +13996,7 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     boom_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548823359545016411/nwy9966m3ZxyeZg2yY7qRfyMUHDmG1knvQlNHz9odq2zEWGUtjPVaqiCSKK-mNBmmSMdL6xi12PZs_eIdFviRo8Ir7vv7MvEIzyP_1.png?ex=6aa875a8&is=6aa72428&hm=9b596e1dd0db49ede18049cac09f2701f9ede3166bf14aec9300a7fac0c1d109&",
     user_smoke_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827221538373713/i-_2__1.png?ex=6aa87941&is=6aa727c1&hm=1ee45d81a647ee5169c400f33c1db3f3b0d0c928f9962b478ade3af141cf2e85&",
     user_sparks_url = "https://cdn.discordapp.com/attachments/1406784948584845362/1548827784342671370/i-_3__1.png?ex=6aa879c7&is=6aa72847&hm=0d8a98fa5a309eb38a94c26ad4fa0d409ac7170689aa935d6754b564eecf0d46&",
+    galaxy = nil,
     spark = nil,
     star = nil,
     flash = nil,
@@ -14026,6 +14030,10 @@ function FALLEN_BT_STYLE_INDEX()
         return 1
     elseif style == "Rainbow" then
         return 2
+    elseif style == "Galaxy" or style == "Cosmo" then
+        -- "Cosmo" is accepted for old/manual configs, UI displays Galaxy.
+        S.bullet_tracer_style = "Galaxy"
+        return 3
     end
 
     if style ~= "Neon" then
@@ -14045,6 +14053,20 @@ function FALLEN_BT_IMAGE_GET(key, url)
 
     local handle =
         FALLEN_BT_IMAGE[key]
+
+    -- Reuse the sequential startup preload exactly like the other URL images.
+    -- This avoids a second LoadImage request the first time Galaxy is drawn.
+    if not handle
+        and type(_G.FALLEN_IMAGE_PRELOAD_HANDLES) == "table"
+    then
+        local preloaded =
+            _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
+
+        if preloaded then
+            FALLEN_BT_IMAGE[key] = preloaded
+            handle = preloaded
+        end
+    end
 
     if not handle then
         local ok, loaded =
@@ -15254,6 +15276,106 @@ function FALLEN_BT_SHOT_TICK()
 end
 
 
+function FALLEN_BT_GALAXY_POINT(points, progress)
+    if type(points) ~= "table"
+        or #points == 0
+    then
+        return nil, nil, nil, nil
+    end
+
+    local wanted =
+        clamp(
+            tonumber(progress) or 0,
+            0,
+            1
+        )
+
+    local prev = points[1]
+
+    if wanted <= (tonumber(prev.u) or 0) then
+        local nxt = points[2] or prev
+        return prev.x, prev.y, nxt.x - prev.x, nxt.y - prev.y
+    end
+
+    for i = 2, #points do
+        local cur = points[i]
+        local pu = tonumber(prev.u) or 0
+        local cu = tonumber(cur.u) or pu
+
+        if wanted <= cu + 0.0001 then
+            local span = math.max(0.0001, cu - pu)
+            local t = clamp((wanted - pu) / span, 0, 1)
+            local x = prev.x + (cur.x - prev.x) * t
+            local y = prev.y + (cur.y - prev.y) * t
+            return x, y, cur.x - prev.x, cur.y - prev.y
+        end
+
+        prev = cur
+    end
+
+    local last = points[#points]
+    local before = points[math.max(1, #points - 1)]
+    return last.x, last.y, last.x - before.x, last.y - before.y
+end
+
+function FALLEN_BT_DRAW_GALAXY(
+    tr,
+    points,
+    reveal,
+    alpha,
+    thick
+)
+    if type(DrawImage) ~= "function"
+        or type(points) ~= "table"
+        or #points < 1
+    then
+        return
+    end
+
+    local handle =
+        FALLEN_BT_IMAGE_GET(
+            "galaxy",
+            FALLEN_BT_IMAGE.galaxy_url
+        )
+
+    if not handle then
+        return
+    end
+
+    -- One texture head moves forward with the tracer reveal. No pulsing,
+    -- spinning or extra effects: the requested animation is pure forward motion.
+    local x, y, dx, dy =
+        FALLEN_BT_GALAXY_POINT(
+            points,
+            reveal
+        )
+
+    if not x or not y then
+        return
+    end
+
+    local size =
+        30
+        + clamp(tonumber(thick) or 2, 1, 6) * 3.5
+
+    -- Keep the source image itself unchanged; only translate it forward.
+    -- This deliberately avoids rotation/pulse/scale animation.
+    local rotation = 0
+
+    DrawImage(
+        handle,
+        x - size * 0.5,
+        y - size * 0.5,
+        size,
+        size,
+        1,
+        1,
+        1,
+        alpha,
+        rotation
+    )
+end
+
 function FALLEN_BT_DRAW_PATH(
     tr,
     points,
@@ -15270,6 +15392,17 @@ function FALLEN_BT_DRAW_PATH(
 
     local style =
         FALLEN_BT_STYLE_INDEX()
+
+    if style == 3 then
+        FALLEN_BT_DRAW_GALAXY(
+            tr,
+            points,
+            reveal,
+            alpha,
+            thick
+        )
+        return
+    end
 
     local max_u =
         clamp(
@@ -30740,6 +30873,7 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
         "Neon",
         "Lightning",
         "Rainbow",
+        "Galaxy",
     }
 
     local item_h = 27
@@ -31994,7 +32128,14 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
                     or S.bullet_tracer_style == "Gradient Laser"
                 )
                 and "Rainbow"
-                or "Neon"
+                or (
+                    (
+                        S.bullet_tracer_style == "Galaxy"
+                        or S.bullet_tracer_style == "Cosmo"
+                    )
+                    and "Galaxy"
+                    or "Neon"
+                )
             )
         ),
         FALLEN_HOVER_TEXT(
@@ -37437,6 +37578,14 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
     FALLEN_PRELOAD_QUEUE_PRIMARY(
         FALLEN_GRENADE_ICON_URLS
     )
+
+    -- Gameplay tracer texture requested by the user. Preload it before the
+    -- larger icon tables so Galaxy is already resident when a shot happens.
+    if type(FALLEN_BT_IMAGE) == "table" then
+        FALLEN_PRELOAD_QUEUE_PRIMARY(
+            FALLEN_BT_IMAGE.galaxy_url
+        )
+    end
 
     -- Then normal item / armor / weapon assets.
     FALLEN_PRELOAD_QUEUE_PRIMARY(
