@@ -16460,15 +16460,16 @@ function FALLEN_BT_DRAW_WATER(
     end
 
     local col = FALLEN_BT_COLOR()
-    local water_thick =
+
+    -- Our Drawing API cannot rotate/wrap DrawImage along a tracer like a
+    -- Roblox Beam texture, so Water is rendered as a continuous layered line.
+    local core_thick =
         clamp(
-            1.15 + (tonumber(thick) or 2) * 0.42,
-            1.4,
-            3.8
+            1.0 + (tonumber(thick) or 2) * 0.38,
+            1.25,
+            3.4
         )
 
-    -- Fallen Ultimate Water is a narrow Beam (Width 0.3), with
-    -- Color -> white -> Color. Keep the same visual idea here.
     local previous = nil
 
     for i = 1, #points do
@@ -16483,21 +16484,41 @@ function FALLEN_BT_DRAW_WATER(
             if previous
                 and type(DrawLine) == "function"
             then
-                local middle =
+                local normalized =
+                    clamp(
+                        (
+                            (previous.u + point.u)
+                            * 0.5
+                        )
+                        / math.max(max_u, 0.0001),
+                        0,
+                        1
+                    )
+
+                -- Fallen Ultimate Water uses Color -> white -> Color.
+                local white_mix =
                     clamp(
                         1
                         - math.abs(
-                            ((point.u / math.max(max_u, 0.0001)) - 0.5)
-                            * 2
+                            (normalized - 0.5) * 2
                         ),
                         0,
                         1
                     )
 
-                local rr = col[1] + (1 - col[1]) * middle
-                local gg = col[2] + (1 - col[2]) * middle
-                local bb = col[3] + (1 - col[3]) * middle
+                local rr =
+                    col[1]
+                    + (1 - col[1]) * white_mix
 
+                local gg =
+                    col[2]
+                    + (1 - col[2]) * white_mix
+
+                local bb =
+                    col[3]
+                    + (1 - col[3]) * white_mix
+
+                -- Wide soft water glow.
                 DrawLine(
                     previous.x,
                     previous.y,
@@ -16506,10 +16527,11 @@ function FALLEN_BT_DRAW_WATER(
                     col[1],
                     col[2],
                     col[3],
-                    alpha * 0.14,
-                    water_thick + 5
+                    alpha * 0.10,
+                    core_thick + 6.0
                 )
 
+                -- Secondary translucent body.
                 DrawLine(
                     previous.x,
                     previous.y,
@@ -16518,10 +16540,24 @@ function FALLEN_BT_DRAW_WATER(
                     rr,
                     gg,
                     bb,
-                    alpha * 0.88,
-                    water_thick
+                    alpha * 0.30,
+                    core_thick + 2.3
                 )
 
+                -- Main continuous beam.
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    point.x,
+                    point.y,
+                    rr,
+                    gg,
+                    bb,
+                    alpha * 0.92,
+                    core_thick
+                )
+
+                -- Thin bright center to imitate wet/refraction highlight.
                 DrawLine(
                     previous.x,
                     previous.y,
@@ -16530,97 +16566,23 @@ function FALLEN_BT_DRAW_WATER(
                     1,
                     1,
                     1,
-                    alpha * 0.24 * middle,
-                    math.max(1, water_thick * 0.45)
+                    alpha
+                    * (
+                        0.12
+                        + 0.30 * white_mix
+                    ),
+                    math.max(
+                        0.75,
+                        core_thick * 0.34
+                    )
                 )
             end
 
             previous = point
         end
     end
-
-    local handle = FALLEN_BT_WATER_IMAGE_GET()
-    if not handle
-        or type(DrawImage) ~= "function"
-    then
-        return
-    end
-
-    -- TextureSpeed ~= 1 equivalent: flow the repeated texture along the
-    -- revealed tracer. TextureLength ~= 10 is approximated by dense,
-    -- overlapping texture stamps instead of one stretched image.
-    local created = tonumber(tr and tr.created) or tick()
-    local flow = ((tick() - created) * 0.72) % 1
-    local count =
-        math.max(
-            8,
-            math.floor(34 * max_u)
-        )
-
-    for i = 0, count do
-        local base_u = i / math.max(1, count)
-        local u =
-            (
-                base_u
-                + flow / math.max(1, count)
-            ) % 1
-
-        u = u * max_u
-
-        local x, y =
-            FALLEN_BT_GALAXY_POINT(
-                points,
-                u
-            )
-
-        if x and y then
-            local normalized =
-                u / math.max(max_u, 0.0001)
-
-            local middle =
-                clamp(
-                    1
-                    - math.abs(
-                        (normalized - 0.5) * 2
-                    ),
-                    0,
-                    1
-                )
-
-            local rr = col[1] + (1 - col[1]) * middle
-            local gg = col[2] + (1 - col[2]) * middle
-            local bb = col[3] + (1 - col[3]) * middle
-
-            local node_w =
-                clamp(
-                    9 + (tonumber(thick) or 2) * 1.3,
-                    9,
-                    16
-                )
-
-            local node_h =
-                clamp(
-                    4 + (tonumber(thick) or 2) * 0.55,
-                    4,
-                    8
-                )
-
-            pcall(
-                DrawImage,
-                handle,
-                x - node_w * 0.5,
-                y - node_h * 0.5,
-                node_w,
-                node_h,
-                rr,
-                gg,
-                bb,
-                alpha * 0.78,
-                node_h * 0.42
-            )
-        end
-    end
 end
+
 
 function FALLEN_BT_DRAW_PATH(
     tr,
