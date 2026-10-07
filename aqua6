@@ -16026,7 +16026,6 @@ function FALLEN_BT_DRAW_GALAXY(
     thick
 )
     if type(DrawImage) ~= "function"
-        or type(DrawLine) ~= "function"
         or type(points) ~= "table"
         or #points < 2
     then
@@ -16051,249 +16050,286 @@ function FALLEN_BT_DRAW_GALAXY(
         return
     end
 
-    -- Galaxy is a TEXTURED BEAM, not a hit marker.
-    -- First draw a soft tracer body along the revealed ballistic path so the
-    -- beam stays continuous even between image samples. Then densely stamp the
-    -- Galaxy image over that SAME path. DrawImage has no rotation parameter in
-    -- this API, therefore overlapping square samples are the reliable way to
-    -- texture an arbitrarily angled world-space tracer.
-    local col = FALLEN_BT_COLOR()
-    local previous = nil
-    local screen_length = 0
-
-    for i = 1, #points do
-        local point = points[i]
-
-        if point
-            and point.x
-            and point.y
-            and point.u
-            and point.u <= max_u + 0.0001
-        then
-            local current = {
-                x = point.x,
-                y = point.y,
-                u = point.u,
-            }
-
-            if previous then
-                local dx = current.x - previous.x
-                local dy = current.y - previous.y
-                screen_length =
-                    screen_length
-                    + math.sqrt(dx * dx + dy * dy)
-
-                DrawLine(
-                    previous.x,
-                    previous.y,
-                    current.x,
-                    current.y,
-                    col[1],
-                    col[2],
-                    col[3],
-                    alpha * 0.12,
-                    thick + 16
-                )
-                DrawLine(
-                    previous.x,
-                    previous.y,
-                    current.x,
-                    current.y,
-                    col[1],
-                    col[2],
-                    col[3],
-                    alpha * 0.22,
-                    thick + 10
-                )
-                DrawLine(
-                    previous.x,
-                    previous.y,
-                    current.x,
-                    current.y,
-                    1,
-                    1,
-                    1,
-                    alpha * 0.52,
-                    thick + 3.5
-                )
-            end
-
-            previous = current
-        elseif point
-            and point.u
-            and point.u > max_u
-        then
-            -- Add the partial segment up to the moving reveal head.
-            local hx, hy =
-                FALLEN_BT_GALAXY_POINT(
-                    points,
-                    max_u
-                )
-
-            if previous and hx and hy then
-                local dx = hx - previous.x
-                local dy = hy - previous.y
-                screen_length =
-                    screen_length
-                    + math.sqrt(dx * dx + dy * dy)
-
-                DrawLine(
-                    previous.x,
-                    previous.y,
-                    hx,
-                    hy,
-                    col[1],
-                    col[2],
-                    col[3],
-                    alpha * 0.12,
-                    thick + 16
-                )
-                DrawLine(
-                    previous.x,
-                    previous.y,
-                    hx,
-                    hy,
-                    col[1],
-                    col[2],
-                    col[3],
-                    alpha * 0.22,
-                    thick + 10
-                )
-                DrawLine(
-                    previous.x,
-                    previous.y,
-                    hx,
-                    hy,
-                    1,
-                    1,
-                    1,
-                    alpha * 0.52,
-                    thick + 3.5
-                )
-            end
-
-            break
-        end
-    end
-
-    -- Dense overlapping image stamps make the supplied Galaxy picture become
-    -- the tracer's surface instead of one sprite at the impact position.
-    local stamp_size =
-        clamp(
-            17 + (tonumber(thick) or 2) * 3.2,
-            18,
-            38
+    -- Galaxy is ONE stretched texture forming the tracer beam.
+    -- Drawing.DrawImage has no rotation argument, so for angled shots we
+    -- rasterize that single stretched image into very thin UV slices.  The
+    -- slices use consecutive portions of ONE source texture, overlap by a
+    -- pixel, and therefore look like one continuous textured ray instead of
+    -- the old chain of square image nodes.
+    local sx, sy =
+        FALLEN_BT_GALAXY_POINT(
+            points,
+            0
         )
 
-    -- Keep enough overlap that there are no visible gaps, but cap work for very
-    -- long shots.  The underlying glow line keeps the beam continuous at the
-    -- extreme cap as well.
-    local spacing =
-        clamp(
-            stamp_size * 0.28,
-            5,
-            10
-        )
-
-    local node_count =
-        math.floor(
-            screen_length / spacing
-            + 0.5
-        )
-        + 3
-
-    node_count =
-        math.floor(
-            clamp(
-                node_count,
-                10,
-                128
-            )
-        )
-
-    local created =
-        tonumber(tr and tr.created)
-        or tick()
-
-    -- Texture flow: samples continuously advance muzzle -> impact and wrap.
-    -- The beam itself remains in place; only the Galaxy texture appears to
-    -- stream forward through it.
-    local flow =
-        ((tick() - created) * 2.35)
-        % 1
-
-    local step_u =
-        max_u / math.max(1, node_count - 1)
-
-    for i = 0, node_count - 1 do
-        local base_u =
-            (i / math.max(1, node_count - 1))
-            * max_u
-
-        local u =
-            base_u
-            + flow * step_u
-
-        if u > max_u then
-            u = u - max_u
-        end
-
-        local x, y =
-            FALLEN_BT_GALAXY_POINT(
-                points,
-                u
-            )
-
-        if x and y then
-            -- Slightly brighten samples near the moving projectile head while
-            -- keeping the whole revealed tracer textured like a beam.
-            local head_t =
-                max_u > 0.0001
-                and clamp(u / max_u, 0, 1)
-                or 0
-
-            local node_alpha =
-                alpha
-                * (
-                    0.66
-                    + 0.24 * head_t
-                )
-
-            local pulse =
-                0.94
-                + 0.08
-                * math.sin(
-                    tick() * 12
-                    + i * 0.71
-                    + (tr.seed or 1) * 0.013
-                )
-
-            FALLEN_BT_DRAW_GALAXY_NODE(
-                handle,
-                x,
-                y,
-                stamp_size * pulse,
-                node_alpha
-            )
-        end
-    end
-
-    -- One compact brighter image at the reveal head makes the forward motion
-    -- readable without turning Galaxy back into a single impact sprite.
-    local hx, hy =
+    local ex, ey =
         FALLEN_BT_GALAXY_POINT(
             points,
             max_u
         )
 
-    if hx and hy then
-        FALLEN_BT_DRAW_GALAXY_NODE(
-            handle,
-            hx,
-            hy,
-            stamp_size * 1.10,
-            alpha * 0.96
+    if not sx or not sy or not ex or not ey then
+        return
+    end
+
+    local dx = ex - sx
+    local dy = ey - sy
+    local beam_len =
+        math.sqrt(dx * dx + dy * dy)
+
+    if beam_len <= 1.0 then
+        return
+    end
+
+    local nx = dx / beam_len
+    local ny = dy / beam_len
+    local px = -ny
+    local py = nx
+
+    -- Thin elongated beam: the supplied image is stretched along the whole
+    -- tracer instead of being stamped repeatedly as square sprites.
+    local beam_h =
+        clamp(
+            5.5 + (tonumber(thick) or 2) * 2.15,
+            7,
+            18
         )
+
+    local half_h = beam_h * 0.5
+    local created =
+        tonumber(tr and tr.created)
+        or tick()
+
+    -- Texture scroll. A fixed point on screen samples progressively earlier U
+    -- coordinates, making the Galaxy pattern visibly flow muzzle -> impact.
+    local flow =
+        ((tick() - created) * 0.78)
+        % 1
+
+    -- A very small glow underneath keeps the ray readable without replacing
+    -- the Galaxy texture itself.
+    if type(DrawLine) == "function" then
+        local col = FALLEN_BT_COLOR()
+
+        DrawLine(
+            sx,
+            sy,
+            ex,
+            ey,
+            col[1],
+            col[2],
+            col[3],
+            alpha * 0.11,
+            beam_h + 7
+        )
+
+        DrawLine(
+            sx,
+            sy,
+            ex,
+            ey,
+            1,
+            1,
+            1,
+            alpha * 0.16,
+            beam_h + 2
+        )
+    end
+
+    -- Near-horizontal / near-vertical beams can genuinely be rendered with a
+    -- single DrawImage call. This is the exact "make the image thin and long"
+    -- path the user requested.
+    local axis_threshold = 0.115
+    local abs_nx = math.abs(nx)
+    local abs_ny = math.abs(ny)
+
+    if abs_ny <= axis_threshold then
+        local left = math.min(sx, ex)
+        local right = math.max(sx, ex)
+        local mid_y = (sy + ey) * 0.5
+
+        local u0 = -flow
+        local u1 = 1 - flow
+
+        -- Preserve muzzle -> impact flow even when firing right-to-left.
+        if ex < sx then
+            u0, u1 = 1 + flow, flow
+        end
+
+        local ok =
+            pcall(
+                DrawImage,
+                handle,
+                left,
+                mid_y - half_h,
+                math.max(1, right - left),
+                beam_h,
+                1,
+                1,
+                1,
+                alpha * 0.98,
+                beam_h * 0.30,
+                u0,
+                0,
+                u1,
+                1
+            )
+
+        if not ok then
+            pcall(
+                DrawImage,
+                handle,
+                left,
+                mid_y - half_h,
+                math.max(1, right - left),
+                beam_h,
+                1,
+                1,
+                1,
+                alpha * 0.98,
+                beam_h * 0.30
+            )
+        end
+
+        return
+    elseif abs_nx <= axis_threshold then
+        local top = math.min(sy, ey)
+        local bottom = math.max(sy, ey)
+        local mid_x = (sx + ex) * 0.5
+
+        local v0 = -flow
+        local v1 = 1 - flow
+
+        if ey < sy then
+            v0, v1 = 1 + flow, flow
+        end
+
+        local ok =
+            pcall(
+                DrawImage,
+                handle,
+                mid_x - half_h,
+                top,
+                beam_h,
+                math.max(1, bottom - top),
+                1,
+                1,
+                1,
+                alpha * 0.98,
+                beam_h * 0.30,
+                0,
+                v0,
+                1,
+                v1
+            )
+
+        if not ok then
+            pcall(
+                DrawImage,
+                handle,
+                mid_x - half_h,
+                top,
+                beam_h,
+                math.max(1, bottom - top),
+                1,
+                1,
+                1,
+                alpha * 0.98,
+                beam_h * 0.30
+            )
+        end
+
+        return
+    end
+
+    -- DrawImage cannot rotate in this API. For a diagonal tracer, split ONE
+    -- stretched texture into narrow consecutive UV slices. Unlike the old
+    -- implementation, these are not repeated square pictures: together they
+    -- reconstruct one continuous long image and visually behave as a single
+    -- rotated textured beam.
+    local slices =
+        math.floor(
+            clamp(
+                beam_len / 6.0,
+                18,
+                72
+            )
+        )
+
+    local overlap = 1.35
+
+    for i = 0, slices - 1 do
+        local t0 = i / slices
+        local t1 = (i + 1) / slices
+
+        local ax = sx + dx * t0
+        local ay = sy + dy * t0
+        local bx = sx + dx * t1
+        local by = sy + dy * t1
+
+        -- Rotated slice corners, then its tiny axis-aligned destination box.
+        -- Adjacent boxes overlap slightly, removing visible seams/squares.
+        local c1x = ax + px * half_h
+        local c1y = ay + py * half_h
+        local c2x = ax - px * half_h
+        local c2y = ay - py * half_h
+        local c3x = bx + px * half_h
+        local c3y = by + py * half_h
+        local c4x = bx - px * half_h
+        local c4y = by - py * half_h
+
+        local min_x =
+            math.min(c1x, c2x, c3x, c4x)
+            - overlap
+        local max_x =
+            math.max(c1x, c2x, c3x, c4x)
+            + overlap
+        local min_y =
+            math.min(c1y, c2y, c3y, c4y)
+            - overlap
+        local max_y =
+            math.max(c1y, c2y, c3y, c4y)
+            + overlap
+
+        local u0 = t0 - flow
+        local u1 = t1 - flow
+
+        local ok =
+            pcall(
+                DrawImage,
+                handle,
+                min_x,
+                min_y,
+                math.max(1, max_x - min_x),
+                math.max(1, max_y - min_y),
+                1,
+                1,
+                1,
+                alpha * 0.98,
+                0,
+                u0,
+                0,
+                u1,
+                1
+            )
+
+        if not ok then
+            -- Compatibility fallback: still use the same source image and the
+            -- same thin stretched slice even if UV cropping is unavailable.
+            pcall(
+                DrawImage,
+                handle,
+                min_x,
+                min_y,
+                math.max(1, max_x - min_x),
+                math.max(1, max_y - min_y),
+                1,
+                1,
+                1,
+                alpha * 0.98,
+                0
+            )
+        end
     end
 end
 
@@ -37921,12 +37957,6 @@ hooks.on_render(function()
             lmb
         )
     end
-
-    -- Galaxy URL diagnostic preview. This is intentionally independent from
-    -- Bullet Tracer so the image loader can be tested just by opening the menu.
-    pcall(
-        FALLEN_BT_DRAW_GALAXY_PREVIEW
-    )
 
     -- Avatar editor is a true modal and renders above everything else.
     FALLEN_DRAW_AVATAR_EDITOR(
