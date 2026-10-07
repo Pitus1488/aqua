@@ -15670,90 +15670,122 @@ function FALLEN_BT_ROBLOX_COLORSEQ()
 end
 
 function FALLEN_BT_SPAWN_ROBLOX_BEAM(origin, target)
-    local ok = pcall(function()
-        local ws = workspace
-        local cam = ws and ws.CurrentCamera or nil
-        local parent = cam or ws
+    local texture_url =
+        tostring(
+            _G.FALLEN_GALAXY_IMAGE_URL
+            or _G.FALLEN_GALAXY_IMAGE_PAGE_URL
+            or "https://fotovssylku.ru/i/roblox-12781800668-420.rg5Xg"
+        )
 
-        if not parent or type(Instance) ~= "table" then
-            error("no roblox beam runtime")
+    local ok, err = pcall(function()
+        -- IMPORTANT: one Attachment pair + one Beam only.
+        -- This mirrors fallen_ultimate Lightning; no DrawImage nodes/clones.
+        local parent = nil
+
+        pcall(function()
+            if rbx and type(rbx.workspace) == "function" then
+                local ws = rbx.workspace()
+                if ws then
+                    parent = ws:find_first_child("VFX") or ws
+                end
+            end
+        end)
+
+        if not parent then
+            error("no beam parent")
         end
 
-        local tween_service = game:GetService("TweenService")
-        local debris = game:GetService("Debris")
+        local att0 = Instance.new("Attachment", parent)
+        local att1 = Instance.new("Attachment", parent)
 
-        local folder = parent:FindFirstChild("FallenGalaxyTracerFolder")
-
-        if not folder then
-            folder = Instance.new("Folder")
-            folder.Name = "FallenGalaxyTracerFolder"
-            folder.Parent = parent
+        if not att0 or not att1 then
+            error("attachment create failed")
         end
 
-        local att0 = Instance.new("Attachment")
-        att0.Name = "FallenGalaxyA0"
-        att0.WorldPosition = Vector3.new(origin.X, origin.Y, origin.Z)
-        att0.Parent = folder
+        -- Custom Instance.new is the documented CallGate creator. Property
+        -- writes below intentionally match fallen_ultimate's Beam logic.
+        att0.WorldPosition = Vector3(origin.X, origin.Y, origin.Z)
+        att1.WorldPosition = Vector3(target.X, target.Y, target.Z)
 
-        local att1 = Instance.new("Attachment")
-        att1.Name = "FallenGalaxyA1"
-        att1.WorldPosition = Vector3.new(target.X, target.Y, target.Z)
-        att1.Parent = folder
+        local beam = Instance.new("Beam", parent)
+        if not beam then
+            error("beam create failed")
+        end
 
-        local beam = Instance.new("Beam")
-        beam.Name = "FallenGalaxyBeam"
         beam.Attachment0 = att0
         beam.Attachment1 = att1
         beam.FaceCamera = true
         beam.Brightness = 10
-        beam.Texture = tostring(_G.FALLEN_GALAXY_IMAGE_URL or _G.FALLEN_GALAXY_IMAGE_PAGE_URL or "https://fotovssylku.ru/i/roblox-12781800668-420.rg5Xg")
+
+        -- User URL instead of rbxassetid. Same image-loader URL that already
+        -- succeeds in the menu preview.
+        beam.Texture = texture_url
         beam.TextureLength = 4
         beam.TextureMode = Enum.TextureMode.Wrap
         beam.TextureSpeed = 10
-        beam.Width0 = math.max(0.10, (tonumber(S.bullet_tracer_thickness) or 2) * 0.22)
-        beam.Width1 = beam.Width0
+
+        local width =
+            math.max(
+                0.08,
+                (tonumber(S.bullet_tracer_thickness) or 2) * 0.25
+            )
+
+        beam.Width0 = width
+        beam.Width1 = width
         beam.LightEmission = 1
         beam.LightInfluence = 0
 
-        local seq = FALLEN_BT_ROBLOX_COLORSEQ()
-        if seq then
-            beam.Color = seq
-        end
-
-        beam.Parent = folder
-
         pcall(function()
-            tween_service:Create(
-                beam,
-                TweenInfo.new(0.10, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 2, true),
-                {
-                    Width0 = beam.Width0 * 0.72,
-                    Width1 = beam.Width1 * 0.72,
-                }
-            ):Play()
+            local c = FALLEN_BT_COLOR()
+            beam.Color = ColorSequence.new(
+                Color3.new(c[1] or 1, c[2] or 1, c[3] or 1)
+            )
         end)
 
-        local duration = math.max(0.08, math.min(5.0, tonumber(S.bullet_tracer_life) or 1.2))
+        local born = tick()
+        local life =
+            clamp(
+                tonumber(S.bullet_tracer_life) or 1.2,
+                0.10,
+                5.0
+            )
 
-        task.delay(duration, function()
+        -- Keep exactly the fallen_ultimate idea: texture flows while the beam
+        -- exists, then width/brightness collapse. No image stamping.
+        local released = false
+        hooks.on_render(function()
+            if released then
+                return
+            end
+
+            local age = tick() - born
+            if age < life then
+                return
+            end
+
+            released = true
+            pcall(function() beam.Width0 = 0 end)
+            pcall(function() beam.Width1 = 0 end)
+            pcall(function() beam.TextureSpeed = 0 end)
+            pcall(function() beam.Brightness = 0 end)
+
             pcall(function()
-                tween_service:Create(
-                    beam,
-                    TweenInfo.new(0.25),
-                    {
-                        Width0 = 0,
-                        Width1 = 0,
-                        TextureSpeed = 0,
-                        Brightness = 0,
-                    }
-                ):Play()
+                if type(beam.destroy) == "function" then beam:destroy() end
+            end)
+            pcall(function()
+                if type(att0.destroy) == "function" then att0:destroy() end
+            end)
+            pcall(function()
+                if type(att1.destroy) == "function" then att1:destroy() end
             end)
         end)
-
-        debris:AddItem(att0, duration + 1)
-        debris:AddItem(att1, duration + 1)
-        debris:AddItem(beam, duration + 1)
     end)
+
+    if not ok then
+        A.bt_lightning_v2_last_error = tostring(err)
+    else
+        A.bt_lightning_v2_last_error = nil
+    end
 
     return ok
 end
@@ -15766,11 +15798,10 @@ function FALLEN_BT_ADD(origin, target)
     local tracer_style = tostring(S.bullet_tracer_style or "")
 
     if tracer_style == "Lightning V2" or tracer_style == "Galaxy" or tracer_style == "Cosmo" then
-        local spawned = FALLEN_BT_SPAWN_ROBLOX_BEAM(origin, target)
-
-        if spawned then
-            return
-        end
+        -- Lightning V2 has ONE renderer only: a single Beam, same structure
+        -- as fallen_ultimate. Never fall back to the old DrawImage/Galaxy path.
+        FALLEN_BT_SPAWN_ROBLOX_BEAM(origin, target)
+        return
     end
 
     FALLEN_BT.items[#FALLEN_BT.items + 1] = {
@@ -38182,7 +38213,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v46 | Lightning V2 URL beam | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v47 | Lightning V2 ONE Beam URL | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
