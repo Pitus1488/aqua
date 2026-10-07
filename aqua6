@@ -3619,7 +3619,7 @@ end
 -- IMPORTANT: this intentionally uses the EXACT same page -> direct URL ->
 -- LoadImage -> IsImageReady flow as the Aimbot sidebar icon above.
 _G.FALLEN_GALAXY_IMAGE_PAGE_URL =
-    "https://fotovssylku.ru/i/54545.rgXDj"
+    "https://fotovssylku.ru/i/roblox-12781800668-420.rg5Xg"
 
 _G.FALLEN_GALAXY_IMAGE_SOURCE =
     _G.FALLEN_GALAXY_IMAGE_SOURCE
@@ -14061,7 +14061,7 @@ end
 FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     -- Galaxy uses the exact same loader path as the Aimbot tab icon.
     galaxy_url = _G.FALLEN_GALAXY_IMAGE_PAGE_URL
-        or "https://fotovssylku.ru/i/54545.rgXDj",
+        or "https://fotovssylku.ru/i/roblox-12781800668-420.rg5Xg",
     galaxy_resolved_url = nil,
     galaxy_local_path = nil,
     galaxy_fetch_attempted = false,
@@ -14103,9 +14103,9 @@ function FALLEN_BT_STYLE_INDEX()
         return 1
     elseif style == "Rainbow" then
         return 2
-    elseif style == "Galaxy" or style == "Cosmo" then
-        -- "Cosmo" is accepted for old/manual configs, UI displays Galaxy.
-        S.bullet_tracer_style = "Galaxy"
+    elseif style == "Lightning V2" or style == "Galaxy" or style == "Cosmo" then
+        -- old/manual configs still map here, UI displays Lightning V2.
+        S.bullet_tracer_style = "Lightning V2"
         return 3
     end
 
@@ -15706,7 +15706,7 @@ function FALLEN_BT_SPAWN_ROBLOX_BEAM(origin, target)
         beam.Attachment1 = att1
         beam.FaceCamera = true
         beam.Brightness = 10
-        beam.Texture = "rbxassetid://12781800668"
+        beam.Texture = tostring(_G.FALLEN_GALAXY_IMAGE_URL or _G.FALLEN_GALAXY_IMAGE_PAGE_URL or "https://fotovssylku.ru/i/roblox-12781800668-420.rg5Xg")
         beam.TextureLength = 4
         beam.TextureMode = Enum.TextureMode.Wrap
         beam.TextureSpeed = 10
@@ -15765,7 +15765,7 @@ function FALLEN_BT_ADD(origin, target)
 
     local tracer_style = tostring(S.bullet_tracer_style or "")
 
-    if tracer_style == "Galaxy" or tracer_style == "Cosmo" then
+    if tracer_style == "Lightning V2" or tracer_style == "Galaxy" or tracer_style == "Cosmo" then
         local spawned = FALLEN_BT_SPAWN_ROBLOX_BEAM(origin, target)
 
         if spawned then
@@ -31783,7 +31783,7 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
         "Neon",
         "Lightning",
         "Rainbow",
-        "Galaxy",
+        "Lightning V2",
     }
 
     local item_h = 27
@@ -33038,10 +33038,11 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
                 and "Rainbow"
                 or (
                     (
-                        S.bullet_tracer_style == "Galaxy"
+                        S.bullet_tracer_style == "Lightning V2"
+                        or S.bullet_tracer_style == "Galaxy"
                         or S.bullet_tracer_style == "Cosmo"
                     )
-                    and "Galaxy"
+                    and "Lightning V2"
                     or "Neon"
                 )
             )
@@ -38181,7 +38182,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v45 | Galaxy textured beam | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v46 | Lightning V2 URL beam | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
