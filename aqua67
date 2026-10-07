@@ -14083,6 +14083,120 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     smoke = nil,
 }
 
+
+-- =========================================================
+-- Hit Effect sprite-sheet loaders.
+-- IMPORTANT: exact same PAGE -> resolve -> LoadImage -> IsImageReady
+-- path used by the Aimbot tab icon. fotovssylku /i/... links are page
+-- URLs, so never feed these three raw page URLs to the generic preloader.
+-- =========================================================
+
+_G.FALLEN_HITFX_SHEET_STATE =
+    _G.FALLEN_HITFX_SHEET_STATE
+    or {}
+
+function FALLEN_HITFX_SHEET_GET(key, page_url)
+    if type(key) ~= "string"
+        or type(page_url) ~= "string"
+        or page_url == ""
+    then
+        return nil
+    end
+
+    local state =
+        _G.FALLEN_HITFX_SHEET_STATE[key]
+
+    if type(state) ~= "table" then
+        state = {
+            source = nil,
+            resolved = nil,
+            handle = nil,
+        }
+        _G.FALLEN_HITFX_SHEET_STATE[key] = state
+    end
+
+    if state.source ~= page_url then
+        state.source = page_url
+        state.resolved = nil
+        state.handle = nil
+    end
+
+    if not state.resolved then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        state.resolved =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not state.handle
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            state.handle =
+                LoadImage(
+                    state.resolved
+                )
+        end)
+    end
+
+    local handle = state.handle
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageFailed) == "function" then
+        local ok_failed, failed =
+            pcall(
+                IsImageFailed,
+                handle
+            )
+
+        if ok_failed and failed == true then
+            return nil
+        end
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok_ready, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok_ready
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+function FALLEN_HITFX_SPARK_SHEET_GET()
+    return FALLEN_HITFX_SHEET_GET(
+        "spark",
+        FALLEN_BT_IMAGE.hitfx_spark_sheet_url
+    )
+end
+
+function FALLEN_HITFX_SMOKERING_SHEET_GET()
+    return FALLEN_HITFX_SHEET_GET(
+        "smokering",
+        FALLEN_BT_IMAGE.hitfx_smokering_sheet_url
+    )
+end
+
+function FALLEN_HITFX_PARTICLES_SHEET_GET()
+    return FALLEN_HITFX_SHEET_GET(
+        "particles",
+        FALLEN_BT_IMAGE.hitfx_particles_sheet_url
+    )
+end
+
 function FALLEN_BT_STYLE_INDEX()
     local style =
         tostring(
@@ -17223,6 +17337,14 @@ function FALLEN_HITFX_IMAGE(
     key,
     url
 )
+    if key == "hitfx_spark_sheet" then
+        return FALLEN_HITFX_SPARK_SHEET_GET()
+    elseif key == "hitfx_smokering_sheet" then
+        return FALLEN_HITFX_SMOKERING_SHEET_GET()
+    elseif key == "hitfx_particles_sheet" then
+        return FALLEN_HITFX_PARTICLES_SHEET_GET()
+    end
+
     return
         FALLEN_BT_IMAGE_GET(
             key,
@@ -37887,7 +38009,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v50 | HitEffects spritesheets | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v51 | HitEffects icon-loader spritesheets | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -38197,17 +38319,6 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
     -- exactly like the Aimbot sidebar icon, so it is intentionally not
     -- duplicated in the generic URL queue.
 
-    -- Hit effect sprite-sheets.
-    FALLEN_PRELOAD_QUEUE_PRIMARY(
-        FALLEN_BT_IMAGE.hitfx_spark_sheet_url
-    )
-    FALLEN_PRELOAD_QUEUE_PRIMARY(
-        FALLEN_BT_IMAGE.hitfx_smokering_sheet_url
-    )
-    FALLEN_PRELOAD_QUEUE_PRIMARY(
-        FALLEN_BT_IMAGE.hitfx_particles_sheet_url
-    )
-
     -- Then normal item / armor / weapon assets.
     FALLEN_PRELOAD_QUEUE_PRIMARY(
         FALLEN_ARMOR_ICON_URLS
@@ -38255,6 +38366,9 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         FALLEN_GRENADE_ICON_GET,
         FALLEN_BRAND_IMAGE_GET,
         FALLEN_AIMBOT_TAB_ICON_GET,
+        FALLEN_HITFX_SPARK_SHEET_GET,
+        FALLEN_HITFX_SMOKERING_SHEET_GET,
+        FALLEN_HITFX_PARTICLES_SHEET_GET,
         FALLEN_GALAXY_IMAGE_GET,
         FALLEN_VISUALS_TAB_ICON_GET,
         FALLEN_MISC_TAB_ICON_GET,
@@ -38295,6 +38409,13 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
             FALLEN_BT_IMAGE.galaxy = h
         end
     end)
+
+    -- Hit Effect sheets were already resolved/loaded one-by-one through the
+    -- same getter path as sidebar icons. Touch them once more so their cached
+    -- handles are warm before gameplay BloodPart VFX can request them.
+    pcall(FALLEN_HITFX_SPARK_SHEET_GET)
+    pcall(FALLEN_HITFX_SMOKERING_SHEET_GET)
+    pcall(FALLEN_HITFX_PARTICLES_SHEET_GET)
 
     -- Prime runtime caches only AFTER the sequential queue has completed.
     -- Drawing.LoadImage caches by URL, so these getter calls should reuse the
