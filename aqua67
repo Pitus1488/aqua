@@ -16026,8 +16026,9 @@ function FALLEN_BT_DRAW_GALAXY(
     thick
 )
     if type(DrawImage) ~= "function"
+        or type(DrawLine) ~= "function"
         or type(points) ~= "table"
-        or #points < 1
+        or #points < 2
     then
         return
     end
@@ -16039,69 +16040,260 @@ function FALLEN_BT_DRAW_GALAXY(
         return
     end
 
-    -- This is a real tracer, not a single hit-effect sprite:
-    -- a short train of image nodes lives on the WORLD projectile path.
-    -- The whole train advances from muzzle -> impact with `reveal`.
-    local head =
+    local max_u =
         clamp(
             tonumber(reveal) or 0,
             0,
             1
         )
 
-    local tail_span = 0.24
-    local nodes = 10
+    if max_u <= 0.001 then
+        return
+    end
 
-    for i = 0, nodes - 1 do
-        local back =
-            (i / math.max(1, nodes - 1))
-            * tail_span
+    -- Galaxy is a TEXTURED BEAM, not a hit marker.
+    -- First draw a soft tracer body along the revealed ballistic path so the
+    -- beam stays continuous even between image samples. Then densely stamp the
+    -- Galaxy image over that SAME path. DrawImage has no rotation parameter in
+    -- this API, therefore overlapping square samples are the reliable way to
+    -- texture an arbitrarily angled world-space tracer.
+    local col = FALLEN_BT_COLOR()
+    local previous = nil
+    local screen_length = 0
 
-        local u = head - back
+    for i = 1, #points do
+        local point = points[i]
 
-        if u >= 0 then
-            local world =
-                FALLEN_BT_GALAXY_WORLD_POINT(
+        if point
+            and point.x
+            and point.y
+            and point.u
+            and point.u <= max_u + 0.0001
+        then
+            local current = {
+                x = point.x,
+                y = point.y,
+                u = point.u,
+            }
+
+            if previous then
+                local dx = current.x - previous.x
+                local dy = current.y - previous.y
+                screen_length =
+                    screen_length
+                    + math.sqrt(dx * dx + dy * dy)
+
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    current.x,
+                    current.y,
+                    col[1],
+                    col[2],
+                    col[3],
+                    alpha * 0.12,
+                    thick + 16
+                )
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    current.x,
+                    current.y,
+                    col[1],
+                    col[2],
+                    col[3],
+                    alpha * 0.22,
+                    thick + 10
+                )
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    current.x,
+                    current.y,
+                    1,
+                    1,
+                    1,
+                    alpha * 0.52,
+                    thick + 3.5
+                )
+            end
+
+            previous = current
+        elseif point
+            and point.u
+            and point.u > max_u
+        then
+            -- Add the partial segment up to the moving reveal head.
+            local hx, hy =
+                FALLEN_BT_GALAXY_POINT(
                     points,
-                    u
+                    max_u
                 )
 
-            if world then
-                -- Project every world node exactly like Hit Effects do.
-                local screen =
-                    FALLEN_BT_PROJECT(world)
+            if previous and hx and hy then
+                local dx = hx - previous.x
+                local dy = hy - previous.y
+                screen_length =
+                    screen_length
+                    + math.sqrt(dx * dx + dy * dy)
 
-                if screen then
-                    local tail_t =
-                        i / math.max(1, nodes - 1)
-
-                    local node_alpha =
-                        alpha
-                        * (
-                            1.0
-                            - tail_t * 0.76
-                        )
-
-                    local node_size =
-                        FALLEN_BT_GALAXY_SIZE(
-                            world,
-                            thick
-                        )
-                        * (
-                            1.00
-                            - tail_t * 0.24
-                        )
-
-                    FALLEN_BT_DRAW_GALAXY_NODE(
-                        handle,
-                        screen.X,
-                        screen.Y,
-                        node_size,
-                        node_alpha
-                    )
-                end
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    hx,
+                    hy,
+                    col[1],
+                    col[2],
+                    col[3],
+                    alpha * 0.12,
+                    thick + 16
+                )
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    hx,
+                    hy,
+                    col[1],
+                    col[2],
+                    col[3],
+                    alpha * 0.22,
+                    thick + 10
+                )
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    hx,
+                    hy,
+                    1,
+                    1,
+                    1,
+                    alpha * 0.52,
+                    thick + 3.5
+                )
             end
+
+            break
         end
+    end
+
+    -- Dense overlapping image stamps make the supplied Galaxy picture become
+    -- the tracer's surface instead of one sprite at the impact position.
+    local stamp_size =
+        clamp(
+            17 + (tonumber(thick) or 2) * 3.2,
+            18,
+            38
+        )
+
+    -- Keep enough overlap that there are no visible gaps, but cap work for very
+    -- long shots.  The underlying glow line keeps the beam continuous at the
+    -- extreme cap as well.
+    local spacing =
+        clamp(
+            stamp_size * 0.28,
+            5,
+            10
+        )
+
+    local node_count =
+        math.floor(
+            screen_length / spacing
+            + 0.5
+        )
+        + 3
+
+    node_count =
+        math.floor(
+            clamp(
+                node_count,
+                10,
+                128
+            )
+        )
+
+    local created =
+        tonumber(tr and tr.created)
+        or tick()
+
+    -- Texture flow: samples continuously advance muzzle -> impact and wrap.
+    -- The beam itself remains in place; only the Galaxy texture appears to
+    -- stream forward through it.
+    local flow =
+        ((tick() - created) * 2.35)
+        % 1
+
+    local step_u =
+        max_u / math.max(1, node_count - 1)
+
+    for i = 0, node_count - 1 do
+        local base_u =
+            (i / math.max(1, node_count - 1))
+            * max_u
+
+        local u =
+            base_u
+            + flow * step_u
+
+        if u > max_u then
+            u = u - max_u
+        end
+
+        local x, y =
+            FALLEN_BT_GALAXY_POINT(
+                points,
+                u
+            )
+
+        if x and y then
+            -- Slightly brighten samples near the moving projectile head while
+            -- keeping the whole revealed tracer textured like a beam.
+            local head_t =
+                max_u > 0.0001
+                and clamp(u / max_u, 0, 1)
+                or 0
+
+            local node_alpha =
+                alpha
+                * (
+                    0.66
+                    + 0.24 * head_t
+                )
+
+            local pulse =
+                0.94
+                + 0.08
+                * math.sin(
+                    tick() * 12
+                    + i * 0.71
+                    + (tr.seed or 1) * 0.013
+                )
+
+            FALLEN_BT_DRAW_GALAXY_NODE(
+                handle,
+                x,
+                y,
+                stamp_size * pulse,
+                node_alpha
+            )
+        end
+    end
+
+    -- One compact brighter image at the reveal head makes the forward motion
+    -- readable without turning Galaxy back into a single impact sprite.
+    local hx, hy =
+        FALLEN_BT_GALAXY_POINT(
+            points,
+            max_u
+        )
+
+    if hx and hy then
+        FALLEN_BT_DRAW_GALAXY_NODE(
+            handle,
+            hx,
+            hy,
+            stamp_size * 1.10,
+            alpha * 0.96
+        )
     end
 end
 
@@ -37846,7 +38038,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v45 | Galaxy uses Aimbot icon loader | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v45 | Galaxy textured beam | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
