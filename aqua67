@@ -13991,6 +13991,10 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     -- fotovssylku /i/... is an HTML image page. Startup resolves its
     -- og:image/twitter:image to raw bytes before LoadImage.
     galaxy_resolved_url = nil,
+    galaxy_local_path = nil,
+    galaxy_fetch_attempted = false,
+    galaxy_fetch_status = "WAITING",
+    galaxy_source_url = nil,
     spark_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2728.png",
     star_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2b50.png",
     flash_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a5.png",
@@ -14112,6 +14116,299 @@ function FALLEN_BT_IMAGE_GET(key, url)
     return handle
 end
 
+-- Galaxy URL fallback for hosts where Drawing.LoadImage cannot consume the
+-- fotovssylku page/redirect directly.  We fetch it once in the startup worker,
+-- extract the actual image URL when needed, save the binary body locally, then
+-- let stb_image load the local file.  Never call this from on_render.
+function FALLEN_BT_GALAXY_HTML_DECODE(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+
+    value = value:gsub("\\/", "/")
+    value = value:gsub("&amp;", "&")
+    value = value:gsub("&#38;", "&")
+    value = value:gsub("&#x26;", "&")
+    value = value:gsub("&#47;", "/")
+    value = value:gsub("&#x2F;", "/")
+    value = value:gsub("&quot;", '"')
+
+    return value
+end
+
+function FALLEN_BT_GALAXY_NORMALIZE_URL(value, page_url)
+    value = FALLEN_BT_GALAXY_HTML_DECODE(value)
+    if type(value) ~= "string" or value == "" then
+        return nil
+    end
+
+    if value:sub(1, 2) == "//" then
+        return "https:" .. value
+    end
+
+    if value:sub(1, 1) == "/" then
+        local origin = tostring(page_url or ""):match("^(https?://[^/]+)")
+        if origin then
+            return origin .. value
+        end
+    end
+
+    if value:match("^https?://") then
+        return value
+    end
+
+    local base = tostring(page_url or ""):match("^(https?://.*/)")
+    if base then
+        return base .. value
+    end
+
+    return value
+end
+
+function FALLEN_BT_GALAXY_IMAGE_KIND(body)
+    if type(body) ~= "string" or #body < 4 then
+        return nil
+    end
+
+    if body:sub(1, 8) == "\137PNG\r\n\26\n" then
+        return "png"
+    end
+
+    if body:byte(1) == 0xFF
+        and body:byte(2) == 0xD8
+        and body:byte(3) == 0xFF
+    then
+        return "jpg"
+    end
+
+    local sig6 = body:sub(1, 6)
+    if sig6 == "GIF87a" or sig6 == "GIF89a" then
+        return "gif"
+    end
+
+    if body:sub(1, 2) == "BM" then
+        return "bmp"
+    end
+
+    return nil
+end
+
+function FALLEN_BT_GALAXY_ADD_CANDIDATE(list, seen, value, page_url)
+    local url = FALLEN_BT_GALAXY_NORMALIZE_URL(value, page_url)
+    if type(url) ~= "string"
+        or url == ""
+        or seen[url]
+    then
+        return
+    end
+
+    seen[url] = true
+    table.insert(list, url)
+end
+
+function FALLEN_BT_GALAXY_CANDIDATES(body, page_url)
+    local list = {}
+    local seen = {}
+
+    if type(body) ~= "string" then
+        return list
+    end
+
+    local patterns = {
+        '<meta[^>]-property%s*=%s*["\']og:image["\'][^>]-content%s*=%s*["\']([^"\']+)',
+        '<meta[^>]-content%s*=%s*["\']([^"\']+)["\'][^>]-property%s*=%s*["\']og:image["\']',
+        '<meta[^>]-name%s*=%s*["\']twitter:image["\'][^>]-content%s*=%s*["\']([^"\']+)',
+        '<meta[^>]-content%s*=%s*["\']([^"\']+)["\'][^>]-name%s*=%s*["\']twitter:image["\']',
+        '<img[^>]-src%s*=%s*["\']([^"\']+)',
+        '<img[^>]-data%-src%s*=%s*["\']([^"\']+)',
+        '<img[^>]-data%-original%s*=%s*["\']([^"\']+)',
+        '"contentUrl"%s*:%s*"([^"]+)"',
+        '"imageUrl"%s*:%s*"([^"]+)"',
+        '"image"%s*:%s*"([^"]+)"',
+    }
+
+    for _, pattern in ipairs(patterns) do
+        local start = 1
+        while #list < 20 do
+            local a, b, cap = body:find(pattern, start)
+            if not a then break end
+            FALLEN_BT_GALAXY_ADD_CANDIDATE(list, seen, cap, page_url)
+            start = b + 1
+        end
+    end
+
+    -- Last-resort scan for absolute URLs that visibly point to common image
+    -- formats. This catches simple upload pages without OG metadata.
+    local start = 1
+    while #list < 24 do
+        local a, b, cap = body:find('(https?://[^%s"\'<>]+%.[Pp][Nn][Gg][^%s"\'<>]*)', start)
+        if not a then break end
+        FALLEN_BT_GALAXY_ADD_CANDIDATE(list, seen, cap, page_url)
+        start = b + 1
+    end
+
+    start = 1
+    while #list < 24 do
+        local a, b, cap = body:find('(https?://[^%s"\'<>]+%.[Jj][Pp][Ee]?[Gg][^%s"\'<>]*)', start)
+        if not a then break end
+        FALLEN_BT_GALAXY_ADD_CANDIDATE(list, seen, cap, page_url)
+        start = b + 1
+    end
+
+    return list
+end
+
+function FALLEN_BT_GALAXY_HTTP_GET(url, referer)
+    if not Http or type(Http.get) ~= "function" then
+        return false, 0, nil, "Http.get unavailable"
+    end
+
+    local headers = {
+        Accept = "image/png,image/jpeg,image/gif,image/bmp,text/html,*/*;q=0.5",
+    }
+
+    if type(referer) == "string" and referer ~= "" then
+        headers.Referer = referer
+    end
+
+    return Http.get(
+        url,
+        {
+            timeout_ms = 12000,
+            headers = headers,
+        }
+    )
+end
+
+function FALLEN_BT_GALAXY_SAVE_LOCAL(body, kind)
+    if type(write_file) ~= "function"
+        or type(body) ~= "string"
+        or not kind
+    then
+        return nil
+    end
+
+    local path =
+        "C:\\blueberry\\cache\\fallen_lua_galaxy."
+        .. tostring(kind)
+
+    local ok = false
+    pcall(function()
+        ok = write_file(path, body) == true
+    end)
+
+    if not ok then
+        return nil
+    end
+
+    FALLEN_BT_IMAGE.galaxy_local_path = path
+    return path
+end
+
+function FALLEN_BT_GALAXY_LOAD_LOCAL(path)
+    if type(path) ~= "string" or path == "" then
+        return nil
+    end
+
+    local handle = nil
+
+    pcall(function()
+        if Drawing
+            and type(Drawing.LoadImageFromFile) == "function"
+        then
+            handle = Drawing.LoadImageFromFile(path)
+        elseif type(LoadImage) == "function" then
+            handle = LoadImage(path)
+        end
+    end)
+
+    if handle then
+        FALLEN_BT_IMAGE.galaxy = handle
+        if type(_G.FALLEN_IMAGE_PRELOAD_HANDLES) == "table" then
+            _G.FALLEN_IMAGE_PRELOAD_HANDLES[path] = handle
+        end
+    end
+
+    return handle
+end
+
+function FALLEN_BT_GALAXY_FETCH_LOCAL()
+    if type(FALLEN_BT_IMAGE) ~= "table" then
+        return nil
+    end
+
+    if FALLEN_BT_IMAGE.galaxy_fetch_attempted == true then
+        return FALLEN_BT_IMAGE.galaxy
+    end
+
+    FALLEN_BT_IMAGE.galaxy_fetch_attempted = true
+    FALLEN_BT_IMAGE.galaxy_fetch_status = "FETCHING PAGE"
+
+    local page_url = FALLEN_BT_IMAGE.galaxy_url
+    if type(page_url) ~= "string" or page_url == "" then
+        FALLEN_BT_IMAGE.galaxy_fetch_status = "FAILED: NO URL"
+        return nil
+    end
+
+    local ok, status, body, err =
+        FALLEN_BT_GALAXY_HTTP_GET(page_url, nil)
+
+    if not ok or status ~= 200 or type(body) ~= "string" or body == "" then
+        FALLEN_BT_IMAGE.galaxy_fetch_status =
+            "FAILED: HTTP " .. tostring(status or 0)
+        return nil
+    end
+
+    -- Some /i/ links return raw image bytes directly.
+    local kind = FALLEN_BT_GALAXY_IMAGE_KIND(body)
+    if kind then
+        local path = FALLEN_BT_GALAXY_SAVE_LOCAL(body, kind)
+        if path then
+            FALLEN_BT_IMAGE.galaxy_source_url = page_url
+            FALLEN_BT_IMAGE.galaxy_fetch_status = "LOCAL " .. string.upper(kind)
+            return FALLEN_BT_GALAXY_LOAD_LOCAL(path)
+        end
+    end
+
+    FALLEN_BT_IMAGE.galaxy_fetch_status = "RESOLVING IMAGE"
+
+    local candidates =
+        FALLEN_BT_GALAXY_CANDIDATES(body, page_url)
+
+    for index, candidate in ipairs(candidates) do
+        if index > 16 then break end
+
+        FALLEN_BT_IMAGE.galaxy_fetch_status =
+            "TRY IMAGE " .. tostring(index)
+
+        local iok, istatus, ibody =
+            FALLEN_BT_GALAXY_HTTP_GET(candidate, page_url)
+
+        if iok
+            and istatus == 200
+            and type(ibody) == "string"
+            and ibody ~= ""
+        then
+            local ikind = FALLEN_BT_GALAXY_IMAGE_KIND(ibody)
+            if ikind then
+                local path = FALLEN_BT_GALAXY_SAVE_LOCAL(ibody, ikind)
+                if path then
+                    FALLEN_BT_IMAGE.galaxy_source_url = candidate
+                    FALLEN_BT_IMAGE.galaxy_resolved_url = candidate
+                    FALLEN_BT_IMAGE.galaxy_fetch_status =
+                        "LOCAL " .. string.upper(ikind)
+                    return FALLEN_BT_GALAXY_LOAD_LOCAL(path)
+                end
+            end
+        end
+    end
+
+    FALLEN_BT_IMAGE.galaxy_fetch_status =
+        "FAILED: NO IMAGE IN PAGE"
+
+    return nil
+end
+
 function FALLEN_BT_GALAXY_URL()
     if type(FALLEN_BT_IMAGE) ~= "table" then
         return nil
@@ -14130,18 +14427,53 @@ function FALLEN_BT_GALAXY_URL()
 end
 
 function FALLEN_BT_GALAXY_HANDLE()
-    local url =
-        FALLEN_BT_GALAXY_URL()
+    if type(FALLEN_BT_IMAGE) ~= "table" then
+        return nil
+    end
 
+    local cached = FALLEN_BT_IMAGE.galaxy
+    if cached then
+        local failed = false
+        local ready = true
+
+        if type(IsImageFailed) == "function" then
+            pcall(function() failed = IsImageFailed(cached) == true end)
+        end
+
+        if type(IsImageReady) == "function" then
+            pcall(function() ready = IsImageReady(cached) == true end)
+        end
+
+        if not failed and ready then
+            return cached
+        end
+
+        if failed then
+            FALLEN_BT_IMAGE.galaxy = nil
+        else
+            return nil
+        end
+    end
+
+    local local_path = FALLEN_BT_IMAGE.galaxy_local_path
+    if type(local_path) == "string" and local_path ~= "" then
+        return FALLEN_BT_GALAXY_LOAD_LOCAL(local_path)
+    end
+
+    -- Once the startup HTTP/local-file fallback has definitively failed, do
+    -- not hammer the broken page URL from every render frame.
+    if FALLEN_BT_IMAGE.galaxy_fetch_attempted == true
+        and tostring(FALLEN_BT_IMAGE.galaxy_fetch_status or ""):find("FAILED", 1, true)
+    then
+        return nil
+    end
+
+    local url = FALLEN_BT_GALAXY_URL()
     if not url then
         return nil
     end
 
-    return
-        FALLEN_BT_IMAGE_GET(
-            "galaxy",
-            url
-        )
+    return FALLEN_BT_IMAGE_GET("galaxy", url)
 end
 
 -- Diagnostic preview requested by the user.
@@ -14289,13 +14621,23 @@ function FALLEN_BT_DRAW_GALAXY_PREVIEW()
         )
     end
 
+    local fetch_status =
+        type(FALLEN_BT_IMAGE) == "table"
+        and tostring(FALLEN_BT_IMAGE.galaxy_fetch_status or "")
+        or ""
+
     local status =
         ready and not failed
         and "GALAXY READY"
         or (
             failed
             and "GALAXY FAILED"
-            or "GALAXY LOADING"
+            or (
+                fetch_status ~= ""
+                and fetch_status ~= "WAITING"
+                and fetch_status
+                or "GALAXY LOADING"
+            )
         )
 
     local sr, sg, sb =
@@ -37832,9 +38174,11 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
         FALLEN_BT_IMAGE.galaxy_resolved_url =
             galaxy_direct
 
-        FALLEN_PRELOAD_QUEUE_PRIMARY(
-            galaxy_direct
-        )
+        if not FALLEN_BT_IMAGE.galaxy_local_path then
+            FALLEN_PRELOAD_QUEUE_PRIMARY(
+                galaxy_direct
+            )
+        end
     end
 
     -- Then normal item / armor / weapon assets.
@@ -37876,6 +38220,16 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
     if _G.FALLEN_IMAGE_PRELOAD_DONE == true then
         return
     end
+
+    -- Galaxy gets a stronger preload path than ordinary icons: fetch raw
+    -- bytes once, save them locally, then decode from disk.  This bypasses
+    -- image-host HTML pages/redirects that Drawing.LoadImage(url) rejects.
+    pcall(function()
+        local h = FALLEN_BT_GALAXY_FETCH_LOCAL()
+        if h then
+            FALLEN_PRELOAD_WAIT_HANDLE(h, 5.0)
+        end
+    end)
 
     -- First preload special UI images one-by-one. Their getters may resolve
     -- a page URL before calling LoadImage, so keeping them sequential avoids
