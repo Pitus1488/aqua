@@ -14063,6 +14063,7 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     hitfx_test2_sheet_url = "https://fotovssylku.ru/i/%D0%90%D1%82%D0%BB%D0%B0%D1%81-%D0%BD%D0%B5%D0%BE%D0%BD%D0%BE%D0%B2%D1%8B%D1%85-%D0%BA%D0%BE%D1%81%D0%BC%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D1%85-%D0%B2%D0%B8%D1%85%D1%80%D0%B5%D0%B9-4%C3%974.rg4YT",
     hitfx_ice_sheet_url = "https://fotovssylku.ru/i/%D0%A1%D0%BF%D1%80%D0%B0%D0%B9%D1%82-%D0%BB%D0%B8%D1%81%D1%82-%D0%BB%D0%B5%D0%B4%D1%8F%D0%BD%D0%BE%D0%B3%D0%BE-%D0%B2%D0%B7%D1%80%D1%8B%D0%B2%D0%B0.rgBs4",
     hitfx_crystal_sheet_url = "https://fotovssylku.ru/i/%D0%9A%D1%80%D0%B0%D1%81%D0%BD%D0%B0%D1%8F-%D0%B2%D0%B7%D1%80%D1%8B%D0%B2%D0%BD%D0%B0%D1%8F-%D1%8D%D0%BD%D0%B5%D1%80%D0%B3%D0%B8%D1%8F-16-%D0%BA%D0%B0%D0%B4%D1%80%D0%BE%D0%B2-VFX.rgFQA",
+    bt_water_url = "https://fotovssylku.ru/i/roblox-12788927812-420-%281%29.rgxkd",
     galaxy = nil,
     spark = nil,
     star = nil,
@@ -14213,6 +14214,13 @@ function FALLEN_HITFX_CRYSTAL_SHEET_GET()
     )
 end
 
+function FALLEN_BT_WATER_IMAGE_GET()
+    return FALLEN_HITFX_SHEET_GET(
+        "bt_water",
+        FALLEN_BT_IMAGE.bt_water_url
+    )
+end
+
 function FALLEN_BT_STYLE_INDEX()
     local style =
         tostring(
@@ -14236,6 +14244,8 @@ function FALLEN_BT_STYLE_INDEX()
         return 1
     elseif style == "Rainbow" then
         return 2
+    elseif style == "Water" then
+        return 3
     elseif style == "Lightning V2" or style == "Galaxy" or style == "Cosmo" then
         -- Removed legacy textured tracer styles.
         S.bullet_tracer_style = "Neon"
@@ -16425,6 +16435,193 @@ function FALLEN_BT_DRAW_GALAXY(
     end
 end
 
+function FALLEN_BT_DRAW_WATER(
+    tr,
+    points,
+    reveal,
+    alpha,
+    thick
+)
+    if type(points) ~= "table"
+        or #points < 2
+    then
+        return
+    end
+
+    local max_u =
+        clamp(
+            tonumber(reveal) or 0,
+            0,
+            1
+        )
+
+    if max_u <= 0.001 then
+        return
+    end
+
+    local col = FALLEN_BT_COLOR()
+    local water_thick =
+        clamp(
+            1.15 + (tonumber(thick) or 2) * 0.42,
+            1.4,
+            3.8
+        )
+
+    -- Fallen Ultimate Water is a narrow Beam (Width 0.3), with
+    -- Color -> white -> Color. Keep the same visual idea here.
+    local previous = nil
+
+    for i = 1, #points do
+        local point = points[i]
+
+        if point
+            and point.x
+            and point.y
+            and point.u
+            and point.u <= max_u + 0.0001
+        then
+            if previous
+                and type(DrawLine) == "function"
+            then
+                local middle =
+                    clamp(
+                        1
+                        - math.abs(
+                            ((point.u / math.max(max_u, 0.0001)) - 0.5)
+                            * 2
+                        ),
+                        0,
+                        1
+                    )
+
+                local rr = col[1] + (1 - col[1]) * middle
+                local gg = col[2] + (1 - col[2]) * middle
+                local bb = col[3] + (1 - col[3]) * middle
+
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    point.x,
+                    point.y,
+                    col[1],
+                    col[2],
+                    col[3],
+                    alpha * 0.14,
+                    water_thick + 5
+                )
+
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    point.x,
+                    point.y,
+                    rr,
+                    gg,
+                    bb,
+                    alpha * 0.88,
+                    water_thick
+                )
+
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    point.x,
+                    point.y,
+                    1,
+                    1,
+                    1,
+                    alpha * 0.24 * middle,
+                    math.max(1, water_thick * 0.45)
+                )
+            end
+
+            previous = point
+        end
+    end
+
+    local handle = FALLEN_BT_WATER_IMAGE_GET()
+    if not handle
+        or type(DrawImage) ~= "function"
+    then
+        return
+    end
+
+    -- TextureSpeed ~= 1 equivalent: flow the repeated texture along the
+    -- revealed tracer. TextureLength ~= 10 is approximated by dense,
+    -- overlapping texture stamps instead of one stretched image.
+    local created = tonumber(tr and tr.created) or tick()
+    local flow = ((tick() - created) * 0.72) % 1
+    local count =
+        math.max(
+            8,
+            math.floor(34 * max_u)
+        )
+
+    for i = 0, count do
+        local base_u = i / math.max(1, count)
+        local u =
+            (
+                base_u
+                + flow / math.max(1, count)
+            ) % 1
+
+        u = u * max_u
+
+        local x, y =
+            FALLEN_BT_GALAXY_POINT(
+                points,
+                u
+            )
+
+        if x and y then
+            local normalized =
+                u / math.max(max_u, 0.0001)
+
+            local middle =
+                clamp(
+                    1
+                    - math.abs(
+                        (normalized - 0.5) * 2
+                    ),
+                    0,
+                    1
+                )
+
+            local rr = col[1] + (1 - col[1]) * middle
+            local gg = col[2] + (1 - col[2]) * middle
+            local bb = col[3] + (1 - col[3]) * middle
+
+            local node_w =
+                clamp(
+                    9 + (tonumber(thick) or 2) * 1.3,
+                    9,
+                    16
+                )
+
+            local node_h =
+                clamp(
+                    4 + (tonumber(thick) or 2) * 0.55,
+                    4,
+                    8
+                )
+
+            pcall(
+                DrawImage,
+                handle,
+                x - node_w * 0.5,
+                y - node_h * 0.5,
+                node_w,
+                node_h,
+                rr,
+                gg,
+                bb,
+                alpha * 0.78,
+                node_h * 0.42
+            )
+        end
+    end
+end
+
 function FALLEN_BT_DRAW_PATH(
     tr,
     points,
@@ -16443,7 +16640,7 @@ function FALLEN_BT_DRAW_PATH(
         FALLEN_BT_STYLE_INDEX()
 
     if style == 3 then
-        FALLEN_BT_DRAW_GALAXY(
+        FALLEN_BT_DRAW_WATER(
             tr,
             points,
             reveal,
@@ -31934,6 +32131,7 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
         "Neon",
         "Lightning",
         "Rainbow",
+        "Water",
     }
 
     local item_h = 27
@@ -33175,11 +33373,16 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         style_box_y + 7,
         (
             (
-                S.bullet_tracer_style == "Lightning"
-                or S.bullet_tracer_style == "Wave Lightning"
+                S.bullet_tracer_style == "Water"
             )
-            and "Lightning"
+            and "Water"
             or (
+                (
+                    S.bullet_tracer_style == "Lightning"
+                    or S.bullet_tracer_style == "Wave Lightning"
+                )
+                and "Lightning"
+                or (
                 (
                     S.bullet_tracer_style == "Rainbow"
                     or S.bullet_tracer_style == "Gradient Laser"
@@ -33195,6 +33398,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
                     or "Neon"
                 )
             )
+        )
         ),
         FALLEN_HOVER_TEXT(
             "tracer_style_value",
@@ -38459,6 +38663,7 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         FALLEN_HITFX_TEST2_SHEET_GET,
         FALLEN_HITFX_ICE_SHEET_GET,
         FALLEN_HITFX_CRYSTAL_SHEET_GET,
+        FALLEN_BT_WATER_IMAGE_GET,
         FALLEN_GALAXY_IMAGE_GET,
         FALLEN_VISUALS_TAB_ICON_GET,
         FALLEN_MISC_TAB_ICON_GET,
@@ -38510,6 +38715,7 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
     pcall(FALLEN_HITFX_TEST2_SHEET_GET)
     pcall(FALLEN_HITFX_ICE_SHEET_GET)
     pcall(FALLEN_HITFX_CRYSTAL_SHEET_GET)
+    pcall(FALLEN_BT_WATER_IMAGE_GET)
 
     -- Prime runtime caches only AFTER the sequential queue has completed.
     -- Drawing.LoadImage caches by URL, so these getter calls should reuse the
@@ -38658,6 +38864,7 @@ function FALLEN_START_IMAGE_PRELOAD()
     pcall(FALLEN_HITFX_TEST2_SHEET_GET)
     pcall(FALLEN_HITFX_ICE_SHEET_GET)
     pcall(FALLEN_HITFX_CRYSTAL_SHEET_GET)
+    pcall(FALLEN_BT_WATER_IMAGE_GET)
 
     pcall(
         FALLEN_GALAXY_IMAGE_GET
@@ -38700,6 +38907,7 @@ function FALLEN_PRELOAD_HITFX_IMMEDIATELY()
         FALLEN_HITFX_TEST2_SHEET_GET,
         FALLEN_HITFX_ICE_SHEET_GET,
         FALLEN_HITFX_CRYSTAL_SHEET_GET,
+        FALLEN_BT_WATER_IMAGE_GET,
     }
 
     for _, getter in ipairs(getters) do
