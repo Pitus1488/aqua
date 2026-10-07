@@ -17610,7 +17610,7 @@ function FALLEN_HITFX_DRAW_FALLEN(
         )
 
         local frame = math.floor(clamp(out * 15, 0, 15))
-        local s = size * (1.45 + 1.95 * out)
+        local s = size * (1.45 + 0.30 * out)
         FALLEN_HITFX_DRAW_SHEET_FRAME(
             handle,
             frame,
@@ -17634,7 +17634,7 @@ function FALLEN_HITFX_DRAW_FALLEN(
         )
 
         local frame = math.floor(clamp(out * 15, 0, 15))
-        local s = size * (1.10 + 2.10 * out)
+        local s = size * (1.45 + 0.30 * out)
         FALLEN_HITFX_DRAW_SHEET_FRAME(
             handle,
             frame,
@@ -17658,7 +17658,7 @@ function FALLEN_HITFX_DRAW_FALLEN(
         )
 
         local frame = math.floor(clamp(out * 15, 0, 15))
-        local s = size * (1.05 + 1.85 * out)
+        local s = size * (1.45 + 0.30 * out)
         FALLEN_HITFX_DRAW_SHEET_FRAME(
             handle,
             frame,
@@ -17682,7 +17682,7 @@ function FALLEN_HITFX_DRAW_FALLEN(
         )
 
         local frame = math.floor(clamp(out * 15, 0, 15))
-        local s = size * (1.05 + 1.95 * out)
+        local s = size * (1.45 + 0.30 * out)
         FALLEN_HITFX_DRAW_SHEET_FRAME(
             handle,
             frame,
@@ -18918,8 +18918,13 @@ function FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
     }
 
     local world_size = 4.0
-    if kind == 1 then
-        -- fallen_ultimate Spark ParticleEmitter Size = 8
+    if kind == 1
+        or kind == 4
+        or kind == 5
+        or kind == 6
+        or kind == 7
+    then
+        -- Spark-sized world footprint.
         world_size = 8.0
     elseif kind == 2 then
         -- fallen_ultimate SmokeRing Size = 4
@@ -18943,7 +18948,12 @@ function FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
 
         -- Preserve world-space perspective, but keep the effect practical
         -- on screen at extreme near/far distances.
-        if kind == 1 then
+        if kind == 1
+            or kind == 4
+            or kind == 5
+            or kind == 6
+            or kind == 7
+        then
             return clamp(px, 34, 220)
         elseif kind == 2 then
             return clamp(px, 28, 170)
@@ -18953,7 +18963,12 @@ function FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
     end
 
     -- Fallback only if the offset point cannot be projected.
-    if kind == 1 then
+    if kind == 1
+        or kind == 4
+        or kind == 5
+        or kind == 6
+        or kind == 7
+    then
         return 86
     elseif kind == 2 then
         return 64
@@ -38687,6 +38702,10 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         FALLEN_HITFX_SPARK_SHEET_GET,
         FALLEN_HITFX_SMOKERING_SHEET_GET,
         FALLEN_HITFX_PARTICLES_SHEET_GET,
+        FALLEN_HITFX_TEST1_SHEET_GET,
+        FALLEN_HITFX_TEST2_SHEET_GET,
+        FALLEN_HITFX_ICE_SHEET_GET,
+        FALLEN_HITFX_CRYSTAL_SHEET_GET,
         FALLEN_GALAXY_IMAGE_GET,
         FALLEN_VISUALS_TAB_ICON_GET,
         FALLEN_MISC_TAB_ICON_GET,
@@ -38729,11 +38748,15 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
     end)
 
     -- Hit Effect sheets were already resolved/loaded one-by-one through the
-    -- same getter path as sidebar icons. Touch them once more so their cached
-    -- handles are warm before gameplay BloodPart VFX can request them.
+    -- same getter path as sidebar icons. Touch ALL styles once more so their
+    -- cached handles are warm before gameplay BloodPart VFX can request them.
     pcall(FALLEN_HITFX_SPARK_SHEET_GET)
     pcall(FALLEN_HITFX_SMOKERING_SHEET_GET)
     pcall(FALLEN_HITFX_PARTICLES_SHEET_GET)
+    pcall(FALLEN_HITFX_TEST1_SHEET_GET)
+    pcall(FALLEN_HITFX_TEST2_SHEET_GET)
+    pcall(FALLEN_HITFX_ICE_SHEET_GET)
+    pcall(FALLEN_HITFX_CRYSTAL_SHEET_GET)
 
     -- Prime runtime caches only AFTER the sequential queue has completed.
     -- Drawing.LoadImage caches by URL, so these getter calls should reuse the
