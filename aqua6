@@ -159,7 +159,7 @@ local defaults = {
 
     -- Visual hit effect: fires only when the locked Aimbot target loses HP.
     hit_effect_enabled = false,
-    hit_effect_style = "Hit 1",
+    hit_effect_style = "Spark",
     damage_numbers_enabled = false,
     damage_numbers_size = 14,
     damage_numbers_speed = 100,
@@ -14072,6 +14072,9 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     flash_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a5.png",
     ring_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4ab.png",
     smoke_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f4a8.png",
+    hitfx_spark_sheet_url = "https://fotovssylku.ru/i/roblox-10198439352-420.rgdMs",
+    hitfx_smokering_sheet_url = "https://fotovssylku.ru/i/roblox-12906276200-420.rgde9",
+    hitfx_particles_sheet_url = "https://fotovssylku.ru/i/roblox-14354336687-420.rgduw",
     galaxy = nil,
     spark = nil,
     star = nil,
@@ -14104,9 +14107,9 @@ function FALLEN_BT_STYLE_INDEX()
     elseif style == "Rainbow" then
         return 2
     elseif style == "Lightning V2" or style == "Galaxy" or style == "Cosmo" then
-        -- old/manual configs still map here, UI displays Lightning V2.
-        S.bullet_tracer_style = "Lightning V2"
-        return 3
+        -- Removed legacy textured tracer styles.
+        S.bullet_tracer_style = "Neon"
+        return 0
     end
 
     if style ~= "Neon" then
@@ -17167,12 +17170,18 @@ function FALLEN_HITFX_COLOR()
 end
 
 function FALLEN_HITFX_STYLE_INDEX()
-    -- Hit 2 / Hit 3 were removed. Old configs are normalized to Hit 1.
-    if tostring(S.hit_effect_style or "Hit 1") ~= "Hit 1" then
-        S.hit_effect_style = "Hit 1"
+    local style = tostring(S.hit_effect_style or "Spark")
+
+    if style == "Spark" then
+        return 1
+    elseif style == "SmokeRing" then
+        return 2
+    elseif style == "particles.js" then
+        return 3
     end
 
-    return 0
+    S.hit_effect_style = "Spark"
+    return 1
 end
 
 function FALLEN_HITFX_DRAW_IMAGE(
@@ -17221,6 +17230,94 @@ function FALLEN_HITFX_IMAGE(
         )
 end
 
+function FALLEN_HITFX_DRAW_IMAGE_UV(
+    handle,
+    x,
+    y,
+    w,
+    h,
+    r,
+    g,
+    b,
+    a,
+    u0,
+    v0,
+    u1,
+    v1,
+    rounding
+)
+    if not handle
+        or type(DrawImage) ~= "function"
+        or a <= 0.002
+    then
+        return false
+    end
+
+    local ok = pcall(
+        DrawImage,
+        handle,
+        x,
+        y,
+        w,
+        h,
+        r,
+        g,
+        b,
+        a,
+        rounding or math.max(2, math.min(w, h) * 0.08),
+        u0,
+        v0,
+        u1,
+        v1
+    )
+
+    if ok then
+        return true
+    end
+
+    return pcall(
+        DrawImage,
+        handle,
+        x,
+        y,
+        w,
+        h,
+        r,
+        g,
+        b,
+        a,
+        rounding or math.max(2, math.min(w, h) * 0.08)
+    ) == true
+end
+
+function FALLEN_HITFX_DRAW_SHEET_FRAME(
+    handle,
+    frame,
+    cols,
+    rows,
+    x,
+    y,
+    w,
+    h,
+    r,
+    g,
+    b,
+    a,
+    rounding
+)
+    cols = math.max(1, math.floor(cols or 4))
+    rows = math.max(1, math.floor(rows or 4))
+    local total = cols * rows
+    frame = math.floor(clamp(tonumber(frame) or 0, 0, total - 1))
+    local cx = frame % cols
+    local cy = math.floor(frame / cols)
+    local u0 = cx / cols
+    local v0 = cy / rows
+    local u1 = (cx + 1) / cols
+    local v1 = (cy + 1) / rows
+    return FALLEN_HITFX_DRAW_IMAGE_UV(handle, x, y, w, h, r, g, b, a, u0, v0, u1, v1, rounding)
+end
+
 function FALLEN_HITFX_RAND(seed)
     local x =
         math.sin(
@@ -17242,63 +17339,27 @@ function FALLEN_HITFX_DRAW_FALLEN(
     seed
 )
     local out =
-        1
-        - (1 - t) * (1 - t)
+        1 - (1 - t) * (1 - t)
 
     local fade =
         math.max(
             0,
-            1 - t * t
-        )
-
-    local flash =
-        FALLEN_HITFX_IMAGE(
-            "flash",
-            FALLEN_BT_IMAGE.flash_url
-        )
-
-    local ring =
-        FALLEN_HITFX_IMAGE(
-            "ring",
-            FALLEN_BT_IMAGE.ring_url
-        )
-
-    local spark =
-        FALLEN_HITFX_IMAGE(
-            "spark",
-            FALLEN_BT_IMAGE.spark_url
-        )
-
-    local smoke =
-        FALLEN_HITFX_IMAGE(
-            "smoke",
-            FALLEN_BT_IMAGE.smoke_url
-        )
-
-    local star =
-        FALLEN_HITFX_IMAGE(
-            "star",
-            FALLEN_BT_IMAGE.star_url
+            1 - t
         )
 
     if kind == 1 then
-        -- Fallen Spark, compact version. Base is fixed at 32.
-        local s =
-            size
-            * (
-                0.72
-                + 0.48 * out
-            )
+        local handle = FALLEN_HITFX_IMAGE(
+            "hitfx_spark_sheet",
+            FALLEN_BT_IMAGE.hitfx_spark_sheet_url
+        )
 
-        local a =
-            alpha
-            * math.max(
-                0,
-                1 - t * 2.6
-            )
-
-        FALLEN_HITFX_DRAW_IMAGE(
-            flash,
+        local frame = math.floor(clamp(out * 15, 0, 15))
+        local s = size * (1.45 + 0.30 * out)
+        FALLEN_HITFX_DRAW_SHEET_FRAME(
+            handle,
+            frame,
+            4,
+            4,
             sx - s * 0.5,
             sy - s * 0.5,
             s,
@@ -17306,39 +17367,23 @@ function FALLEN_HITFX_DRAW_FALLEN(
             1,
             1,
             1,
-            a
-        )
-
-        local s2 =
-            size
-            * (
-                0.62
-                + 0.40 * out
-            )
-
-        FALLEN_HITFX_DRAW_IMAGE(
-            spark,
-            sx - s2 * 0.5,
-            sy - s2 * 0.5,
-            s2,
-            s2,
-            1,
-            1,
-            1,
-            alpha * 0.78 * fade
+            alpha * (1 - t * 0.35),
+            s * 0.18
         )
 
     elseif kind == 2 then
-        -- Fallen SmokeRing.
-        local s =
-            size
-            * (
-                0.95
-                + 3.55 * out
-            )
+        local handle = FALLEN_HITFX_IMAGE(
+            "hitfx_smokering_sheet",
+            FALLEN_BT_IMAGE.hitfx_smokering_sheet_url
+        )
 
-        FALLEN_HITFX_DRAW_IMAGE(
-            ring,
+        local frame = math.floor(clamp(out * 15, 0, 15))
+        local s = size * (1.20 + 2.75 * out)
+        FALLEN_HITFX_DRAW_SHEET_FRAME(
+            handle,
+            frame,
+            4,
+            4,
             sx - s * 0.5,
             sy - s * 0.5,
             s,
@@ -17346,76 +17391,34 @@ function FALLEN_HITFX_DRAW_FALLEN(
             col[1],
             col[2],
             col[3],
-            alpha * 0.88 * fade
-        )
-
-        local s2 =
-            size
-            * (
-                1.15
-                + 4.10 * out
-            )
-
-        FALLEN_HITFX_DRAW_IMAGE(
-            smoke or ring,
-            sx - s2 * 0.5,
-            sy - s2 * 0.5,
-            s2,
-            s2,
-            0.86,
-            0.92,
-            1.0,
-            alpha * 0.28 * fade
+            alpha * 0.95 * fade,
+            s * 0.22
         )
 
     elseif kind == 3 then
-        -- Fallen particles.js.
+        local handle = FALLEN_HITFX_IMAGE(
+            "hitfx_particles_sheet",
+            FALLEN_BT_IMAGE.hitfx_particles_sheet_url
+        )
+
+        local frame = math.floor(clamp(out * 15, 0, 15))
+
         for k = 1, 6 do
-            local sd =
-                (seed or 1)
-                + k * 19.73
-
-            local ang =
-                (k / 6)
-                * math.pi
-                * 2
-                + math.sin(sd) * 0.45
-
-            local spread =
-                size
-                * (
-                    0.40
-                    + 2.25 * out
-                )
-                * (
-                    0.70
-                    + FALLEN_HITFX_RAND(sd + 2) * 0.75
-                )
-
-            local px =
-                sx + math.cos(ang) * spread
-
-            local py =
-                sy + math.sin(ang) * spread
-
-            local ps =
-                size
-                * (
-                    0.65
-                    + FALLEN_HITFX_RAND(sd + 4) * 0.65
-                )
-
-            local rr = col[1]
-            local gg = col[2]
-            local bb = col[3]
-
+            local sd = (seed or 1) + k * 19.73
+            local ang = (k / 6) * math.pi * 2 + math.sin(sd) * 0.45
+            local spread = size * (0.16 + 1.28 * out) * (0.75 + FALLEN_HITFX_RAND(sd + 2) * 0.55)
+            local px = sx + math.cos(ang) * spread
+            local py = sy + math.sin(ang) * spread
+            local ps = size * (0.42 + FALLEN_HITFX_RAND(sd + 4) * 0.28)
+            local rr, gg, bb = col[1], col[2], col[3]
             if k % 2 == 1 then
-                rr, gg, bb =
-                    1.0, 0.22, 0.86
+                rr, gg, bb = 1.0, 0.22, 0.86
             end
-
-            FALLEN_HITFX_DRAW_IMAGE(
-                spark,
+            FALLEN_HITFX_DRAW_SHEET_FRAME(
+                handle,
+                frame,
+                4,
+                4,
                 px - ps * 0.5,
                 py - ps * 0.5,
                 ps,
@@ -17423,152 +17426,8 @@ function FALLEN_HITFX_DRAW_FALLEN(
                 rr,
                 gg,
                 bb,
-                alpha * 0.92 * fade
-            )
-        end
-
-        local s =
-            size
-            * (
-                0.45
-                + 1.30 * out
-            )
-
-        FALLEN_HITFX_DRAW_IMAGE(
-            star or spark,
-            sx - s * 0.5,
-            sy - s * 0.5,
-            s,
-            s,
-            1,
-            1,
-            1,
-            alpha * 0.62 * fade
-        )
-
-    else
-        -- Fallen Combo = Spark + SmokeRing + particles.
-        local s =
-            size
-            * (
-                0.75
-                + 2.35 * out
-            )
-
-        FALLEN_HITFX_DRAW_IMAGE(
-            flash,
-            sx - s * 0.5,
-            sy - s * 0.5,
-            s,
-            s,
-            1,
-            1,
-            1,
-            alpha
-                * math.max(
-                    0,
-                    1 - t * 4.5
-                )
-        )
-
-        s =
-            size
-            * (
-                0.62
-                + 3.25 * out
-            )
-
-        FALLEN_HITFX_DRAW_IMAGE(
-            ring,
-            sx - s * 0.5,
-            sy - s * 0.5,
-            s,
-            s,
-            col[1],
-            col[2],
-            col[3],
-            alpha * 0.82 * fade
-        )
-
-        local smoke_s =
-            size
-            * (
-                1.05
-                + 3.95 * out
-            )
-
-        FALLEN_HITFX_DRAW_IMAGE(
-            smoke or ring,
-            sx - smoke_s * 0.5,
-            sy - smoke_s * 0.5,
-            smoke_s,
-            smoke_s,
-            0.74,
-            0.90,
-            1.0,
-            alpha * 0.16 * fade
-        )
-
-        for k = 1, 10 do
-            local sd =
-                (seed or 1)
-                + k * 13.37
-
-            local ang =
-                (k / 10)
-                * math.pi
-                * 2
-                + math.sin(sd) * 0.30
-
-            local spread =
-                size
-                * (
-                    0.35
-                    + 2.20 * out
-                )
-                * (
-                    0.55
-                    + FALLEN_HITFX_RAND(sd + 2) * 0.95
-                )
-
-            local px =
-                sx + math.cos(ang) * spread
-
-            local py =
-                sy + math.sin(ang) * spread
-
-            local ps =
-                size
-                * (
-                    0.28
-                    + FALLEN_HITFX_RAND(sd + 4) * 0.62
-                )
-
-            local rr = col[1]
-            local gg = col[2]
-            local bb = col[3]
-
-            if k % 2 == 1 then
-                rr, gg, bb =
-                    1.0, 0.22, 0.86
-            end
-
-            FALLEN_HITFX_DRAW_IMAGE(
-                spark,
-                px - ps * 0.5,
-                py - ps * 0.5,
-                ps,
-                ps,
-                rr,
-                gg,
-                bb,
-                alpha
-                    * (
-                        0.42
-                        + 0.38
-                        * FALLEN_HITFX_RAND(sd + 6)
-                    )
-                    * fade
+                alpha * 0.92 * fade,
+                ps * 0.20
             )
         end
     end
@@ -18700,11 +18559,10 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
         size = 32
     end
 
-    -- Only Hit 1 remains.
-    FALLEN_HITFX_STYLE_INDEX()
+    local kind = FALLEN_HITFX_STYLE_INDEX()
 
     FALLEN_HITFX_DRAW_FALLEN(
-        1,
+        kind,
         s.X,
         s.Y,
         size,
@@ -31629,7 +31487,6 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
         "Neon",
         "Lightning",
         "Rainbow",
-        "Lightning V2",
     }
 
     local item_h = 27
@@ -31825,7 +31682,9 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
     end
 
     local options = {
-        "Hit 1",
+        "Spark",
+        "SmokeRing",
+        "particles.js",
     }
 
     local item_h = 27
@@ -31911,7 +31770,7 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
             local selected =
                 tostring(
                     S.hit_effect_style
-                    or "Hit 1"
+                    or "Spark"
                 ) == option
 
             if selected then
@@ -32888,7 +32747,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
                         or S.bullet_tracer_style == "Galaxy"
                         or S.bullet_tracer_style == "Cosmo"
                     )
-                    and "Lightning V2"
+                    and "Neon"
                     or "Neon"
                 )
             )
@@ -33187,7 +33046,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         hit_style_box_y + 7,
         tostring(
             S.hit_effect_style
-            or "Hit 1"
+            or "Spark"
         ),
         FALLEN_HOVER_TEXT(
             "hitfx_style_value",
@@ -38028,7 +37887,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v48 | Lightning V2 stretched single-image tracer | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v50 | HitEffects spritesheets | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -38337,6 +38196,17 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
     -- Galaxy is preloaded through FALLEN_GALAXY_IMAGE_GET below,
     -- exactly like the Aimbot sidebar icon, so it is intentionally not
     -- duplicated in the generic URL queue.
+
+    -- Hit effect sprite-sheets.
+    FALLEN_PRELOAD_QUEUE_PRIMARY(
+        FALLEN_BT_IMAGE.hitfx_spark_sheet_url
+    )
+    FALLEN_PRELOAD_QUEUE_PRIMARY(
+        FALLEN_BT_IMAGE.hitfx_smokering_sheet_url
+    )
+    FALLEN_PRELOAD_QUEUE_PRIMARY(
+        FALLEN_BT_IMAGE.hitfx_particles_sheet_url
+    )
 
     -- Then normal item / armor / weapon assets.
     FALLEN_PRELOAD_QUEUE_PRIMARY(
