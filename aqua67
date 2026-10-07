@@ -15795,15 +15795,6 @@ function FALLEN_BT_ADD(origin, target)
         return
     end
 
-    local tracer_style = tostring(S.bullet_tracer_style or "")
-
-    if tracer_style == "Lightning V2" or tracer_style == "Galaxy" or tracer_style == "Cosmo" then
-        -- Lightning V2 has ONE renderer only: a single Beam, same structure
-        -- as fallen_ultimate. Never fall back to the old DrawImage/Galaxy path.
-        FALLEN_BT_SPAWN_ROBLOX_BEAM(origin, target)
-        return
-    end
-
     FALLEN_BT.items[#FALLEN_BT.items + 1] = {
         ox = origin.X,
         oy = origin.Y,
@@ -16176,148 +16167,69 @@ function FALLEN_BT_DRAW_GALAXY(
         return
     end
 
-    local handle =
-        FALLEN_BT_GALAXY_HANDLE()
-
+    local handle = FALLEN_BT_GALAXY_HANDLE()
     if not handle then
         return
     end
 
-    local max_u =
-        clamp(
-            tonumber(reveal) or 0,
-            0,
-            1
-        )
-
+    local max_u = clamp(tonumber(reveal) or 0, 0, 1)
     if max_u <= 0.001 then
         return
     end
 
-    -- Galaxy is ONE stretched texture forming the tracer beam.
-    -- Drawing.DrawImage has no rotation argument, so for angled shots we
-    -- rasterize that single stretched image into very thin UV slices.  The
-    -- slices use consecutive portions of ONE source texture, overlap by a
-    -- pixel, and therefore look like one continuous textured ray instead of
-    -- the old chain of square image nodes.
-    local sx, sy =
-        FALLEN_BT_GALAXY_POINT(
-            points,
-            0
-        )
-
-    local ex, ey =
-        FALLEN_BT_GALAXY_POINT(
-            points,
-            max_u
-        )
-
+    local sx, sy = FALLEN_BT_GALAXY_POINT(points, 0)
+    local ex, ey = FALLEN_BT_GALAXY_POINT(points, max_u)
     if not sx or not sy or not ex or not ey then
         return
     end
 
     local dx = ex - sx
     local dy = ey - sy
-    local beam_len =
-        math.sqrt(dx * dx + dy * dy)
-
+    local beam_len = math.sqrt(dx * dx + dy * dy)
     if beam_len <= 1.0 then
         return
     end
 
-    local nx = dx / beam_len
-    local ny = dy / beam_len
-    local px = -ny
-    local py = nx
-
-    -- Thin elongated beam: the supplied image is stretched along the whole
-    -- tracer instead of being stamped repeatedly as square sprites.
-    local beam_h =
-        clamp(
-            5.5 + (tonumber(thick) or 2) * 2.15,
-            7,
-            18
-        )
-
+    local beam_h = clamp(4.0 + (tonumber(thick) or 2) * 1.55, 5, 12)
     local half_h = beam_h * 0.5
-    local created =
-        tonumber(tr and tr.created)
-        or tick()
+    local created = tonumber(tr and tr.created) or tick()
+    local flow = ((tick() - created) * 0.78) % 1
+    local col = FALLEN_BT_COLOR()
 
-    -- Texture scroll. A fixed point on screen samples progressively earlier U
-    -- coordinates, making the Galaxy pattern visibly flow muzzle -> impact.
-    local flow =
-        ((tick() - created) * 0.78)
-        % 1
-
-    -- A very small glow underneath keeps the ray readable without replacing
-    -- the Galaxy texture itself.
     if type(DrawLine) == "function" then
-        local col = FALLEN_BT_COLOR()
-
-        DrawLine(
-            sx,
-            sy,
-            ex,
-            ey,
-            col[1],
-            col[2],
-            col[3],
-            alpha * 0.11,
-            beam_h + 7
-        )
-
-        DrawLine(
-            sx,
-            sy,
-            ex,
-            ey,
-            1,
-            1,
-            1,
-            alpha * 0.16,
-            beam_h + 2
-        )
+        DrawLine(sx, sy, ex, ey, col[1], col[2], col[3], alpha * 0.10, beam_h + 5)
+        DrawLine(sx, sy, ex, ey, 1, 1, 1, alpha * 0.13, beam_h + 1.5)
     end
 
-    -- Near-horizontal / near-vertical beams can genuinely be rendered with a
-    -- single DrawImage call. This is the exact "make the image thin and long"
-    -- path the user requested.
-    local axis_threshold = 0.115
-    local abs_nx = math.abs(nx)
-    local abs_ny = math.abs(ny)
+    local horizontal = math.abs(dx) >= math.abs(dy)
 
-    if abs_ny <= axis_threshold then
+    if horizontal then
         local left = math.min(sx, ex)
         local right = math.max(sx, ex)
         local mid_y = (sy + ey) * 0.5
-
         local u0 = -flow
         local u1 = 1 - flow
-
-        -- Preserve muzzle -> impact flow even when firing right-to-left.
         if ex < sx then
             u0, u1 = 1 + flow, flow
         end
 
-        local ok =
-            pcall(
-                DrawImage,
-                handle,
-                left,
-                mid_y - half_h,
-                math.max(1, right - left),
-                beam_h,
-                1,
-                1,
-                1,
-                alpha * 0.98,
-                beam_h * 0.30,
-                u0,
-                0,
-                u1,
-                1
-            )
+        local ok = pcall(
+            DrawImage,
+            handle,
+            left,
+            mid_y - half_h,
+            math.max(1, right - left),
+            beam_h,
+            1,
+            1,
+            1,
+            alpha * 0.98,
+            beam_h * 0.28,
+            u0,
+            0,
+            u1,
+            1
+        )
 
         if not ok then
             pcall(
@@ -16331,147 +16243,50 @@ function FALLEN_BT_DRAW_GALAXY(
                 1,
                 1,
                 alpha * 0.98,
-                beam_h * 0.30
+                beam_h * 0.28
             )
         end
-
-        return
-    elseif abs_nx <= axis_threshold then
+    else
         local top = math.min(sy, ey)
         local bottom = math.max(sy, ey)
         local mid_x = (sx + ex) * 0.5
-
         local v0 = -flow
         local v1 = 1 - flow
-
         if ey < sy then
             v0, v1 = 1 + flow, flow
         end
 
-        local ok =
-            pcall(
-                DrawImage,
-                handle,
-                mid_x - half_h,
-                top,
-                beam_h,
-                math.max(1, bottom - top),
-                1,
-                1,
-                1,
-                alpha * 0.98,
-                beam_h * 0.30,
-                0,
-                v0,
-                1,
-                v1
-            )
-
-        if not ok then
-            pcall(
-                DrawImage,
-                handle,
-                mid_x - half_h,
-                top,
-                beam_h,
-                math.max(1, bottom - top),
-                1,
-                1,
-                1,
-                alpha * 0.98,
-                beam_h * 0.30
-            )
-        end
-
-        return
-    end
-
-    -- DrawImage cannot rotate in this API. For a diagonal tracer, split ONE
-    -- stretched texture into narrow consecutive UV slices. Unlike the old
-    -- implementation, these are not repeated square pictures: together they
-    -- reconstruct one continuous long image and visually behave as a single
-    -- rotated textured beam.
-    local slices =
-        math.floor(
-            clamp(
-                beam_len / 6.0,
-                18,
-                72
-            )
+        local ok = pcall(
+            DrawImage,
+            handle,
+            mid_x - half_h,
+            top,
+            beam_h,
+            math.max(1, bottom - top),
+            1,
+            1,
+            1,
+            alpha * 0.98,
+            beam_h * 0.28,
+            0,
+            v0,
+            1,
+            v1
         )
 
-    local overlap = 1.35
-
-    for i = 0, slices - 1 do
-        local t0 = i / slices
-        local t1 = (i + 1) / slices
-
-        local ax = sx + dx * t0
-        local ay = sy + dy * t0
-        local bx = sx + dx * t1
-        local by = sy + dy * t1
-
-        -- Rotated slice corners, then its tiny axis-aligned destination box.
-        -- Adjacent boxes overlap slightly, removing visible seams/squares.
-        local c1x = ax + px * half_h
-        local c1y = ay + py * half_h
-        local c2x = ax - px * half_h
-        local c2y = ay - py * half_h
-        local c3x = bx + px * half_h
-        local c3y = by + py * half_h
-        local c4x = bx - px * half_h
-        local c4y = by - py * half_h
-
-        local min_x =
-            math.min(c1x, c2x, c3x, c4x)
-            - overlap
-        local max_x =
-            math.max(c1x, c2x, c3x, c4x)
-            + overlap
-        local min_y =
-            math.min(c1y, c2y, c3y, c4y)
-            - overlap
-        local max_y =
-            math.max(c1y, c2y, c3y, c4y)
-            + overlap
-
-        local u0 = t0 - flow
-        local u1 = t1 - flow
-
-        local ok =
-            pcall(
-                DrawImage,
-                handle,
-                min_x,
-                min_y,
-                math.max(1, max_x - min_x),
-                math.max(1, max_y - min_y),
-                1,
-                1,
-                1,
-                alpha * 0.98,
-                0,
-                u0,
-                0,
-                u1,
-                1
-            )
-
         if not ok then
-            -- Compatibility fallback: still use the same source image and the
-            -- same thin stretched slice even if UV cropping is unavailable.
             pcall(
                 DrawImage,
                 handle,
-                min_x,
-                min_y,
-                math.max(1, max_x - min_x),
-                math.max(1, max_y - min_y),
+                mid_x - half_h,
+                top,
+                beam_h,
+                math.max(1, bottom - top),
                 1,
                 1,
                 1,
                 alpha * 0.98,
-                0
+                beam_h * 0.28
             )
         end
     end
@@ -38213,7 +38028,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v47 | Lightning V2 ONE Beam URL | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v48 | Lightning V2 stretched single-image tracer | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
