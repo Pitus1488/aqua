@@ -13913,10 +13913,20 @@ FALLEN_BT = FALLEN_BT or {
     vfx_prev_lmb = false,
     vfx_watch_until = 0,
     vfx_shot_time = nil,
+
+    -- Saved camera/FOV states from the actual Mouse1 shot window.
+    -- Impacts are validated against these snapshots so recoil after the shot
+    -- cannot move the validation FOV away from the real impact.
+    vfx_shot_views = {},
+    vfx_shot_view_last = 0,
 }
 
 FALLEN_BT.vfx_seen =
     FALLEN_BT.vfx_seen
+    or {}
+
+FALLEN_BT.vfx_shot_views =
+    FALLEN_BT.vfx_shot_views
     or {}
 
 
@@ -14690,6 +14700,239 @@ function FALLEN_BT_FOV_CHECK(pos)
 end
 
 
+
+-- Capture the exact view used for the hidden Bullet Tracer FOV check.
+-- We keep camera basis + viewport + crosshair position from the shot moment,
+-- then project future Hole/BloodPart positions through this SAVED view.
+function FALLEN_BT_CAPTURE_SHOT_VIEW(force)
+    local now = tick()
+
+    if force ~= true
+        and now - (tonumber(FALLEN_BT.vfx_shot_view_last) or 0) < 0.035
+    then
+        return
+    end
+
+    FALLEN_BT.vfx_shot_view_last = now
+
+    if not rbx
+        or type(rbx.camera) ~= "function"
+    then
+        return
+    end
+
+    local cam = nil
+    local cam_pos = nil
+    local rot = nil
+    local fov = nil
+
+    pcall(function()
+        cam = rbx.camera()
+        if cam then
+            cam_pos = cam:camera_pos()
+            rot = cam:camera_rotation()
+            fov = cam:camera_fov()
+        end
+    end)
+
+    if not cam_pos
+        or type(rot) ~= "table"
+        or #rot < 9
+    then
+        return
+    end
+
+    local dims = nil
+
+    if type(ScreenSize) == "function" then
+        pcall(function()
+            dims = ScreenSize()
+        end)
+    end
+
+    if type(dims) ~= "table" then
+        return
+    end
+
+    local vw = tonumber(dims.Width or dims.width or dims.X or dims.x)
+    local vh = tonumber(dims.Height or dims.height or dims.Y or dims.y)
+
+    if not vw or not vh or vw <= 0 or vh <= 0 then
+        return
+    end
+
+    local cx, cy = FALLEN_BT_FOV_CENTER()
+
+    if not cx or not cy then
+        cx = vw * 0.5
+        cy = vh * 0.5
+    end
+
+    fov = tonumber(fov) or math.rad(70)
+
+    -- Custom camera API exposes FOV in radians. Keep a defensive degrees
+    -- fallback for older builds that may return a degree value.
+    if fov > math.pi * 1.25 then
+        fov = math.rad(fov)
+    end
+
+    fov = clamp(fov, math.rad(20), math.rad(150))
+
+    local snapshot = {
+        time = now,
+        px = tonumber(cam_pos.X),
+        py = tonumber(cam_pos.Y),
+        pz = tonumber(cam_pos.Z),
+
+        -- Rotation matrix columns are the camera world-space local axes.
+        -- Local -Z is camera forward.
+        rx = tonumber(rot[1]),
+        ry = tonumber(rot[4]),
+        rz = tonumber(rot[7]),
+
+        ux = tonumber(rot[2]),
+        uy = tonumber(rot[5]),
+        uz = tonumber(rot[8]),
+
+        fx = -tonumber(rot[3]),
+        fy = -tonumber(rot[6]),
+        fz = -tonumber(rot[9]),
+
+        vw = vw,
+        vh = vh,
+        cx = tonumber(cx),
+        cy = tonumber(cy),
+        fov = fov,
+        radius = FALLEN_BT_FOV_RADIUS(),
+    }
+
+    for _, key in ipairs({
+        "px", "py", "pz",
+        "rx", "ry", "rz",
+        "ux", "uy", "uz",
+        "fx", "fy", "fz",
+        "vw", "vh", "cx", "cy", "fov", "radius",
+    }) do
+        if snapshot[key] == nil then
+            return
+        end
+    end
+
+    local list = FALLEN_BT.vfx_shot_views
+    list[#list + 1] = snapshot
+
+    -- One second is the longest accepted BloodPart impact window.
+    for i = #list, 1, -1 do
+        if now - (tonumber(list[i].time) or 0) > 1.05 then
+            table.remove(list, i)
+        end
+    end
+
+    while #list > 32 do
+        table.remove(list, 1)
+    end
+end
+
+
+function FALLEN_BT_FOV_CHECK_SNAPSHOT(pos, snapshot)
+    if not pos or type(snapshot) ~= "table" then
+        return false, nil
+    end
+
+    local dx = tonumber(pos.X) - tonumber(snapshot.px)
+    local dy = tonumber(pos.Y) - tonumber(snapshot.py)
+    local dz = tonumber(pos.Z) - tonumber(snapshot.pz)
+
+    if not dx or not dy or not dz then
+        return false, nil
+    end
+
+    local local_x =
+        dx * snapshot.rx
+        + dy * snapshot.ry
+        + dz * snapshot.rz
+
+    local local_y =
+        dx * snapshot.ux
+        + dy * snapshot.uy
+        + dz * snapshot.uz
+
+    local local_z =
+        dx * snapshot.fx
+        + dy * snapshot.fy
+        + dz * snapshot.fz
+
+    -- Behind the saved camera view cannot be inside its FOV.
+    if local_z <= 0.001 then
+        return false, nil
+    end
+
+    local focal =
+        snapshot.vh
+        / (2 * math.tan(snapshot.fov * 0.5))
+
+    if focal <= 0 then
+        return false, nil
+    end
+
+    local sx =
+        snapshot.vw * 0.5
+        + (local_x / local_z) * focal
+
+    local sy =
+        snapshot.vh * 0.5
+        - (local_y / local_z) * focal
+
+    local ddx = sx - snapshot.cx
+    local ddy = sy - snapshot.cy
+    local dist_sq = ddx * ddx + ddy * ddy
+    local radius = tonumber(snapshot.radius) or 40
+
+    return dist_sq <= radius * radius, dist_sq
+end
+
+
+function FALLEN_BT_FOV_CHECK_SHOT_VIEWS(pos, max_age)
+    local list = FALLEN_BT.vfx_shot_views
+
+    if type(list) ~= "table" or #list == 0 then
+        return false, nil
+    end
+
+    local now = tick()
+    local age_limit = tonumber(max_age) or 1.00
+    local best_dist_sq = nil
+
+    for i = #list, 1, -1 do
+        local snapshot = list[i]
+        local age = now - (tonumber(snapshot.time) or 0)
+
+        if age <= age_limit then
+            local ok, dist_sq =
+                FALLEN_BT_FOV_CHECK_SNAPSHOT(
+                    pos,
+                    snapshot
+                )
+
+            if ok then
+                return true, dist_sq
+            end
+
+            if dist_sq ~= nil
+                and (
+                    best_dist_sq == nil
+                    or dist_sq < best_dist_sq
+                )
+            then
+                best_dist_sq = dist_sq
+            end
+        end
+    end
+
+    return false, best_dist_sq
+end
+
+
 function FALLEN_BT_VFX_KIND(inst)
     if not inst
         or not FALLEN_BT_VFX_INSTANCE_VALID(inst)
@@ -14745,60 +14988,92 @@ function FALLEN_BT_VFX_FIND_NEW_IMPACT(
     shot_age = tonumber(shot_age) or 999
 
     local best_pos = nil
-    local best_screen_dist_sq = nil
+    local best_world_dist_sq = nil
+    local best_fov_dist_sq = nil
+    local best_priority = -1
 
+    -- Keep the hidden FOV validation, but validate each new impact against
+    -- camera/crosshair snapshots SAVED during the shot. Recoil may move the
+    -- live camera immediately afterwards; it no longer moves this check.
     for key, inst in pairs(current) do
         if previous[key] == nil then
             local kind =
                 FALLEN_BT_VFX_KIND(inst)
 
             local allowed = false
+            local priority = 0
+            local max_fov_age = 0
 
-            if kind == "hole" then
-                allowed = shot_age <= 0.50
-
-            elseif kind == "bloodpart" then
+            if kind == "bloodpart" then
                 allowed = shot_age <= 1.00
+                priority = 2
+                max_fov_age = 1.00
 
-            elseif kind == "casing" then
-                allowed = shot_age <= 1.00
+            elseif kind == "hole" then
+                allowed = shot_age <= 0.70
+                priority = 1
+                max_fov_age = 0.70
             end
 
+            -- Casings stay excluded: they are not bullet impact endpoints.
             if allowed then
                 local pos =
                     FALLEN_BT_VFX_POSITION(inst)
 
                 if pos then
-                    local dx = tonumber(pos.X) - tonumber(origin.X)
-                    local dy = tonumber(pos.Y) - tonumber(origin.Y)
-                    local dz = tonumber(pos.Z) - tonumber(origin.Z)
-                    local world_dist_sq =
-                        dx * dx + dy * dy + dz * dz
+                    local in_shot_fov, fov_dist_sq =
+                        FALLEN_BT_FOV_CHECK_SHOT_VIEWS(
+                            pos,
+                            max_fov_age
+                        )
 
-                    if world_dist_sq >= 4 then
-                        local inside, screen_dist_sq =
-                            FALLEN_BT_FOV_CHECK(pos)
+                    if in_shot_fov then
+                        local dx = tonumber(pos.X) - tonumber(origin.X)
+                        local dy = tonumber(pos.Y) - tonumber(origin.Y)
+                        local dz = tonumber(pos.Z) - tonumber(origin.Z)
+                        local world_dist_sq =
+                            dx * dx + dy * dy + dz * dz
 
-                        if inside
-                            and screen_dist_sq ~= nil
-                            and (
-                                best_screen_dist_sq == nil
-                                or screen_dist_sq < best_screen_dist_sq
-                            )
-                        then
-                            best_screen_dist_sq = screen_dist_sq
+                        if world_dist_sq >= 4 then
+                            local better = false
 
-                            best_pos = {
-                                X = pos.X,
-                                Y = pos.Y,
-                                Z = pos.Z,
+                            if priority > best_priority then
+                                better = true
+                            elseif priority == best_priority then
+                                if best_fov_dist_sq == nil
+                                    or (
+                                        fov_dist_sq ~= nil
+                                        and fov_dist_sq < best_fov_dist_sq
+                                    )
+                                then
+                                    better = true
+                                elseif fov_dist_sq == best_fov_dist_sq
+                                    and (
+                                        best_world_dist_sq == nil
+                                        or world_dist_sq < best_world_dist_sq
+                                    )
+                                then
+                                    better = true
+                                end
+                            end
 
-                                auto_prediction = false,
-                                prediction_time = 0,
-                                gravity = 0,
-                                bullet_speed = 0,
-                                source = "vfx_impact",
-                            }
+                            if better then
+                                best_priority = priority
+                                best_fov_dist_sq = fov_dist_sq
+                                best_world_dist_sq = world_dist_sq
+
+                                best_pos = {
+                                    X = pos.X,
+                                    Y = pos.Y,
+                                    Z = pos.Z,
+
+                                    auto_prediction = false,
+                                    prediction_time = 0,
+                                    gravity = 0,
+                                    bullet_speed = 0,
+                                    source = "vfx_impact_saved_shot_fov",
+                                }
+                            end
                         end
                     end
                 end
@@ -14885,6 +15160,8 @@ function FALLEN_BT_SHOT_TICK()
         FALLEN_BT.vfx_prev_lmb = false
         FALLEN_BT.vfx_watch_until = 0
         FALLEN_BT.vfx_shot_time = nil
+        FALLEN_BT.vfx_shot_views = {}
+        FALLEN_BT.vfx_shot_view_last = 0
         return
     end
 
@@ -14893,6 +15170,8 @@ function FALLEN_BT_SHOT_TICK()
         FALLEN_BT.vfx_prev_lmb = false
         FALLEN_BT.vfx_watch_until = 0
         FALLEN_BT.vfx_shot_time = nil
+        FALLEN_BT.vfx_shot_views = {}
+        FALLEN_BT.vfx_shot_view_last = 0
         return
     end
 
@@ -14907,6 +15186,8 @@ function FALLEN_BT_SHOT_TICK()
 
         FALLEN_BT.vfx_prev_lmb = false
         FALLEN_BT.vfx_shot_time = nil
+        FALLEN_BT.vfx_shot_views = {}
+        FALLEN_BT.vfx_shot_view_last = 0
         return
     end
 
@@ -14916,9 +15197,17 @@ function FALLEN_BT_SHOT_TICK()
         FALLEN_BT.vfx_shot_time = now
         FALLEN_BT.vfx_watch_until = now + 1.00
 
+        -- Rising edge: save the exact pre/post-shot view immediately.
+        FALLEN_BT_CAPTURE_SHOT_VIEW(true)
+
     elseif lmb then
         FALLEN_BT.vfx_shot_time = now
         FALLEN_BT.vfx_watch_until = now + 1.00
+
+        -- Automatic weapons can fire multiple rounds while Mouse1 remains
+        -- held. Keep a small history of shot-time views, not the later
+        -- impact-time camera that recoil has already moved.
+        FALLEN_BT_CAPTURE_SHOT_VIEW(false)
     end
 
     FALLEN_BT.vfx_prev_lmb = lmb
