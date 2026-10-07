@@ -3615,6 +3615,80 @@ function FALLEN_AIMBOT_TAB_ICON_GET()
 end
 
 
+-- Galaxy tracer image.
+-- IMPORTANT: this intentionally uses the EXACT same page -> direct URL ->
+-- LoadImage -> IsImageReady flow as the Aimbot sidebar icon above.
+_G.FALLEN_GALAXY_IMAGE_PAGE_URL =
+    "https://fotovssylku.ru/i/54545.rgXDj"
+
+_G.FALLEN_GALAXY_IMAGE_SOURCE =
+    _G.FALLEN_GALAXY_IMAGE_SOURCE
+    or nil
+
+_G.FALLEN_GALAXY_IMAGE_URL =
+    _G.FALLEN_GALAXY_IMAGE_URL
+    or nil
+
+_G.FALLEN_GALAXY_IMAGE_HANDLE =
+    _G.FALLEN_GALAXY_IMAGE_HANDLE
+    or nil
+
+function FALLEN_GALAXY_IMAGE_GET()
+    local page_url =
+        _G.FALLEN_GALAXY_IMAGE_PAGE_URL
+
+    if _G.FALLEN_GALAXY_IMAGE_SOURCE ~= page_url then
+        _G.FALLEN_GALAXY_IMAGE_SOURCE = page_url
+        _G.FALLEN_GALAXY_IMAGE_URL = nil
+        _G.FALLEN_GALAXY_IMAGE_HANDLE = nil
+    end
+
+    if not _G.FALLEN_GALAXY_IMAGE_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+
+        _G.FALLEN_GALAXY_IMAGE_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            or page_url
+    end
+
+    if not _G.FALLEN_GALAXY_IMAGE_HANDLE
+        and type(LoadImage) == "function"
+    then
+        pcall(function()
+            _G.FALLEN_GALAXY_IMAGE_HANDLE =
+                LoadImage(
+                    _G.FALLEN_GALAXY_IMAGE_URL
+                )
+        end)
+    end
+
+    local handle =
+        _G.FALLEN_GALAXY_IMAGE_HANDLE
+
+    if not handle then
+        return nil
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready =
+            pcall(
+                IsImageReady,
+                handle
+            )
+
+        if not ok
+            or ready ~= true
+        then
+            return nil
+        end
+    end
+
+    return handle
+end
+
+
 -- Visuals sidebar image icon.
 -- White source image: tint now works correctly because white pixels can be
 -- multiplied to gray while inactive and accent-blue while selected.
@@ -13985,15 +14059,13 @@ function FALLEN_BT_COLOR()
 end
 
 FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
-    -- User Galaxy tracer texture. Keep the exact URL: LoadImage handles it
-    -- the same way as the other URL-backed menu/gameplay images.
-    galaxy_url = "https://fotovssylku.ru/i/54545.rgXDj",
-    -- fotovssylku /i/... is an HTML image page. Startup resolves its
-    -- og:image/twitter:image to raw bytes before LoadImage.
+    -- Galaxy uses the exact same loader path as the Aimbot tab icon.
+    galaxy_url = _G.FALLEN_GALAXY_IMAGE_PAGE_URL
+        or "https://fotovssylku.ru/i/54545.rgXDj",
     galaxy_resolved_url = nil,
     galaxy_local_path = nil,
     galaxy_fetch_attempted = false,
-    galaxy_fetch_status = "WAITING",
+    galaxy_fetch_status = "AIMBOT ICON LOADER",
     galaxy_source_url = nil,
     spark_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2728.png",
     star_url = "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/2b50.png",
@@ -14410,70 +14482,41 @@ function FALLEN_BT_GALAXY_FETCH_LOCAL()
 end
 
 function FALLEN_BT_GALAXY_URL()
-    if type(FALLEN_BT_IMAGE) ~= "table" then
-        return nil
-    end
-
-    local resolved =
-        FALLEN_BT_IMAGE.galaxy_resolved_url
-
-    if type(resolved) == "string"
-        and resolved ~= ""
-    then
-        return resolved
-    end
-
-    return FALLEN_BT_IMAGE.galaxy_url
+    return
+        _G.FALLEN_GALAXY_IMAGE_URL
+        or _G.FALLEN_GALAXY_IMAGE_PAGE_URL
+        or (
+            type(FALLEN_BT_IMAGE) == "table"
+            and FALLEN_BT_IMAGE.galaxy_url
+            or nil
+        )
 end
 
 function FALLEN_BT_GALAXY_HANDLE()
-    if type(FALLEN_BT_IMAGE) ~= "table" then
-        return nil
-    end
+    local handle = nil
 
-    local cached = FALLEN_BT_IMAGE.galaxy
-    if cached then
-        local failed = false
-        local ready = true
+    if type(FALLEN_GALAXY_IMAGE_GET) == "function" then
+        local ok, out =
+            pcall(
+                FALLEN_GALAXY_IMAGE_GET
+            )
 
-        if type(IsImageFailed) == "function" then
-            pcall(function() failed = IsImageFailed(cached) == true end)
-        end
-
-        if type(IsImageReady) == "function" then
-            pcall(function() ready = IsImageReady(cached) == true end)
-        end
-
-        if not failed and ready then
-            return cached
-        end
-
-        if failed then
-            FALLEN_BT_IMAGE.galaxy = nil
-        else
-            return nil
+        if ok then
+            handle = out
         end
     end
 
-    local local_path = FALLEN_BT_IMAGE.galaxy_local_path
-    if type(local_path) == "string" and local_path ~= "" then
-        return FALLEN_BT_GALAXY_LOAD_LOCAL(local_path)
-    end
-
-    -- Once the startup HTTP/local-file fallback has definitively failed, do
-    -- not hammer the broken page URL from every render frame.
-    if FALLEN_BT_IMAGE.galaxy_fetch_attempted == true
-        and tostring(FALLEN_BT_IMAGE.galaxy_fetch_status or ""):find("FAILED", 1, true)
+    if handle
+        and type(FALLEN_BT_IMAGE) == "table"
     then
-        return nil
+        FALLEN_BT_IMAGE.galaxy = handle
+        FALLEN_BT_IMAGE.galaxy_resolved_url =
+            _G.FALLEN_GALAXY_IMAGE_URL
+        FALLEN_BT_IMAGE.galaxy_fetch_status =
+            "AIMBOT ICON LOADER READY"
     end
 
-    local url = FALLEN_BT_GALAXY_URL()
-    if not url then
-        return nil
-    end
-
-    return FALLEN_BT_IMAGE_GET("galaxy", url)
+    return handle
 end
 
 -- Diagnostic preview requested by the user.
@@ -14494,8 +14537,8 @@ function FALLEN_BT_DRAW_GALAXY_PREVIEW()
         return
     end
 
-    local box_w = 122
-    local box_h = 122
+    local box_w = 132
+    local box_h = 136
     local px =
         (tonumber(rect.x) or 0)
         + (tonumber(rect.w) or 0)
@@ -14510,11 +14553,7 @@ function FALLEN_BT_DRAW_GALAXY_PREVIEW()
             - 10
     end
 
-    px =
-        math.max(
-            6,
-            px
-        )
+    px = math.max(6, px)
 
     local py =
         math.max(
@@ -14522,48 +14561,25 @@ function FALLEN_BT_DRAW_GALAXY_PREVIEW()
             (tonumber(rect.y) or 0) + 52
         )
 
-    local url =
-        FALLEN_BT_GALAXY_URL()
-
+    -- SAME getter as Aimbot icon: resolve page once, LoadImage once,
+    -- then wait for IsImageReady. No custom HTTP/local-file path here.
     local handle =
-        type(FALLEN_BT_IMAGE) == "table"
-        and FALLEN_BT_IMAGE.galaxy
-        or nil
+        FALLEN_BT_GALAXY_HANDLE()
 
-    if not handle
-        and type(_G.FALLEN_IMAGE_PRELOAD_HANDLES) == "table"
-        and url
-    then
-        handle =
-            _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
-    end
+    local raw_handle =
+        _G.FALLEN_GALAXY_IMAGE_HANDLE
 
-    if not handle then
-        handle =
-            FALLEN_BT_GALAXY_HANDLE()
-    end
+    local ready =
+        handle ~= nil
 
-    local ready = false
     local failed = false
 
-    if handle
-        and type(IsImageReady) == "function"
-    then
-        pcall(function()
-            ready =
-                IsImageReady(handle)
-                == true
-        end)
-    elseif handle then
-        ready = true
-    end
-
-    if handle
+    if raw_handle
         and type(IsImageFailed) == "function"
     then
         pcall(function()
             failed =
-                IsImageFailed(handle)
+                IsImageFailed(raw_handle)
                 == true
         end)
     end
@@ -14595,25 +14611,26 @@ function FALLEN_BT_DRAW_GALAXY_PREVIEW()
         and not failed
         and type(DrawImage) == "function"
     then
+        -- Same DrawImage signature used by the Aimbot tab icon.
         pcall(
             DrawImage,
             handle,
-            px + 17,
+            px + 16,
             py + 12,
-            88,
-            88,
+            100,
+            100,
             1,
             1,
             1,
             MENU_RENDER_ALPHA,
-            6
+            0
         )
     else
         DrawBoxFilled(
-            px + 17,
+            px + 16,
             py + 12,
-            88,
-            88,
+            100,
+            100,
             failed and 0.22 or 0.09,
             failed and 0.04 or 0.10,
             failed and 0.05 or 0.15,
@@ -14621,23 +14638,13 @@ function FALLEN_BT_DRAW_GALAXY_PREVIEW()
         )
     end
 
-    local fetch_status =
-        type(FALLEN_BT_IMAGE) == "table"
-        and tostring(FALLEN_BT_IMAGE.galaxy_fetch_status or "")
-        or ""
-
     local status =
         ready and not failed
         and "GALAXY READY"
         or (
             failed
             and "GALAXY FAILED"
-            or (
-                fetch_status ~= ""
-                and fetch_status ~= "WAITING"
-                and fetch_status
-                or "GALAXY LOADING"
-            )
+            or "GALAXY LOADING"
         )
 
     local sr, sg, sb =
@@ -14647,7 +14654,7 @@ function FALLEN_BT_DRAW_GALAXY_PREVIEW()
 
     DrawText(
         px + 12,
-        py + 105,
+        py + 117,
         status,
         sr,
         sg,
@@ -37839,7 +37846,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v44 | fixed config block syntax | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v45 | Galaxy uses Aimbot icon loader | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -38145,41 +38152,9 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
         FALLEN_GRENADE_ICON_URLS
     )
 
-    -- Galaxy tracer texture.
-    -- fotovssylku /i/... is a PAGE, so resolve its og:image first exactly like
-    -- the loader artwork does. LoadImage then receives actual image bytes.
-    if type(FALLEN_BT_IMAGE) == "table" then
-        local galaxy_page =
-            FALLEN_BT_IMAGE.galaxy_url
-
-        local galaxy_direct =
-            galaxy_page
-
-        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) == "function" then
-            local ok, resolved =
-                pcall(
-                    FALLEN_LOADER_RESOLVE_IMAGE_URL,
-                    galaxy_page
-                )
-
-            if ok
-                and type(resolved) == "string"
-                and resolved ~= ""
-            then
-                galaxy_direct =
-                    resolved
-            end
-        end
-
-        FALLEN_BT_IMAGE.galaxy_resolved_url =
-            galaxy_direct
-
-        if not FALLEN_BT_IMAGE.galaxy_local_path then
-            FALLEN_PRELOAD_QUEUE_PRIMARY(
-                galaxy_direct
-            )
-        end
-    end
+    -- Galaxy is preloaded through FALLEN_GALAXY_IMAGE_GET below,
+    -- exactly like the Aimbot sidebar icon, so it is intentionally not
+    -- duplicated in the generic URL queue.
 
     -- Then normal item / armor / weapon assets.
     FALLEN_PRELOAD_QUEUE_PRIMARY(
@@ -38221,16 +38196,6 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         return
     end
 
-    -- Galaxy gets a stronger preload path than ordinary icons: fetch raw
-    -- bytes once, save them locally, then decode from disk.  This bypasses
-    -- image-host HTML pages/redirects that Drawing.LoadImage(url) rejects.
-    pcall(function()
-        local h = FALLEN_BT_GALAXY_FETCH_LOCAL()
-        if h then
-            FALLEN_PRELOAD_WAIT_HANDLE(h, 5.0)
-        end
-    end)
-
     -- First preload special UI images one-by-one. Their getters may resolve
     -- a page URL before calling LoadImage, so keeping them sequential avoids
     -- simultaneous HTTP/page-resolution spikes.
@@ -38238,6 +38203,7 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         FALLEN_GRENADE_ICON_GET,
         FALLEN_BRAND_IMAGE_GET,
         FALLEN_AIMBOT_TAB_ICON_GET,
+        FALLEN_GALAXY_IMAGE_GET,
         FALLEN_VISUALS_TAB_ICON_GET,
         FALLEN_MISC_TAB_ICON_GET,
         FALLEN_SILENT_TAB_ICON_GET,
@@ -38270,20 +38236,11 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         )
     end
 
-    -- Prime Galaxy first so tracer + debug preview use the exact preloaded handle.
+    -- Prime Galaxy through the same getter used by the Aimbot-style preview.
     pcall(function()
-        local url =
-            FALLEN_BT_GALAXY_URL()
-
-        if url
-            and type(_G.FALLEN_IMAGE_PRELOAD_HANDLES) == "table"
-        then
-            local h =
-                _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
-
-            if h then
-                FALLEN_BT_IMAGE.galaxy = h
-            end
+        local h = FALLEN_GALAXY_IMAGE_GET()
+        if h and type(FALLEN_BT_IMAGE) == "table" then
+            FALLEN_BT_IMAGE.galaxy = h
         end
     end)
 
@@ -38424,6 +38381,10 @@ function FALLEN_START_IMAGE_PRELOAD()
 
     pcall(
         FALLEN_AIMBOT_TAB_ICON_GET
+    )
+
+    pcall(
+        FALLEN_GALAXY_IMAGE_GET
     )
 
     pcall(
