@@ -14078,6 +14078,7 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     hitfx_test1_sheet_url = "https://fotovssylku.ru/i/%D0%9C%D0%BE%D0%BD%D0%BE%D1%85%D1%80%D0%BE%D0%BC%D0%BD%D0%B0%D1%8F-%D0%B0%D0%BD%D0%B8%D0%BC%D0%B0%D1%86%D0%B8%D1%8F-%D0%BC%D0%B0%D0%B3%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%BE%D0%B3%D0%BE-%D0%B2%D0%B7%D1%80%D1%8B%D0%B2%D0%B0-%281%29.rg4bJ",
     hitfx_test2_sheet_url = "https://fotovssylku.ru/i/%D0%90%D1%82%D0%BB%D0%B0%D1%81-%D0%BD%D0%B5%D0%BE%D0%BD%D0%BE%D0%B2%D1%8B%D1%85-%D0%BA%D0%BE%D1%81%D0%BC%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D1%85-%D0%B2%D0%B8%D1%85%D1%80%D0%B5%D0%B9-4%C3%974.rg4YT",
     hitfx_ice_sheet_url = "https://fotovssylku.ru/i/%D0%A1%D0%BF%D1%80%D0%B0%D0%B9%D1%82-%D0%BB%D0%B8%D1%81%D1%82-%D0%BB%D0%B5%D0%B4%D1%8F%D0%BD%D0%BE%D0%B3%D0%BE-%D0%B2%D0%B7%D1%80%D1%8B%D0%B2%D0%B0.rgBs4",
+    hitfx_crystal_sheet_url = "https://fotovssylku.ru/i/%D0%9A%D1%80%D0%B0%D1%81%D0%BD%D0%B0%D1%8F-%D0%B2%D0%B7%D1%80%D1%8B%D0%B2%D0%BD%D0%B0%D1%8F-%D1%8D%D0%BD%D0%B5%D1%80%D0%B3%D0%B8%D1%8F-16-%D0%BA%D0%B0%D0%B4%D1%80%D0%BE%D0%B2-VFX.rgFQA",
     galaxy = nil,
     spark = nil,
     star = nil,
@@ -14218,6 +14219,13 @@ function FALLEN_HITFX_ICE_SHEET_GET()
     return FALLEN_HITFX_SHEET_GET(
         "ice",
         FALLEN_BT_IMAGE.hitfx_ice_sheet_url
+    )
+end
+
+function FALLEN_HITFX_CRYSTAL_SHEET_GET()
+    return FALLEN_HITFX_SHEET_GET(
+        "crystal",
+        FALLEN_BT_IMAGE.hitfx_crystal_sheet_url
     )
 end
 
@@ -17296,6 +17304,8 @@ FALLEN_HITFX = FALLEN_HITFX or {
     vfx_prev_lmb = false,
     vfx_watch_until = 0,
     vfx_shot_time = nil,
+    vfx_shot_views = {},
+    vfx_shot_view_last = 0,
 }
 
 FALLEN_HITFX.vfx_seen =
@@ -17322,6 +17332,8 @@ function FALLEN_HITFX_STYLE_INDEX()
         return 5
     elseif style == "Ice" then
         return 6
+    elseif style == "Crystal" then
+        return 7
     end
 
     S.hit_effect_style = "Spark"
@@ -17379,6 +17391,8 @@ function FALLEN_HITFX_IMAGE(
         return FALLEN_HITFX_TEST2_SHEET_GET()
     elseif key == "hitfx_ice_sheet" then
         return FALLEN_HITFX_ICE_SHEET_GET()
+    elseif key == "hitfx_crystal_sheet" then
+        return FALLEN_HITFX_CRYSTAL_SHEET_GET()
     end
 
     return
@@ -17657,6 +17671,30 @@ function FALLEN_HITFX_DRAW_FALLEN(
             0.78,
             0.94,
             1.0,
+            alpha * 0.98 * fade,
+            s * 0.18
+        )
+
+    elseif kind == 7 then
+        local handle = FALLEN_HITFX_IMAGE(
+            "hitfx_crystal_sheet",
+            FALLEN_BT_IMAGE.hitfx_crystal_sheet_url
+        )
+
+        local frame = math.floor(clamp(out * 15, 0, 15))
+        local s = size * (1.05 + 1.95 * out)
+        FALLEN_HITFX_DRAW_SHEET_FRAME(
+            handle,
+            frame,
+            4,
+            4,
+            sx - s * 0.5,
+            sy - s * 0.5,
+            s,
+            s,
+            1.0,
+            0.78,
+            0.78,
             alpha * 0.98 * fade,
             s * 0.18
         )
@@ -18463,6 +18501,193 @@ function FALLEN_HITFX_FOV_CHECK(
 end
 
 
+function FALLEN_HITFX_CAPTURE_SHOT_VIEW(force)
+    local now = tick()
+
+    if force ~= true
+        and now - (tonumber(FALLEN_HITFX.vfx_shot_view_last) or 0) < 0.035
+    then
+        return
+    end
+
+    FALLEN_HITFX.vfx_shot_view_last = now
+
+    if not rbx
+        or type(rbx.camera) ~= "function"
+    then
+        return
+    end
+
+    local cam = nil
+    local cam_pos = nil
+    local rot = nil
+    local fov = nil
+
+    pcall(function()
+        cam = rbx.camera()
+        if cam then
+            cam_pos = cam:camera_pos()
+            rot = cam:camera_rotation()
+            fov = cam:camera_fov()
+        end
+    end)
+
+    if not cam_pos
+        or type(rot) ~= "table"
+        or #rot < 9
+    then
+        return
+    end
+
+    local dims = nil
+
+    if type(ScreenSize) == "function" then
+        pcall(function()
+            dims = ScreenSize()
+        end)
+    end
+
+    if type(dims) ~= "table" then
+        return
+    end
+
+    local vw = tonumber(dims.Width or dims.width or dims.X or dims.x)
+    local vh = tonumber(dims.Height or dims.height or dims.Y or dims.y)
+
+    if not vw or not vh or vw <= 0 or vh <= 0 then
+        return
+    end
+
+    local cx, cy = FALLEN_HITFX_FOV_CENTER()
+
+    if not cx or not cy then
+        cx = vw * 0.5
+        cy = vh * 0.5
+    end
+
+    fov = tonumber(fov) or math.rad(70)
+
+    if fov > math.pi * 1.25 then
+        fov = math.rad(fov)
+    end
+
+    fov = clamp(fov, math.rad(20), math.rad(150))
+
+    local snapshot = {
+        time = now,
+        px = tonumber(cam_pos.X),
+        py = tonumber(cam_pos.Y),
+        pz = tonumber(cam_pos.Z),
+        rx = tonumber(rot[1]),
+        ry = tonumber(rot[4]),
+        rz = tonumber(rot[7]),
+        ux = tonumber(rot[2]),
+        uy = tonumber(rot[5]),
+        uz = tonumber(rot[8]),
+        fx = -tonumber(rot[3]),
+        fy = -tonumber(rot[6]),
+        fz = -tonumber(rot[9]),
+        vw = vw,
+        vh = vh,
+        cx = tonumber(cx),
+        cy = tonumber(cy),
+        fov = fov,
+        radius = FALLEN_HITFX_FOV_RADIUS(),
+    }
+
+    for _, key in ipairs({
+        "px", "py", "pz",
+        "rx", "ry", "rz",
+        "ux", "uy", "uz",
+        "fx", "fy", "fz",
+        "vw", "vh", "cx", "cy", "fov", "radius",
+    }) do
+        if snapshot[key] == nil then
+            return
+        end
+    end
+
+    local list = FALLEN_HITFX.vfx_shot_views
+    list[#list + 1] = snapshot
+
+    for i = #list, 1, -1 do
+        if now - (tonumber(list[i].time) or 0) > 1.05 then
+            table.remove(list, i)
+        end
+    end
+
+    while #list > 32 do
+        table.remove(list, 1)
+    end
+end
+
+function FALLEN_HITFX_FOV_CHECK_SNAPSHOT(pos, snapshot)
+    if not pos or type(snapshot) ~= "table" then
+        return false, nil
+    end
+
+    local dx = tonumber(pos.X) - tonumber(snapshot.px)
+    local dy = tonumber(pos.Y) - tonumber(snapshot.py)
+    local dz = tonumber(pos.Z) - tonumber(snapshot.pz)
+
+    if not dx or not dy or not dz then
+        return false, nil
+    end
+
+    local local_x = dx * snapshot.rx + dy * snapshot.ry + dz * snapshot.rz
+    local local_y = dx * snapshot.ux + dy * snapshot.uy + dz * snapshot.uz
+    local local_z = dx * snapshot.fx + dy * snapshot.fy + dz * snapshot.fz
+
+    if local_z <= 0.001 then
+        return false, nil
+    end
+
+    local focal = snapshot.vh / (2 * math.tan(snapshot.fov * 0.5))
+    if focal <= 0 then
+        return false, nil
+    end
+
+    local sx = snapshot.vw * 0.5 + (local_x / local_z) * focal
+    local sy = snapshot.vh * 0.5 - (local_y / local_z) * focal
+    local ddx = sx - snapshot.cx
+    local ddy = sy - snapshot.cy
+    local dist_sq = ddx * ddx + ddy * ddy
+    local radius = tonumber(snapshot.radius) or 40
+
+    return dist_sq <= radius * radius, dist_sq
+end
+
+function FALLEN_HITFX_FOV_CHECK_SHOT_VIEWS(pos, max_age)
+    local list = FALLEN_HITFX.vfx_shot_views
+
+    if type(list) ~= "table" or #list == 0 then
+        return false, nil
+    end
+
+    local now = tick()
+    local age_limit = tonumber(max_age) or 1.00
+    local best_dist_sq = nil
+
+    for i = #list, 1, -1 do
+        local snapshot = list[i]
+        local age = now - (tonumber(snapshot.time) or 0)
+
+        if age <= age_limit then
+            local ok, dist_sq = FALLEN_HITFX_FOV_CHECK_SNAPSHOT(pos, snapshot)
+
+            if ok then
+                return true, dist_sq
+            end
+
+            if dist_sq ~= nil and (best_dist_sq == nil or dist_sq < best_dist_sq) then
+                best_dist_sq = dist_sq
+            end
+        end
+    end
+
+    return false, best_dist_sq
+end
+
 function FALLEN_HITFX_FIND_NEW_IMPACT(
     previous,
     current,
@@ -18506,8 +18731,9 @@ function FALLEN_HITFX_FIND_NEW_IMPACT(
 
                 if pos then
                     local inside, screen_dist_sq =
-                        FALLEN_HITFX_FOV_CHECK(
-                            pos
+                        FALLEN_HITFX_FOV_CHECK_SHOT_VIEWS(
+                            pos,
+                            1.00
                         )
 
                     if inside
@@ -18549,6 +18775,9 @@ function FALLEN_HITFX_VFX_TICK()
         FALLEN_HITFX.vfx_shot_time =
             nil
 
+        FALLEN_HITFX.vfx_shot_views = {}
+        FALLEN_HITFX.vfx_shot_view_last = 0
+
         return
     end
 
@@ -18564,6 +18793,9 @@ function FALLEN_HITFX_VFX_TICK()
 
         FALLEN_HITFX.vfx_shot_time =
             nil
+
+        FALLEN_HITFX.vfx_shot_views = {}
+        FALLEN_HITFX.vfx_shot_view_last = 0
 
         return
     end
@@ -18593,6 +18825,9 @@ function FALLEN_HITFX_VFX_TICK()
         FALLEN_HITFX.vfx_shot_time =
             nil
 
+        FALLEN_HITFX.vfx_shot_views = {}
+        FALLEN_HITFX.vfx_shot_view_last = 0
+
         return
     end
 
@@ -18606,6 +18841,9 @@ function FALLEN_HITFX_VFX_TICK()
         FALLEN_HITFX.vfx_watch_until =
             now + 1.00
 
+        -- Save the exact shot-time view like Bullet Tracer does.
+        FALLEN_HITFX_CAPTURE_SHOT_VIEW(true)
+
     elseif lmb then
         -- Automatic fire: keep the BloodPart window fresh while firing.
         FALLEN_HITFX.vfx_shot_time =
@@ -18613,6 +18851,8 @@ function FALLEN_HITFX_VFX_TICK()
 
         FALLEN_HITFX.vfx_watch_until =
             now + 1.00
+
+        FALLEN_HITFX_CAPTURE_SHOT_VIEW(false)
     end
 
     FALLEN_HITFX.vfx_prev_lmb =
@@ -31884,6 +32124,7 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
         "Idk",
         "Cosmos",
         "Ice",
+        "Crystal",
     }
 
     local item_h = 27
