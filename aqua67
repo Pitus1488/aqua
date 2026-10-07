@@ -15318,6 +15318,158 @@ function FALLEN_BT_GALAXY_POINT(points, progress)
     return last.x, last.y, last.x - before.x, last.y - before.y
 end
 
+function FALLEN_BT_GALAXY_WORLD_POINT(points, progress)
+    if type(points) ~= "table"
+        or #points == 0
+    then
+        return nil
+    end
+
+    local wanted =
+        clamp(
+            tonumber(progress) or 0,
+            0,
+            1
+        )
+
+    local prev = points[1]
+
+    if wanted <= (tonumber(prev.u) or 0) then
+        if prev.wx and prev.wy and prev.wz then
+            return {
+                X = prev.wx,
+                Y = prev.wy,
+                Z = prev.wz,
+            }
+        end
+
+        return nil
+    end
+
+    for i = 2, #points do
+        local cur = points[i]
+        local pu = tonumber(prev.u) or 0
+        local cu = tonumber(cur.u) or pu
+
+        if wanted <= cu + 0.0001 then
+            if not (
+                prev.wx and prev.wy and prev.wz
+                and cur.wx and cur.wy and cur.wz
+            ) then
+                return nil
+            end
+
+            local span = math.max(0.0001, cu - pu)
+            local t = clamp((wanted - pu) / span, 0, 1)
+
+            return {
+                X = prev.wx + (cur.wx - prev.wx) * t,
+                Y = prev.wy + (cur.wy - prev.wy) * t,
+                Z = prev.wz + (cur.wz - prev.wz) * t,
+            }
+        end
+
+        prev = cur
+    end
+
+    local last = points[#points]
+
+    if last and last.wx and last.wy and last.wz then
+        return {
+            X = last.wx,
+            Y = last.wy,
+            Z = last.wz,
+        }
+    end
+
+    return nil
+end
+
+function FALLEN_BT_GALAXY_SIZE(world, thick)
+    local size =
+        34
+        + clamp(tonumber(thick) or 2, 1, 6) * 2.5
+
+    local cam = nil
+
+    pcall(function()
+        if aim and type(aim.get_camera_position) == "function" then
+            cam = aim.get_camera_position()
+        elseif rbx and type(rbx.camera) == "function" then
+            local c = rbx.camera()
+            if c and type(c.camera_pos) == "function" then
+                cam = c:camera_pos()
+            end
+        end
+    end)
+
+    if cam
+        and world
+        and cam.X and cam.Y and cam.Z
+    then
+        local dx = world.X - cam.X
+        local dy = world.Y - cam.Y
+        local dz = world.Z - cam.Z
+        local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+
+        -- Same idea as Hit Effect: keep the image readable in world-space
+        -- without becoming gigantic close to the camera.
+        local dist_scale =
+            clamp(
+                1.12 - dist / 520,
+                0.52,
+                1.05
+            )
+
+        size = size * dist_scale
+    end
+
+    return clamp(size, 18, 48)
+end
+
+function FALLEN_BT_DRAW_GALAXY_NODE(handle, x, y, size, alpha)
+    if not handle
+        or not x
+        or not y
+        or alpha <= 0.002
+    then
+        return
+    end
+
+    -- Use the exact same image drawing path as Hit Effects when available.
+    -- FALLEN_HITFX_DRAW_IMAGE is defined later in the script, but globals are
+    -- resolved when this function is called (after the full Lua has loaded).
+    if type(FALLEN_HITFX_DRAW_IMAGE) == "function" then
+        FALLEN_HITFX_DRAW_IMAGE(
+            handle,
+            x - size * 0.5,
+            y - size * 0.5,
+            size,
+            size,
+            1,
+            1,
+            1,
+            alpha
+        )
+        return
+    end
+
+    if type(DrawImage) == "function" then
+        DrawImage(
+            handle,
+            x - size * 0.5,
+            y - size * 0.5,
+            size,
+            size,
+            1,
+            1,
+            1,
+            alpha,
+            math.max(2, size * 0.08)
+        )
+    end
+end
+
 function FALLEN_BT_DRAW_GALAXY(
     tr,
     points,
@@ -15342,38 +15494,70 @@ function FALLEN_BT_DRAW_GALAXY(
         return
     end
 
-    -- One texture head moves forward with the tracer reveal. No pulsing,
-    -- spinning or extra effects: the requested animation is pure forward motion.
-    local x, y, dx, dy =
-        FALLEN_BT_GALAXY_POINT(
-            points,
-            reveal
+    -- This is a real tracer, not a single hit-effect sprite:
+    -- a short train of image nodes lives on the WORLD projectile path.
+    -- The whole train advances from muzzle -> impact with `reveal`.
+    local head =
+        clamp(
+            tonumber(reveal) or 0,
+            0,
+            1
         )
 
-    if not x or not y then
-        return
+    local tail_span = 0.24
+    local nodes = 10
+
+    for i = 0, nodes - 1 do
+        local back =
+            (i / math.max(1, nodes - 1))
+            * tail_span
+
+        local u = head - back
+
+        if u >= 0 then
+            local world =
+                FALLEN_BT_GALAXY_WORLD_POINT(
+                    points,
+                    u
+                )
+
+            if world then
+                -- Project every world node exactly like Hit Effects do.
+                local screen =
+                    FALLEN_BT_PROJECT(world)
+
+                if screen then
+                    local tail_t =
+                        i / math.max(1, nodes - 1)
+
+                    local node_alpha =
+                        alpha
+                        * (
+                            1.0
+                            - tail_t * 0.76
+                        )
+
+                    local node_size =
+                        FALLEN_BT_GALAXY_SIZE(
+                            world,
+                            thick
+                        )
+                        * (
+                            1.00
+                            - tail_t * 0.24
+                        )
+
+                    FALLEN_BT_DRAW_GALAXY_NODE(
+                        handle,
+                        screen.X,
+                        screen.Y,
+                        node_size,
+                        node_alpha
+                    )
+                end
+            end
+        end
     end
-
-    local size =
-        30
-        + clamp(tonumber(thick) or 2, 1, 6) * 3.5
-
-    -- Keep the source image itself unchanged; only translate it forward.
-    -- This deliberately avoids rotation/pulse/scale animation.
-    local rotation = 0
-
-    DrawImage(
-        handle,
-        x - size * 0.5,
-        y - size * 0.5,
-        size,
-        size,
-        1,
-        1,
-        1,
-        alpha,
-        rotation
-    )
 end
 
 function FALLEN_BT_DRAW_PATH(
@@ -15593,6 +15777,9 @@ function FALLEN_BT_PREDICTION_PATH(tr)
                 x = s.X,
                 y = s.Y,
                 u = u,
+                wx = world.X,
+                wy = world.Y,
+                wz = world.Z,
             }
         end
     end
@@ -15620,6 +15807,9 @@ function FALLEN_BT_STRAIGHT_PATH(tr)
                 x = s.X,
                 y = s.Y,
                 u = u,
+                wx = world.X,
+                wy = world.Y,
+                wz = world.Z,
             }
         end
     end
@@ -37579,8 +37769,8 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
         FALLEN_GRENADE_ICON_URLS
     )
 
-    -- Gameplay tracer texture requested by the user. Preload it before the
-    -- larger icon tables so Galaxy is already resident when a shot happens.
+    -- Galaxy tracer texture. It is loaded during startup exactly like the
+    -- gameplay/icon images, before the larger icon tables, so no first-shot load.
     if type(FALLEN_BT_IMAGE) == "table" then
         FALLEN_PRELOAD_QUEUE_PRIMARY(
             FALLEN_BT_IMAGE.galaxy_url
