@@ -3895,22 +3895,8 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
                 a
             )
 
-        -- Use the SAME hover progress as the tab text:
-        -- smoothly brighten toward white and grow a little.
-        local icon_hover =
-            clamp(
-                tonumber(col[5]) or 0,
-                0,
-                1
-            )
-
-        ic =
-            mix_color(
-                ic,
-                C.white,
-                icon_hover
-            )
-
+        -- Tab icons stay static on hover: no whitening and no growth.
+        local icon_hover = 0
         ic[4] = 1
 
         local image_handle = nil
@@ -3956,10 +3942,7 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
                     20
                     * transform_scale
                     * requested_icon_scale
-                    * (
-                        1
-                        + 0.12 * icon_hover
-                    )
+                    * 1
                     + 0.5
                 )
 
@@ -19076,10 +19059,12 @@ function FALLEN_HITFX_TICK()
         return
     end
 
+    S.damage_numbers_enabled = false
+    S.world_rain_enabled = false
+    S.world_thunder_enabled = false
+
     FALLEN_HITFX_VFX_TICK()
-    FALLEN_DMGNUM_SCAN_HP()
     FALLEN_HITFX_DRAW()
-    FALLEN_DMGNUM_DRAW()
 end
 
 hooks.on_render(function()
@@ -33087,22 +33072,15 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         or (A.hit_effect_style_anim or 0) > 0.02
 
 
-    local weather_popup_open =
-        A.world_rain_settings_open
-        or (A.world_rain_settings_anim or 0) > 0.02
-        or A.world_thunder_settings_open
-        or (A.world_thunder_settings_anim or 0) > 0.02
-
-    local damage_popup_open =
-        A.damage_numbers_settings_open
-        or (A.damage_numbers_settings_anim or 0) > 0.02
+    -- Damage Numbers and World Weather were removed from this page.
+    A.damage_numbers_settings_open = false
+    A.world_rain_settings_open = false
+    A.world_thunder_settings_open = false
 
     local controls_clicked =
         clicked
         and not dropdown_open
         and not A.world_color_picker_open
-        and not weather_popup_open
-        and not damage_popup_open
 
     section_title(
         x,
@@ -33425,7 +33403,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         right_x,
         y + 25,
         right_w,
-        178,
+        137,
         11
     )
 
@@ -33569,204 +33547,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         1.50
     )
 
-    line(
-        right_x + 12,
-        y + 154,
-        right_x + right_w - 12,
-        y + 154,
-        C.divider,
-        1
-    )
-
-    local damage_dots_x =
-        right_x
-        + right_w
-        - 79
-
-    local damage_dots_y =
-        y + 163
-
-    local damage_dots_hot =
-        hover(
-            mx,
-            my,
-            damage_dots_x,
-            damage_dots_y,
-            27,
-            25
-        )
-
-    local damage_row_hot =
-        hover(
-            mx,
-            my,
-            right_x,
-            y + 155,
-            right_w,
-            41
-        )
-
-    toggle_row(
-        mx,
-        my,
-        controls_clicked
-            and not damage_dots_hot,
-        right_x,
-        y + 155,
-        right_w,
-        "Damage Numbers",
-        "damage_numbers_enabled",
-        true
-    )
-
-    if (
-            clicked
-            and damage_dots_hot
-        )
-        or (
-            rmb_clicked
-            and damage_row_hot
-        )
-    then
-        if not A.world_color_picker_open then
-            A.damage_numbers_settings_open =
-                not A.damage_numbers_settings_open
-
-            A.world_rain_settings_open =
-                false
-
-            A.world_thunder_settings_open =
-                false
-
-            A.bullet_tracer_style_open =
-                false
-
-            A.hit_effect_style_open =
-                false
-
-            numeric_stop(true)
-        end
-    end
-
-    -- World Weather: compact master rows. Settings live behind the Aimbot-style
-    -- ellipsis popups and open ONLY with RMB on the three dots.
-    section_title(
-        right_x,
-        y + 227,
-        "World Weather"
-    )
-
-    card(
-        right_x,
-        y + 252,
-        right_w,
-        101,
-        11
-    )
-
-    local rain_dots_x =
-        right_x
-        + right_w
-        - 79
-
-    local rain_dots_y =
-        y + 267
-
-    local rain_dots_hot =
-        hover(
-            mx,
-            my,
-            rain_dots_x,
-            rain_dots_y,
-            27,
-            25
-        )
-
-    toggle_row(
-        mx,
-        my,
-        controls_clicked
-            and not rain_dots_hot,
-        right_x,
-        y + 259,
-        right_w,
-        "World Rain",
-        "world_rain_enabled",
-        true
-    )
-
-    line(
-        right_x + 12,
-        y + 299,
-        right_x + right_w - 12,
-        y + 299,
-        C.divider,
-        1
-    )
-
-    local thunder_dots_x =
-        right_x
-        + right_w
-        - 79
-
-    local thunder_dots_y =
-        y + 308
-
-    local thunder_dots_hot =
-        hover(
-            mx,
-            my,
-            thunder_dots_x,
-            thunder_dots_y,
-            27,
-            25
-        )
-
-    toggle_row(
-        mx,
-        my,
-        controls_clicked
-            and not thunder_dots_hot,
-        right_x,
-        y + 300,
-        right_w,
-        "Thunderstorm",
-        "world_thunder_enabled",
-        true
-    )
-
-    if rmb_clicked
-        and rain_dots_hot
-        and not A.world_color_picker_open
-    then
-        A.world_rain_settings_open =
-            not A.world_rain_settings_open
-
-        A.world_thunder_settings_open = false
-        A.damage_numbers_settings_open = false
-        A.world_thunder_settings_anim = 0
-        A.world_thunder_settings_last_t = tick()
-        A.bullet_tracer_style_open = false
-        A.hit_effect_style_open = false
-        numeric_stop(true)
-    end
-
-    if rmb_clicked
-        and thunder_dots_hot
-        and not A.world_color_picker_open
-    then
-        A.world_thunder_settings_open =
-            not A.world_thunder_settings_open
-
-        A.world_rain_settings_open = false
-        A.damage_numbers_settings_open = false
-        A.world_rain_settings_anim = 0
-        A.world_rain_settings_last_t = tick()
-        A.bullet_tracer_style_open = false
-        A.hit_effect_style_open = false
-        numeric_stop(true)
-    end
-
+    -- Damage Numbers and World Weather removed.
 
     local dropdown_hot =
         FALLEN_DRAW_BT_STYLE_DROPDOWN(
@@ -33808,32 +33589,6 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         A.hit_effect_style_open = false
     end
 
-    FALLEN_DRAW_WORLD_RAIN_SETTINGS_POPUP(
-        mx,
-        my,
-        clicked,
-        lmb,
-        rain_dots_x,
-        rain_dots_y
-    )
-
-    FALLEN_DRAW_WORLD_THUNDER_SETTINGS_POPUP(
-        mx,
-        my,
-        clicked,
-        lmb,
-        thunder_dots_x,
-        thunder_dots_y
-    )
-
-    FALLEN_DRAW_DMGNUM_SETTINGS_POPUP(
-        mx,
-        my,
-        clicked,
-        lmb,
-        damage_dots_x,
-        damage_dots_y
-    )
 
 
 end
@@ -37130,13 +36885,6 @@ hooks.on_render(function()
         if world_icon_handle
             and type(DrawImage) == "function"
         then
-            local world_icon_hover =
-                clamp(
-                    tonumber(world_col[5]) or 0,
-                    0,
-                    1
-                )
-
             local world_icon_col =
                 (
                     S.tab == 2
@@ -37145,19 +36893,8 @@ hooks.on_render(function()
                     and C.accent
                     or C.text_dim
 
-            world_icon_col =
-                mix_color(
-                    world_icon_col,
-                    C.white,
-                    world_icon_hover
-                )
-
-            local world_icon_size =
-                18
-                * (
-                    1
-                    + 0.12 * world_icon_hover
-                )
+            -- Static tab icon: hover does not whiten or resize it.
+            local world_icon_size = 18
 
             local world_icon_px =
                 FALLEN_UI_LEN(
@@ -37231,13 +36968,6 @@ hooks.on_render(function()
         if armor_icon_handle
             and type(DrawImage) == "function"
         then
-            local armor_icon_hover =
-                clamp(
-                    tonumber(armor_col[5]) or 0,
-                    0,
-                    1
-                )
-
             local armor_icon_col =
                 (
                     S.tab == 2
@@ -37246,19 +36976,8 @@ hooks.on_render(function()
                     and C.accent
                     or C.text_dim
 
-            armor_icon_col =
-                mix_color(
-                    armor_icon_col,
-                    C.white,
-                    armor_icon_hover
-                )
-
-            local armor_icon_size =
-                18
-                * (
-                    1
-                    + 0.12 * armor_icon_hover
-                )
+            -- Static tab icon: hover does not whiten or resize it.
+            local armor_icon_size = 18
 
             local armor_icon_px =
                 FALLEN_UI_LEN(
@@ -42960,14 +42679,9 @@ function FALLEN_WORLD_THUNDER_TICK()
     end
 end
 
-hooks.on_render(function()
-    if _G.FallenMenuReady ~= true then
-        return
-    end
-
-    pcall(FALLEN_WORLD_RAIN_TICK)
-    pcall(FALLEN_WORLD_THUNDER_TICK)
-end)
+-- World Weather removed.
+S.world_rain_enabled = false
+S.world_thunder_enabled = false
 
 -- =========================================================
 -- Custom Anti Aim runtime
