@@ -14075,6 +14075,8 @@ FALLEN_BT_IMAGE = FALLEN_BT_IMAGE or {
     hitfx_spark_sheet_url = "https://fotovssylku.ru/i/roblox-10198439352-420.rgdMs",
     hitfx_smokering_sheet_url = "https://fotovssylku.ru/i/roblox-12906276200-420.rgde9",
     hitfx_particles_sheet_url = "https://fotovssylku.ru/i/roblox-14354336687-420.rgduw",
+    hitfx_test1_sheet_url = "https://fotovssylku.ru/i/%D0%9C%D0%BE%D0%BD%D0%BE%D1%85%D1%80%D0%BE%D0%BC%D0%BD%D0%B0%D1%8F-%D0%B0%D0%BD%D0%B8%D0%BC%D0%B0%D1%86%D0%B8%D1%8F-%D0%BC%D0%B0%D0%B3%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%BE%D0%B3%D0%BE-%D0%B2%D0%B7%D1%80%D1%8B%D0%B2%D0%B0-%281%29.rg4bJ",
+    hitfx_test2_sheet_url = "https://fotovssylku.ru/i/%D0%90%D1%82%D0%BB%D0%B0%D1%81-%D0%BD%D0%B5%D0%BE%D0%BD%D0%BE%D0%B2%D1%8B%D1%85-%D0%BA%D0%BE%D1%81%D0%BC%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D1%85-%D0%B2%D0%B8%D1%85%D1%80%D0%B5%D0%B9-4%C3%974.rg4YT",
     galaxy = nil,
     spark = nil,
     star = nil,
@@ -14194,6 +14196,20 @@ function FALLEN_HITFX_PARTICLES_SHEET_GET()
     return FALLEN_HITFX_SHEET_GET(
         "particles",
         FALLEN_BT_IMAGE.hitfx_particles_sheet_url
+    )
+end
+
+function FALLEN_HITFX_TEST1_SHEET_GET()
+    return FALLEN_HITFX_SHEET_GET(
+        "test1",
+        FALLEN_BT_IMAGE.hitfx_test1_sheet_url
+    )
+end
+
+function FALLEN_HITFX_TEST2_SHEET_GET()
+    return FALLEN_HITFX_SHEET_GET(
+        "test2",
+        FALLEN_BT_IMAGE.hitfx_test2_sheet_url
     )
 end
 
@@ -17292,6 +17308,10 @@ function FALLEN_HITFX_STYLE_INDEX()
         return 2
     elseif style == "particles.js" then
         return 3
+    elseif style == "test 1" then
+        return 4
+    elseif style == "test 2" then
+        return 5
     end
 
     S.hit_effect_style = "Spark"
@@ -17343,6 +17363,10 @@ function FALLEN_HITFX_IMAGE(
         return FALLEN_HITFX_SMOKERING_SHEET_GET()
     elseif key == "hitfx_particles_sheet" then
         return FALLEN_HITFX_PARTICLES_SHEET_GET()
+    elseif key == "hitfx_test1_sheet" then
+        return FALLEN_HITFX_TEST1_SHEET_GET()
+    elseif key == "hitfx_test2_sheet" then
+        return FALLEN_HITFX_TEST2_SHEET_GET()
     end
 
     return
@@ -17550,6 +17574,62 @@ function FALLEN_HITFX_DRAW_FALLEN(
                 bb,
                 alpha * 0.92 * fade,
                 ps * 0.20
+            )
+        end
+
+    elseif kind == 4 then
+        local handle = FALLEN_HITFX_IMAGE(
+            "hitfx_test1_sheet",
+            FALLEN_BT_IMAGE.hitfx_test1_sheet_url
+        )
+
+        local frame = math.floor(clamp(out * 15, 0, 15))
+        local s = size * (1.45 + 1.95 * out)
+        FALLEN_HITFX_DRAW_SHEET_FRAME(
+            handle,
+            frame,
+            4,
+            4,
+            sx - s * 0.5,
+            sy - s * 0.5,
+            s,
+            s,
+            col[1],
+            col[2],
+            col[3],
+            alpha * 0.98 * fade,
+            s * 0.18
+        )
+
+    elseif kind == 5 then
+        local handle = FALLEN_HITFX_IMAGE(
+            "hitfx_test2_sheet",
+            FALLEN_BT_IMAGE.hitfx_test2_sheet_url
+        )
+
+        local frame = math.floor(clamp(out * 15, 0, 15))
+
+        for k = 1, 2 do
+            local spin = (seed or 1) * 0.15 + k * 0.85
+            local ang = spin + out * math.pi * (k == 1 and 1.7 or -1.35)
+            local spread = size * (0.08 + 0.44 * out) * k
+            local px = sx + math.cos(ang) * spread
+            local py = sy + math.sin(ang) * spread
+            local s = size * (0.95 + 1.10 * out)
+            FALLEN_HITFX_DRAW_SHEET_FRAME(
+                handle,
+                frame,
+                4,
+                4,
+                px - s * 0.5,
+                py - s * 0.5,
+                s,
+                s,
+                1,
+                1,
+                1,
+                alpha * 0.96 * fade,
+                s * 0.18
             )
         end
     end
@@ -31773,6 +31853,8 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
         "Spark",
         "SmokeRing",
         "particles.js",
+        "test 1",
+        "test 2",
     }
 
     local item_h = 27
