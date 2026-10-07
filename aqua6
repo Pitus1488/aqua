@@ -18580,108 +18580,23 @@ function FALLEN_HITFX_DRAW_ONE(hit, age, life)
     local alpha =
         1 - t
 
-    -- HitFX now always uses original image colors.
-    local size = 0
-    local cam = nil
-
-    pcall(function()
-        if aim and aim.get_camera_position then
-            cam = aim.get_camera_position()
-        end
-    end)
-
-    if cam
-        and cam.X
-        and cam.Y
-        and cam.Z
-    then
-        local dx =
-            (hit.x or 0) - cam.X
-
-        local dy =
-            (hit.y or 0) - cam.Y
-
-        local dz =
-            (hit.z or 0) - cam.Z
-
-        local dist =
-            math.sqrt(
-                dx * dx
-                + dy * dy
-                + dz * dz
-            )
-
-        -- Distance curve:
-        --   0m   -> 70 px
-        --   50m  -> 45 px
-        --   150m -> 30 px
-        --   300m -> 22 px
-        --   600m+ -> 18 px minimum
-        if dist <= 50 then
-            local tt =
-                smooth01(
-                    clamp(
-                        dist / 50,
-                        0,
-                        1
-                    )
-                )
-
-            size =
-                70
-                + (45 - 70)
-                * tt
-
-        elseif dist <= 150 then
-            local tt =
-                smooth01(
-                    clamp(
-                        (dist - 50) / 100,
-                        0,
-                        1
-                    )
-                )
-
-            size =
-                45
-                + (30 - 45)
-                * tt
-
-        elseif dist <= 300 then
-            local tt =
-                smooth01(
-                    clamp(
-                        (dist - 150) / 150,
-                        0,
-                        1
-                    )
-                )
-
-            size =
-                30
-                + (22 - 30)
-                * tt
-
-        else
-            local tt =
-                smooth01(
-                    clamp(
-                        (dist - 300) / 300,
-                        0,
-                        1
-                    )
-                )
-
-            size =
-                22
-                + (18 - 22)
-                * tt
-        end
-    else
-        size = 32
-    end
-
+    -- Original fallen_ultimate uses fixed ParticleEmitter Size values:
+    -- Spark = 8, SmokeRing = 4, particles.js = 3.
+    -- Our renderer is 2D, so use fixed SCREEN sizes instead of shrinking
+    -- the effect with camera distance. This keeps hits readable at range.
     local kind = FALLEN_HITFX_STYLE_INDEX()
+    local size = 64
+
+    if kind == 1 then
+        -- Spark is the largest effect in the original (Size = 8).
+        size = 86
+    elseif kind == 2 then
+        -- SmokeRing original Size = 4.
+        size = 64
+    elseif kind == 3 then
+        -- particles.js original Size = 3; six sprites are emitted.
+        size = 58
+    end
 
     FALLEN_HITFX_DRAW_FALLEN(
         kind,
@@ -18704,8 +18619,16 @@ function FALLEN_HITFX_DRAW()
 
     FALLEN_HITFX_STYLE_INDEX()
 
-    local life =
-        0.74
+    local kind = FALLEN_HITFX_STYLE_INDEX()
+    local life = 1.0
+
+    if kind == 1 then
+        life = 0.55
+    elseif kind == 2 then
+        life = 1.0
+    elseif kind == 3 then
+        life = 1.0
+    end
 
     for i = #FALLEN_HITFX.items, 1, -1 do
         local hit =
