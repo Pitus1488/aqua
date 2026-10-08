@@ -14246,6 +14246,8 @@ function FALLEN_BT_STYLE_INDEX()
         return 2
     elseif style == "Water" then
         return 3
+    elseif style == "Solar" then
+        return 4
     elseif style == "Lightning V2" or style == "Galaxy" or style == "Cosmo" then
         -- Removed legacy textured tracer styles.
         S.bullet_tracer_style = "Neon"
@@ -16713,6 +16715,241 @@ function FALLEN_BT_DRAW_WATER(
 end
 
 
+function FALLEN_BT_DRAW_SOLAR(
+    tr,
+    points,
+    reveal,
+    alpha,
+    thick
+)
+    if type(points) ~= "table"
+        or #points < 2
+        or type(DrawLine) ~= "function"
+    then
+        return
+    end
+
+    local max_u =
+        clamp(
+            tonumber(reveal) or 0,
+            0,
+            1
+        )
+
+    if max_u <= 0.001 then
+        return
+    end
+
+    local visible_points =
+        FALLEN_BT_REVEALED_POINTS(
+            points,
+            max_u
+        )
+
+    if #visible_points < 2 then
+        return
+    end
+
+    -- Slightly thinner than the normal Water body.
+    local core_thick =
+        clamp(
+            0.85 + (tonumber(thick) or 2) * 0.31,
+            1.05,
+            2.8
+        )
+
+    local now = tick()
+    local seed =
+        tonumber(tr and tr.seed)
+        or 1
+
+    -- User request: yellow -> orange -> yellow.
+    local yellow = { 1.00, 0.90, 0.08 }
+    local orange = { 1.00, 0.34, 0.03 }
+
+    local previous = nil
+
+    for i = 1, #visible_points do
+        local point = visible_points[i]
+
+        if point
+            and point.x
+            and point.y
+            and point.u
+        then
+            local px = point.x
+            local py = point.y
+
+            -- Very small, smooth right/left movement.
+            -- Taper it to zero at both endpoints so origin and Hole stay fixed.
+            local prev_for_normal =
+                visible_points[math.max(1, i - 1)]
+            local next_for_normal =
+                visible_points[math.min(#visible_points, i + 1)]
+
+            if prev_for_normal
+                and next_for_normal
+            then
+                local dx =
+                    (next_for_normal.x or px)
+                    - (prev_for_normal.x or px)
+
+                local dy =
+                    (next_for_normal.y or py)
+                    - (prev_for_normal.y or py)
+
+                local len =
+                    math.sqrt(
+                        dx * dx
+                        + dy * dy
+                    )
+
+                if len > 0.01 then
+                    local nx = -dy / len
+                    local ny = dx / len
+
+                    local edge_taper =
+                        math.sin(
+                            clamp(
+                                point.u,
+                                0,
+                                1
+                            )
+                            * math.pi
+                        )
+
+                    local sway =
+                        math.sin(
+                            now * 2.15
+                            + seed * 0.011
+                            + point.u * 5.0
+                        )
+                        * 1.35
+                        * edge_taper
+
+                    px = px + nx * sway
+                    py = py + ny * sway
+                end
+            end
+
+            local current = {
+                x = px,
+                y = py,
+                u = point.u,
+            }
+
+            if previous then
+                local normalized =
+                    clamp(
+                        (
+                            (previous.u + current.u)
+                            * 0.5
+                        )
+                        / math.max(max_u, 0.0001),
+                        0,
+                        1
+                    )
+
+                -- 0 at ends, 1 in the center.
+                local center_mix =
+                    clamp(
+                        1
+                        - math.abs(
+                            (normalized - 0.5) * 2
+                        ),
+                        0,
+                        1
+                    )
+
+                local rr =
+                    yellow[1]
+                    + (orange[1] - yellow[1]) * center_mix
+
+                local gg =
+                    yellow[2]
+                    + (orange[2] - yellow[2]) * center_mix
+
+                local bb =
+                    yellow[3]
+                    + (orange[3] - yellow[3]) * center_mix
+
+                -- 35 thin glow layers. The spacing is intentionally small,
+                -- so this looks like a menu-style soft glow instead of one
+                -- huge fat halo.
+                for g = 35, 1, -1 do
+                    local gt =
+                        g / 35
+
+                    local glow_width =
+                        core_thick
+                        + 0.22
+                        + g * 0.105
+
+                    local glow_alpha =
+                        alpha
+                        * 0.0105
+                        * (1 - gt * 0.58)
+
+                    DrawLine(
+                        previous.x,
+                        previous.y,
+                        current.x,
+                        current.y,
+                        rr,
+                        gg,
+                        bb,
+                        glow_alpha,
+                        glow_width
+                    )
+                end
+
+                -- Colored body.
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    current.x,
+                    current.y,
+                    rr,
+                    gg,
+                    bb,
+                    alpha * 0.93,
+                    core_thick
+                )
+
+                -- Small hot center highlight, orange-biased in the middle.
+                local hr =
+                    1.0
+
+                local hg =
+                    0.95
+                    - 0.28 * center_mix
+
+                local hb =
+                    0.30
+                    - 0.20 * center_mix
+
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    current.x,
+                    current.y,
+                    hr,
+                    hg,
+                    hb,
+                    alpha * 0.58,
+                    math.max(
+                        0.72,
+                        core_thick * 0.38
+                    )
+                )
+            end
+
+            previous = current
+        end
+    end
+end
+
+
 function FALLEN_BT_DRAW_PATH(
     tr,
     points,
@@ -16732,6 +16969,15 @@ function FALLEN_BT_DRAW_PATH(
 
     if style == 3 then
         FALLEN_BT_DRAW_WATER(
+            tr,
+            points,
+            reveal,
+            alpha,
+            thick
+        )
+        return
+    elseif style == 4 then
+        FALLEN_BT_DRAW_SOLAR(
             tr,
             points,
             reveal,
@@ -32239,6 +32485,7 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
         "Lightning",
         "Rainbow",
         "Water",
+        "Solar",
     }
 
     local item_h = 27
@@ -33475,38 +33722,27 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
             or C.toggle_off
     )
 
+    local tracer_style_display =
+        tostring(
+            S.bullet_tracer_style
+            or "Neon"
+        )
+
+    if tracer_style_display == "Wave Lightning" then
+        tracer_style_display = "Lightning"
+    elseif tracer_style_display == "Gradient Laser" then
+        tracer_style_display = "Rainbow"
+    elseif tracer_style_display == "Lightning V2"
+        or tracer_style_display == "Galaxy"
+        or tracer_style_display == "Cosmo"
+    then
+        tracer_style_display = "Neon"
+    end
+
     text(
         style_box_x + 10,
         style_box_y + 7,
-        (
-            (
-                S.bullet_tracer_style == "Water"
-            )
-            and "Water"
-            or (
-                (
-                    S.bullet_tracer_style == "Lightning"
-                    or S.bullet_tracer_style == "Wave Lightning"
-                )
-                and "Lightning"
-                or (
-                (
-                    S.bullet_tracer_style == "Rainbow"
-                    or S.bullet_tracer_style == "Gradient Laser"
-                )
-                and "Rainbow"
-                or (
-                    (
-                        S.bullet_tracer_style == "Lightning V2"
-                        or S.bullet_tracer_style == "Galaxy"
-                        or S.bullet_tracer_style == "Cosmo"
-                    )
-                    and "Neon"
-                    or "Neon"
-                )
-            )
-        )
-        ),
+        tracer_style_display,
         FALLEN_HOVER_TEXT(
             "tracer_style_value",
             style_box_hot,
@@ -38406,7 +38642,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v51 | HitEffects icon-loader spritesheets | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v63 | Solar tracer + 35-line glow | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
