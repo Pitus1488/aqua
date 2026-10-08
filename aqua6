@@ -623,6 +623,10 @@ local A = {
     misc_manipulation_last_error = 0,
     misc_manipulation_last_eval = 0,
     misc_manipulation_cached_offset = nil,
+    misc_manipulation_restore_active = false,
+    misc_manipulation_restore_until = nil,
+    misc_manipulation_restore_pos = nil,
+    misc_manipulation_restore_rot = nil,
     misc_manipulation_weapon_last_scan = 0,
     misc_manipulation_weapon_ready = false,
     misc_manipulation_weapon_name = nil,
@@ -39202,7 +39206,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v72 | Manipulation exact spoof validation + persistent indicator | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v73 | stable anchored manipulation return | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -44230,25 +44234,57 @@ end
 local function FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
     if not hrp then
         FALLEN_MANIPULATION_CLEAR_PRESS()
+        A.misc_manipulation_restore_active = false
+        A.misc_manipulation_restore_until = nil
+        A.misc_manipulation_restore_pos = nil
+        A.misc_manipulation_restore_rot = nil
         return
     end
 
-    -- A short anti-fall hold may have anchored the HRP. Always release it
-    -- before restoring the saved click position/upright rotation.
+    local base_pos =
+        A.misc_manipulation_press_pos
+
+    local base_rot =
+        A.misc_manipulation_press_upright_rot
+        or FALLEN_MANIPULATION_UPRIGHT_MATRIX(
+            A.misc_manipulation_press_rot
+        )
+
+    local was_spoofed =
+        A.misc_manipulation_spoofed == true
+
+    if not was_spoofed
+        or not base_pos
+    then
+        pcall(function()
+            hrp:set_velocity(
+                Vector3(0, 0, 0)
+            )
+        end)
+
+        pcall(function()
+            hrp:set_anchored(false)
+        end)
+
+        FALLEN_MANIPULATION_CLEAR_PRESS()
+        return
+    end
+
+    -- Return while still frozen. Never unanchor before the base position and
+    -- upright rotation have been restored.
     pcall(function()
-        hrp:set_anchored(false)
+        hrp:set_anchored(true)
     end)
 
-    local base_pos = A.misc_manipulation_press_pos
-    local base_rot = A.misc_manipulation_press_upright_rot
-        or FALLEN_MANIPULATION_UPRIGHT_MATRIX(A.misc_manipulation_press_rot)
-    local base_vel = A.misc_manipulation_press_vel
+    pcall(function()
+        hrp:set_velocity(
+            Vector3(0, 0, 0)
+        )
+    end)
 
-    if base_pos then
-        pcall(function()
-            hrp:set_position(base_pos)
-        end)
-    end
+    pcall(function()
+        hrp:set_position(base_pos)
+    end)
 
     if type(base_rot) == "table" then
         pcall(function()
@@ -44256,13 +44292,124 @@ local function FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
         end)
     end
 
-    if base_vel then
+    A.misc_manipulation_restore_active = true
+    A.misc_manipulation_restore_until =
+        tick() + 0.18
+    A.misc_manipulation_restore_pos =
+        base_pos
+    A.misc_manipulation_restore_rot =
+        base_rot
+
+    FALLEN_MANIPULATION_CLEAR_PRESS()
+end
+
+function FALLEN_MANIPULATION_RESTORE_HOLD_TICK(hrp, raw_lmb)
+    if A.misc_manipulation_restore_active ~= true then
+        return false
+    end
+
+    if not hrp then
+        A.misc_manipulation_restore_active = false
+        A.misc_manipulation_restore_until = nil
+        A.misc_manipulation_restore_pos = nil
+        A.misc_manipulation_restore_rot = nil
+        return false
+    end
+
+    -- New Mouse1 press cancels the old settling window.
+    if raw_lmb == true then
         pcall(function()
-            hrp:set_velocity(base_vel)
+            hrp:set_velocity(
+                Vector3(0, 0, 0)
+            )
+        end)
+
+        pcall(function()
+            hrp:set_anchored(false)
+        end)
+
+        A.misc_manipulation_restore_active = false
+        A.misc_manipulation_restore_until = nil
+        A.misc_manipulation_restore_pos = nil
+        A.misc_manipulation_restore_rot = nil
+        return false
+    end
+
+    local restore_pos =
+        A.misc_manipulation_restore_pos
+
+    local restore_rot =
+        A.misc_manipulation_restore_rot
+
+    local until_t =
+        tonumber(
+            A.misc_manipulation_restore_until
+        )
+        or 0
+
+    if tick() < until_t then
+        pcall(function()
+            hrp:set_anchored(true)
+        end)
+
+        pcall(function()
+            hrp:set_velocity(
+                Vector3(0, 0, 0)
+            )
+        end)
+
+        if restore_pos then
+            pcall(function()
+                hrp:set_position(
+                    restore_pos
+                )
+            end)
+        end
+
+        if type(restore_rot) == "table" then
+            pcall(function()
+                hrp:set_rotation(
+                    restore_rot
+                )
+            end)
+        end
+
+        return true
+    end
+
+    -- Final exact placement before physics resumes.
+    if restore_pos then
+        pcall(function()
+            hrp:set_position(
+                restore_pos
+            )
         end)
     end
 
-    FALLEN_MANIPULATION_CLEAR_PRESS()
+    if type(restore_rot) == "table" then
+        pcall(function()
+            hrp:set_rotation(
+                restore_rot
+            )
+        end)
+    end
+
+    pcall(function()
+        hrp:set_velocity(
+            Vector3(0, 0, 0)
+        )
+    end)
+
+    pcall(function()
+        hrp:set_anchored(false)
+    end)
+
+    A.misc_manipulation_restore_active = false
+    A.misc_manipulation_restore_until = nil
+    A.misc_manipulation_restore_pos = nil
+    A.misc_manipulation_restore_rot = nil
+
+    return false
 end
 
 local function FALLEN_MANIPULATION_CURSOR_POS()
@@ -45010,6 +45157,15 @@ function FALLEN_MANIPULATION_TICK()
     local enabled = S.misc_manipulation_enabled == true
     local raw_lmb = key_down(VK_LBUTTON) == true
 
+    if hrp
+        and FALLEN_MANIPULATION_RESTORE_HOLD_TICK(
+            hrp,
+            raw_lmb
+        )
+    then
+        return
+    end
+
     if not enabled or not hrp then
         if A.misc_manipulation_press_active == true then
             FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
@@ -45214,11 +45370,11 @@ function FALLEN_MANIPULATION_TICK()
             end)
         end
 
-        if A.misc_manipulation_press_vel then
-            pcall(function()
-                hrp:set_velocity(A.misc_manipulation_press_vel)
-            end)
-        end
+        pcall(function()
+            hrp:set_velocity(
+                Vector3(0, 0, 0)
+            )
+        end)
 
         A.misc_manipulation_hold_until = nil
         A.misc_manipulation_hold_active = false
@@ -45331,13 +45487,11 @@ function FALLEN_MANIPULATION_TICK()
             end)
         end
 
-        if A.misc_manipulation_press_vel then
-            pcall(function()
-                hrp:set_velocity(
-                    A.misc_manipulation_press_vel
-                )
-            end)
-        end
+        pcall(function()
+            hrp:set_velocity(
+                Vector3(0, 0, 0)
+            )
+        end)
 
         return
     end
