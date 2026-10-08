@@ -147,6 +147,7 @@ local defaults = {
     -- Bullet Tracers / Misc.
     bullet_tracer_enabled = false,
     bullet_tracer_style = "Neon",
+    bullet_tracer_animation = "None",
     bullet_tracer_life = 1.20,
     bullet_tracer_reveal = 0.22,
     bullet_tracer_thickness = 2.0,
@@ -566,6 +567,11 @@ local A = {
     bullet_tracer_style_open = false,
     bullet_tracer_style_anim = 0,
     bullet_tracer_style_last_t = nil,
+
+    -- Bullet Tracer animation dropdown.
+    bullet_tracer_animation_open = false,
+    bullet_tracer_animation_anim = 0,
+    bullet_tracer_animation_last_t = nil,
 
     -- Secret crosshair style dropdown / runtime.
     secret_crosshair_style_open = false,
@@ -14238,6 +14244,9 @@ function FALLEN_BT_STYLE_INDEX()
     elseif style == "Gradient Laser" then
         S.bullet_tracer_style = "Rainbow"
         style = "Rainbow"
+    elseif style == "Solar" then
+        S.bullet_tracer_style = "Lava"
+        style = "Lava"
     end
 
     if style == "Lightning" then
@@ -14246,7 +14255,7 @@ function FALLEN_BT_STYLE_INDEX()
         return 2
     elseif style == "Water" then
         return 3
-    elseif style == "Solar" then
+    elseif style == "Lava" then
         return 4
     elseif style == "Lightning V2" or style == "Galaxy" or style == "Cosmo" then
         -- Removed legacy textured tracer styles.
@@ -16715,7 +16724,7 @@ function FALLEN_BT_DRAW_WATER(
 end
 
 
-function FALLEN_BT_DRAW_SOLAR(
+function FALLEN_BT_DRAW_LAVA(
     tr,
     points,
     reveal,
@@ -16757,12 +16766,6 @@ function FALLEN_BT_DRAW_SOLAR(
             3.15
         )
 
-    local now = tick()
-    local seed =
-        tonumber(tr and tr.seed)
-        or 1
-
-    -- Yellow -> orange -> yellow.
     local yellow = { 1.00, 0.90, 0.06 }
     local orange = { 1.00, 0.30, 0.015 }
 
@@ -16776,62 +16779,9 @@ function FALLEN_BT_DRAW_SOLAR(
             and point.y
             and point.u
         then
-            local px = point.x
-            local py = point.y
-
-            local prev_for_normal =
-                visible_points[math.max(1, i - 1)]
-            local next_for_normal =
-                visible_points[math.min(#visible_points, i + 1)]
-
-            if prev_for_normal
-                and next_for_normal
-            then
-                local dx =
-                    (next_for_normal.x or px)
-                    - (prev_for_normal.x or px)
-
-                local dy =
-                    (next_for_normal.y or py)
-                    - (prev_for_normal.y or py)
-
-                local len =
-                    math.sqrt(
-                        dx * dx
-                        + dy * dy
-                    )
-
-                if len > 0.01 then
-                    local nx = -dy / len
-                    local ny = dx / len
-
-                    local edge_taper =
-                        math.sin(
-                            clamp(
-                                point.u,
-                                0,
-                                1
-                            )
-                            * math.pi
-                        )
-
-                    local sway =
-                        math.sin(
-                            now * 1.95
-                            + seed * 0.011
-                            + point.u * 5.0
-                        )
-                        * 1.55
-                        * edge_taper
-
-                    px = px + nx * sway
-                    py = py + ny * sway
-                end
-            end
-
             local current = {
-                x = px,
-                y = py,
+                x = point.x,
+                y = point.y,
                 u = point.u,
             }
 
@@ -16869,11 +16819,9 @@ function FALLEN_BT_DRAW_SOLAR(
                     yellow[3]
                     + (orange[3] - yellow[3]) * center_mix
 
-                -- Strong 35-layer glow.
-                -- Wider + much more visible than the previous version.
+                -- Strong soft glow: 35 close layers.
                 for g = 35, 1, -1 do
-                    local gt =
-                        g / 35
+                    local gt = g / 35
 
                     local glow_width =
                         core_thick
@@ -16900,7 +16848,6 @@ function FALLEN_BT_DRAW_SOLAR(
                     )
                 end
 
-                -- Extra broad halo so the glow is obvious even on bright maps.
                 DrawLine(
                     previous.x,
                     previous.y,
@@ -16925,7 +16872,6 @@ function FALLEN_BT_DRAW_SOLAR(
                     core_thick + 5.2
                 )
 
-                -- Colored body.
                 DrawLine(
                     previous.x,
                     previous.y,
@@ -16938,7 +16884,6 @@ function FALLEN_BT_DRAW_SOLAR(
                     core_thick
                 )
 
-                -- Hot center highlight.
                 local hg =
                     0.96
                     - 0.30 * center_mix
@@ -16966,174 +16911,182 @@ function FALLEN_BT_DRAW_SOLAR(
             previous = current
         end
     end
+end
 
-    -- Slow orbiting sparks around the tracer.
-    -- This is screen-space orbital motion around the line, made only with DrawLine.
-    local spark_count = 14
 
-    for s = 1, spark_count do
-        local base_u =
-            (s - 0.5) / spark_count
+function FALLEN_BT_ANIMATION_NAME()
+    local name =
+        tostring(
+            S.bullet_tracer_animation
+            or "None"
+        )
 
-        if base_u <= max_u + 0.0001 then
-            local sample_u =
-                clamp(
-                    base_u,
-                    0.02,
+    if name ~= "None"
+        and name ~= "Sway"
+        and name ~= "Wave"
+        and name ~= "Ripple"
+        and name ~= "Pulse"
+    then
+        S.bullet_tracer_animation = "None"
+        name = "None"
+    end
+
+    return name
+end
+
+
+function FALLEN_BT_APPLY_ANIMATION(
+    tr,
+    points
+)
+    if type(points) ~= "table"
+        or #points < 2
+    then
+        return points
+    end
+
+    local mode =
+        FALLEN_BT_ANIMATION_NAME()
+
+    if mode == "None"
+        or mode == "Pulse"
+    then
+        return points
+    end
+
+    local now = tick()
+    local seed =
+        tonumber(tr and tr.seed)
+        or 1
+
+    local out = {}
+
+    for i = 1, #points do
+        local point = points[i]
+
+        if point
+            and point.x
+            and point.y
+            and point.u
+        then
+            local px = point.x
+            local py = point.y
+
+            local p0 =
+                points[
                     math.max(
-                        0.02,
-                        max_u
+                        1,
+                        i - 1
                     )
-                )
+                ]
 
-            local sx, sy =
-                FALLEN_BT_GALAXY_POINT(
-                    visible_points,
-                    sample_u
-                )
-
-            if sx and sy then
-                local u0 =
-                    clamp(
-                        sample_u - 0.018,
-                        0,
-                        max_u
+            local p1 =
+                points[
+                    math.min(
+                        #points,
+                        i + 1
                     )
+                ]
 
-                local u1 =
-                    clamp(
-                        sample_u + 0.018,
-                        0,
-                        max_u
-                    )
+            if p0
+                and p1
+                and p0.x
+                and p0.y
+                and p1.x
+                and p1.y
+            then
+                local dx = p1.x - p0.x
+                local dy = p1.y - p0.y
 
-                local ax, ay =
-                    FALLEN_BT_GALAXY_POINT(
-                        visible_points,
-                        u0
+                local len =
+                    math.sqrt(
+                        dx * dx
+                        + dy * dy
                     )
 
-                local bx, by =
-                    FALLEN_BT_GALAXY_POINT(
-                        visible_points,
-                        u1
-                    )
+                if len > 0.01 then
+                    local nx = -dy / len
+                    local ny = dx / len
 
-                if ax and ay and bx and by then
-                    local dx = bx - ax
-                    local dy = by - ay
-                    local len =
-                        math.sqrt(
-                            dx * dx
-                            + dy * dy
+                    local u =
+                        clamp(
+                            tonumber(point.u) or 0,
+                            0,
+                            1
                         )
 
-                    if len > 0.01 then
-                        local tx = dx / len
-                        local ty = dy / len
-                        local nx = -ty
-                        local ny = tx
+                    -- Keep muzzle/origin and Hole pinned.
+                    local edge =
+                        math.sin(
+                            u * math.pi
+                        )
 
-                        local phase =
-                            now * 1.15
-                            + s * 1.73
-                            + seed * 0.017
+                    local offset = 0
 
-                        local orbit_radius =
-                            4.2
-                            + 1.6 * math.sin(
-                                phase * 0.73
+                    if mode == "Sway" then
+                        -- Old Solar/Lava motion: one smooth slow side-to-side bow.
+                        offset =
+                            math.sin(
+                                now * 1.95
+                                + seed * 0.011
+                                + u * 5.0
                             )
+                            * 1.55
+                            * edge
 
-                        local side =
-                            math.sin(phase)
-
-                        local depth =
-                            math.cos(phase)
-
-                        local ox =
-                            nx * side * orbit_radius
-                            + tx * depth * 1.6
-
-                        local oy =
-                            ny * side * orbit_radius
-                            + ty * depth * 1.6
-
-                        local ex = sx + ox
-                        local ey = sy + oy
-
-                        local center_mix =
-                            clamp(
-                                1
-                                - math.abs(
-                                    (sample_u / math.max(max_u, 0.0001) - 0.5)
-                                    * 2
-                                ),
-                                0,
-                                1
+                    elseif mode == "Wave" then
+                        -- A clear travelling wave through the tracer.
+                        offset =
+                            math.sin(
+                                now * 3.00
+                                + seed * 0.013
+                                + u * 12.0
                             )
+                            * 2.15
+                            * edge
 
-                        local rr =
-                            yellow[1]
-                            + (orange[1] - yellow[1]) * center_mix
-
-                        local gg =
-                            yellow[2]
-                            + (orange[2] - yellow[2]) * center_mix
-
-                        local bb =
-                            yellow[3]
-                            + (orange[3] - yellow[3]) * center_mix
-
-                        -- Tiny glow around each orbiting spark.
-                        DrawLine(
-                            ex - tx * 2.8,
-                            ey - ty * 2.8,
-                            ex + tx * 2.8,
-                            ey + ty * 2.8,
-                            rr,
-                            gg,
-                            bb,
-                            alpha * 0.16,
-                            5.5
-                        )
-
-                        DrawLine(
-                            ex - tx * 2.2,
-                            ey - ty * 2.2,
-                            ex + tx * 2.2,
-                            ey + ty * 2.2,
-                            rr,
-                            gg,
-                            bb,
-                            alpha * 0.82,
-                            1.25
-                        )
-
-                        -- Small white-hot center when spark is visually "in front".
-                        local front =
-                            clamp(
-                                (depth + 1) * 0.5,
-                                0,
-                                1
+                    elseif mode == "Ripple" then
+                        -- Smaller double-frequency ripple; cleaner than Lightning.
+                        offset =
+                            (
+                                math.sin(
+                                    now * 3.80
+                                    + seed * 0.009
+                                    + u * 19.0
+                                )
+                                * 0.95
+                                +
+                                math.sin(
+                                    now * 2.10
+                                    + seed * 0.015
+                                    + u * 8.0
+                                )
+                                * 0.45
                             )
-
-                        DrawLine(
-                            ex - tx * 1.1,
-                            ey - ty * 1.1,
-                            ex + tx * 1.1,
-                            ey + ty * 1.1,
-                            1,
-                            0.96,
-                            0.55,
-                            alpha * (0.20 + 0.48 * front),
-                            0.8
-                        )
+                            * edge
                     end
+
+                    px = px + nx * offset
+                    py = py + ny * offset
                 end
             end
+
+            out[#out + 1] = {
+                x = px,
+                y = py,
+                u = point.u,
+                wx = point.wx,
+                wy = point.wy,
+                wz = point.wz,
+            }
         end
     end
+
+    if #out >= 2 then
+        return out
+    end
+
+    return points
 end
 
 
@@ -17164,7 +17117,7 @@ function FALLEN_BT_DRAW_PATH(
         )
         return
     elseif style == 4 then
-        FALLEN_BT_DRAW_SOLAR(
+        FALLEN_BT_DRAW_LAVA(
             tr,
             points,
             reveal,
@@ -17451,6 +17404,41 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
             6
         )
 
+    local animation =
+        FALLEN_BT_ANIMATION_NAME()
+
+    if animation == "Pulse" then
+        local seed =
+            tonumber(tr and tr.seed)
+            or 1
+
+        local pulse =
+            0.5
+            + 0.5
+            * math.sin(
+                tick() * 4.8
+                + seed * 0.015
+            )
+
+        thick =
+            clamp(
+                thick
+                * (
+                    0.82
+                    + pulse * 0.32
+                ),
+                0.85,
+                7.0
+            )
+
+        alpha =
+            alpha
+            * (
+                0.82
+                + pulse * 0.18
+            )
+    end
+
     if alpha <= 0.002 then
         return
     end
@@ -17464,6 +17452,12 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
     else
         points = FALLEN_BT_STRAIGHT_PATH(tr)
     end
+
+    points =
+        FALLEN_BT_APPLY_ANIMATION(
+            tr,
+            points
+        )
 
     FALLEN_BT_DRAW_PATH(
         tr,
@@ -32672,7 +32666,7 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
         "Lightning",
         "Rainbow",
         "Water",
-        "Solar",
+        "Lava",
     }
 
     local item_h = 27
@@ -32799,6 +32793,207 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
 
     return panel_hot
 end
+
+function FALLEN_BT_ANIMATION_DROPDOWN_STEP()
+    local now = tick()
+
+    if A.bullet_tracer_animation_last_t == nil then
+        A.bullet_tracer_animation_last_t = now
+    end
+
+    local dt =
+        clamp(
+            now - A.bullet_tracer_animation_last_t,
+            0,
+            0.05
+        )
+
+    A.bullet_tracer_animation_last_t = now
+
+    local target =
+        A.bullet_tracer_animation_open
+        and 1
+        or 0
+
+    local speed =
+        target > (A.bullet_tracer_animation_anim or 0)
+        and 16
+        or 12
+
+    A.bullet_tracer_animation_anim =
+        exp_chase(
+            A.bullet_tracer_animation_anim or 0,
+            target,
+            speed,
+            dt
+        )
+
+    if math.abs(
+        (A.bullet_tracer_animation_anim or 0)
+        - target
+    ) < 0.0015
+    then
+        A.bullet_tracer_animation_anim = target
+    end
+
+    return
+        clamp(
+            A.bullet_tracer_animation_anim or 0,
+            0,
+            1
+        )
+end
+
+function FALLEN_DRAW_BT_ANIMATION_DROPDOWN(
+    mx,
+    my,
+    clicked,
+    x,
+    y,
+    w
+)
+    local anim =
+        FALLEN_BT_ANIMATION_DROPDOWN_STEP()
+
+    if anim <= 0.004
+        and not A.bullet_tracer_animation_open
+    then
+        return false
+    end
+
+    local options = {
+        "None",
+        "Sway",
+        "Wave",
+        "Ripple",
+        "Pulse",
+    }
+
+    local item_h = 27
+    local full_h =
+        #options * item_h
+
+    local visible_h =
+        full_h
+        * ease_out_cubic(anim)
+
+    local panel_h =
+        math.max(
+            2,
+            visible_h
+        )
+
+    FALLEN_POPUP_GLOW(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        0.9
+    )
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        panel_h,
+        7,
+        { 0.070, 0.074, 0.087, 1 }
+    )
+
+    local panel_hot =
+        hover(
+            mx,
+            my,
+            x,
+            y,
+            w,
+            panel_h
+        )
+
+    for i, option in ipairs(options) do
+        local iy =
+            y + (i - 1) * item_h
+
+        local reveal =
+            clamp(
+                (
+                    visible_h
+                    - (i - 1) * item_h
+                )
+                / item_h,
+                0,
+                1
+            )
+
+        if reveal > 0.12 then
+            local item_hot =
+                reveal > 0.92
+                and hover(
+                    mx,
+                    my,
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4
+                )
+
+            if item_hot then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    w - 8,
+                    item_h - 4,
+                    5,
+                    { 0.105, 0.111, 0.132, 1 }
+                )
+            end
+
+            local selected =
+                tostring(
+                    S.bullet_tracer_animation
+                    or "None"
+                ) == option
+
+            if selected then
+                rounded_fill(
+                    x + 4,
+                    iy + 2,
+                    3,
+                    item_h - 4,
+                    1,
+                    C.accent
+                )
+            end
+
+            text(
+                x + 12,
+                iy + 8,
+                option,
+                FALLEN_HOVER_TEXT(
+                    "tracer_animation:"
+                    .. tostring(option),
+                    item_hot,
+                    selected
+                        and C.text
+                        or C.text_dim
+                )
+            )
+
+            if clicked
+                and item_hot
+                and A.bullet_tracer_animation_open
+            then
+                S.bullet_tracer_animation = option
+                A.bullet_tracer_animation_open = false
+                return true
+            end
+        end
+    end
+
+    return panel_hot
+end
+
 
 function FALLEN_HITFX_STYLE_DROPDOWN_STEP()
     local now = tick()
@@ -33807,6 +34002,8 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     local dropdown_open =
         A.bullet_tracer_style_open
         or (A.bullet_tracer_style_anim or 0) > 0.02
+        or A.bullet_tracer_animation_open
+        or (A.bullet_tracer_animation_anim or 0) > 0.02
         or A.hit_effect_style_open
         or (A.hit_effect_style_anim or 0) > 0.02
 
@@ -33831,7 +34028,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         x,
         y + 25,
         card_w,
-        255,
+        296,
         11
     )
 
@@ -33957,6 +34154,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
 
         if A.bullet_tracer_style_open then
             A.hit_effect_style_open = false
+            A.bullet_tracer_animation_open = false
         end
 
         numeric_stop(true)
@@ -33971,7 +34169,109 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         1
     )
 
-    local color_row_y = y + 114
+    local animation_y = y + 114
+
+    local animation_box_w =
+        math.min(
+            156,
+            card_w * 0.55
+        )
+
+    local animation_box_x =
+        x + card_w - animation_box_w - 12
+
+    local animation_box_y =
+        animation_y + 8
+
+    local animation_box_hot =
+        hover(
+            mx,
+            my,
+            animation_box_x,
+            animation_box_y,
+            animation_box_w,
+            25
+        )
+
+    text(
+        x + 13,
+        animation_y + 14,
+        "Animation",
+        FALLEN_HOVER_TEXT(
+            "tracer_animation_label",
+            row_hover(
+                mx,
+                my,
+                x,
+                animation_y,
+                card_w,
+                41
+            ),
+            C.text
+        )
+    )
+
+    rounded_fill(
+        animation_box_x,
+        animation_box_y,
+        animation_box_w,
+        25,
+        6,
+        animation_box_hot
+            and { 0.110, 0.115, 0.135, 1 }
+            or C.toggle_off
+    )
+
+    text(
+        animation_box_x + 10,
+        animation_box_y + 7,
+        tostring(
+            S.bullet_tracer_animation
+            or "None"
+        ),
+        FALLEN_HOVER_TEXT(
+            "tracer_animation_value",
+            animation_box_hot,
+            C.text
+        )
+    )
+
+    text(
+        animation_box_x + animation_box_w - 18,
+        animation_box_y + 7,
+        A.bullet_tracer_animation_open
+            and "^"
+            or "v",
+        C.text_dim
+    )
+
+    if clicked
+        and animation_box_hot
+        and not A.world_color_picker_open
+        and not A.world_thunder_settings_open
+        and not A.world_rain_settings_open
+    then
+        A.bullet_tracer_animation_open =
+            not A.bullet_tracer_animation_open
+
+        if A.bullet_tracer_animation_open then
+            A.bullet_tracer_style_open = false
+            A.hit_effect_style_open = false
+        end
+
+        numeric_stop(true)
+    end
+
+    line(
+        x + 12,
+        y + 154,
+        x + card_w - 12,
+        y + 154,
+        C.divider,
+        1
+    )
+
+    local color_row_y = y + 155
 
     local color_hot =
         row_hover(
@@ -34051,29 +34351,6 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
 
     line(
         x + 12,
-        y + 154,
-        x + card_w - 12,
-        y + 154,
-        C.divider,
-        1
-    )
-
-    slider_row(
-        mx,
-        my,
-        controls_clicked,
-        lmb,
-        x,
-        y + 155,
-        card_w,
-        "Tracer Life",
-        "bullet_tracer_life",
-        0.10,
-        8.0
-    )
-
-    line(
-        x + 12,
         y + 195,
         x + card_w - 12,
         y + 195,
@@ -34089,10 +34366,10 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         x,
         y + 196,
         card_w,
-        "Thickness",
-        "bullet_tracer_thickness",
-        1,
-        6
+        "Tracer Life",
+        "bullet_tracer_life",
+        0.10,
+        8.0
     )
 
     line(
@@ -34111,6 +34388,29 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         lmb,
         x,
         y + 237,
+        card_w,
+        "Thickness",
+        "bullet_tracer_thickness",
+        1,
+        6
+    )
+
+    line(
+        x + 12,
+        y + 277,
+        x + card_w - 12,
+        y + 277,
+        C.divider,
+        1
+    )
+
+    slider_row(
+        mx,
+        my,
+        controls_clicked,
+        lmb,
+        x,
+        y + 278,
         card_w,
         "Reveal",
         "bullet_tracer_reveal",
@@ -34253,6 +34553,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
 
         if A.hit_effect_style_open then
             A.bullet_tracer_style_open = false
+            A.bullet_tracer_animation_open = false
         end
 
         numeric_stop(true)
@@ -34301,6 +34602,26 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         and not A.world_color_picker_open
     then
         A.bullet_tracer_style_open = false
+    end
+
+    local animation_dropdown_hot =
+        FALLEN_DRAW_BT_ANIMATION_DROPDOWN(
+            mx,
+            my,
+            clicked
+                and not A.world_color_picker_open,
+            animation_box_x,
+            animation_box_y + 30,
+            animation_box_w
+        )
+
+    if clicked
+        and A.bullet_tracer_animation_open
+        and not animation_box_hot
+        and not animation_dropdown_hot
+        and not A.world_color_picker_open
+    then
+        A.bullet_tracer_animation_open = false
     end
 
     local hit_dropdown_hot =
@@ -38829,7 +39150,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v64 | stronger Solar glow + orbit sparks | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v65 | Lava + tracer animation dropdown | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
