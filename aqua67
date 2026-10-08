@@ -39202,7 +39202,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v71 | Manipulated preview before Mouse1 | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v72 | Manipulation exact spoof validation + persistent indicator | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -44922,11 +44922,10 @@ local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos
 end
 
 local function FALLEN_MANIPULATION_DRAW_INDICATOR()
-    -- Preview indicator only:
-    -- show BEFORE Mouse1 is pressed when one of the virtual Manipulation
-    -- positions can hit. Hide it while the actual spoof is being used.
+    -- Pure availability indicator:
+    -- if the selected Manipulation position can hit, show it regardless
+    -- of whether Mouse1 is currently held.
     if S.misc_manipulation_enabled ~= true
-        or key_down(VK_LBUTTON) == true
         or A.misc_manipulation_can_hit ~= true
     then
         return
@@ -45135,8 +45134,9 @@ function FALLEN_MANIPULATION_TICK()
     -- This is what removes the long freeze when Manipulation is first enabled.
     FALLEN_MANIPULATION_GEO_STEP(base_pos, 28)
 
-    -- Target/direction selection is throttled. Manipulation only evaluates
-    -- UP / UP-RIGHT / UP-LEFT; the real position is never used as DIRECT.
+    -- Target/direction selection is throttled. Manipulation ALWAYS evaluates
+    -- UP / UP-RIGHT / UP-LEFT, even when the enemy is already visible.
+    -- The real/original position is never used as a DIRECT hit position.
     local now = tick()
 
     -- Once this press has a valid physical spoof, lock that exact offset until
@@ -45273,28 +45273,19 @@ function FALLEN_MANIPULATION_TICK()
         end
     end
 
-    -- Final real-position validation.
-    -- Candidate scoring above is only predictive. After the character is
-    -- physically moved/flipped, verify the ray again from the actual head.
+    -- Final validation uses the exact spoofed head position we just applied.
+    -- Do NOT read head:get_position() in the same render: the wrapper can still
+    -- report the pre-teleport position for one frame, which inverted the logic
+    -- (visible targets passed while behind-cover manipulation got rejected).
     local final_target =
         A.misc_manipulation_target_pos
 
-    local actual_origin = nil
-
-    if head then
-        pcall(function()
-            actual_origin = head:get_position()
-        end)
-    end
-
-    if not actual_origin then
-        actual_origin =
-            Vector3(
-                held_pos.X + base_head_offset.X,
-                held_pos.Y + base_head_offset.Y,
-                held_pos.Z + base_head_offset.Z
-            )
-    end
+    local actual_origin =
+        Vector3(
+            held_pos.X + base_head_offset.X,
+            held_pos.Y + base_head_offset.Y,
+            held_pos.Z + base_head_offset.Z
+        )
 
     local final_ok =
         final_target ~= nil
