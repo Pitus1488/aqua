@@ -616,6 +616,8 @@ local A = {
     misc_manipulation_can_hit = false,
     misc_manipulation_target_name = nil,
     misc_manipulation_target_addr = nil,
+    misc_manipulation_target_pos = nil,
+    misc_manipulation_failed_directions = {},
     misc_manipulation_geo_center_x = nil,
     misc_manipulation_geo_center_z = nil,
     misc_manipulation_last_error = 0,
@@ -39200,7 +39202,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v69 | Manipulation scored sides + hold while pressed | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v70 | Manipulation final-hit validation + clean indicator | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -44219,6 +44221,8 @@ local function FALLEN_MANIPULATION_CLEAR_PRESS()
     A.misc_manipulation_camera_anchor = nil
     A.misc_manipulation_direction = nil
     A.misc_manipulation_cached_offset = nil
+    A.misc_manipulation_target_pos = nil
+    A.misc_manipulation_failed_directions = {}
     A.misc_manipulation_hold_until = nil
     A.misc_manipulation_hold_active = false
 end
@@ -44813,12 +44817,17 @@ local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos
         )
 
     for _, c in ipairs(candidates) do
-        local nx, ny, nz =
-            FALLEN_MANIPULATION_NORMALIZE3(
-                c.x,
-                c.y,
-                c.z
-            )
+        local failed =
+            type(A.misc_manipulation_failed_directions) == "table"
+            and A.misc_manipulation_failed_directions[c.name] == true
+
+        if not failed then
+            local nx, ny, nz =
+                FALLEN_MANIPULATION_NORMALIZE3(
+                    c.x,
+                    c.y,
+                    c.z
+                )
 
         local ox, oy, oz =
             nx * distance,
@@ -44902,6 +44911,7 @@ local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos
                     )
             end
         end
+        end
     end
 
     if best_offset then
@@ -44912,7 +44922,10 @@ local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos
 end
 
 local function FALLEN_MANIPULATION_DRAW_INDICATOR()
-    if S.misc_manipulation_enabled ~= true then
+    if S.misc_manipulation_enabled ~= true
+        or A.misc_manipulation_spoofed ~= true
+        or A.misc_manipulation_can_hit ~= true
+    then
         return
     end
 
@@ -44921,59 +44934,53 @@ local function FALLEN_MANIPULATION_DRAW_INDICATOR()
         return
     end
 
-    local can_hit = A.misc_manipulation_can_hit == true
-    local has_target = A.misc_manipulation_target_name ~= nil
-    local direction = tostring(A.misc_manipulation_direction or "-")
-
-    local distance =
-        clamp(
-            tonumber(S.misc_manipulation_distance)
-            or 5,
-            5,
-            10
+    local label = "Manipulated"
+    local cx =
+        tonumber(
+            center.X
+            or center.x
+            or center[1]
         )
+        or 0
 
-    local label = string.format("MANIP %.1f | NO TARGET", distance)
-    local r, g, b = 0.72, 0.72, 0.76
+    local cy =
+        tonumber(
+            center.Y
+            or center.y
+            or center[2]
+        )
+        or 0
 
-    if has_target then
-        if type(A.world_rain_geo) ~= "table"
-            and A.misc_manipulation_geo_building == true
-        then
-            label = string.format(
-                "MANIP %.1f | SCANNING",
-                distance
-            )
-            r, g, b = 1.00, 0.82, 0.30
-        elseif can_hit then
-            label = string.format(
-                "MANIP %.1f | CAN HIT [%s]",
-                distance,
-                direction
-            )
-            r, g, b = 0.35, 1.00, 0.48
-        else
-            label = string.format(
-                "MANIP %.1f | BLOCKED",
-                distance
-            )
-            r, g, b = 1.00, 0.35, 0.35
-        end
-    end
+    local tx =
+        cx - (#label * 3.35)
 
-    local cx = tonumber(center.X or center.x or center[1]) or 0
-    local cy = tonumber(center.Y or center.y or center[2]) or 0
-    local tx = cx - (#label * 3.35)
-    local ty = cy - 54
+    -- Slightly below center.
+    local ty = cy + 42
 
     if type(DrawTextWithOutline) == "function" then
         DrawTextWithOutline(
-            tx, ty, label,
-            r, g, b, 1,
-            0, 0, 0, 1
+            tx,
+            ty,
+            label,
+            0.45,
+            1.00,
+            0.55,
+            1,
+            0,
+            0,
+            0,
+            1
         )
     elseif type(DrawText) == "function" then
-        DrawText(tx, ty, label, r, g, b, 1)
+        DrawText(
+            tx,
+            ty,
+            label,
+            0.45,
+            1.00,
+            0.55,
+            1
+        )
     end
 end
 
@@ -45009,6 +45016,8 @@ function FALLEN_MANIPULATION_TICK()
         A.misc_manipulation_can_hit = false
         A.misc_manipulation_target_name = nil
         A.misc_manipulation_target_addr = nil
+        A.misc_manipulation_target_pos = nil
+        A.misc_manipulation_failed_directions = {}
         A.misc_manipulation_direction = nil
         A.misc_manipulation_cached_offset = nil
         return
@@ -45089,6 +45098,8 @@ function FALLEN_MANIPULATION_TICK()
 
         -- Force one target/direction refresh for the new shot press.
         A.misc_manipulation_last_eval = 0
+        A.misc_manipulation_failed_directions = {}
+        A.misc_manipulation_target_pos = nil
     end
 
     local base_pos =
@@ -45155,6 +45166,8 @@ function FALLEN_MANIPULATION_TICK()
             and tonumber(target.address or target.player_addr or 0)
             or nil
 
+        A.misc_manipulation_target_pos = target_pos
+
         local offset, direction, can_hit =
             FALLEN_MANIPULATION_PICK_OFFSET(
                 base_origin,
@@ -45206,6 +45219,7 @@ function FALLEN_MANIPULATION_TICK()
         A.misc_manipulation_hold_until = nil
         A.misc_manipulation_hold_active = false
         A.misc_manipulation_spoofed = false
+        A.misc_manipulation_can_hit = false
         return
     end
 
@@ -45254,6 +45268,86 @@ function FALLEN_MANIPULATION_TICK()
             end)
         end
     end
+
+    -- Final real-position validation.
+    -- Candidate scoring above is only predictive. After the character is
+    -- physically moved/flipped, verify the ray again from the actual head.
+    local final_target =
+        A.misc_manipulation_target_pos
+
+    local actual_origin = nil
+
+    if head then
+        pcall(function()
+            actual_origin = head:get_position()
+        end)
+    end
+
+    if not actual_origin then
+        actual_origin =
+            Vector3(
+                held_pos.X + base_head_offset.X,
+                held_pos.Y + base_head_offset.Y,
+                held_pos.Z + base_head_offset.Z
+            )
+    end
+
+    local final_ok =
+        final_target ~= nil
+        and FALLEN_MANIPULATION_CAN_HIT(
+            actual_origin,
+            final_target,
+            base_pos
+        )
+
+    if not final_ok then
+        local failed_name =
+            tostring(
+                A.misc_manipulation_direction
+                or ""
+            )
+
+        if failed_name ~= "" then
+            if type(A.misc_manipulation_failed_directions) ~= "table" then
+                A.misc_manipulation_failed_directions = {}
+            end
+
+            A.misc_manipulation_failed_directions[failed_name] = true
+        end
+
+        A.misc_manipulation_can_hit = false
+        A.misc_manipulation_spoofed = false
+        A.misc_manipulation_cached_offset = nil
+        A.misc_manipulation_direction = nil
+        A.misc_manipulation_last_eval = 0
+        A.misc_manipulation_hold_active = false
+
+        pcall(function()
+            hrp:set_anchored(false)
+        end)
+
+        pcall(function()
+            hrp:set_position(base_pos)
+        end)
+
+        if type(base_rot) == "table" then
+            pcall(function()
+                hrp:set_rotation(base_rot)
+            end)
+        end
+
+        if A.misc_manipulation_press_vel then
+            pcall(function()
+                hrp:set_velocity(
+                    A.misc_manipulation_press_vel
+                )
+            end)
+        end
+
+        return
+    end
+
+    A.misc_manipulation_can_hit = true
 
     -- Lock only camera translation; look rotation remains controllable.
     if cam and A.misc_manipulation_camera_anchor then
