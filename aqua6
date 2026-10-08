@@ -39200,7 +39200,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v68 | Manipulation UP trio no DIRECT + local-limit fix | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v69 | Manipulation scored sides + hold while pressed | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -44780,58 +44780,134 @@ end
 local function FALLEN_MANIPULATION_CANDIDATES(rot)
     local rx, rz = FALLEN_MANIPULATION_BASIS(rot)
 
-    -- Only high-angle positions are useful for this Manipulation mode.
-    -- No pure LEFT/RIGHT/FORWARD/BACK/DOWN candidates anymore.
+    -- Only high-angle positions are used. Diagonals are listed first so
+    -- equal-quality openings do not always collapse back to plain UP.
     return {
-        { name = "UP",        x = 0,   y = 1, z = 0 },
-        { name = "UP-RIGHT",  x = rx,  y = 1, z = rz },
-        { name = "UP-LEFT",   x = -rx, y = 1, z = -rz },
+        { name = "UP-RIGHT", x = rx,  y = 1, z = rz },
+        { name = "UP-LEFT",  x = -rx, y = 1, z = -rz },
+        { name = "UP",       x = 0,   y = 1, z = 0 },
     }
 end
 
 local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos, rot, distance)
     -- No DIRECT bypass: only UP / UP-RIGHT / UP-LEFT are considered.
+    -- Pick the angle that has the best small visibility window instead of
+    -- returning the first valid ray. This lets LEFT/RIGHT win when they
+    -- actually open more of the target around cover.
     local candidates = FALLEN_MANIPULATION_CANDIDATES(rot)
-    local preferred = A.misc_manipulation_direction
 
-    -- Keep the prior direction when it is still valid so the spoof does not
-    -- bounce between UP-RIGHT / UP-LEFT every refresh while both are possible.
-    if preferred and target_pos then
-        for _, c in ipairs(candidates) do
-            if c.name == preferred then
-                local nx, ny, nz = FALLEN_MANIPULATION_NORMALIZE3(c.x, c.y, c.z)
-                local ox, oy, oz = nx * distance, ny * distance, nz * distance
-                local origin = Vector3(
-                    base_origin.X + ox,
-                    base_origin.Y + oy,
-                    base_origin.Z + oz
-                )
-
-                if FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, base_pos) then
-                    return Vector3(ox, oy, oz), c.name, true
-                end
-                break
-            end
-        end
+    if not target_pos then
+        return Vector3(0, 0, 0), "-", false
     end
 
-    if target_pos then
-        for _, c in ipairs(candidates) do
-            local nx, ny, nz = FALLEN_MANIPULATION_NORMALIZE3(c.x, c.y, c.z)
-            local ox, oy, oz = nx * distance, ny * distance, nz * distance
-            local origin = Vector3(
+    local rx, rz, fx, fz =
+        FALLEN_MANIPULATION_BASIS(rot)
+
+    local best_offset = nil
+    local best_name = nil
+    local best_score = -1e9
+    local preferred =
+        tostring(
+            A.misc_manipulation_direction
+            or ""
+        )
+
+    for _, c in ipairs(candidates) do
+        local nx, ny, nz =
+            FALLEN_MANIPULATION_NORMALIZE3(
+                c.x,
+                c.y,
+                c.z
+            )
+
+        local ox, oy, oz =
+            nx * distance,
+            ny * distance,
+            nz * distance
+
+        local origin =
+            Vector3(
                 base_origin.X + ox,
                 base_origin.Y + oy,
                 base_origin.Z + oz
             )
 
-            if FALLEN_MANIPULATION_CAN_HIT(origin, target_pos, base_pos) then
-                return Vector3(ox, oy, oz), c.name, true
+        -- The center ray is mandatory.
+        if FALLEN_MANIPULATION_CAN_HIT(
+            origin,
+            target_pos,
+            base_pos
+        )
+        then
+            local score = 10
+
+            -- Probe a small window around the target. A diagonal that sees
+            -- more of this window gets preferred over plain UP.
+            local probes = {
+                Vector3(
+                    target_pos.X,
+                    target_pos.Y + 0.48,
+                    target_pos.Z
+                ),
+                Vector3(
+                    target_pos.X + rx * 0.52,
+                    target_pos.Y,
+                    target_pos.Z + rz * 0.52
+                ),
+                Vector3(
+                    target_pos.X - rx * 0.52,
+                    target_pos.Y,
+                    target_pos.Z - rz * 0.52
+                ),
+                Vector3(
+                    target_pos.X + fx * 0.32,
+                    target_pos.Y,
+                    target_pos.Z + fz * 0.32
+                ),
+            }
+
+            for _, probe in ipairs(probes) do
+                if FALLEN_MANIPULATION_CAN_HIT(
+                    origin,
+                    probe,
+                    base_pos
+                )
+                then
+                    score = score + 1
+                end
+            end
+
+            -- Small diagonal bonus only breaks near-ties. UP still wins when
+            -- it has a meaningfully cleaner window.
+            if c.name == "UP-RIGHT"
+                or c.name == "UP-LEFT"
+            then
+                score = score + 0.35
+            end
+
+            -- Tiny stability bonus if a direction was already being tested
+            -- before the physical spoof became locked.
+            if c.name == preferred then
+                score = score + 0.15
+            end
+
+            if score > best_score then
+                best_score = score
+                best_name = c.name
+                best_offset =
+                    Vector3(
+                        ox,
+                        oy,
+                        oz
+                    )
             end
         end
     end
 
-    -- No clean candidate: expose BLOCKED and do not move the character.
+    if best_offset then
+        return best_offset, best_name, true
+    end
+
     return Vector3(0, 0, 0), "-", false
 end
 
@@ -45048,9 +45124,21 @@ function FALLEN_MANIPULATION_TICK()
     -- Target/direction selection is throttled. Manipulation only evaluates
     -- UP / UP-RIGHT / UP-LEFT; the real position is never used as DIRECT.
     local now = tick()
+
+    -- Once this press has a valid physical spoof, lock that exact offset until
+    -- Mouse1 is released. Do not recalculate and teleport between positions.
+    local spoof_locked =
+        lmb
+        and A.misc_manipulation_spoofed == true
+        and A.misc_manipulation_cached_offset ~= nil
+        and A.misc_manipulation_can_hit == true
+
     local need_eval =
-        (now - (A.misc_manipulation_last_eval or 0)) >= 0.10
-        or A.misc_manipulation_cached_offset == nil
+        not spoof_locked
+        and (
+            (now - (A.misc_manipulation_last_eval or 0)) >= 0.10
+            or A.misc_manipulation_cached_offset == nil
+        )
 
     if need_eval then
         A.misc_manipulation_last_eval = now
@@ -45092,8 +45180,8 @@ function FALLEN_MANIPULATION_TICK()
     local direction = tostring(A.misc_manipulation_direction or "-")
     local can_hit = A.misc_manipulation_can_hit == true
 
-    -- If none of the three spoof positions can hit, do not teleport/flip.
-    -- Return to the original click point until UP / UP-RIGHT / UP-LEFT works.
+    -- Before a spoof is locked, stay at the original click point until one
+    -- of UP / UP-RIGHT / UP-LEFT finds a valid opening.
     if not can_hit then
         pcall(function()
             hrp:set_anchored(false)
@@ -45125,60 +45213,31 @@ function FALLEN_MANIPULATION_TICK()
         A.misc_manipulation_cached_offset
         or Vector3(0, 0, 0)
 
-    -- Always return to the ORIGINAL click position before applying this frame's
-    -- spoof. The selected 5..10 stud offset therefore never accumulates.
+    -- Hold the exact selected spoof position for the entire Mouse1 press.
+    -- Never visit base_pos between frames; release restores it once.
+    local held_pos =
+        Vector3(
+            base_pos.X + offset.X,
+            base_pos.Y + offset.Y,
+            base_pos.Z + offset.Z
+        )
+
     pcall(function()
-        hrp:set_position(base_pos)
+        hrp:set_anchored(true)
     end)
 
-    if type(base_rot) == "table" then
-        pcall(function()
-            hrp:set_rotation(base_rot)
-        end)
-    end
-
-    if A.misc_manipulation_press_vel then
-        pcall(function()
-            hrp:set_velocity(A.misc_manipulation_press_vel)
-        end)
-    end
-
     pcall(function()
-        hrp:set_position(
-            Vector3(
-                base_pos.X + offset.X,
-                base_pos.Y + offset.Y,
-                base_pos.Z + offset.Z
-            )
+        hrp:set_velocity(
+            Vector3(0, 0, 0)
         )
     end)
 
-    -- On the first real spoof after Mouse1 is pressed, pin the character in
-    -- place for at least 0.30s. This gives the translated/rotated root enough
-    -- time to settle instead of immediately falling from the sideways pose.
-    if A.misc_manipulation_spoofed ~= true
-        or not A.misc_manipulation_hold_until
-    then
-        A.misc_manipulation_hold_until = now + 0.30
-        A.misc_manipulation_hold_active = true
-    end
+    pcall(function()
+        hrp:set_position(held_pos)
+    end)
 
-    if A.misc_manipulation_hold_active == true then
-        if now < (tonumber(A.misc_manipulation_hold_until) or 0) then
-            pcall(function()
-                hrp:set_anchored(true)
-            end)
-
-            pcall(function()
-                hrp:set_velocity(Vector3(0, 0, 0))
-            end)
-        else
-            pcall(function()
-                hrp:set_anchored(false)
-            end)
-            A.misc_manipulation_hold_active = false
-        end
-    end
+    A.misc_manipulation_hold_until = nil
+    A.misc_manipulation_hold_active = true
 
     -- Sideways body spoof exists only while a valid armed LMB is held.
     if type(base_rot) == "table" then
