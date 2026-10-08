@@ -39202,7 +39202,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v70 | Manipulation final-hit validation + clean indicator | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v71 | Manipulated preview before Mouse1 | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -44922,8 +44922,11 @@ local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos
 end
 
 local function FALLEN_MANIPULATION_DRAW_INDICATOR()
+    -- Preview indicator only:
+    -- show BEFORE Mouse1 is pressed when one of the virtual Manipulation
+    -- positions can hit. Hide it while the actual spoof is being used.
     if S.misc_manipulation_enabled ~= true
-        or A.misc_manipulation_spoofed ~= true
+        or key_down(VK_LBUTTON) == true
         or A.misc_manipulation_can_hit ~= true
     then
         return
@@ -45182,8 +45185,9 @@ function FALLEN_MANIPULATION_TICK()
         A.misc_manipulation_can_hit = target_pos ~= nil and can_hit or false
     end
 
-    -- Indicator remains always-on. Physical spoofing starts only on
-    -- Mouse1 + a weapon recognised by the Auto Prediction detector.
+    -- Preview calculations remain active without Mouse1 so the indicator
+    -- can tell us in advance whether Manipulation has a valid angle.
+    -- Physical spoofing still starts only on Mouse1 + a valid weapon.
     if not lmb then
         A.misc_manipulation_spoofed = false
         A.misc_manipulation_camera_anchor = nil
