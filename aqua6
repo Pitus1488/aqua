@@ -616,6 +616,7 @@ local A = {
     misc_manipulation_can_hit = false,
     misc_manipulation_target_name = nil,
     misc_manipulation_target_addr = nil,
+    misc_manipulation_target_pos = nil,
     misc_manipulation_geo_center_x = nil,
     misc_manipulation_geo_center_z = nil,
     misc_manipulation_last_error = 0,
@@ -4088,7 +4089,57 @@ function FALLEN_HOVER_TEXT(key, hot, base_color)
     return out
 end
 
+local FALLEN_DROPDOWN_MODAL_SPECS = {
+    { "aim_part_dropdown_open", "aim_part_dropdown_anim" },
+    { "silent_part_dropdown_open", "silent_part_dropdown_anim" },
+    { "bullet_tracer_style_open", "bullet_tracer_style_anim" },
+    { "bullet_tracer_animation_open", "bullet_tracer_animation_anim" },
+    { "hit_effect_style_open", "hit_effect_style_anim" },
+    { "misc_antiaim_mode_dropdown_open", "misc_antiaim_mode_dropdown_anim" },
+    { "armor_mode_dropdown_open", "armor_mode_dropdown_anim" },
+    { "menu_scale_dropdown_open", "menu_scale_dropdown_anim" },
+    { "menu_type_dropdown_open", "menu_type_dropdown_anim" },
+    { "secret_crosshair_style_open", "secret_crosshair_style_anim" },
+    { "config_open", nil },
+}
+
+local function FALLEN_ANY_DROPDOWN_MODAL_ACTIVE(except_flag)
+    for _, spec in ipairs(FALLEN_DROPDOWN_MODAL_SPECS) do
+        local flag = spec[1]
+        local anim_key = spec[2]
+
+        if flag ~= except_flag then
+            if A[flag] == true then
+                return true
+            end
+
+            if anim_key
+                and (tonumber(A[anim_key]) or 0) > 0.02
+            then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+local function FALLEN_DROPDOWN_TRIGGER_ALLOWED(clicked, self_flag)
+    if not clicked then
+        return false
+    end
+
+    return
+        not FALLEN_ANY_DROPDOWN_MODAL_ACTIVE(
+            self_flag
+        )
+end
+
 local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
+    clicked =
+        clicked
+        and not FALLEN_ANY_DROPDOWN_MODAL_ACTIVE()
+
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
 
@@ -4171,6 +4222,10 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
 end
 
 local function chevron_row(mx, my, clicked, x, y, w, label, key)
+    clicked =
+        clicked
+        and not FALLEN_ANY_DROPDOWN_MODAL_ACTIVE()
+
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
     local row_col =
@@ -4188,6 +4243,10 @@ local function chevron_row(mx, my, clicked, x, y, w, label, key)
 end
 
 local function bool_square_row(mx, my, clicked, x, y, w, label, key)
+    clicked =
+        clicked
+        and not FALLEN_ANY_DROPDOWN_MODAL_ACTIVE()
+
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
     local row_col =
@@ -4212,6 +4271,17 @@ local function bool_square_row(mx, my, clicked, x, y, w, label, key)
 end
 
 local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv, fmt)
+    local dropdown_modal =
+        FALLEN_ANY_DROPDOWN_MODAL_ACTIVE()
+
+    clicked =
+        clicked
+        and not dropdown_modal
+
+    lmb =
+        lmb
+        and not dropdown_modal
+
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
 
@@ -4394,6 +4464,10 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
 end
 
 local function dropdown_row(mx, my, clicked, x, y, w, label, key, options)
+    clicked =
+        clicked
+        and not FALLEN_ANY_DROPDOWN_MODAL_ACTIVE()
+
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
 
@@ -6028,7 +6102,10 @@ local function draw_aim_settings_popup(
                 C.text_dim
             )
 
-            if ui_clicked
+            if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+                    ui_clicked,
+                    "aim_part_dropdown_open"
+                )
                 and field_hot
             then
                 A.aim_part_dropdown_open =
@@ -7413,7 +7490,10 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         C.text_dim
     )
 
-    if clicked
+    if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+            clicked,
+            "silent_part_dropdown_open"
+        )
         and field_hot
     then
         A.silent_part_dropdown_open =
@@ -16924,8 +17004,6 @@ function FALLEN_BT_ANIMATION_NAME()
     if name ~= "None"
         and name ~= "Sway"
         and name ~= "Wave"
-        and name ~= "Ripple"
-        and name ~= "Pulse"
     then
         S.bullet_tracer_animation = "None"
         name = "None"
@@ -16948,9 +17026,7 @@ function FALLEN_BT_APPLY_ANIMATION(
     local mode =
         FALLEN_BT_ANIMATION_NAME()
 
-    if mode == "None"
-        or mode == "Pulse"
-    then
+    if mode == "None" then
         return points
     end
 
@@ -17043,26 +17119,6 @@ function FALLEN_BT_APPLY_ANIMATION(
                                 + u * 12.0
                             )
                             * 2.15
-                            * edge
-
-                    elseif mode == "Ripple" then
-                        -- Smaller double-frequency ripple; cleaner than Lightning.
-                        offset =
-                            (
-                                math.sin(
-                                    now * 3.80
-                                    + seed * 0.009
-                                    + u * 19.0
-                                )
-                                * 0.95
-                                +
-                                math.sin(
-                                    now * 2.10
-                                    + seed * 0.015
-                                    + u * 8.0
-                                )
-                                * 0.45
-                            )
                             * edge
                     end
 
@@ -17403,41 +17459,6 @@ function FALLEN_BT_DRAW_ONE(tr, age, life)
             1,
             6
         )
-
-    local animation =
-        FALLEN_BT_ANIMATION_NAME()
-
-    if animation == "Pulse" then
-        local seed =
-            tonumber(tr and tr.seed)
-            or 1
-
-        local pulse =
-            0.5
-            + 0.5
-            * math.sin(
-                tick() * 4.8
-                + seed * 0.015
-            )
-
-        thick =
-            clamp(
-                thick
-                * (
-                    0.82
-                    + pulse * 0.32
-                ),
-                0.85,
-                7.0
-            )
-
-        alpha =
-            alpha
-            * (
-                0.82
-                + pulse * 0.18
-            )
-    end
 
     if alpha <= 0.002 then
         return
@@ -23573,7 +23594,10 @@ function FALLEN_DRAW_ARMOR_PAGE(
         C.text_dim
     )
 
-    if clicked
+    if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+            clicked,
+            "armor_mode_dropdown_open"
+        )
         and not popup_open
         and mode_box_hot
     then
@@ -29829,7 +29853,12 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             C.text_dim
         )
 
-        if ui_clicked and hot then
+        if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+                ui_clicked,
+                "menu_scale_dropdown_open"
+            )
+            and hot
+        then
             A.menu_scale_dropdown_open = not A.menu_scale_dropdown_open
             A.menu_type_dropdown_open = false
         end
@@ -29969,7 +29998,12 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             C.text_dim
         )
 
-        if ui_clicked and type_hot then
+        if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+                ui_clicked,
+                "menu_type_dropdown_open"
+            )
+            and type_hot
+        then
             A.menu_type_dropdown_open =
                 not A.menu_type_dropdown_open
 
@@ -32865,8 +32899,6 @@ function FALLEN_DRAW_BT_ANIMATION_DROPDOWN(
         "None",
         "Sway",
         "Wave",
-        "Ripple",
-        "Pulse",
     }
 
     local item_h = 27
@@ -34016,6 +34048,7 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     local controls_clicked =
         clicked
         and not dropdown_open
+        and not FALLEN_ANY_DROPDOWN_MODAL_ACTIVE()
         and not A.world_color_picker_open
 
     section_title(
@@ -34143,7 +34176,10 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         C.text_dim
     )
 
-    if clicked
+    if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+            clicked,
+            "bullet_tracer_style_open"
+        )
         and style_box_hot
         and not A.world_color_picker_open
         and not A.world_thunder_settings_open
@@ -34245,7 +34281,10 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         C.text_dim
     )
 
-    if clicked
+    if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+            clicked,
+            "bullet_tracer_animation_open"
+        )
         and animation_box_hot
         and not A.world_color_picker_open
         and not A.world_thunder_settings_open
@@ -34542,7 +34581,10 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         C.text_dim
     )
 
-    if clicked
+    if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+            clicked,
+            "hit_effect_style_open"
+        )
         and hit_style_box_hot
         and not A.world_color_picker_open
         and not A.world_thunder_settings_open
@@ -36959,7 +37001,10 @@ function FALLEN_DRAW_ANTIAIM_SETTINGS_POPUP(
             C.text_dim
         )
 
-        if ui_clicked
+        if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+                ui_clicked,
+                "misc_antiaim_mode_dropdown_open"
+            )
             and mode_field_hot
         then
             A.misc_antiaim_mode_dropdown_open =
@@ -38407,7 +38452,10 @@ hooks.on_render(function()
         C.text_dim
     )
 
-    if clicked
+    if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+            clicked,
+            "config_open"
+        )
         and cfg_hot
         and not A.world_color_picker_open
         and (A.world_color_picker_anim or 0) <= 0.02
@@ -38844,7 +38892,10 @@ hooks.on_render(function()
 
         -- The selector itself can always close an already-open popup,
         -- but opening it is only allowed when no other modal is active.
-        if clicked
+        if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+                clicked,
+                "secret_crosshair_style_open"
+            )
             and style_box_hot
             and not A.world_color_picker_open
             and (
@@ -39150,7 +39201,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v65 | Lava + tracer animation dropdown | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v66 | dropdown click capture + 2 tracer animations | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -44095,10 +44146,12 @@ end)
 -- base state before applying one temporary spoof, so the offset can never
 -- accumulate upward/sideways frame after frame.
 --
--- Direction is selected automatically from several offsets (up/left/right/
--- forward/back/down + diagonals). The first candidate that has a clean line
--- to the current enemy becomes the active spoof direction. The local camera
--- position stays anchored to the press-start camera position.
+-- Direction is intentionally limited to three useful high-angle offsets:
+-- UP, UP-RIGHT and UP-LEFT. The first candidate that opens a clean line to
+-- the target becomes the active spoof direction. A cheap DIRECT test also
+-- runs every render while spoofing so an old UP result can never linger after
+-- the real/original position becomes hittable again.
+-- The local camera position stays anchored to the press-start camera position.
 -- =========================================================
 
 local FALLEN_MANIPULATION_FLIP_DEG = 90.0
@@ -44727,30 +44780,21 @@ local function FALLEN_MANIPULATION_BASIS(rot)
 end
 
 local function FALLEN_MANIPULATION_CANDIDATES(rot)
-    local rx, rz, fx, fz = FALLEN_MANIPULATION_BASIS(rot)
+    local rx, rz = FALLEN_MANIPULATION_BASIS(rot)
 
+    -- Only high-angle positions are useful for this Manipulation mode.
+    -- No pure LEFT/RIGHT/FORWARD/BACK/DOWN candidates anymore.
     return {
-        { name = "UP",        x = 0,          y = 1,  z = 0 },
-        { name = "RIGHT",     x = rx,         y = 0,  z = rz },
-        { name = "LEFT",      x = -rx,        y = 0,  z = -rz },
-        { name = "FORWARD",   x = fx,         y = 0,  z = fz },
-        { name = "BACK",      x = -fx,        y = 0,  z = -fz },
-        { name = "DOWN",      x = 0,          y = -1, z = 0 },
-        { name = "UP-RIGHT",  x = rx,         y = 1,  z = rz },
-        { name = "UP-LEFT",   x = -rx,        y = 1,  z = -rz },
-        { name = "UP-FWD",    x = fx,         y = 1,  z = fz },
-        { name = "UP-BACK",   x = -fx,        y = 1,  z = -fz },
-        { name = "RIGHT-FWD", x = rx + fx,    y = 0,  z = rz + fz },
-        { name = "LEFT-FWD",  x = -rx + fx,   y = 0,  z = -rz + fz },
-        { name = "RIGHT-BACK",x = rx - fx,    y = 0,  z = rz - fz },
-        { name = "LEFT-BACK", x = -rx - fx,   y = 0,  z = -rz - fz },
+        { name = "UP",        x = 0,   y = 1, z = 0 },
+        { name = "UP-RIGHT",  x = rx,  y = 1, z = rz },
+        { name = "UP-LEFT",   x = -rx, y = 1, z = -rz },
     }
 end
 
 local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos, rot, distance)
     -- If the enemy is already hittable from the REAL/current click position,
-    -- do not manipulate at all. This both matches the intended behaviour and
-    -- avoids 14 unnecessary directional visibility checks for visible targets.
+    -- do not manipulate at all. Only the three high-angle candidates are tested
+    -- when the real position is actually blocked.
     if target_pos and FALLEN_MANIPULATION_CAN_HIT(base_origin, target_pos, base_pos) then
         return Vector3(0, 0, 0), "DIRECT", true
     end
@@ -44759,7 +44803,7 @@ local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos
     local preferred = A.misc_manipulation_direction
 
     -- Keep the prior direction when it is still valid so the spoof does not
-    -- bounce between LEFT/RIGHT every render while both are possible.
+    -- bounce between UP-RIGHT / UP-LEFT every refresh while both are possible.
     if preferred and target_pos then
         for _, c in ipairs(candidates) do
             if c.name == preferred then
@@ -44897,6 +44941,7 @@ function FALLEN_MANIPULATION_TICK()
         A.misc_manipulation_can_hit = false
         A.misc_manipulation_target_name = nil
         A.misc_manipulation_target_addr = nil
+        A.misc_manipulation_target_pos = nil
         A.misc_manipulation_direction = nil
         A.misc_manipulation_cached_offset = nil
         return
@@ -45013,7 +45058,7 @@ function FALLEN_MANIPULATION_TICK()
     -- directional checks only run when the enemy is actually behind cover.
     local now = tick()
     local need_eval =
-        (now - (A.misc_manipulation_last_eval or 0)) >= 0.15
+        (now - (A.misc_manipulation_last_eval or 0)) >= 0.10
         or A.misc_manipulation_cached_offset == nil
 
     if need_eval then
@@ -45030,6 +45075,8 @@ function FALLEN_MANIPULATION_TICK()
             target
             and tonumber(target.address or target.player_addr or 0)
             or nil
+
+        A.misc_manipulation_target_pos = target_pos
 
         local offset, direction, can_hit =
             FALLEN_MANIPULATION_PICK_OFFSET(
@@ -45051,6 +45098,26 @@ function FALLEN_MANIPULATION_TICK()
         A.misc_manipulation_spoofed = false
         A.misc_manipulation_camera_anchor = nil
         return
+    end
+
+    -- The expensive target/direction selection above is throttled, but the
+    -- old cached spoof direction must never survive after the real position
+    -- becomes clear. Re-check only the already selected target point here;
+    -- this is cheap and runs every render.
+    local cached_target_pos =
+        A.misc_manipulation_target_pos
+
+    if cached_target_pos
+        and FALLEN_MANIPULATION_CAN_HIT(
+            base_origin,
+            cached_target_pos,
+            base_pos
+        )
+    then
+        A.misc_manipulation_cached_offset =
+            Vector3(0, 0, 0)
+        A.misc_manipulation_direction = "DIRECT"
+        A.misc_manipulation_can_hit = true
     end
 
     local direction = tostring(A.misc_manipulation_direction or "-")
