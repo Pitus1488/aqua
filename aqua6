@@ -16750,12 +16750,11 @@ function FALLEN_BT_DRAW_SOLAR(
         return
     end
 
-    -- Slightly thinner than the normal Water body.
     local core_thick =
         clamp(
-            0.85 + (tonumber(thick) or 2) * 0.31,
-            1.05,
-            2.8
+            0.95 + (tonumber(thick) or 2) * 0.34,
+            1.15,
+            3.15
         )
 
     local now = tick()
@@ -16763,9 +16762,9 @@ function FALLEN_BT_DRAW_SOLAR(
         tonumber(tr and tr.seed)
         or 1
 
-    -- User request: yellow -> orange -> yellow.
-    local yellow = { 1.00, 0.90, 0.08 }
-    local orange = { 1.00, 0.34, 0.03 }
+    -- Yellow -> orange -> yellow.
+    local yellow = { 1.00, 0.90, 0.06 }
+    local orange = { 1.00, 0.30, 0.015 }
 
     local previous = nil
 
@@ -16780,8 +16779,6 @@ function FALLEN_BT_DRAW_SOLAR(
             local px = point.x
             local py = point.y
 
-            -- Very small, smooth right/left movement.
-            -- Taper it to zero at both endpoints so origin and Hole stay fixed.
             local prev_for_normal =
                 visible_points[math.max(1, i - 1)]
             local next_for_normal =
@@ -16820,11 +16817,11 @@ function FALLEN_BT_DRAW_SOLAR(
 
                     local sway =
                         math.sin(
-                            now * 2.15
+                            now * 1.95
                             + seed * 0.011
                             + point.u * 5.0
                         )
-                        * 1.35
+                        * 1.55
                         * edge_taper
 
                     px = px + nx * sway
@@ -16850,7 +16847,6 @@ function FALLEN_BT_DRAW_SOLAR(
                         1
                     )
 
-                -- 0 at ends, 1 in the center.
                 local center_mix =
                     clamp(
                         1
@@ -16873,22 +16869,23 @@ function FALLEN_BT_DRAW_SOLAR(
                     yellow[3]
                     + (orange[3] - yellow[3]) * center_mix
 
-                -- 35 thin glow layers. The spacing is intentionally small,
-                -- so this looks like a menu-style soft glow instead of one
-                -- huge fat halo.
+                -- Strong 35-layer glow.
+                -- Wider + much more visible than the previous version.
                 for g = 35, 1, -1 do
                     local gt =
                         g / 35
 
                     local glow_width =
                         core_thick
-                        + 0.22
-                        + g * 0.105
+                        + 0.55
+                        + g * 0.18
 
                     local glow_alpha =
                         alpha
-                        * 0.0105
-                        * (1 - gt * 0.58)
+                        * (
+                            0.020
+                            + (1 - gt) * 0.018
+                        )
 
                     DrawLine(
                         previous.x,
@@ -16903,6 +16900,31 @@ function FALLEN_BT_DRAW_SOLAR(
                     )
                 end
 
+                -- Extra broad halo so the glow is obvious even on bright maps.
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    current.x,
+                    current.y,
+                    rr,
+                    gg,
+                    bb,
+                    alpha * 0.10,
+                    core_thick + 8.5
+                )
+
+                DrawLine(
+                    previous.x,
+                    previous.y,
+                    current.x,
+                    current.y,
+                    rr,
+                    gg,
+                    bb,
+                    alpha * 0.16,
+                    core_thick + 5.2
+                )
+
                 -- Colored body.
                 DrawLine(
                     previous.x,
@@ -16912,39 +16934,204 @@ function FALLEN_BT_DRAW_SOLAR(
                     rr,
                     gg,
                     bb,
-                    alpha * 0.93,
+                    alpha * 0.98,
                     core_thick
                 )
 
-                -- Small hot center highlight, orange-biased in the middle.
-                local hr =
-                    1.0
-
+                -- Hot center highlight.
                 local hg =
-                    0.95
-                    - 0.28 * center_mix
+                    0.96
+                    - 0.30 * center_mix
 
                 local hb =
-                    0.30
-                    - 0.20 * center_mix
+                    0.34
+                    - 0.23 * center_mix
 
                 DrawLine(
                     previous.x,
                     previous.y,
                     current.x,
                     current.y,
-                    hr,
+                    1.0,
                     hg,
                     hb,
-                    alpha * 0.58,
+                    alpha * 0.72,
                     math.max(
-                        0.72,
-                        core_thick * 0.38
+                        0.75,
+                        core_thick * 0.40
                     )
                 )
             end
 
             previous = current
+        end
+    end
+
+    -- Slow orbiting sparks around the tracer.
+    -- This is screen-space orbital motion around the line, made only with DrawLine.
+    local spark_count = 14
+
+    for s = 1, spark_count do
+        local base_u =
+            (s - 0.5) / spark_count
+
+        if base_u <= max_u + 0.0001 then
+            local sample_u =
+                clamp(
+                    base_u,
+                    0.02,
+                    math.max(
+                        0.02,
+                        max_u
+                    )
+                )
+
+            local sx, sy =
+                FALLEN_BT_GALAXY_POINT(
+                    visible_points,
+                    sample_u
+                )
+
+            if sx and sy then
+                local u0 =
+                    clamp(
+                        sample_u - 0.018,
+                        0,
+                        max_u
+                    )
+
+                local u1 =
+                    clamp(
+                        sample_u + 0.018,
+                        0,
+                        max_u
+                    )
+
+                local ax, ay =
+                    FALLEN_BT_GALAXY_POINT(
+                        visible_points,
+                        u0
+                    )
+
+                local bx, by =
+                    FALLEN_BT_GALAXY_POINT(
+                        visible_points,
+                        u1
+                    )
+
+                if ax and ay and bx and by then
+                    local dx = bx - ax
+                    local dy = by - ay
+                    local len =
+                        math.sqrt(
+                            dx * dx
+                            + dy * dy
+                        )
+
+                    if len > 0.01 then
+                        local tx = dx / len
+                        local ty = dy / len
+                        local nx = -ty
+                        local ny = tx
+
+                        local phase =
+                            now * 1.15
+                            + s * 1.73
+                            + seed * 0.017
+
+                        local orbit_radius =
+                            4.2
+                            + 1.6 * math.sin(
+                                phase * 0.73
+                            )
+
+                        local side =
+                            math.sin(phase)
+
+                        local depth =
+                            math.cos(phase)
+
+                        local ox =
+                            nx * side * orbit_radius
+                            + tx * depth * 1.6
+
+                        local oy =
+                            ny * side * orbit_radius
+                            + ty * depth * 1.6
+
+                        local ex = sx + ox
+                        local ey = sy + oy
+
+                        local center_mix =
+                            clamp(
+                                1
+                                - math.abs(
+                                    (sample_u / math.max(max_u, 0.0001) - 0.5)
+                                    * 2
+                                ),
+                                0,
+                                1
+                            )
+
+                        local rr =
+                            yellow[1]
+                            + (orange[1] - yellow[1]) * center_mix
+
+                        local gg =
+                            yellow[2]
+                            + (orange[2] - yellow[2]) * center_mix
+
+                        local bb =
+                            yellow[3]
+                            + (orange[3] - yellow[3]) * center_mix
+
+                        -- Tiny glow around each orbiting spark.
+                        DrawLine(
+                            ex - tx * 2.8,
+                            ey - ty * 2.8,
+                            ex + tx * 2.8,
+                            ey + ty * 2.8,
+                            rr,
+                            gg,
+                            bb,
+                            alpha * 0.16,
+                            5.5
+                        )
+
+                        DrawLine(
+                            ex - tx * 2.2,
+                            ey - ty * 2.2,
+                            ex + tx * 2.2,
+                            ey + ty * 2.2,
+                            rr,
+                            gg,
+                            bb,
+                            alpha * 0.82,
+                            1.25
+                        )
+
+                        -- Small white-hot center when spark is visually "in front".
+                        local front =
+                            clamp(
+                                (depth + 1) * 0.5,
+                                0,
+                                1
+                            )
+
+                        DrawLine(
+                            ex - tx * 1.1,
+                            ey - ty * 1.1,
+                            ex + tx * 1.1,
+                            ey + ty * 1.1,
+                            1,
+                            0.96,
+                            0.55,
+                            alpha * (0.20 + 0.48 * front),
+                            0.8
+                        )
+                    end
+                end
+            end
         end
     end
 end
@@ -38642,7 +38829,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v63 | Solar tracer + 35-line glow | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v64 | stronger Solar glow + orbit sparks | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
