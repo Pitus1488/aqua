@@ -616,7 +616,6 @@ local A = {
     misc_manipulation_can_hit = false,
     misc_manipulation_target_name = nil,
     misc_manipulation_target_addr = nil,
-    misc_manipulation_target_pos = nil,
     misc_manipulation_geo_center_x = nil,
     misc_manipulation_geo_center_z = nil,
     misc_manipulation_last_error = 0,
@@ -4089,7 +4088,7 @@ function FALLEN_HOVER_TEXT(key, hot, base_color)
     return out
 end
 
-local FALLEN_DROPDOWN_MODAL_SPECS = {
+FALLEN_DROPDOWN_MODAL_SPECS = {
     { "aim_part_dropdown_open", "aim_part_dropdown_anim" },
     { "silent_part_dropdown_open", "silent_part_dropdown_anim" },
     { "bullet_tracer_style_open", "bullet_tracer_style_anim" },
@@ -4103,7 +4102,7 @@ local FALLEN_DROPDOWN_MODAL_SPECS = {
     { "config_open", nil },
 }
 
-local function FALLEN_ANY_DROPDOWN_MODAL_ACTIVE(except_flag)
+function FALLEN_ANY_DROPDOWN_MODAL_ACTIVE(except_flag)
     for _, spec in ipairs(FALLEN_DROPDOWN_MODAL_SPECS) do
         local flag = spec[1]
         local anim_key = spec[2]
@@ -4124,7 +4123,7 @@ local function FALLEN_ANY_DROPDOWN_MODAL_ACTIVE(except_flag)
     return false
 end
 
-local function FALLEN_DROPDOWN_TRIGGER_ALLOWED(clicked, self_flag)
+function FALLEN_DROPDOWN_TRIGGER_ALLOWED(clicked, self_flag)
     if not clicked then
         return false
     end
@@ -39201,7 +39200,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v66 | dropdown click capture + 2 tracer animations | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v68 | Manipulation UP trio no DIRECT + local-limit fix | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -44146,11 +44145,10 @@ end)
 -- base state before applying one temporary spoof, so the offset can never
 -- accumulate upward/sideways frame after frame.
 --
--- Direction is intentionally limited to three useful high-angle offsets:
--- UP, UP-RIGHT and UP-LEFT. The first candidate that opens a clean line to
--- the target becomes the active spoof direction. A cheap DIRECT test also
--- runs every render while spoofing so an old UP result can never linger after
--- the real/original position becomes hittable again.
+-- Direction is intentionally limited to three high-angle offsets:
+-- UP, UP-RIGHT and UP-LEFT. There is NO DIRECT/original-position visibility
+-- bypass: while armed Mouse1 Manipulation chooses only among these three spoof
+-- positions. If none can hit the target, it stays BLOCKED and does not move.
 -- The local camera position stays anchored to the press-start camera position.
 -- =========================================================
 
@@ -44792,13 +44790,7 @@ local function FALLEN_MANIPULATION_CANDIDATES(rot)
 end
 
 local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos, rot, distance)
-    -- If the enemy is already hittable from the REAL/current click position,
-    -- do not manipulate at all. Only the three high-angle candidates are tested
-    -- when the real position is actually blocked.
-    if target_pos and FALLEN_MANIPULATION_CAN_HIT(base_origin, target_pos, base_pos) then
-        return Vector3(0, 0, 0), "DIRECT", true
-    end
-
+    -- No DIRECT bypass: only UP / UP-RIGHT / UP-LEFT are considered.
     local candidates = FALLEN_MANIPULATION_CANDIDATES(rot)
     local preferred = A.misc_manipulation_direction
 
@@ -44941,7 +44933,6 @@ function FALLEN_MANIPULATION_TICK()
         A.misc_manipulation_can_hit = false
         A.misc_manipulation_target_name = nil
         A.misc_manipulation_target_addr = nil
-        A.misc_manipulation_target_pos = nil
         A.misc_manipulation_direction = nil
         A.misc_manipulation_cached_offset = nil
         return
@@ -45054,8 +45045,8 @@ function FALLEN_MANIPULATION_TICK()
     -- This is what removes the long freeze when Manipulation is first enabled.
     FALLEN_MANIPULATION_GEO_STEP(base_pos, 28)
 
-    -- Target selection is throttled. A cheap DIRECT visibility test runs first;
-    -- directional checks only run when the enemy is actually behind cover.
+    -- Target/direction selection is throttled. Manipulation only evaluates
+    -- UP / UP-RIGHT / UP-LEFT; the real position is never used as DIRECT.
     local now = tick()
     local need_eval =
         (now - (A.misc_manipulation_last_eval or 0)) >= 0.10
@@ -45075,8 +45066,6 @@ function FALLEN_MANIPULATION_TICK()
             target
             and tonumber(target.address or target.player_addr or 0)
             or nil
-
-        A.misc_manipulation_target_pos = target_pos
 
         local offset, direction, can_hit =
             FALLEN_MANIPULATION_PICK_OFFSET(
@@ -45100,34 +45089,12 @@ function FALLEN_MANIPULATION_TICK()
         return
     end
 
-    -- The expensive target/direction selection above is throttled, but the
-    -- old cached spoof direction must never survive after the real position
-    -- becomes clear. Re-check only the already selected target point here;
-    -- this is cheap and runs every render.
-    local cached_target_pos =
-        A.misc_manipulation_target_pos
-
-    if cached_target_pos
-        and FALLEN_MANIPULATION_CAN_HIT(
-            base_origin,
-            cached_target_pos,
-            base_pos
-        )
-    then
-        A.misc_manipulation_cached_offset =
-            Vector3(0, 0, 0)
-        A.misc_manipulation_direction = "DIRECT"
-        A.misc_manipulation_can_hit = true
-    end
-
     local direction = tostring(A.misc_manipulation_direction or "-")
     local can_hit = A.misc_manipulation_can_hit == true
 
-    -- DIRECT means the enemy is already visible/hittable from the real player
-    -- position. BLOCKED means no tested spoof position can see the target. In
-    -- either case, do NOT teleport or flip the character. If we were spoofing
-    -- a moment ago, return to the original click point and release the 0.3s hold.
-    if direction == "DIRECT" or not can_hit then
+    -- If none of the three spoof positions can hit, do not teleport/flip.
+    -- Return to the original click point until UP / UP-RIGHT / UP-LEFT works.
+    if not can_hit then
         pcall(function()
             hrp:set_anchored(false)
         end)
