@@ -590,12 +590,12 @@ local A = {
     misc_manipulation_saved_silent_key = nil,
     misc_manipulation_saved_silent_key_mode = nil,
     misc_manipulation_saved_silent_target_part = nil,
+    misc_manipulation_saved_silent_fov = nil,
     misc_manipulation_saved_silent_feature = nil,
     misc_manipulation_saved_magic_feature = nil,
+    misc_manipulation_saved_wallbang_feature = nil,
     misc_manipulation_saved_magic_bullet = nil,
     misc_manipulation_saved_magic_pull = nil,
-    misc_manipulation_camera_offset = nil,
-    misc_manipulation_camera_shifted = false,
     misc_manipulation_hit_part = nil,
     misc_manipulation_magic_pull_key = nil,
     misc_manipulation_geo_center_x = nil,
@@ -33647,7 +33647,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v80 | registered manipulation origin + hitscan sync | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v81 | no teleport manipulation registration | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -38462,6 +38462,9 @@ function FALLEN_MANIPULATION_FORCE_SILENT(
 
             A.misc_manipulation_saved_magic_bullet =
                 sa.magic_bullet
+
+            A.misc_manipulation_saved_silent_fov =
+                sa.fov
         end)
 
         if cheat
@@ -38477,6 +38480,11 @@ function FALLEN_MANIPULATION_FORCE_SILENT(
                     cheat.is_enabled(
                         "magic_bullet"
                     )
+
+                A.misc_manipulation_saved_wallbang_feature =
+                    cheat.is_enabled(
+                        "wallbang"
+                    )
             end)
         end
 
@@ -38490,13 +38498,18 @@ function FALLEN_MANIPULATION_FORCE_SILENT(
             end)
         end
 
-        -- Remove key gating while the manipulation shot owns Silent Aim.
+        -- Stock Raycast Silent owns the actual registered shot.
+        -- No camera/root position is changed.
         pcall(function()
             sa.key = 0
             sa.key_mode = 1
             sa.method = 2
             sa.enabled = true
             sa.magic_bullet = true
+
+            -- Our custom target scan is 600px, so keep the stock selector wide
+            -- enough to consume the same primed mouse target.
+            sa.fov = 600
 
             if A.misc_manipulation_hit_part ~= nil then
                 sa.target_part =
@@ -38508,7 +38521,6 @@ function FALLEN_MANIPULATION_FORCE_SILENT(
             true
         )
 
-        -- cheat.enable() also handles the host's internal master/key latch.
         if cheat
             and type(cheat.enable) == "function"
         then
@@ -38523,12 +38535,23 @@ function FALLEN_MANIPULATION_FORCE_SILENT(
                 "magic_bullet",
                 true
             )
+
+            -- The custom API has no projectile-origin spoof. Gate the built-in
+            -- wallbang behind our valid Manipulation scan so the registered
+            -- real-camera Raycast can pass the cover that our virtual origin
+            -- proved could be shot around.
+            if S.misc_manipulation_enabled == true then
+                pcall(
+                    cheat.enable,
+                    "wallbang",
+                    true
+                )
+            end
         end
 
         return
     end
 
-    -- Restore live fields before restoring the master feature state.
     pcall(function()
         if A.misc_manipulation_saved_silent_enabled ~= nil then
             sa.enabled =
@@ -38558,6 +38581,11 @@ function FALLEN_MANIPULATION_FORCE_SILENT(
         if A.misc_manipulation_saved_magic_bullet ~= nil then
             sa.magic_bullet =
                 A.misc_manipulation_saved_magic_bullet
+        end
+
+        if A.misc_manipulation_saved_silent_fov ~= nil then
+            sa.fov =
+                A.misc_manipulation_saved_silent_fov
         end
     end)
 
@@ -38593,6 +38621,15 @@ function FALLEN_MANIPULATION_FORCE_SILENT(
                     == true
             )
         end
+
+        if A.misc_manipulation_saved_wallbang_feature ~= nil then
+            pcall(
+                cheat.enable,
+                "wallbang",
+                A.misc_manipulation_saved_wallbang_feature
+                    == true
+            )
+        end
     end
 
     A.misc_manipulation_override_active = false
@@ -38601,109 +38638,13 @@ function FALLEN_MANIPULATION_FORCE_SILENT(
     A.misc_manipulation_saved_silent_key = nil
     A.misc_manipulation_saved_silent_key_mode = nil
     A.misc_manipulation_saved_silent_target_part = nil
+    A.misc_manipulation_saved_silent_fov = nil
     A.misc_manipulation_saved_silent_feature = nil
     A.misc_manipulation_saved_magic_feature = nil
+    A.misc_manipulation_saved_wallbang_feature = nil
     A.misc_manipulation_saved_magic_bullet = nil
     A.misc_manipulation_saved_magic_pull = nil
 end
-
-
-function FALLEN_MANIPULATION_BASE_CAMERA_POS(
-    hrp_pos,
-    fallback
-)
-    if not hrp_pos then
-        return fallback
-    end
-
-    local off =
-        A.misc_manipulation_camera_offset
-
-    if type(off) == "table"
-        and off.X ~= nil
-        and off.Y ~= nil
-        and off.Z ~= nil
-    then
-        return Vector3(
-            hrp_pos.X + off.X,
-            hrp_pos.Y + off.Y,
-            hrp_pos.Z + off.Z
-        )
-    end
-
-    return fallback
-end
-
-
-function FALLEN_MANIPULATION_CAMERA_ORIGIN(
-    active,
-    hrp_pos,
-    base_cam_pos,
-    virtual_origin
-)
-    active =
-        active == true
-
-    if not aim
-        or type(aim.set_camera_position) ~= "function"
-    then
-        A.misc_manipulation_camera_shifted = false
-        A.misc_manipulation_camera_offset = nil
-        return false
-    end
-
-    if active then
-        if not hrp_pos
-            or not base_cam_pos
-            or not virtual_origin
-        then
-            return false
-        end
-
-        if type(A.misc_manipulation_camera_offset) ~= "table" then
-            A.misc_manipulation_camera_offset = {
-                X = base_cam_pos.X - hrp_pos.X,
-                Y = base_cam_pos.Y - hrp_pos.Y,
-                Z = base_cam_pos.Z - hrp_pos.Z,
-            }
-        end
-
-        local ok =
-            pcall(
-                aim.set_camera_position,
-                virtual_origin
-            )
-
-        if ok then
-            A.misc_manipulation_camera_shifted = true
-            return true
-        end
-
-        return false
-    end
-
-    if A.misc_manipulation_camera_shifted == true
-        and hrp_pos
-    then
-        local restore =
-            FALLEN_MANIPULATION_BASE_CAMERA_POS(
-                hrp_pos,
-                base_cam_pos
-            )
-
-        if restore then
-            pcall(
-                aim.set_camera_position,
-                restore
-            )
-        end
-    end
-
-    A.misc_manipulation_camera_shifted = false
-    A.misc_manipulation_camera_offset = nil
-    return true
-end
-
 
 function FALLEN_MANIPULATION_SYNC_SHOT_PART()
     local sa =
@@ -38796,6 +38737,18 @@ function FALLEN_MANIPULATION_TICK()
         S.misc_manipulation_enabled == true
         or S.misc_hitscan_enabled == true
 
+    if not enabled then
+        FALLEN_MANIPULATION_FORCE_SILENT(
+            false
+        )
+
+        A.misc_manipulation_can_hit = false
+        A.misc_manipulation_virtual_origin = nil
+        A.misc_manipulation_hit_pos = nil
+        A.misc_manipulation_hit_part = nil
+        return
+    end
+
     local hrp = nil
 
     if rbx
@@ -38811,34 +38764,28 @@ function FALLEN_MANIPULATION_TICK()
         end
     end
 
-    local hrp_pos = nil
-
-    if hrp then
-        pcall(function()
-            hrp_pos =
-                hrp:get_position()
-        end)
-    end
-
-    if not enabled
-        or not hrp
-        or not hrp_pos
-    then
-        FALLEN_MANIPULATION_CAMERA_ORIGIN(
-            false,
-            hrp_pos,
-            nil,
-            nil
-        )
-
+    if not hrp then
         FALLEN_MANIPULATION_FORCE_SILENT(
             false
         )
 
         A.misc_manipulation_can_hit = false
-        A.misc_manipulation_virtual_origin = nil
-        A.misc_manipulation_hit_pos = nil
-        A.misc_manipulation_hit_part = nil
+        return
+    end
+
+    local hrp_pos = nil
+
+    pcall(function()
+        hrp_pos =
+            hrp:get_position()
+    end)
+
+    if not hrp_pos then
+        FALLEN_MANIPULATION_FORCE_SILENT(
+            false
+        )
+
+        A.misc_manipulation_can_hit = false
         return
     end
 
@@ -38857,12 +38804,12 @@ function FALLEN_MANIPULATION_TICK()
         end
     end
 
-    local raw_cam_pos = nil
+    local cam_pos = nil
     local cam_rot = nil
 
     if cam then
         pcall(function()
-            raw_cam_pos =
+            cam_pos =
                 cam:camera_pos()
 
             cam_rot =
@@ -38870,26 +38817,20 @@ function FALLEN_MANIPULATION_TICK()
         end)
     end
 
-    if not raw_cam_pos
+    if not cam_pos
         and aim
         and type(aim.get_camera_position) == "function"
     then
         pcall(function()
-            raw_cam_pos =
+            cam_pos =
                 aim.get_camera_position()
         end)
     end
 
-    if not raw_cam_pos then
-        raw_cam_pos =
+    if not cam_pos then
+        cam_pos =
             hrp_pos
     end
-
-    local cam_pos =
-        FALLEN_MANIPULATION_BASE_CAMERA_POS(
-            hrp_pos,
-            raw_cam_pos
-        )
 
     if not cam_rot then
         pcall(function()
@@ -38966,8 +38907,54 @@ function FALLEN_MANIPULATION_TICK()
     local hit_pos =
         A.misc_manipulation_hit_pos
 
-    local virtual_origin =
-        A.misc_manipulation_virtual_origin
+    local screen = nil
+
+    if can_hit
+        and hit_pos
+        and aim
+    then
+        local w2s = nil
+
+        if type(aim.world_to_screen) == "function" then
+            w2s =
+                aim.world_to_screen
+
+        elseif rbx
+            and type(rbx.world_to_screen) == "function"
+        then
+            w2s =
+                rbx.world_to_screen
+        end
+
+        if w2s then
+            local ok, value =
+                pcall(
+                    w2s,
+                    hit_pos
+                )
+
+            if ok
+                and value
+                and value.visible ~= false
+            then
+                screen =
+                    value
+            end
+        end
+    end
+
+    -- Prime MouseService BEFORE Mouse1 is pressed. This does not move the
+    -- physical cursor/camera; it only writes the coordinate used by the game's
+    -- raycast path. It makes the first bullet use the selected target too.
+    if screen
+        and aim
+        and type(aim.prime_mouse) == "function"
+    then
+        pcall(
+            aim.prime_mouse,
+            screen
+        )
+    end
 
     local lmb =
         key_down(VK_LBUTTON)
@@ -38975,92 +38962,28 @@ function FALLEN_MANIPULATION_TICK()
 
     local firing =
         can_hit
+        and screen ~= nil
         and lmb
-        and hit_pos ~= nil
-        and virtual_origin ~= nil
 
     if firing then
-        -- Activate stock Raycast/Magic Bullet first so the following cursor and
-        -- origin writes are consumed by the same live shot path.
         FALLEN_MANIPULATION_FORCE_SILENT(
             true
         )
 
         FALLEN_MANIPULATION_SYNC_SHOT_PART()
 
-        local origin_ok =
-            FALLEN_MANIPULATION_CAMERA_ORIGIN(
-                true,
-                hrp_pos,
-                cam_pos,
-                virtual_origin
-            )
-
-        if S.misc_manipulation_enabled == true
-            and origin_ok ~= true
+        if aim
+            and type(aim.write_mouse) == "function"
         then
-            -- Do not claim a manipulation shot if the host cannot apply origin.
-            A.misc_manipulation_can_hit = false
-
-            FALLEN_MANIPULATION_FORCE_SILENT(
-                false
+            pcall(
+                aim.write_mouse,
+                screen,
+                16
             )
-
-            return
-        end
-
-        if aim then
-            local w2s = nil
-
-            if type(aim.world_to_screen) == "function" then
-                w2s =
-                    aim.world_to_screen
-
-            elseif rbx
-                and type(rbx.world_to_screen) == "function"
-            then
-                w2s =
-                    rbx.world_to_screen
-            end
-
-            if w2s then
-                local ok, screen =
-                    pcall(
-                        w2s,
-                        hit_pos
-                    )
-
-                if ok
-                    and screen
-                    and screen.visible ~= false
-                then
-                    if type(aim.prime_mouse) == "function" then
-                        pcall(
-                            aim.prime_mouse,
-                            screen
-                        )
-                    end
-
-                    if type(aim.write_mouse) == "function" then
-                        pcall(
-                            aim.write_mouse,
-                            screen,
-                            16
-                        )
-                    end
-                end
-            end
         end
 
         return
     end
-
-    FALLEN_MANIPULATION_CAMERA_ORIGIN(
-        false,
-        hrp_pos,
-        cam_pos,
-        nil
-    )
 
     FALLEN_MANIPULATION_FORCE_SILENT(
         false
