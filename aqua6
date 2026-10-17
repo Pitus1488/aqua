@@ -13057,26 +13057,48 @@ end
 -- It is intentionally drawn next to the menu so we can tell immediately
 -- whether the URL resolved/decoded independently from tracer logic.
 function FALLEN_BT_WEAPON_READY()
-    -- EXACT same weapon detector used by custom Aimbot Auto Prediction.
-    -- No Aimbot/Silent target checks are involved.
+    local now = tick()
+
+    if FALLEN_BT.weapon_ready_cache ~= nil
+        and now - (tonumber(FALLEN_BT.weapon_ready_last) or 0) < 0.08
+    then
+        return FALLEN_BT.weapon_ready_cache == true
+    end
+
+    FALLEN_BT.weapon_ready_last = now
+
     if type(fap_detect_weapon) ~= "function" then
+        FALLEN_BT.weapon_ready_cache = false
         return false
     end
 
     local weapon = nil
 
     pcall(function()
-        weapon =
-            fap_detect_weapon()
+        weapon = fap_detect_weapon()
     end)
 
-    return
+    local ready =
         weapon ~= nil
         and tostring(weapon) ~= ""
+
+    FALLEN_BT.weapon_ready_cache = ready
+
+    return ready
 end
 
-
 function FALLEN_BT_VFX_ROOT()
+    local now = tick()
+
+    if FALLEN_BT.vfx_root
+        and now - (tonumber(FALLEN_BT.vfx_root_last) or 0) < 1.0
+    then
+        return FALLEN_BT.vfx_root
+    end
+
+    FALLEN_BT.vfx_root_last = now
+    FALLEN_BT.vfx_root = nil
+
     if not rbx
         or type(rbx.workspace) ~= "function"
     then
@@ -13086,8 +13108,7 @@ function FALLEN_BT_VFX_ROOT()
     local workspace = nil
 
     pcall(function()
-        workspace =
-            rbx.workspace()
+        workspace = rbx.workspace()
     end)
 
     if not workspace then
@@ -13097,34 +13118,16 @@ function FALLEN_BT_VFX_ROOT()
     local vfx = nil
 
     pcall(function()
-        vfx =
-            workspace:find_first_child(
-                "VFX"
-            )
+        vfx = workspace:find_first_child("VFX")
     end)
 
     if not vfx then
         return nil
     end
 
-    local valid =
-        true
-
-    pcall(function()
-        if type(vfx.is_valid) == "function" then
-            valid =
-                vfx:is_valid()
-                == true
-        end
-    end)
-
-    if not valid then
-        return nil
-    end
-
+    FALLEN_BT.vfx_root = vfx
     return vfx
 end
-
 
 function FALLEN_BT_VFX_INSTANCE_VALID(
     inst
@@ -13149,70 +13152,103 @@ function FALLEN_BT_VFX_INSTANCE_VALID(
 end
 
 
+FALLEN_VFX_SCAN_SHARED =
+    FALLEN_VFX_SCAN_SHARED
+    or {
+        time = 0,
+        snapshot = nil,
+        queue = {},
+        queue_used = 0,
+    }
+
 function FALLEN_BT_VFX_SCAN()
-    local root =
-        FALLEN_BT_VFX_ROOT()
+    local now = tick()
+    local shared = FALLEN_VFX_SCAN_SHARED
+
+    if type(shared.snapshot) == "table"
+        and now - (tonumber(shared.time) or 0) < 0.008
+    then
+        return shared.snapshot
+    end
+
+    local root = FALLEN_BT_VFX_ROOT()
 
     if not root then
-        return {}
+        local empty = {}
+        shared.snapshot = empty
+        shared.time = now
+        return empty
     end
 
     local out = {}
-    local queue = {
-        root,
-    }
+    local queue = shared.queue
 
-    local qi =
-        1
+    -- Clear only slots used by the previous scan.
+    for i = 1, tonumber(shared.queue_used) or 0 do
+        queue[i] = nil
+    end
 
-    -- Pure instance-tree walk. No raw memory/pointers.
-    while qi <= #queue do
-        local inst =
-            queue[qi]
+    local qi = 1
+    local qn = 1
+    queue[1] = root
 
-        qi =
-            qi + 1
+    while qi <= qn do
+        local inst = queue[qi]
+        queue[qi] = nil
+        qi = qi + 1
 
-        if FALLEN_BT_VFX_INSTANCE_VALID(
-            inst
-        )
-        then
-            local addr =
-                inst.addr
+        if inst then
+            local name = nil
 
-            if addr
-                and addr ~= 0
+            pcall(function()
+                name = inst:get_name()
+            end)
+
+            name =
+                string.lower(
+                    tostring(name or "")
+                )
+
+            if name == "hole"
+                or name == "metalhole"
+                or name == "bloodpart"
+                or name == "casinglarge"
+                or name == "casingsmall"
             then
-                out[
-                    tostring(addr)
-                ] =
-                    inst
+                local addr = inst.addr
+
+                if addr
+                    and addr ~= 0
+                then
+                    out[tostring(addr)] = inst
+                end
             end
 
             local children = nil
 
             pcall(function()
-                children =
-                    inst:get_children()
+                children = inst:get_children()
             end)
 
             if type(children) == "table" then
-                for _, child in ipairs(children) do
-                    if FALLEN_BT_VFX_INSTANCE_VALID(
-                        child
-                    )
-                    then
-                        queue[#queue + 1] =
-                            child
+                for i = 1, #children do
+                    local child = children[i]
+
+                    if child then
+                        qn = qn + 1
+                        queue[qn] = child
                     end
                 end
             end
         end
     end
 
+    shared.queue_used = qn
+    shared.snapshot = out
+    shared.time = now
+
     return out
 end
-
 
 function FALLEN_BT_VFX_IS_IMPACT_NAME(
     inst
@@ -13966,7 +14002,9 @@ end
 
 
 function FALLEN_BT_SHOT_TICK()
-    local enabled = S.bullet_tracer_enabled == true and FALLEN_BT_WEAPON_READY()
+    local enabled =
+        S.bullet_tracer_enabled == true
+        and FALLEN_BT_WEAPON_READY()
 
     if not enabled then
         if FALLEN_BT.vfx_runtime_active == true then
@@ -13978,31 +14016,49 @@ function FALLEN_BT_SHOT_TICK()
             FALLEN_BT.vfx_shot_view_last = 0
             FALLEN_BT.vfx_idle_scan_last = 0
         end
+
         FALLEN_BT.vfx_runtime_active = false
         return
     end
 
     FALLEN_BT.vfx_runtime_active = true
+
     local now = tick()
     local lmb = key_down(VK_LBUTTON) == true
-    local watch_until = tonumber(FALLEN_BT.vfx_watch_until) or 0
+    local watch_until =
+        tonumber(FALLEN_BT.vfx_watch_until)
+        or 0
 
-    if not lmb and now >= watch_until then
-        if now - (tonumber(FALLEN_BT.vfx_idle_scan_last) or 0) >= 0.035 then
-            FALLEN_BT.vfx_seen = FALLEN_BT_VFX_SCAN()
+    -- Baseline scan only four times a second while completely idle.
+    -- During/after a shot we still scan every render until the watch expires.
+    if not lmb
+        and now >= watch_until
+    then
+        if now - (tonumber(FALLEN_BT.vfx_idle_scan_last) or 0) >= 0.25 then
+            FALLEN_BT.vfx_seen =
+                FALLEN_BT_VFX_SCAN()
+
             FALLEN_BT.vfx_idle_scan_last = now
         end
+
         FALLEN_BT.vfx_prev_lmb = false
         FALLEN_BT.vfx_shot_time = nil
-        if #FALLEN_BT.vfx_shot_views > 0 then FALLEN_BT.vfx_shot_views = {} end
+
+        if #FALLEN_BT.vfx_shot_views > 0 then
+            FALLEN_BT.vfx_shot_views = {}
+        end
+
         FALLEN_BT.vfx_shot_view_last = 0
         return
     end
 
-    if lmb and FALLEN_BT.vfx_prev_lmb ~= true then
+    if lmb
+        and FALLEN_BT.vfx_prev_lmb ~= true
+    then
         FALLEN_BT.vfx_shot_time = now
         FALLEN_BT.vfx_watch_until = now + 1.00
         FALLEN_BT_CAPTURE_SHOT_VIEW(true)
+
     elseif lmb then
         FALLEN_BT.vfx_shot_time = now
         FALLEN_BT.vfx_watch_until = now + 1.00
@@ -14010,15 +14066,41 @@ function FALLEN_BT_SHOT_TICK()
     end
 
     FALLEN_BT.vfx_prev_lmb = lmb
-    local previous = FALLEN_BT.vfx_seen or {}
-    local current = FALLEN_BT_VFX_SCAN()
-    local origin = FALLEN_BT_ORIGIN()
-    local shot_age = now - (tonumber(FALLEN_BT.vfx_shot_time) or now)
-    local impact = FALLEN_BT_VFX_FIND_NEW_IMPACT(previous, current, origin, shot_age)
+
+    local previous =
+        FALLEN_BT.vfx_seen
+        or {}
+
+    local current =
+        FALLEN_BT_VFX_SCAN()
+
+    local origin =
+        FALLEN_BT_ORIGIN()
+
+    local shot_age =
+        now
+        - (
+            tonumber(FALLEN_BT.vfx_shot_time)
+            or now
+        )
+
+    local impact =
+        FALLEN_BT_VFX_FIND_NEW_IMPACT(
+            previous,
+            current,
+            origin,
+            shot_age
+        )
+
     FALLEN_BT.vfx_seen = current
 
-    if origin and impact then
-        FALLEN_BT_ADD(origin, impact)
+    if origin
+        and impact
+    then
+        FALLEN_BT_ADD(
+            origin,
+            impact
+        )
     end
 end
 
@@ -14280,7 +14362,9 @@ function FALLEN_BT_DRAW_LAVA(
         return
     end
 
-    tr._revealed_points = tr._revealed_points or {}
+    tr._revealed_points =
+        tr._revealed_points
+        or {}
 
     local visible_points =
         FALLEN_BT_REVEALED_POINTS(
@@ -14295,15 +14379,15 @@ function FALLEN_BT_DRAW_LAVA(
 
     local core_thick =
         clamp(
-            0.95 + (tonumber(thick) or 2) * 0.34,
+            0.95
+            + (tonumber(thick) or 2) * 0.34,
             1.15,
             3.15
         )
 
-    local yellow = { 1.00, 0.90, 0.06 }
-    local orange = { 1.00, 0.30, 0.015 }
-
-    local previous = nil
+    local prev_x = nil
+    local prev_y = nil
+    local prev_u = nil
 
     for i = 1, #visible_points do
         local point = visible_points[i]
@@ -14313,17 +14397,15 @@ function FALLEN_BT_DRAW_LAVA(
             and point.y
             and point.u
         then
-            local current = {
-                x = point.x,
-                y = point.y,
-                u = point.u,
-            }
+            local cur_x = point.x
+            local cur_y = point.y
+            local cur_u = point.u
 
-            if previous then
+            if prev_x ~= nil then
                 local normalized =
                     clamp(
                         (
-                            (previous.u + current.u)
+                            (prev_u + cur_u)
                             * 0.5
                         )
                         / math.max(max_u, 0.0001),
@@ -14341,19 +14423,16 @@ function FALLEN_BT_DRAW_LAVA(
                         1
                     )
 
-                local rr =
-                    yellow[1]
-                    + (orange[1] - yellow[1]) * center_mix
-
+                -- yellow -> orange -> yellow
+                local rr = 1.0
                 local gg =
-                    yellow[2]
-                    + (orange[2] - yellow[2]) * center_mix
+                    0.90
+                    + (0.30 - 0.90) * center_mix
 
                 local bb =
-                    yellow[3]
-                    + (orange[3] - yellow[3]) * center_mix
+                    0.06
+                    + (0.015 - 0.06) * center_mix
 
-                -- Strong soft glow: 35 close layers.
                 for g = 35, 1, -1 do
                     local gt = g / 35
 
@@ -14370,10 +14449,10 @@ function FALLEN_BT_DRAW_LAVA(
                         )
 
                     DrawLine(
-                        previous.x,
-                        previous.y,
-                        current.x,
-                        current.y,
+                        prev_x,
+                        prev_y,
+                        cur_x,
+                        cur_y,
                         rr,
                         gg,
                         bb,
@@ -14383,10 +14462,10 @@ function FALLEN_BT_DRAW_LAVA(
                 end
 
                 DrawLine(
-                    previous.x,
-                    previous.y,
-                    current.x,
-                    current.y,
+                    prev_x,
+                    prev_y,
+                    cur_x,
+                    cur_y,
                     rr,
                     gg,
                     bb,
@@ -14395,10 +14474,10 @@ function FALLEN_BT_DRAW_LAVA(
                 )
 
                 DrawLine(
-                    previous.x,
-                    previous.y,
-                    current.x,
-                    current.y,
+                    prev_x,
+                    prev_y,
+                    cur_x,
+                    cur_y,
                     rr,
                     gg,
                     bb,
@@ -14407,10 +14486,10 @@ function FALLEN_BT_DRAW_LAVA(
                 )
 
                 DrawLine(
-                    previous.x,
-                    previous.y,
-                    current.x,
-                    current.y,
+                    prev_x,
+                    prev_y,
+                    cur_x,
+                    cur_y,
                     rr,
                     gg,
                     bb,
@@ -14427,10 +14506,10 @@ function FALLEN_BT_DRAW_LAVA(
                     - 0.23 * center_mix
 
                 DrawLine(
-                    previous.x,
-                    previous.y,
-                    current.x,
-                    current.y,
+                    prev_x,
+                    prev_y,
+                    cur_x,
+                    cur_y,
                     1.0,
                     hg,
                     hb,
@@ -14442,11 +14521,12 @@ function FALLEN_BT_DRAW_LAVA(
                 )
             end
 
-            previous = current
+            prev_x = cur_x
+            prev_y = cur_y
+            prev_u = cur_u
         end
     end
 end
-
 
 function FALLEN_BT_ANIMATION_NAME()
     local name = tostring(S.bullet_tracer_animation or "None")
@@ -14545,6 +14625,7 @@ function FALLEN_BT_DRAW_PATH(
             thick
         )
         return
+
     elseif style == 4 then
         FALLEN_BT_DRAW_LAVA(
             tr,
@@ -14563,7 +14644,9 @@ function FALLEN_BT_DRAW_PATH(
             1
         )
 
-    tr._revealed_points = tr._revealed_points or {}
+    tr._revealed_points =
+        tr._revealed_points
+        or {}
 
     local visible_points =
         FALLEN_BT_REVEALED_POINTS(
@@ -14576,8 +14659,16 @@ function FALLEN_BT_DRAW_PATH(
         return
     end
 
-    local previous = nil
     local now = tick()
+    local seed = tr.seed or 1
+    local col =
+        style ~= 2
+        and FALLEN_BT_COLOR()
+        or nil
+
+    local prev_x = nil
+    local prev_y = nil
+    local prev_u = nil
 
     for i = 1, #visible_points do
         local point =
@@ -14590,18 +14681,22 @@ function FALLEN_BT_DRAW_PATH(
         then
             local px = point.x
             local py = point.y
+            local pu = point.u
 
             if style == 1 then
-                -- Lightning keeps the ballistic curve and only waves around it.
-                local prev_for_normal =
-                    previous
-                    or point
+                local nx_from_x =
+                    prev_x
+                    or px
+
+                local nx_from_y =
+                    prev_y
+                    or py
 
                 local dx =
-                    px - (prev_for_normal.x or px)
+                    px - nx_from_x
 
                 local dy =
-                    py - (prev_for_normal.y or py)
+                    py - nx_from_y
 
                 local len =
                     math.sqrt(
@@ -14610,36 +14705,39 @@ function FALLEN_BT_DRAW_PATH(
                     )
 
                 if len > 0.01 then
-                    local nx = -dy / len
-                    local ny = dx / len
+                    local nx =
+                        -dy / len
+
+                    local ny =
+                        dx / len
 
                     local offset =
                         math.sin(
-                            point.u * 54
-                            + (tr.seed or 1) * 0.017
+                            pu * 54
+                            + seed * 0.017
                             + now * 4
-                        ) * 2.25
+                        )
+                        * 2.25
 
-                    px = px + nx * offset
-                    py = py + ny * offset
+                    px =
+                        px
+                        + nx * offset
+
+                    py =
+                        py
+                        + ny * offset
                 end
             end
 
-            local current = {
-                x = px,
-                y = py,
-                u = point.u,
-            }
-
-            if previous then
+            if prev_x ~= nil then
                 if style == 2 then
-                    -- Rainbow.
                     local hue =
                         (
                             now * 0.20
-                            + point.u * 0.92
-                            + ((tr.seed or 1) % 97) / 97
-                        ) % 1
+                            + pu * 0.92
+                            + (seed % 97) / 97
+                        )
+                        % 1
 
                     local rr, gg, bb =
                         hsv_to_rgb(
@@ -14648,45 +14746,42 @@ function FALLEN_BT_DRAW_PATH(
                             1
                         )
 
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         rr, gg, bb, alpha * 0.12, thick + 14)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         rr, gg, bb, alpha * 0.32, thick + 7)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         rr, gg, bb, alpha * 0.96, thick + 1.5)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         1, 1, 1, alpha * 0.24, 1)
 
                 elseif style == 1 then
-                    local col = FALLEN_BT_COLOR()
-
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         col[1], col[2], col[3], alpha * 0.15, thick + 5)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         col[1], col[2], col[3], alpha * 0.36, thick + 2)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         col[1], col[2], col[3], alpha * 0.92, thick)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         1, 1, 1, alpha * 0.44, 1)
 
                 else
-                    -- Neon.
-                    local col = FALLEN_BT_COLOR()
-
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         col[1], col[2], col[3], alpha * 0.10, thick + 12)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         col[1], col[2], col[3], alpha * 0.20, thick + 8)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         col[1], col[2], col[3], alpha * 0.38, thick + 5)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         col[1], col[2], col[3], alpha * 0.78, thick + 2)
-                    DrawLine(previous.x, previous.y, current.x, current.y,
+                    DrawLine(prev_x, prev_y, px, py,
                         1, 1, 1, alpha * 0.62, math.max(1, thick - 0.35))
                 end
             end
 
-            previous = current
+            prev_x = px
+            prev_y = py
+            prev_u = pu
         end
     end
 end
@@ -14842,6 +14937,13 @@ function FALLEN_BT_DRAW()
         if age > life
             or S.bullet_tracer_enabled ~= true
         then
+            if tr then
+                tr._world_points = nil
+                tr._screen_points = nil
+                tr._revealed_points = nil
+                tr._anim_points = nil
+            end
+
             table.remove(FALLEN_BT.items, i)
         else
             FALLEN_BT_DRAW_ONE(
@@ -15249,6 +15351,16 @@ function FALLEN_HITFX_ADD(pos)
         x = pos.X,
         y = pos.Y,
         z = pos.Z,
+        _base = {
+            X = pos.X,
+            Y = pos.Y,
+            Z = pos.Z,
+        },
+        _offset = {
+            X = pos.X,
+            Y = pos.Y,
+            Z = pos.Z,
+        },
         created = tick(),
         seed =
             (#FALLEN_HITFX.items + 1) * 31
@@ -15614,7 +15726,9 @@ end
 
 
 function FALLEN_HITFX_VFX_TICK()
-    local enabled = S.hit_effect_enabled == true and FALLEN_BT_WEAPON_READY()
+    local enabled =
+        S.hit_effect_enabled == true
+        and FALLEN_BT_WEAPON_READY()
 
     if not enabled then
         if FALLEN_HITFX.vfx_runtime_active == true then
@@ -15626,31 +15740,47 @@ function FALLEN_HITFX_VFX_TICK()
             FALLEN_HITFX.vfx_shot_view_last = 0
             FALLEN_HITFX.vfx_idle_scan_last = 0
         end
+
         FALLEN_HITFX.vfx_runtime_active = false
         return
     end
 
     FALLEN_HITFX.vfx_runtime_active = true
+
     local now = tick()
     local lmb = key_down(VK_LBUTTON) == true
-    local watch_until = tonumber(FALLEN_HITFX.vfx_watch_until) or 0
+    local watch_until =
+        tonumber(FALLEN_HITFX.vfx_watch_until)
+        or 0
 
-    if not lmb and now >= watch_until then
-        if now - (tonumber(FALLEN_HITFX.vfx_idle_scan_last) or 0) >= 0.035 then
-            FALLEN_HITFX.vfx_seen = FALLEN_BT_VFX_SCAN()
+    if not lmb
+        and now >= watch_until
+    then
+        if now - (tonumber(FALLEN_HITFX.vfx_idle_scan_last) or 0) >= 0.25 then
+            FALLEN_HITFX.vfx_seen =
+                FALLEN_BT_VFX_SCAN()
+
             FALLEN_HITFX.vfx_idle_scan_last = now
         end
+
         FALLEN_HITFX.vfx_prev_lmb = false
         FALLEN_HITFX.vfx_shot_time = nil
-        if #FALLEN_HITFX.vfx_shot_views > 0 then FALLEN_HITFX.vfx_shot_views = {} end
+
+        if #FALLEN_HITFX.vfx_shot_views > 0 then
+            FALLEN_HITFX.vfx_shot_views = {}
+        end
+
         FALLEN_HITFX.vfx_shot_view_last = 0
         return
     end
 
-    if lmb and FALLEN_HITFX.vfx_prev_lmb ~= true then
+    if lmb
+        and FALLEN_HITFX.vfx_prev_lmb ~= true
+    then
         FALLEN_HITFX.vfx_shot_time = now
         FALLEN_HITFX.vfx_watch_until = now + 1.00
         FALLEN_HITFX_CAPTURE_SHOT_VIEW(true)
+
     elseif lmb then
         FALLEN_HITFX.vfx_shot_time = now
         FALLEN_HITFX.vfx_watch_until = now + 1.00
@@ -15658,14 +15788,34 @@ function FALLEN_HITFX_VFX_TICK()
     end
 
     FALLEN_HITFX.vfx_prev_lmb = lmb
-    local previous = FALLEN_HITFX.vfx_seen or {}
-    local current = FALLEN_BT_VFX_SCAN()
-    local shot_age = now - (tonumber(FALLEN_HITFX.vfx_shot_time) or now)
-    local impact_pos = FALLEN_HITFX_FIND_NEW_IMPACT(previous, current, shot_age)
+
+    local previous =
+        FALLEN_HITFX.vfx_seen
+        or {}
+
+    local current =
+        FALLEN_BT_VFX_SCAN()
+
+    local shot_age =
+        now
+        - (
+            tonumber(FALLEN_HITFX.vfx_shot_time)
+            or now
+        )
+
+    local impact_pos =
+        FALLEN_HITFX_FIND_NEW_IMPACT(
+            previous,
+            current,
+            shot_age
+        )
+
     FALLEN_HITFX.vfx_seen = current
 
     if impact_pos then
-        FALLEN_HITFX_ADD(impact_pos)
+        FALLEN_HITFX_ADD(
+            impact_pos
+        )
     end
 end
 
@@ -15674,43 +15824,70 @@ function FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
         return 48
     end
 
-    local base = {
-        X = hit.x,
-        Y = hit.y,
-        Z = hit.z,
-    }
+    local base =
+        hit._base
+        or {
+            X = hit.x,
+            Y = hit.y,
+            Z = hit.z,
+        }
+
+    hit._base = base
+    base.X = hit.x
+    base.Y = hit.y
+    base.Z = hit.z
 
     local world_size = 4.0
+
     if kind == 1
         or kind == 4
         or kind == 5
         or kind == 6
         or kind == 7
     then
-        -- Spark-sized world footprint.
         world_size = 8.0
+
     elseif kind == 2 then
-        -- fallen_ultimate SmokeRing Size = 4
         world_size = 4.0
+
     elseif kind == 3 then
-        -- fallen_ultimate particles.js Size = 3
         world_size = 3.0
     end
 
-    local a = FALLEN_BT_PROJECT(base)
-    local b = FALLEN_BT_PROJECT({
-        X = hit.x,
-        Y = hit.y + world_size,
-        Z = hit.z,
-    })
+    local offset =
+        hit._offset
+        or {
+            X = hit.x,
+            Y = hit.y + world_size,
+            Z = hit.z,
+        }
+
+    hit._offset = offset
+    offset.X = hit.x
+    offset.Y = hit.y + world_size
+    offset.Z = hit.z
+
+    local a =
+        FALLEN_BT_PROJECT(base)
+
+    local b =
+        FALLEN_BT_PROJECT(offset)
 
     if a and b then
-        local dx = (b.X or 0) - (a.X or 0)
-        local dy = (b.Y or 0) - (a.Y or 0)
-        local px = math.sqrt(dx * dx + dy * dy)
+        local dx =
+            (b.X or 0)
+            - (a.X or 0)
 
-        -- Preserve world-space perspective, but keep the effect practical
-        -- on screen at extreme near/far distances.
+        local dy =
+            (b.Y or 0)
+            - (a.Y or 0)
+
+        local px =
+            math.sqrt(
+                dx * dx
+                + dy * dy
+            )
+
         if kind == 1
             or kind == 4
             or kind == 5
@@ -15718,14 +15895,15 @@ function FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
             or kind == 7
         then
             return clamp(px, 34, 220)
+
         elseif kind == 2 then
             return clamp(px, 28, 170)
+
         else
             return clamp(px, 24, 145)
         end
     end
 
-    -- Fallback only if the offset point cannot be projected.
     if kind == 1
         or kind == 4
         or kind == 5
@@ -15733,6 +15911,7 @@ function FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
         or kind == 7
     then
         return 86
+
     elseif kind == 2 then
         return 64
     end
@@ -15741,12 +15920,21 @@ function FALLEN_HITFX_WORLD_PIXEL_SIZE(hit, kind)
 end
 
 function FALLEN_HITFX_DRAW_ONE(hit, age, life, kind)
-    local s =
-        FALLEN_BT_PROJECT({
+    local base =
+        hit._base
+        or {
             X = hit.x,
             Y = hit.y,
             Z = hit.z,
-        })
+        }
+
+    hit._base = base
+    base.X = hit.x
+    base.Y = hit.y
+    base.Z = hit.z
+
+    local s =
+        FALLEN_BT_PROJECT(base)
 
     if not s then
         return
@@ -33308,7 +33496,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v77 | height-aware auto prediction | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v78 | tracer-hitfx lifecycle + GC optimization | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
