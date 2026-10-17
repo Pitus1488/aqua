@@ -127,6 +127,7 @@ local defaults = {
     -- upward by the selected distance while the local camera stays pinned.
     misc_manipulation_enabled = false,
     misc_manipulation_distance = 5.0,
+    misc_hitscan_enabled = false,
 
     -- Visuals / World Rain effect.
     world_rain_enabled = false,
@@ -207,9 +208,9 @@ local defaults = {
     menu_gradient_b_alpha = 100,
 
     -- Menu accent/style color. Changes small UI accents only; never the shell/background.
-    menu_style_h = 0.625,
-    menu_style_s = 0.55,
-    menu_style_v = 0.76,
+    menu_style_h = 0.000,
+    menu_style_s = 0.470,
+    menu_style_v = 0.710,
     menu_style_alpha = 100,
 
     -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
@@ -428,39 +429,52 @@ end
 -- =========================================================
 
 local C = {
-    shadow      = { 0.000, 0.000, 0.000, 0.13 },
-    outer       = { 0.058, 0.063, 0.073, 1.00 },
-    sidebar     = { 0.079, 0.082, 0.094, 1.00 },
-    content     = { 0.052, 0.055, 0.063, 1.00 },
+    -- Ported from widgets.h / gui.cpp.
+    shadow      = { 0.000, 0.000, 0.000, 0.18 },
+    outer       = { 30 / 255, 30 / 255, 39 / 255, 176 / 255 },
+    sidebar     = { 30 / 255, 30 / 255, 39 / 255, 176 / 255 },
+    content     = { 30 / 255, 30 / 255, 39 / 255, 176 / 255 },
 
-    card        = { 0.055, 0.058, 0.067, 1.00 },
-    card_hover  = { 0.073, 0.076, 0.087, 1.00 },
-    selected    = { 0.125, 0.126, 0.137, 1.00 },
+    card        = { 1.000, 1.000, 1.000, 10 / 255 },
+    card_hover  = { 1.000, 1.000, 1.000, 24 / 255 },
+    selected    = { 1.000, 1.000, 1.000, 20 / 255 },
 
-    border      = { 0.210, 0.220, 0.250, 0.18 },
-    divider     = { 0.220, 0.230, 0.260, 0.15 },
+    border      = { 1.000, 1.000, 1.000, 30 / 255 },
+    outline     = { 1.000, 1.000, 1.000, 25 / 255 },
+    divider     = { 1.000, 1.000, 1.000, 8 / 255 },
+    frame       = { 1.000, 1.000, 1.000, 14 / 255 },
+    control     = { 1.000, 1.000, 1.000, 15 / 255 },
+    button      = { 1.000, 1.000, 1.000, 17 / 255 },
+    check       = { 1.000, 1.000, 1.000, 46 / 255 },
 
-    text        = { 0.700, 0.710, 0.740, 1.00 },
-    text_dim    = { 0.485, 0.500, 0.555, 1.00 },
-    text_faint  = { 0.320, 0.340, 0.410, 1.00 },
+    text        = { 140 / 255, 140 / 255, 150 / 255, 1.00 },
+    text_dim    = { 80 / 255, 80 / 255, 90 / 255, 1.00 },
+    text_faint  = { 89 / 255, 89 / 255, 97 / 255, 1.00 },
+    bright      = { 175 / 255, 175 / 255, 185 / 255, 1.00 },
 
-    accent      = { 0.340, 0.450, 0.760, 1.00 },
-    accent_dim  = { 0.240, 0.320, 0.600, 1.00 },
-    accent_soft = { 0.210, 0.260, 0.430, 0.65 },
+    accent      = { 181 / 255, 96 / 255, 96 / 255, 1.00 },
+    accent_dim  = { 120 / 255, 67 / 255, 68 / 255, 1.00 },
+    accent_soft = { 181 / 255, 96 / 255, 96 / 255, 18 / 255 },
+    fill        = { 142 / 255, 75 / 255, 75 / 255, 1.00 },
 
-    toggle_off  = { 0.160, 0.170, 0.195, 1.00 },
-    toggle_knob = { 0.530, 0.550, 0.610, 1.00 },
-    white       = { 0.970, 0.970, 0.980, 1.00 },
+    toggle_off  = { 1.000, 1.000, 1.000, 46 / 255 },
+    toggle_knob = { 175 / 255, 175 / 255, 185 / 255, 1.00 },
+    white       = { 1.000, 1.000, 1.000, 1.00 },
+
+    yellow      = { 181 / 255, 150 / 255, 57 / 255, 1.00 },
+    red         = { 195 / 255, 75 / 255, 75 / 255, 1.00 },
+    green       = { 83 / 255, 153 / 255, 98 / 255, 1.00 },
 }
+
 
 -- =========================================================
 -- Layout
 -- =========================================================
 
-local WIN_W = 875
-local WIN_H = 630
-local SIDEBAR_W = 172
-local OUTER_R = 16
+local WIN_W = 606
+local WIN_H = 970
+local SIDEBAR_W = 0
+local OUTER_R = 0
 
 local VK_RSHIFT = 0xA1
 local VK_LBUTTON = 0x01
@@ -618,6 +632,14 @@ local A = {
     misc_manipulation_target_addr = nil,
     misc_manipulation_target_pos = nil,
     misc_manipulation_failed_directions = {},
+    misc_manipulation_virtual_origin = nil,
+    misc_manipulation_hit_pos = nil,
+    misc_manipulation_hitscanned = false,
+    misc_manipulation_override_active = false,
+    misc_manipulation_saved_silent_enabled = nil,
+    misc_manipulation_saved_magic_bullet = nil,
+    misc_manipulation_saved_magic_pull = nil,
+    misc_manipulation_magic_pull_key = nil,
     misc_manipulation_geo_center_x = nil,
     misc_manipulation_geo_center_z = nil,
     misc_manipulation_last_error = 0,
@@ -4034,18 +4056,48 @@ end
 -- =========================================================
 
 local function section_title(x, y, title)
-    text(x, y, string.upper(title), C.text_faint)
+    -- Source panels use normal-case gray titles, not uppercase labels.
+    text(x + 14, y + 11, tostring(title), C.text)
 end
 
 local function card(x, y, w, h, r)
-    rounded_outline(x, y, w, h, r or 11, C.border, 1, C.card)
+    -- Source child panel: faint white fill + 1px outline, rounding 6.
+    rounded_outline(
+        x,
+        y,
+        w,
+        h,
+        6,
+        C.outline,
+        1,
+        C.card
+    )
+
+    -- Header divider used by ui::begin_panel().
+    line(
+        x + 1,
+        y + 30,
+        x + w - 1,
+        y + 30,
+        C.divider,
+        1
+    )
 end
 
 local function row_hover(mx, my, x, y, w, h)
     local hot = hover(mx, my, x, y, w, h)
+
     if hot then
-        rounded_fill(x + 4, y + 2, w - 8, h - 4, 7, alpha(C.card_hover, 0.65))
+        rounded_fill(
+            x + 8,
+            y + 6,
+            w - 16,
+            h - 12,
+            4,
+            C.card_hover
+        )
     end
+
     return hot
 end
 
@@ -4147,43 +4199,8 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
 
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
-
-    text(
-        x + 13,
-        y + 14,
-        label,
-        FALLEN_HOVER_TEXT("toggle:" .. tostring(key), hot, C.text)
-    )
-
-    if extra then
-        local dots_x = x + w - 79
-        local dots_y = y + 8
-        local dots_w = 27
-        local dots_h = 25
-        local dots_hot = hover(mx, my, dots_x, dots_y, dots_w, dots_h)
-
-        if dots_hot then
-            rounded_fill(
-                dots_x,
-                dots_y,
-                dots_w,
-                dots_h,
-                6,
-                { 0.105, 0.110, 0.130, 1 }
-            )
-        end
-
-        centered_text(
-            dots_x + dots_w * 0.5,
-            y + 13,
-            "...",
-            dots_hot and C.text or C.text_faint
-        )
-    end
-
     local value = S[key] == true
 
-    -- Change state first so the animation starts immediately on the click.
     if clicked and hot then
         value = not value
         S[key] = value
@@ -4197,14 +4214,13 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     end
 
     local target = value and 1 or 0
-    local anim = A.toggles[key]
+    local anim = tonumber(A.toggles[key])
 
     if anim == nil then
         anim = target
     end
 
-    -- Smooth switch movement and color blend.
-    anim = lerp(anim, target, 0.20)
+    anim = lerp(anim, target, 0.24)
 
     if math.abs(anim - target) < 0.002 then
         anim = target
@@ -4212,18 +4228,92 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
 
     A.toggles[key] = anim
 
-    local tx = x + w - 45
-    local ty = y + 12
-    local tw, th = 34, 18
+    local bx = x + 13
+    local by = y + 11
+    local bs = 18
 
-    local track_col = mix_color(C.toggle_off, C.accent_dim, anim)
-    local knob_col = mix_color(C.toggle_knob, C.white, anim)
+    rounded_fill(
+        bx,
+        by,
+        bs,
+        bs,
+        4,
+        mix_color(
+            C.check,
+            C.accent,
+            anim
+        )
+    )
 
-    rounded_fill(tx, ty, tw, th, 9, track_col)
+    if anim > 0.06 then
+        -- Minimal source-like check mark.
+        line(
+            bx + 4,
+            by + 9,
+            bx + 8,
+            by + 13,
+            alpha(C.white, anim),
+            1.4
+        )
 
-    -- Knob center moves continuously instead of snapping left/right.
-    local knob_x = tx + 9 + (tw - 18) * anim
-    circle_fill(knob_x, ty + 9, 7, knob_col)
+        line(
+            bx + 8,
+            by + 13,
+            bx + 14,
+            by + 5,
+            alpha(C.white, anim),
+            1.4
+        )
+    end
+
+    text(
+        x + 39,
+        y + 14,
+        label,
+        FALLEN_HOVER_TEXT(
+            "toggle:" .. tostring(key),
+            hot,
+            C.text
+        )
+    )
+
+    if extra then
+        local dots_x = x + w - 42
+        local dots_y = y + 10
+        local dots_w = 28
+        local dots_h = 20
+        local dots_hot =
+            hover(
+                mx,
+                my,
+                dots_x,
+                dots_y,
+                dots_w,
+                dots_h
+            )
+
+        rounded_outline(
+            dots_x,
+            dots_y,
+            dots_w,
+            dots_h,
+            10,
+            C.outline,
+            1,
+            dots_hot
+                and C.card_hover
+                or C.control
+        )
+
+        centered_text(
+            dots_x + dots_w * 0.5,
+            dots_y + 4,
+            "...",
+            dots_hot
+                and C.bright
+                or C.text_dim
+        )
+    end
 end
 
 local function chevron_row(mx, my, clicked, x, y, w, label, key)
@@ -4292,18 +4382,22 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
 
     text(
         x + 13,
-        y + 14,
+        y + 7,
         label,
-        FALLEN_HOVER_TEXT("slider:" .. tostring(key), hot, C.text)
+        FALLEN_HOVER_TEXT(
+            "slider:" .. tostring(key),
+            hot,
+            C.text
+        )
     )
 
-    local box_w = 52
-    local box_x = x + w - box_w - 10
-    local box_y = y + 8
+    local box_w = 50
+    local box_x = x + w - box_w - 12
+    local box_y = y + 3
 
-    local track_x = x + 150
-    local track_w = math.max(36, box_x - track_x - 12)
-    local track_y = y + 20
+    local track_x = x + 13
+    local track_w = math.max(48, w - 26)
+    local track_y = y + 27
 
     local current = tonumber(S[key]) or minv
     current = clamp(current, minv, maxv)
@@ -4333,10 +4427,10 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
 
     local editing = A.numeric.active_key == key
 
-    local hit_x = track_x - 9
-    local hit_y = y + 5
-    local hit_w = track_w + 18
-    local hit_h = 31
+    local hit_x = track_x
+    local hit_y = y + 19
+    local hit_w = track_w
+    local hit_h = 18
 
     local hot = hover(mx, my, hit_x, hit_y, hit_w, hit_h)
 
@@ -4391,41 +4485,39 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
 
     local t = clamp((visual - minv) / (maxv - minv), 0, 1)
 
-    rounded_fill(track_x, track_y, track_w, 4, 2, C.toggle_off)
-    rounded_fill(track_x, track_y, track_w * t, 4, 2, C.accent)
+    rounded_fill(
+        track_x,
+        track_y,
+        track_w,
+        8,
+        3,
+        (hot or active)
+            and C.card_hover
+            or C.control
+    )
 
-    local wanted_scale = active and 1.34 or (hot and 1.12 or 1.00)
-    local knob_scale = A.slider_knob[key]
-    knob_scale = lerp(knob_scale, wanted_scale, 0.23)
-
-    if math.abs(knob_scale - wanted_scale) < 0.002 then
-        knob_scale = wanted_scale
-    end
-
-    A.slider_knob[key] = knob_scale
-
-    local knob_x = track_x + track_w * t
-    local knob_y = track_y + 2
-    local knob_r = 6 * knob_scale
-
-    if active then
-        circle_fill(
-            knob_x,
-            knob_y,
-            knob_r + 2.5,
-            alpha(C.accent, 0.16)
+    if t > 0 then
+        rounded_fill(
+            track_x,
+            track_y,
+            math.max(4, track_w * t),
+            8,
+            3,
+            C.fill
         )
     end
 
-    circle_fill(knob_x, knob_y, knob_r, C.white)
+    -- Source slider has no separate circular knob.
 
     rounded_fill(
         box_x,
         box_y,
         box_w,
-        25,
-        6,
-        editing and { 0.115, 0.125, 0.165, 1 } or C.toggle_off
+        20,
+        4,
+        editing
+            and C.card_hover
+            or C.control
     )
 
     if editing then
@@ -4433,8 +4525,8 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
             box_x,
             box_y,
             box_w,
-            25,
-            6,
+            20,
+            4,
             alpha(C.accent, 0.55),
             1,
             { 0.115, 0.125, 0.165, 1 }
@@ -4458,7 +4550,7 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
 
     centered_text(
         box_x + box_w * 0.5,
-        y + 14,
+        y + 7,
         shown,
         FALLEN_HOVER_TEXT(
             "slider_value:" .. tostring(key),
@@ -4484,22 +4576,34 @@ local function dropdown_row(mx, my, clicked, x, y, w, label, key, options)
     )
 
     local bx = x + w - 142
-    local by = y + 8
+    local by = y + 7
     local bw = 130
-    rounded_fill(bx, by, bw, 25, 6, C.toggle_off)
+
+    rounded_outline(
+        bx,
+        by,
+        bw,
+        28,
+        4,
+        C.frame,
+        1,
+        hover(mx, my, bx, by, bw, 28)
+            and C.card_hover
+            or C.control
+    )
     text(
         bx + 10,
         by + 7,
         tostring(S[key]),
         FALLEN_HOVER_TEXT(
             "dropdown_value:" .. tostring(key),
-            hover(mx, my, bx, by, bw, 25),
+            hover(mx, my, bx, by, bw, 28),
             C.text
         )
     )
     text(bx + bw - 17, by + 7, "v", C.text_dim)
 
-    if clicked and hover(mx, my, bx, by, bw, 25) then
+    if clicked and hover(mx, my, bx, by, bw, 28) then
         local cur = 1
         for i, v in ipairs(options) do
             if v == S[key] then cur = i break end
@@ -13213,6 +13317,10 @@ end
 
 
 function FALLEN_SILENT_SYNC_UI_FROM_LIVE()
+    if A.misc_manipulation_override_active == true then
+        return
+    end
+
     -- Silent reads only from cheat.silent_aim. Never import anything from
     -- cheat.aimbot: our normal Aimbot is entirely custom/local.
     if not S.visible then
@@ -28699,17 +28807,12 @@ function FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
 end
 
 function FALLEN_APPLY_STYLE_COLOR()
-    local t =
-        tostring(S.menu_type or "glass")
-        :lower()
-
-    -- Accent color is user-controlled and is intentionally independent
-    -- from the menu shell/background material. Only small UI details use it.
+    -- Source UI keeps its dark shell fixed while allowing the accent to change.
     local accent_r, accent_g, accent_b =
         hsv_to_rgb(
-            tonumber(S.menu_style_h) or 0.625,
-            tonumber(S.menu_style_s) or 0.55,
-            tonumber(S.menu_style_v) or 0.76
+            tonumber(S.menu_style_h) or 0.000,
+            tonumber(S.menu_style_s) or 0.470,
+            tonumber(S.menu_style_v) or 0.710
         )
 
     local accent_a =
@@ -28726,106 +28829,50 @@ function FALLEN_APPLY_STYLE_COLOR()
         accent_a,
     }
 
-    -- Derived accent variants keep sliders/toggles/soft highlights in the
-    -- same chosen hue instead of leaving old hard-coded blue pieces behind.
     C.accent_dim = {
-        accent_r * 0.76,
-        accent_g * 0.76,
-        accent_b * 0.79,
+        accent_r * 0.663,
+        accent_g * 0.698,
+        accent_b * 0.708,
         accent_a,
     }
 
     C.accent_soft = {
-        accent_r * 0.62,
-        accent_g * 0.62,
-        accent_b * 0.62,
-        0.65 * accent_a,
+        accent_r,
+        accent_g,
+        accent_b,
+        (18 / 255) * accent_a,
     }
 
-    if t == "default" then
-        -- Original dark Fallen-lua default theme.
-        C.outer      = { 0.058, 0.063, 0.073, 1.00 }
-        C.sidebar    = { 0.079, 0.082, 0.094, 1.00 }
-        C.content    = { 0.052, 0.055, 0.063, 1.00 }
+    C.fill = {
+        accent_r * 0.785,
+        accent_g * 0.781,
+        accent_b * 0.781,
+        accent_a,
+    }
 
-        C.card       = { 0.055, 0.058, 0.067, 1.00 }
-        C.card_hover = { 0.073, 0.076, 0.087, 1.00 }
-        C.selected   = { 0.125, 0.126, 0.137, 1.00 }
+    C.outer      = { 30 / 255, 30 / 255, 39 / 255, 176 / 255 }
+    C.sidebar    = C.outer
+    C.content    = C.outer
 
-        C.border     = { 0.210, 0.220, 0.250, 0.18 }
-        C.divider    = { 0.220, 0.230, 0.260, 0.15 }
+    C.card       = { 1, 1, 1, 10 / 255 }
+    C.card_hover = { 1, 1, 1, 24 / 255 }
+    C.selected   = { 1, 1, 1, 20 / 255 }
 
-        C.text       = { 0.700, 0.710, 0.740, 1.00 }
-        C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
-        C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
+    C.border     = { 1, 1, 1, 30 / 255 }
+    C.outline    = { 1, 1, 1, 25 / 255 }
+    C.divider    = { 1, 1, 1, 8 / 255 }
+    C.frame      = { 1, 1, 1, 14 / 255 }
+    C.control    = { 1, 1, 1, 15 / 255 }
+    C.button     = { 1, 1, 1, 17 / 255 }
+    C.check      = { 1, 1, 1, 46 / 255 }
 
-    elseif t == "ass" then
-        -- Ass = Default theme everywhere, Glass only on the LEFT sidebar.
-        S.menu_type = "ass"
+    C.text       = { 140 / 255, 140 / 255, 150 / 255, 1 }
+    C.text_dim   = { 80 / 255, 80 / 255, 90 / 255, 1 }
+    C.text_faint = { 89 / 255, 89 / 255, 97 / 255, 1 }
+    C.bright     = { 175 / 255, 175 / 255, 185 / 255, 1 }
 
-        C.outer      = { 0.058, 0.063, 0.073, 1.00 }
-
-        -- Only this surface is translucent.
-        C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
-
-        -- Everything to the right stays exactly like Default.
-        C.content    = { 0.052, 0.055, 0.063, 1.00 }
-
-        C.card       = { 0.055, 0.058, 0.067, 1.00 }
-        C.card_hover = { 0.073, 0.076, 0.087, 1.00 }
-        C.selected   = { 0.125, 0.126, 0.137, 1.00 }
-
-        C.border     = { 0.210, 0.220, 0.250, 0.18 }
-        C.divider    = { 0.220, 0.230, 0.260, 0.15 }
-
-        C.text       = { 0.700, 0.710, 0.740, 1.00 }
-        C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
-        C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
-
-    elseif t == "gradient"
-        or t == "blur"
-    then
-        -- Real two-color diagonal gradient.
-        -- Legacy "blur" configs migrate to Gradient.
-        S.menu_type = "gradient"
-
-        -- The shell itself is drawn separately at fixed 50% opacity.
-        C.outer      = { 0.000, 0.000, 0.000, 0.00 }
-        C.sidebar    = { 0.000, 0.000, 0.000, 0.00 }
-        C.content    = { 0.000, 0.000, 0.000, 0.00 }
-
-        C.card       = { 0.055, 0.058, 0.067, 0.72 }
-        C.card_hover = { 0.073, 0.076, 0.087, 0.80 }
-        C.selected   = { 0.125, 0.126, 0.137, 0.86 }
-
-        C.border     = { 0.250, 0.260, 0.300, 0.16 }
-        C.divider    = { 0.260, 0.270, 0.310, 0.14 }
-
-        C.text       = { 0.760, 0.770, 0.800, 1.00 }
-        C.text_dim   = { 0.530, 0.545, 0.600, 1.00 }
-        C.text_faint = { 0.355, 0.375, 0.445, 1.00 }
-
-    else
-        -- Glass = the Default UI colors/layout with translucent surfaces.
-        -- The material comes only from alpha layering.
-        S.menu_type = "glass"
-
-        -- More transparent glass shell.
-        C.outer      = { 0.058, 0.063, 0.073, 0.58 }
-        C.sidebar    = { 0.079, 0.082, 0.094, 0.54 }
-        C.content    = { 0.052, 0.055, 0.063, 0.49 }
-
-        C.card       = { 0.055, 0.058, 0.067, 0.67 }
-        C.card_hover = { 0.073, 0.076, 0.087, 0.73 }
-        C.selected   = { 0.125, 0.126, 0.137, 0.76 }
-
-        C.border     = { 0.210, 0.220, 0.250, 0.18 }
-        C.divider    = { 0.220, 0.230, 0.260, 0.15 }
-
-        C.text       = { 0.700, 0.710, 0.740, 1.00 }
-        C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
-        C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
-    end
+    C.toggle_off  = C.check
+    C.toggle_knob = C.bright
 end
 
 -- =========================================================
@@ -37322,7 +37369,7 @@ hooks.on_render(function()
                 1.00,
                 math.max(
                     0.82,
-                    math.min((sw - 40) / 875, (sh - 40) / 630)
+                    math.min((sw - 40) / 606, (sh - 40) / 970)
                 )
             )
     else
@@ -37342,8 +37389,8 @@ hooks.on_render(function()
         end
     end
 
-    WIN_W = 875
-    WIN_H = 630
+    WIN_W = 606
+    WIN_H = 970
 
     if A.menu_cx == nil then
         A.menu_cx = sw * 0.5
@@ -37466,114 +37513,53 @@ hooks.on_render(function()
         )
     end
 
-    -- Same glow profile as the custom Aimbot FOV.
-    local glow_rgb = {1, 1, 1, 1}
-
-    pcall(function()
-        glow_rgb =
-            FALLEN_GLOW_COLOR()
-    end)
-
-    local glow_strength =
-        clamp(
-            (tonumber(S.menu_glow_strength) or 100) / 100,
-            0,
-            2
-        )
-
-    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+    -- Source UI shell (ported from gui.cpp).
+    -- One 606x970 window, title bar, horizontal tab bar, two-column content,
+    -- and a 26px footer. No left sidebar.
+    fill(
         wx,
         wy,
         WIN_W,
         WIN_H,
-        OUTER_R,
-        glow_rgb,
-        glow_strength,
-        34 / 3
+        C.outer
     )
 
-    -- Base surfaces are genuinely transparent during the transition, but
-    -- sidebar/content are now two DISJOINT rounded shapes. Nothing is drawn
-    -- underneath them, so their corners cannot accumulate alpha.
-    local menu_texture_type =
-        tostring(S.menu_type or "glass"):lower()
+    line(
+        wx,
+        wy,
+        wx + WIN_W,
+        wy,
+        C.border,
+        1
+    )
+    line(
+        wx,
+        wy + WIN_H,
+        wx + WIN_W,
+        wy + WIN_H,
+        C.border,
+        1
+    )
+    line(
+        wx,
+        wy,
+        wx,
+        wy + WIN_H,
+        C.border,
+        1
+    )
+    line(
+        wx + WIN_W,
+        wy,
+        wx + WIN_W,
+        wy + WIN_H,
+        C.border,
+        1
+    )
 
-    local is_gradient_menu =
-        menu_texture_type == "gradient"
-        or menu_texture_type == "blur"
-
-    if is_gradient_menu then
-        FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
-            wx,
-            wy,
-            WIN_W,
-            WIN_H,
-            menu_base_alpha
-        )
-
-    else
-        -- Default / Ass / Glass:
-        -- REAL rounded transition between sidebar and content.
-        --
-        -- The content extends underneath the sidebar by OUTER_R pixels.
-        -- Then the sidebar is drawn as a fully rounded panel on top.
-        -- This makes the sidebar's top-right and bottom-right corners
-        -- genuinely curved, with the content visible behind the curves.
-        local split_overlap =
-            OUTER_R
-
-        if menu_texture_type == "glass"
-            or menu_texture_type == "ass"
-        then
-            -- Glass / Ass use a clean FLAT inner split.
-            -- No overlap at the center, so translucent sidebar pixels
-            -- cannot stack over the opaque content and create a dark stripe.
-            -- Only the OUTER window corners remain rounded.
-            rounded_left_fill(
-                wx,
-                wy,
-                SIDEBAR_W,
-                WIN_H,
-                OUTER_R,
-                C.sidebar
-            )
-
-            rounded_right_fill(
-                wx + SIDEBAR_W,
-                wy,
-                WIN_W - SIDEBAR_W,
-                WIN_H,
-                OUTER_R,
-                C.content
-            )
-        else
-            -- Opaque styles can keep the rounded inner transition.
-            rounded_right_fill(
-                wx + SIDEBAR_W - split_overlap,
-                wy,
-                WIN_W - SIDEBAR_W + split_overlap,
-                WIN_H,
-                OUTER_R,
-                C.content
-            )
-
-            rounded_fill(
-                wx,
-                wy,
-                SIDEBAR_W,
-                WIN_H,
-                OUTER_R,
-                C.sidebar
-            )
-        end
-    end
-
-    -- Let the base become mostly visible before layered controls/cards fade in.
-    -- This keeps the transparency animation, while preventing stacked
-    -- translucent widgets from creating dark patches all over the menu.
     local detail_alpha =
         smooth01(
-            (menu_base_alpha - 0.68) / 0.32
+            (menu_base_alpha - 0.12) / 0.88
         )
 
     MENU_RENDER_ALPHA = detail_alpha
@@ -37583,711 +37569,113 @@ hooks.on_render(function()
         return
     end
 
-    -- Glass keeps its subtle original separator.
-    -- Ass intentionally has NO center line: just a clean flat join.
-    if menu_texture_type == "glass" then
-        line(
-            wx + SIDEBAR_W,
-            wy + 12,
-            wx + SIDEBAR_W,
-            wy + WIN_H - 12,
-            C.divider,
-            1
-        )
-    end
-
-    -- Brand image. Replaces the old visible "Fallen-lua" text.
-    -- Large on purpose; easy to tune later without touching the sidebar layout.
-    local brand_handle =
-        FALLEN_BRAND_IMAGE_GET()
-
-    if brand_handle
-        and type(DrawImage) == "function"
-    then
-        pcall(
-            DrawImage,
-            brand_handle,
-            FALLEN_UI_X(wx + 16),
-            FALLEN_UI_Y(wy + 12),
-            FALLEN_UI_LEN(140),
-            FALLEN_UI_LEN(48),
-            1,
-            1,
-            1,
-            MENU_RENDER_ALPHA,
-            0
-        )
-    end
-
-    -- Hidden gesture: three quick clicks on the brand reveal the ??? setting.
-    -- The hitbox has no hover color, cursor effect, glow, tooltip, or other hint.
-    if clicked
-        and hover(
-            mx,
-            my,
-            wx + 14,
-            wy + 10,
-            144,
-            52
-        )
-    then
-        FALLEN_SECRET_BRAND_CLICK()
-    end
-
-    -- If the secret tab gets disabled while selected, fall back to Misc.
-    if S.tab == 4
-        and not (
-            A.secret_unlocked
-            and S.secret_enabled == true
-        )
-    then
-        S.tab = 3
-        S.anim = 0
-    end
-
-    -- Sidebar
-    -- COMMON/Misc is physically pushed down by the Visuals child expansion.
-    -- 0 => close under Visuals, 1 => below World + Armor.
-    local common_layout_expand =
-        smooth01(
-            clamp(
-                A.visuals_expand_anim or 0,
-                0,
-                1
-            )
-        )
-
-    local common_layout_shift =
-        74 * common_layout_expand
-
-    local common_label_y =
-        wy + 273 + common_layout_shift
-
-    local misc_tab_y =
-        wy + 293 + common_layout_shift
-
-    local sidebar_target_y
-
-    if S.tab == 4
-        and A.secret_unlocked
-        and S.secret_enabled == true
-    then
-        sidebar_target_y =
-            wy + WIN_H - 118
-    elseif S.tab == 3 then
-        sidebar_target_y =
-            misc_tab_y
-    elseif S.tab == 2 then
-        sidebar_target_y =
-            wy + 219
-    elseif S.tab == 5 then
-        sidebar_target_y =
-            wy + 145
-    else
-        sidebar_target_y =
-            wy + 105
-    end
-
-    if A.sidebar_indicator_y == nil then
-        A.sidebar_indicator_y =
-            sidebar_target_y
-    end
-
-    local sidebar_now = tick()
-
-    if A.sidebar_indicator_last_t == nil then
-        A.sidebar_indicator_last_t =
-            sidebar_now
-    end
-
-    local sidebar_dt =
-        clamp(
-            sidebar_now
-            - A.sidebar_indicator_last_t,
-            0,
-            0.05
-        )
-
-    A.sidebar_indicator_last_t =
-        sidebar_now
-
-    A.sidebar_indicator_y =
-        exp_chase(
-            A.sidebar_indicator_y,
-            sidebar_target_y,
-            13,
-            sidebar_dt
-        )
-
-    if math.abs(
-        A.sidebar_indicator_y
-        - sidebar_target_y
-    ) < 0.08 then
-        A.sidebar_indicator_y =
-            sidebar_target_y
-    end
-
-    -- Sliding selected-tab pill.
-    rounded_fill(
-        wx + 10,
-        A.sidebar_indicator_y,
-        152,
-        35,
-        7,
-        C.selected
+    -- Title bar gradient approximation from gui.cpp.
+    fill(
+        wx + 1,
+        wy + 1,
+        WIN_W - 2,
+        43,
+        { 1, 1, 1, 10 / 255 }
     )
 
-    text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
-    sidebar_tab(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        wx + 10,
-        wy + 105,
-        1
+    fill(
+        wx + 1,
+        wy + 1,
+        WIN_W - 2,
+        21,
+        { 1, 1, 1, 5 / 255 }
     )
-
-    sidebar_tab(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        wx + 10,
-        wy + 145,
-        5
-    )
-
-    text(wx + 22, wy + 199, "VISUALS", C.text_faint)
-
-    local visuals_parent_x =
-        wx + 10
-
-    local visuals_parent_y =
-        wy + 219
-
-    local visuals_parent_hot =
-        hover(
-            mx,
-            my,
-            visuals_parent_x,
-            visuals_parent_y,
-            152,
-            35
-        )
-
-    sidebar_tab(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        visuals_parent_x,
-        visuals_parent_y,
-        2
-    )
-
-    -- Visuals is a standalone page.
-    if clicked
-        and visuals_parent_hot
-        and not A.world_color_picker_open
-        and (A.world_color_picker_anim or 0) <= 0.02
-    then
-        S.tab = 2
-        S.visuals_subtab = 0
-        S.anim = 0
-    end
-
-    -- RMB on Visuals expands/collapses World + Armor.
-    if rmb_clicked
-        and visuals_parent_hot
-        and not A.world_color_picker_open
-        and (A.world_color_picker_anim or 0) <= 0.02
-    then
-        -- RMB only expands/collapses the nested Visuals menu.
-        -- It must NOT change the currently selected main page.
-        A.visuals_expanded =
-            not A.visuals_expanded
-    end
-
-    local visuals_now =
-        tick()
-
-    if A.visuals_expand_last_t == nil then
-        A.visuals_expand_last_t =
-            visuals_now
-    end
-
-    local visuals_dt =
-        clamp(
-            visuals_now
-            - A.visuals_expand_last_t,
-            0,
-            0.05
-        )
-
-    A.visuals_expand_last_t =
-        visuals_now
-
-    local visuals_target =
-        A.visuals_expanded
-        and 1
-        or 0
-
-    A.visuals_expand_anim =
-        exp_chase(
-            A.visuals_expand_anim or 0,
-            visuals_target,
-            13,
-            visuals_dt
-        )
-
-    local visuals_expand =
-        clamp(
-            A.visuals_expand_anim or 0,
-            0,
-            1
-        )
-
-    if visuals_expand > 0.008 then
-        local old_sidebar_alpha =
-            MENU_RENDER_ALPHA
-
-        MENU_RENDER_ALPHA =
-            old_sidebar_alpha
-            * smooth01(visuals_expand)
-
-        local child_x =
-            wx + 26
-
-        local child_w =
-            136
-
-        local child_h =
-            31
-
-        local collapse_shift =
-            (1 - visuals_expand)
-            * 15
-
-        local world_y =
-            wy + 259
-            - collapse_shift
-
-        local armor_y =
-            wy + 292
-            - collapse_shift
-
-        -- Same smooth selected-background motion as the main Aimbot/Visuals tabs.
-        local child_selected =
-            S.tab == 2
-            and (
-                (tonumber(S.visuals_subtab) or 0) == 1
-                or (tonumber(S.visuals_subtab) or 0) == 2
-            )
-
-        local child_target_y =
-            (tonumber(S.visuals_subtab) or 0) == 2
-            and armor_y
-            or world_y
-
-        if A.visuals_child_indicator_y == nil then
-            A.visuals_child_indicator_y =
-                child_target_y
-        end
-
-        A.visuals_child_indicator_y =
-            exp_chase(
-                A.visuals_child_indicator_y,
-                child_target_y,
-                14,
-                visuals_dt
-            )
-
-        A.visuals_child_indicator_alpha =
-            exp_chase(
-                A.visuals_child_indicator_alpha or 0,
-                child_selected and 1 or 0,
-                13,
-                visuals_dt
-            )
-
-        if (A.visuals_child_indicator_alpha or 0) > 0.01 then
-            rounded_fill(
-                child_x,
-                A.visuals_child_indicator_y,
-                child_w,
-                child_h,
-                7,
-                alpha(
-                    C.selected,
-                    0.88
-                    * A.visuals_child_indicator_alpha
-                )
-            )
-        end
-
-        local world_hot =
-            hover(
-                mx,
-                my,
-                child_x,
-                world_y,
-                child_w,
-                child_h
-            )
-
-        local armor_hot =
-            hover(
-                mx,
-                my,
-                child_x,
-                armor_y,
-                child_w,
-                child_h
-            )
-
-        local child_interactive =
-            A.visuals_expanded
-            and visuals_expand > 0.92
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02
-
-        -- World child.
-        if world_hot
-            and not (
-                S.tab == 2
-                and (tonumber(S.visuals_subtab) or 0) == 1
-            )
-        then
-            rounded_fill(
-                child_x,
-                world_y,
-                child_w,
-                child_h,
-                7,
-                alpha(C.card_hover, 0.55)
-            )
-        end
-
-        local world_col =
-            FALLEN_HOVER_TEXT(
-                "sidebar_visual_world",
-                world_hot,
-                (
-                    S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 0) == 1
-                )
-                    and C.text
-                    or C.text_dim
-            )
-
-        local world_icon_handle =
-            FALLEN_WORLD_TAB_ICON_GET()
-
-        if world_icon_handle
-            and type(DrawImage) == "function"
-        then
-            local world_icon_col =
-                (
-                    S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 0) == 1
-                )
-                    and C.accent
-                    or C.text_dim
-
-            -- Static tab icon: hover does not whiten or resize it.
-            local world_icon_size = 18
-
-            local world_icon_px =
-                FALLEN_UI_LEN(
-                    world_icon_size
-                )
-
-            local world_icon_cx =
-                FALLEN_UI_X(
-                    child_x + 19
-                )
-
-            local world_icon_cy =
-                FALLEN_UI_Y(
-                    world_y + 16
-                )
-
-            pcall(
-                DrawImage,
-                world_icon_handle,
-                world_icon_cx - world_icon_px * 0.5,
-                world_icon_cy - world_icon_px * 0.5,
-                world_icon_px,
-                world_icon_px,
-                world_icon_col[1],
-                world_icon_col[2],
-                world_icon_col[3],
-                MENU_RENDER_ALPHA,
-                0
-            )
-        end
-
-        text(
-            child_x + 36,
-            world_y + 9,
-            "World",
-            world_col
-        )
-
-        -- Armor child.
-        if armor_hot
-            and not (
-                S.tab == 2
-                and (tonumber(S.visuals_subtab) or 0) == 2
-            )
-        then
-            rounded_fill(
-                child_x,
-                armor_y,
-                child_w,
-                child_h,
-                7,
-                alpha(C.card_hover, 0.55)
-            )
-        end
-
-        local armor_col =
-            FALLEN_HOVER_TEXT(
-                "sidebar_visual_armor",
-                armor_hot,
-                (
-                    S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 0) == 2
-                )
-                    and C.text
-                    or C.text_dim
-            )
-
-        local armor_icon_handle =
-            FALLEN_ARMOR_TAB_ICON_GET()
-
-        if armor_icon_handle
-            and type(DrawImage) == "function"
-        then
-            local armor_icon_col =
-                (
-                    S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 0) == 2
-                )
-                    and C.accent
-                    or C.text_dim
-
-            -- Static tab icon: hover does not whiten or resize it.
-            local armor_icon_size = 18
-
-            local armor_icon_px =
-                FALLEN_UI_LEN(
-                    armor_icon_size
-                )
-
-            local armor_icon_cx =
-                FALLEN_UI_X(
-                    child_x + 19
-                )
-
-            local armor_icon_cy =
-                FALLEN_UI_Y(
-                    armor_y + 16
-                )
-
-            pcall(
-                DrawImage,
-                armor_icon_handle,
-                armor_icon_cx - armor_icon_px * 0.5,
-                armor_icon_cy - armor_icon_px * 0.5,
-                armor_icon_px,
-                armor_icon_px,
-                armor_icon_col[1],
-                armor_icon_col[2],
-                armor_icon_col[3],
-                MENU_RENDER_ALPHA,
-                0
-            )
-        end
-
-        text(
-            child_x + 36,
-            armor_y + 9,
-            "Armor",
-            armor_col
-        )
-
-        if child_interactive
-            and clicked
-        then
-            if world_hot then
-                S.tab = 2
-                S.visuals_subtab = 1
-                S.anim = 0
-
-                A.world_settings_open = false
-                A.world_color_picker_open = false
-                A.world_color_picker_drag = nil
-                FALLEN_COLOR_INPUT_STOP(true)
-                numeric_stop(true)
-            elseif armor_hot then
-                S.tab = 2
-                S.visuals_subtab = 2
-                S.anim = 0
-
-                A.world_settings_open = false
-                A.world_color_picker_open = false
-                A.world_color_picker_drag = nil
-                A.base_box_settings_open = false
-                FALLEN_COLOR_INPUT_STOP(true)
-                numeric_stop(true)
-            end
-        end
-
-        MENU_RENDER_ALPHA =
-            old_sidebar_alpha
-    end
-
-    -- Common section follows the same Visuals expansion animation.
-    -- Recalculate from the just-updated expand value so it tracks perfectly.
-    common_layout_expand =
-        smooth01(
-            clamp(
-                visuals_expand,
-                0,
-                1
-            )
-        )
-
-    common_layout_shift =
-        74 * common_layout_expand
-
-    common_label_y =
-        wy + 273 + common_layout_shift
-
-    misc_tab_y =
-        wy + 293 + common_layout_shift
 
     text(
-        wx + 22,
-        common_label_y,
-        "COMMON",
-        C.text_faint
+        wx + 18,
+        wy + 15,
+        "Fallen",
+        C.accent
     )
 
-    sidebar_tab(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        wx + 10,
-        misc_tab_y,
-        3
+    text(
+        wx + 66,
+        wy + 15,
+        "Interface",
+        C.text
     )
 
-    -- Secret lives at the very bottom of the navigation, right above profile.
-    if A.secret_unlocked
-        and S.secret_enabled == true
-    then
-        sidebar_tab(
-            mx,
-            my,
-            clicked
-                and not A.world_color_picker_open
-                and (A.world_color_picker_anim or 0) <= 0.02,
-            wx + 10,
-            wy + WIN_H - 118,
-            4
-        )
-    end
+    rounded_outline(
+        wx + 126,
+        wy + 14,
+        35,
+        16,
+        4,
+        alpha(C.accent, 0.18),
+        1,
+        C.accent_soft
+    )
 
-    -- Sidebar footer: live Roblox avatar + username.
+    centered_text(
+        wx + 143.5,
+        wy + 16,
+        "Pro",
+        C.accent
+    )
+
     update_profile()
 
-    line(wx + 12, wy + WIN_H - 74, wx + SIDEBAR_W - 12, wy + WIN_H - 74, C.divider, 1)
+    local top_name =
+        tostring(
+            PROFILE.name
+            or "user"
+        )
 
-    local avatar_size = 38
+    if #top_name > 18 then
+        top_name =
+            string.sub(
+                top_name,
+                1,
+                16
+            )
+            .. ".."
+    end
 
-    local avatar_x = wx + 19
-    local avatar_y = wy + WIN_H - 56
+    local top_name_w =
+        math.max(
+            30,
+            #top_name * 6.7
+        )
 
-    local avatar_drawn = false
+    text(
+        wx + WIN_W - 18 - top_name_w,
+        wy + 15,
+        top_name,
+        C.text
+    )
+
+    -- Small clickable profile dot keeps our avatar editor reachable.
+    local avatar_size = 20
+    local avatar_x =
+        wx + WIN_W - 28 - top_name_w
+    local avatar_y =
+        wy + 11
 
     circle_fill(
         avatar_x + avatar_size * 0.5,
         avatar_y + avatar_size * 0.5,
         avatar_size * 0.5,
-        { 0.11, 0.12, 0.14, 1 }
+        C.control
     )
 
     if PROFILE.avatar
         and type(DrawImage) == "function"
     then
-        avatar_drawn =
-            FALLEN_AVATAR_DRAW_CROP_VIEW(
-                PROFILE.avatar,
-                avatar_x,
-                avatar_y,
-                avatar_size,
-                S.avatar_crop_zoom,
-                S.avatar_crop_pan_x,
-                S.avatar_crop_pan_y,
-                {
-                    C.sidebar[1],
-                    C.sidebar[2],
-                    C.sidebar[3],
-                    1,
-                },
-                true
-            )
-    end
-
-    if not avatar_drawn then
-        local first = string.sub(PROFILE.name or "F", 1, 1)
-        if first == "" then first = "F" end
-
-        centered_text(
-            avatar_x + avatar_size * 0.5,
-            avatar_y + avatar_size * 0.5 - 6,
-            string.upper(first),
-            C.accent
-        )
-    end
-
-    local avatar_hot =
-        hover(
-            mx,
-            my,
+        FALLEN_AVATAR_DRAW_CROP_VIEW(
+            PROFILE.avatar,
             avatar_x,
             avatar_y,
             avatar_size,
-            avatar_size
-        )
-
-    A.avatar_hover_anim =
-        lerp(
-            tonumber(A.avatar_hover_anim) or 0,
-            avatar_hot and 1 or 0,
-            0.24
-        )
-
-    if (A.avatar_hover_anim or 0) > 0.003 then
-        -- Soft gray wash makes it obvious that the avatar is clickable.
-        circle_fill(
-            avatar_x + avatar_size * 0.5,
-            avatar_y + avatar_size * 0.5,
-            avatar_size * 0.5,
-            {
-                0.58,
-                0.58,
-                0.58,
-                0.22 * (A.avatar_hover_anim or 0),
-            }
+            S.avatar_crop_zoom,
+            S.avatar_crop_pan_x,
+            S.avatar_crop_pan_y,
+            C.outer,
+            true
         )
     end
 
@@ -38300,203 +37688,224 @@ hooks.on_render(function()
         avatar_size
     )
 
-    local username = tostring(PROFILE.name or "Roblox User")
-    if #username > 14 then
-        username = string.sub(username, 1, 12) .. ".."
-    end
+    -- Horizontal source-style pages.
+    local source_tabs = {
+        { label = "Combat",  tab = 1, w = 73 },
+        { label = "Silent",  tab = 5, w = 67 },
+        { label = "Visuals", tab = 2, w = 76 },
+        { label = "Misc",    tab = 3, w = 59 },
+        { label = "Options", action = "options", w = 76 },
+        { label = "Configs", action = "configs", w = 78 },
+    }
 
-    text(wx + 68, wy + WIN_H - 40, username, C.text)
-
-    local gear_x =
-        wx + SIDEBAR_W - 24
-
-    local gear_y =
-        wy + WIN_H - 34
-
-    local gear_hot =
-        hover(
-            mx,
-            my,
-            gear_x - 11,
-            gear_y - 11,
-            22,
-            22
-        )
-
-    local gear_hover_anim =
-        FALLEN_GEAR_HOVER_STEP(
-            gear_hot
-        )
-
-    if gear_hover_anim > 0.002 then
-        circle_fill(
-            gear_x,
-            gear_y,
-            10
-                + gear_hover_anim,
-            {
-                0.10,
-                0.105,
-                0.125,
-                0.18
-                    + 0.82
-                    * gear_hover_anim,
-            }
-        )
-    end
-
-    FALLEN_DRAW_GEAR(
-        gear_x,
-        gear_y,
-        gear_hot,
-        gear_hover_anim
-    )
-
-    if clicked
-        and gear_hot
-        and not A.world_color_picker_open
-        and (A.world_color_picker_anim or 0) <= 0.02
+    if A.secret_unlocked
+        and S.secret_enabled == true
     then
-        A.menu_settings_open =
-            not A.menu_settings_open
-
-        A.menu_scale_dropdown_open = false
-        A.menu_type_dropdown_open = false
-
-        if A.menu_settings_open then
-            A.config_open = false
-            FALLEN_CONFIGS.input_focus(false)
-
-            A.aim_settings_open = false
-            A.aim_part_dropdown_open = false
-            A.fov_picker_open = false
-
-            A.world_settings_open = false
-
-            if A.world_color_picker_key ~= "menu_glow"
-                and A.world_color_picker_key ~= "menu_gradient_a"
-                and A.world_color_picker_key ~= "menu_gradient_b"
-            then
-                A.world_color_picker_open = false
-                A.world_color_picker_drag = nil
-            end
-
-            numeric_stop(true)
-            aim_bind_cancel()
-        else
-        end
+        source_tabs[#source_tabs + 1] = {
+            label = "Secret",
+            tab = 4,
+            w = 66,
+        }
     end
 
-    -- Top Configs dropdown.
-    local content_x = wx + SIDEBAR_W + 15
-    local content_w = WIN_W - SIDEBAR_W - 30
+    local tab_x = wx + 18
+    local tab_y = wy + 52
+    local tab_h = 24
 
-    local cfg_x = content_x
-    local cfg_y = wy + 16
-    local cfg_w = 206
-    local cfg_h = 34
+    local cfg_x = wx + WIN_W - 96
+    local cfg_y = tab_y
+    local cfg_w = 78
+    local gear_x = wx + WIN_W - 139
+    local gear_y = tab_y + 12
 
-    local cfg_hot =
-        hover(
-            mx,
-            my,
-            cfg_x,
-            cfg_y,
-            cfg_w,
-            cfg_h
-        )
+    for _, tab in ipairs(source_tabs) do
+        local tw =
+            tonumber(tab.w)
+            or 68
 
-    rounded_fill(
-        cfg_x,
-        cfg_y,
-        cfg_w,
-        cfg_h,
-        8,
-        cfg_hot
-            and C.card_hover
-            or C.card
-    )
-
-    text(
-        cfg_x + 14,
-        cfg_y + 12,
-        "Configs",
-        FALLEN_HOVER_TEXT("configs_button", cfg_hot, C.text)
-    )
-
-    if FALLEN_CONFIGS.CONFIG.loaded_name then
-        local loaded =
-            tostring(
-                FALLEN_CONFIGS.CONFIG.loaded_name
+        local tab_hot =
+            hover(
+                mx,
+                my,
+                tab_x,
+                tab_y,
+                tw,
+                tab_h
             )
 
-        if #loaded > 12 then
-            loaded =
-                string.sub(
-                    loaded,
-                    1,
-                    10
-                )
-                .. ".."
+        local active = false
+
+        if tab.tab then
+            active =
+                tonumber(S.tab)
+                == tonumber(tab.tab)
+        elseif tab.action == "options" then
+            active =
+                A.menu_settings_open == true
+                or (A.menu_settings_anim or 0) > 0.10
+        elseif tab.action == "configs" then
+            active =
+                A.config_open == true
+                or (A.config_anim or 0) > 0.10
         end
 
-        text(
-            cfg_x + 86,
-            cfg_y + 12,
-            loaded,
-            C.text_faint
+        if active then
+            rounded_fill(
+                tab_x,
+                tab_y,
+                tw,
+                tab_h,
+                12,
+                { 1, 1, 1, 26 / 255 }
+            )
+        elseif tab_hot then
+            rounded_fill(
+                tab_x,
+                tab_y,
+                tw,
+                tab_h,
+                12,
+                { 1, 1, 1, 12 / 255 }
+            )
+        end
+
+        local tc =
+            active
+            and C.accent
+            or (
+                tab_hot
+                and C.bright
+                or C.text
+            )
+
+        -- Small primitive icon mark, equivalent to the source icon slot.
+        circle_fill(
+            tab_x + 10,
+            tab_y + 12,
+            2.1,
+            tc
         )
+
+        text(
+            tab_x + 17,
+            tab_y + 7,
+            tab.label,
+            tc
+        )
+
+        if clicked
+            and tab_hot
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02
+        then
+            numeric_stop(true)
+            aim_bind_cancel()
+
+            if tab.tab then
+                S.tab = tab.tab
+                S.anim = 0
+
+                A.config_open = false
+                A.menu_settings_open = false
+                A.menu_scale_dropdown_open = false
+                A.menu_type_dropdown_open = false
+                FALLEN_CONFIGS.input_focus(false)
+
+            elseif tab.action == "options" then
+                A.menu_settings_open =
+                    not A.menu_settings_open
+
+                A.config_open = false
+                FALLEN_CONFIGS.input_focus(false)
+
+                if A.menu_settings_open then
+                    A.menu_scale_dropdown_open = false
+                    A.menu_type_dropdown_open = false
+                end
+
+            elseif tab.action == "configs" then
+                A.config_open =
+                    not A.config_open
+
+                A.menu_settings_open = false
+                A.menu_scale_dropdown_open = false
+                A.menu_type_dropdown_open = false
+
+                if not A.config_open then
+                    FALLEN_CONFIGS.input_focus(false)
+                end
+            end
+        end
+
+        if tab.action == "configs" then
+            cfg_x = tab_x
+            cfg_y = tab_y
+            cfg_w = tw
+        end
+
+        tab_x =
+            tab_x
+            + tw
+            + 7
     end
 
+    -- Existing Configs/Menu-settings implementations are preserved.
+    -- Their popup geometry predates the top navigation, so use safe anchors
+    -- that keep both overlays completely inside the 606x970 source window.
+    cfg_x = wx + WIN_W - 314
+    cfg_y = wy + 52
+    cfg_w = 78
+
+    gear_x = wx + WIN_W - 314
+    gear_y = wy + WIN_H - 38
+
+    -- Source footer.
+    fill(
+        wx + 1,
+        wy + WIN_H - 26,
+        WIN_W - 2,
+        25,
+        { 1, 1, 1, 9 / 255 }
+    )
+
+    circle_fill(
+        wx + 20,
+        wy + WIN_H - 13,
+        2.2,
+        C.accent
+    )
+
     text(
-        cfg_x + 188,
-        cfg_y + 12,
-        A.config_open
-            and "^"
-            or "v",
+        wx + 27,
+        wy + WIN_H - 20,
+        "1 online",
         C.text_dim
     )
 
-    if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
-            clicked,
-            "config_open"
-        )
-        and cfg_hot
-        and not A.world_color_picker_open
-        and (A.world_color_picker_anim or 0) <= 0.02
-    then
-        A.config_open =
-            not A.config_open
+    centered_text(
+        wx + WIN_W * 0.5,
+        wy + WIN_H - 20,
+        "fallen-ui",
+        C.text_dim
+    )
 
-        if A.config_open then
-            numeric_stop(true)
-            aim_bind_cancel()
+    text(
+        wx + WIN_W - 83,
+        wy + WIN_H - 20,
+        "Build: v75",
+        C.text_dim
+    )
 
-            A.menu_settings_open = false
-            A.menu_scale_dropdown_open = false
-            A.menu_type_dropdown_open = false
+    -- Page content. Source widgets.cpp uses x=14 / 308, top=88, bottom=932.
+    local content_x = wx + 14
+    local content_w = WIN_W - 28
 
-            A.aim_settings_open = false
-            A.aim_part_dropdown_open = false
-            A.fov_picker_open = false
-
-            A.world_settings_open = false
-            A.world_color_picker_open = false
-            A.world_color_picker_drag = nil
-        else
-            FALLEN_CONFIGS.input_focus(false)
-        end
-    end
-
-    line(content_x, wy + 61, wx + WIN_W - 16, wy + 61, C.divider, 1)
-
-    -- Page content.
     local page_x = content_x
-    local page_y = wy + 82
+    local page_y = wy + 88
     local page_w = content_w
 
-    local slide = (1 - S.anim) * 9
-    page_x = page_x + slide
+    -- Source menu switches pages immediately; keep only a tiny fade state.
+    local slide = 0
 
     local config_overlay_open =
         A.config_open
@@ -38605,7 +38014,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            224,
+            266,
             11
         )
 
@@ -38749,6 +38158,27 @@ hooks.on_render(function()
             5,
             10,
             "float"
+        )
+
+        line(
+            page_x + 12,
+            page_y + 228,
+            page_x + page_w - 12,
+            page_y + 228,
+            C.divider,
+            1
+        )
+
+        toggle_row(
+            mx,
+            my,
+            misc_controls_clicked,
+            page_x,
+            page_y + 229,
+            page_w,
+            "Hit Scan",
+            "misc_hitscan_enabled",
+            false
         )
 
         local boulder_gap =
@@ -39206,7 +38636,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v73 | stable anchored manipulation return | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v75 | source-style menu shell + preserved features | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -45068,11 +44498,518 @@ local function FALLEN_MANIPULATION_PICK_OFFSET(base_origin, target_pos, base_pos
     return Vector3(0, 0, 0), "-", false
 end
 
+
+function FALLEN_MANIPULATION_CLIP_ORIGIN(
+    base_origin,
+    wanted_origin
+)
+    if not base_origin
+        or not wanted_origin
+        or type(A.world_rain_geo) ~= "table"
+    then
+        return wanted_origin
+    end
+
+    local dx = wanted_origin.X - base_origin.X
+    local dy = wanted_origin.Y - base_origin.Y
+    local dz = wanted_origin.Z - base_origin.Z
+
+    local dist =
+        math.sqrt(
+            dx * dx
+            + dy * dy
+            + dz * dz
+        )
+
+    if dist <= 0.05 then
+        return nil
+    end
+
+    dx, dy, dz =
+        dx / dist,
+        dy / dist,
+        dz / dist
+
+    local hit_t = nil
+
+    pcall(function()
+        hit_t =
+            FALLEN_WORLD_RAIN_RAYCAST_GRID(
+                base_origin.X,
+                base_origin.Y,
+                base_origin.Z,
+                dx,
+                dy,
+                dz,
+                dist
+            )
+    end)
+
+    local use_dist = dist
+
+    if hit_t then
+        use_dist =
+            math.max(
+                0,
+                (tonumber(hit_t) or 0) - 0.20
+            )
+    end
+
+    if use_dist < 0.30 then
+        return nil
+    end
+
+    return Vector3(
+        base_origin.X + dx * use_dist,
+        base_origin.Y + dy * use_dist,
+        base_origin.Z + dz * use_dist
+    )
+end
+
+
+function FALLEN_MANIPULATION_TARGET_POINTS(
+    target,
+    primary_pos
+)
+    local out = {}
+
+    if primary_pos then
+        out[#out + 1] = {
+            name = "Primary",
+            pos = primary_pos,
+            primary = true,
+        }
+    end
+
+    if S.misc_hitscan_enabled ~= true
+        or type(target) ~= "table"
+        or type(target.bones) ~= "table"
+    then
+        return out
+    end
+
+    local preferred = {
+        Head = 1,
+        UpperTorso = 2,
+        LowerTorso = 3,
+        RightHand = 4,
+        LeftHand = 5,
+        RightUpperArm = 6,
+        LeftUpperArm = 7,
+        RightUpperLeg = 8,
+        LeftUpperLeg = 9,
+    }
+
+    local bones = {}
+
+    for _, bone in ipairs(target.bones) do
+        if type(bone) == "table" then
+            local pos =
+                bone.position
+                or bone.pos
+                or bone.Position
+
+            if pos then
+                bones[#bones + 1] = {
+                    name =
+                        tostring(
+                            bone.name
+                            or bone.Name
+                            or "Bone"
+                        ),
+                    pos = pos,
+                }
+            end
+        end
+    end
+
+    table.sort(
+        bones,
+        function(a, b)
+            local pa =
+                preferred[a.name]
+                or 999
+
+            local pb =
+                preferred[b.name]
+                or 999
+
+            return pa < pb
+        end
+    )
+
+    for _, bone in ipairs(bones) do
+        out[#out + 1] = bone
+    end
+
+    return out
+end
+
+
+function FALLEN_MANIPULATION_PICK_VIRTUAL(
+    target,
+    target_pos,
+    base_origin,
+    rot,
+    distance
+)
+    if not target_pos
+        or not base_origin
+    then
+        return nil, nil, nil, false
+    end
+
+    local origins = {}
+
+    if S.misc_manipulation_enabled == true then
+        local candidates =
+            FALLEN_MANIPULATION_CANDIDATES(
+                rot
+            )
+
+        for _, c in ipairs(candidates) do
+            local nx, ny, nz =
+                FALLEN_MANIPULATION_NORMALIZE3(
+                    c.x,
+                    c.y,
+                    c.z
+                )
+
+            local wanted =
+                Vector3(
+                    base_origin.X + nx * distance,
+                    base_origin.Y + ny * distance,
+                    base_origin.Z + nz * distance
+                )
+
+            local clipped =
+                FALLEN_MANIPULATION_CLIP_ORIGIN(
+                    base_origin,
+                    wanted
+                )
+
+            if clipped then
+                origins[#origins + 1] = {
+                    name = c.name,
+                    pos = clipped,
+                }
+            end
+        end
+    else
+        origins[1] = {
+            name = "BASE",
+            pos = base_origin,
+        }
+    end
+
+    local hit_points =
+        FALLEN_MANIPULATION_TARGET_POINTS(
+            target,
+            target_pos
+        )
+
+    local best_origin = nil
+    local best_hit = nil
+    local best_name = nil
+    local best_hitscan = false
+    local best_score = -1e9
+
+    for _, origin_rec in ipairs(origins) do
+        for index, hit_rec in ipairs(hit_points) do
+            if FALLEN_MANIPULATION_CAN_HIT(
+                origin_rec.pos,
+                hit_rec.pos,
+                base_origin
+            )
+            then
+                local score = 1000
+
+                if hit_rec.primary == true then
+                    score = score + 100
+                else
+                    score = score - index
+                end
+
+                if origin_rec.name == "UP-RIGHT"
+                    or origin_rec.name == "UP-LEFT"
+                then
+                    score = score + 4
+                elseif origin_rec.name == "UP" then
+                    score = score + 2
+                end
+
+                if score > best_score then
+                    best_score = score
+                    best_origin = origin_rec.pos
+                    best_hit = hit_rec.pos
+                    best_name = origin_rec.name
+                    best_hitscan =
+                        hit_rec.primary ~= true
+                end
+            end
+        end
+    end
+
+    return
+        best_origin,
+        best_hit,
+        best_name,
+        best_hitscan
+end
+
+
+function FALLEN_MANIPULATION_MAGIC_PULL_KEY()
+    if A.misc_manipulation_magic_pull_key ~= nil then
+        return
+            A.misc_manipulation_magic_pull_key
+            or nil
+    end
+
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa
+        or type(sa._keys) ~= "function"
+    then
+        A.misc_manipulation_magic_pull_key = false
+        return nil
+    end
+
+    local ok, keys =
+        pcall(function()
+            return sa:_keys()
+        end)
+
+    if not ok
+        or type(keys) ~= "table"
+    then
+        A.misc_manipulation_magic_pull_key = false
+        return nil
+    end
+
+    for _, raw_key in ipairs(keys) do
+        local raw = tostring(raw_key)
+        local normalized =
+            FALLEN_SILENT_NORMALIZE_KEY(
+                raw
+            )
+
+        if normalized == "magicbulletpull"
+            or (
+                string.find(
+                    normalized,
+                    "magic",
+                    1,
+                    true
+                )
+                and string.find(
+                    normalized,
+                    "pull",
+                    1,
+                    true
+                )
+            )
+        then
+            A.misc_manipulation_magic_pull_key =
+                raw
+
+            return raw
+        end
+    end
+
+    A.misc_manipulation_magic_pull_key = false
+    return nil
+end
+
+
+function FALLEN_MANIPULATION_SET_MAGIC_PULL(
+    enabled
+)
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    local key =
+        FALLEN_MANIPULATION_MAGIC_PULL_KEY()
+
+    if not sa
+        or not key
+    then
+        return false
+    end
+
+    local field_type = nil
+
+    if type(sa._type) == "function" then
+        pcall(function()
+            field_type =
+                tostring(
+                    sa:_type(key)
+                    or ""
+                ):lower()
+        end)
+    end
+
+    local value = enabled == true
+
+    if field_type == "int"
+        or field_type == "float"
+        or field_type == "number"
+    then
+        value =
+            enabled
+            and 1
+            or 0
+    end
+
+    return pcall(function()
+        sa[key] = value
+    end)
+end
+
+
+function FALLEN_MANIPULATION_FORCE_SILENT(
+    active
+)
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa then
+        return
+    end
+
+    active = active == true
+
+    if active
+        and A.misc_manipulation_override_active ~= true
+    then
+        A.misc_manipulation_override_active = true
+
+        pcall(function()
+            A.misc_manipulation_saved_silent_enabled =
+                sa.enabled
+        end)
+
+        pcall(function()
+            A.misc_manipulation_saved_magic_bullet =
+                sa.magic_bullet
+        end)
+
+        local pull_key =
+            FALLEN_MANIPULATION_MAGIC_PULL_KEY()
+
+        if pull_key then
+            pcall(function()
+                A.misc_manipulation_saved_magic_pull =
+                    sa[pull_key]
+            end)
+        end
+    end
+
+    if active then
+        pcall(function()
+            sa.enabled = true
+        end)
+
+        pcall(function()
+            sa.method = 2
+        end)
+
+        pcall(function()
+            sa.magic_bullet = true
+        end)
+
+        FALLEN_MANIPULATION_SET_MAGIC_PULL(
+            true
+        )
+
+        if cheat
+            and cheat.keybinds
+            and type(cheat.keybinds._keys) == "function"
+        then
+            local ok, keys =
+                pcall(function()
+                    return cheat.keybinds:_keys()
+                end)
+
+            if ok
+                and type(keys) == "table"
+            then
+                for _, raw_key in ipairs(keys) do
+                    local raw =
+                        tostring(raw_key)
+
+                    local normalized =
+                        FALLEN_SILENT_NORMALIZE_KEY(
+                            raw
+                        )
+
+                    if string.find(
+                            normalized,
+                            "silent",
+                            1,
+                            true
+                        )
+                        and string.find(
+                            normalized,
+                            "active",
+                            1,
+                            true
+                        )
+                    then
+                        pcall(function()
+                            cheat.keybinds[raw] = true
+                        end)
+                    end
+                end
+            end
+        end
+
+        return
+    end
+
+    if A.misc_manipulation_override_active == true then
+        pcall(function()
+            if A.misc_manipulation_saved_silent_enabled ~= nil then
+                sa.enabled =
+                    A.misc_manipulation_saved_silent_enabled
+            end
+        end)
+
+        pcall(function()
+            if A.misc_manipulation_saved_magic_bullet ~= nil then
+                sa.magic_bullet =
+                    A.misc_manipulation_saved_magic_bullet
+            end
+        end)
+
+        local pull_key =
+            FALLEN_MANIPULATION_MAGIC_PULL_KEY()
+
+        if pull_key
+            and A.misc_manipulation_saved_magic_pull ~= nil
+        then
+            pcall(function()
+                sa[pull_key] =
+                    A.misc_manipulation_saved_magic_pull
+            end)
+        end
+    end
+
+    A.misc_manipulation_override_active = false
+    A.misc_manipulation_saved_silent_enabled = nil
+    A.misc_manipulation_saved_magic_bullet = nil
+    A.misc_manipulation_saved_magic_pull = nil
+end
+
+
 local function FALLEN_MANIPULATION_DRAW_INDICATOR()
     -- Pure availability indicator:
     -- if the selected Manipulation position can hit, show it regardless
     -- of whether Mouse1 is currently held.
-    if S.misc_manipulation_enabled ~= true
+    if (
+            S.misc_manipulation_enabled ~= true
+            and S.misc_hitscan_enabled ~= true
+        )
         or A.misc_manipulation_can_hit ~= true
     then
         return
@@ -45134,7 +45071,19 @@ local function FALLEN_MANIPULATION_DRAW_INDICATOR()
 end
 
 function FALLEN_MANIPULATION_TICK()
-    if _G.FallenMenuReady ~= true then
+    local enabled =
+        S.misc_manipulation_enabled == true
+        or S.misc_hitscan_enabled == true
+
+    if not enabled then
+        FALLEN_MANIPULATION_FORCE_SILENT(false)
+
+        A.misc_manipulation_can_hit = false
+        A.misc_manipulation_virtual_origin = nil
+        A.misc_manipulation_hit_pos = nil
+        A.misc_manipulation_hitscanned = false
+        A.misc_manipulation_direction = nil
+        A.misc_manipulation_spoofed = false
         return
     end
 
@@ -45142,370 +45091,214 @@ function FALLEN_MANIPULATION_TICK()
     local head = nil
     local cam = nil
 
-    if rbx then
-        if type(rbx.local_hrp) == "function" then
-            pcall(function() hrp = rbx.local_hrp() end)
+    pcall(function()
+        if rbx and type(rbx.local_hrp) == "function" then
+            hrp = rbx.local_hrp()
         end
-        if type(rbx.local_head) == "function" then
-            pcall(function() head = rbx.local_head() end)
+    end)
+
+    pcall(function()
+        if rbx and type(rbx.local_head) == "function" then
+            head = rbx.local_head()
         end
-        if type(rbx.camera) == "function" then
-            pcall(function() cam = rbx.camera() end)
+    end)
+
+    pcall(function()
+        if rbx and type(rbx.camera) == "function" then
+            cam = rbx.camera()
         end
-    end
+    end)
 
-    local enabled = S.misc_manipulation_enabled == true
-    local raw_lmb = key_down(VK_LBUTTON) == true
-
-    if hrp
-        and FALLEN_MANIPULATION_RESTORE_HOLD_TICK(
-            hrp,
-            raw_lmb
-        )
-    then
-        return
-    end
-
-    if not enabled or not hrp then
-        if A.misc_manipulation_press_active == true then
-            FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
-        end
-
+    if not hrp then
+        FALLEN_MANIPULATION_FORCE_SILENT(false)
         A.misc_manipulation_can_hit = false
-        A.misc_manipulation_target_name = nil
-        A.misc_manipulation_target_addr = nil
-        A.misc_manipulation_target_pos = nil
-        A.misc_manipulation_failed_directions = {}
-        A.misc_manipulation_direction = nil
-        A.misc_manipulation_cached_offset = nil
         return
     end
-
-    -- Teleport/spoof is allowed only with a real weapon in hand.
-    -- This reuses the exact detector used by Auto Prediction.
-    local weapon_ready = false
-    if raw_lmb then
-        weapon_ready = FALLEN_MANIPULATION_HAS_WEAPON(
-            A.misc_manipulation_press_active ~= true
-        )
-    end
-
-    local lmb = raw_lmb and weapon_ready
 
     local hrp_pos = nil
-    local hrp_rot = nil
-    local hrp_vel = nil
     local head_pos = nil
+    local cam_pos = nil
+    local cam_rot = nil
 
-    pcall(function() hrp_pos = hrp:get_position() end)
-    pcall(function() hrp_rot = hrp:get_rotation() end)
-    pcall(function() hrp_vel = hrp:get_velocity() end)
+    pcall(function()
+        hrp_pos = hrp:get_position()
+    end)
+
     if head then
-        pcall(function() head_pos = head:get_position() end)
+        pcall(function()
+            head_pos = head:get_position()
+        end)
     end
 
-    if not hrp_pos then
+    if cam then
+        pcall(function()
+            cam_pos = cam:camera_pos()
+        end)
+
+        pcall(function()
+            cam_rot = cam:camera_rotation()
+        end)
+    end
+
+    if not cam_pos then
+        cam_pos = head_pos or hrp_pos
+    end
+
+    if not cam_rot then
+        pcall(function()
+            cam_rot = hrp:get_rotation()
+        end)
+    end
+
+    if not hrp_pos
+        or not cam_pos
+    then
+        FALLEN_MANIPULATION_FORCE_SILENT(false)
+        A.misc_manipulation_can_hit = false
         return
     end
 
-    -- Mouse released OR weapon disappeared while Mouse1 is still held:
-    -- immediately restore the original press point/upright rotation.
-    if not lmb and A.misc_manipulation_press_active == true then
-        FALLEN_MANIPULATION_RESTORE_RELEASE(hrp)
-
-        pcall(function() hrp_pos = hrp:get_position() end)
-        pcall(function() hrp_rot = hrp:get_rotation() end)
-        pcall(function() hrp_vel = hrp:get_velocity() end)
-        if head then
-            pcall(function() head_pos = head:get_position() end)
-        end
-    end
-
-    local manip_distance =
-        clamp(
-            tonumber(S.misc_manipulation_distance)
-            or 5,
-            5,
-            10
-        )
-
-    -- Freeze base state exactly once on a valid Mouse1 + weapon rising edge.
-    if lmb and A.misc_manipulation_press_active ~= true then
-        A.misc_manipulation_press_active = true
-        A.misc_manipulation_press_pos = hrp_pos
-        A.misc_manipulation_press_rot = hrp_rot
-        A.misc_manipulation_press_upright_rot =
-            FALLEN_MANIPULATION_UPRIGHT_MATRIX(hrp_rot)
-        A.misc_manipulation_press_vel = hrp_vel
-
-        if head_pos then
-            A.misc_manipulation_press_head_offset = Vector3(
-                head_pos.X - hrp_pos.X,
-                head_pos.Y - hrp_pos.Y,
-                head_pos.Z - hrp_pos.Z
-            )
-        else
-            A.misc_manipulation_press_head_offset = Vector3(0, 2, 0)
-        end
-
-        if cam then
-            pcall(function()
-                A.misc_manipulation_camera_anchor = cam:camera_pos()
-            end)
-        end
-
-        -- Force one target/direction refresh for the new shot press.
-        A.misc_manipulation_last_eval = 0
-        A.misc_manipulation_failed_directions = {}
-        A.misc_manipulation_target_pos = nil
-    end
-
-    local base_pos =
-        (A.misc_manipulation_press_active == true
-            and A.misc_manipulation_press_pos)
-        or hrp_pos
-
-    local base_rot =
-        (A.misc_manipulation_press_active == true
-            and A.misc_manipulation_press_upright_rot)
-        or FALLEN_MANIPULATION_UPRIGHT_MATRIX(hrp_rot)
-
-    local base_head_offset =
-        (A.misc_manipulation_press_active == true
-            and A.misc_manipulation_press_head_offset)
-        or (head_pos and Vector3(
-            head_pos.X - hrp_pos.X,
-            head_pos.Y - hrp_pos.Y,
-            head_pos.Z - hrp_pos.Z
-        ))
-        or Vector3(0, 2, 0)
-
-    local base_origin = Vector3(
-        base_pos.X + base_head_offset.X,
-        base_pos.Y + base_head_offset.Y,
-        base_pos.Z + base_head_offset.Z
+    -- Same progressive collision cache as before, but the character itself
+    -- is never moved/anchored anymore.
+    FALLEN_MANIPULATION_GEO_STEP(
+        hrp_pos,
+        28
     )
 
-    -- Build collision geometry in tiny chunks instead of one giant Workspace scan.
-    -- This is what removes the long freeze when Manipulation is first enabled.
-    FALLEN_MANIPULATION_GEO_STEP(base_pos, 28)
-
-    -- Target/direction selection is throttled. Manipulation ALWAYS evaluates
-    -- UP / UP-RIGHT / UP-LEFT, even when the enemy is already visible.
-    -- The real/original position is never used as a DIRECT hit position.
     local now = tick()
 
-    -- Once this press has a valid physical spoof, lock that exact offset until
-    -- Mouse1 is released. Do not recalculate and teleport between positions.
-    local spoof_locked =
-        lmb
-        and A.misc_manipulation_spoofed == true
-        and A.misc_manipulation_cached_offset ~= nil
-        and A.misc_manipulation_can_hit == true
-
-    local need_eval =
-        not spoof_locked
-        and (
-            (now - (A.misc_manipulation_last_eval or 0)) >= 0.10
-            or A.misc_manipulation_cached_offset == nil
-        )
-
-    if need_eval then
+    if (now - (A.misc_manipulation_last_eval or 0)) >= 0.035
+        or A.misc_manipulation_virtual_origin == nil
+    then
         A.misc_manipulation_last_eval = now
 
-        local target, target_pos = FALLEN_MANIPULATION_TARGET()
+        local target, target_pos =
+            FALLEN_MANIPULATION_TARGET()
 
         A.misc_manipulation_target_name =
             target
-            and tostring(target.name or target.display_name or "target")
+            and tostring(
+                target.name
+                or target.display_name
+                or "target"
+            )
             or nil
 
         A.misc_manipulation_target_addr =
             target
-            and tonumber(target.address or target.player_addr or 0)
+            and tonumber(
+                target.address
+                or target.player_addr
+                or 0
+            )
             or nil
 
-        A.misc_manipulation_target_pos = target_pos
+        A.misc_manipulation_target_pos =
+            target_pos
 
-        local offset, direction, can_hit =
-            FALLEN_MANIPULATION_PICK_OFFSET(
-                base_origin,
+        local distance =
+            clamp(
+                tonumber(
+                    S.misc_manipulation_distance
+                )
+                or 5,
+                5,
+                10
+            )
+
+        local origin,
+            hit_pos,
+            direction,
+            hitscanned =
+            FALLEN_MANIPULATION_PICK_VIRTUAL(
+                target,
                 target_pos,
-                base_pos,
-                base_rot,
-                manip_distance
+                cam_pos,
+                cam_rot,
+                distance
             )
 
-        A.misc_manipulation_cached_offset = offset
-        A.misc_manipulation_direction = direction
-        A.misc_manipulation_can_hit = target_pos ~= nil and can_hit or false
+        A.misc_manipulation_virtual_origin =
+            origin
+
+        A.misc_manipulation_hit_pos =
+            hit_pos
+
+        A.misc_manipulation_direction =
+            direction
+
+        A.misc_manipulation_hitscanned =
+            hitscanned == true
+
+        A.misc_manipulation_can_hit =
+            origin ~= nil
+            and hit_pos ~= nil
     end
 
-    -- Preview calculations remain active without Mouse1 so the indicator
-    -- can tell us in advance whether Manipulation has a valid angle.
-    -- Physical spoofing still starts only on Mouse1 + a valid weapon.
-    if not lmb then
-        A.misc_manipulation_spoofed = false
-        A.misc_manipulation_camera_anchor = nil
-        return
-    end
+    local can_hit =
+        A.misc_manipulation_can_hit == true
 
-    local direction = tostring(A.misc_manipulation_direction or "-")
-    local can_hit = A.misc_manipulation_can_hit == true
+    local hit_pos =
+        A.misc_manipulation_hit_pos
 
-    -- Before a spoof is locked, stay at the original click point until one
-    -- of UP / UP-RIGHT / UP-LEFT finds a valid opening.
-    if not can_hit then
-        pcall(function()
-            hrp:set_anchored(false)
-        end)
-
-        pcall(function()
-            hrp:set_position(base_pos)
-        end)
-
-        if type(base_rot) == "table" then
-            pcall(function()
-                hrp:set_rotation(base_rot)
-            end)
-        end
+    if can_hit
+        and hit_pos
+        and aim
+    then
+        local screen = nil
 
         pcall(function()
-            hrp:set_velocity(
-                Vector3(0, 0, 0)
-            )
+            if type(aim.world_to_screen) == "function" then
+                screen =
+                    aim.world_to_screen(
+                        hit_pos
+                    )
+            elseif rbx
+                and type(rbx.world_to_screen) == "function"
+            then
+                screen =
+                    rbx.world_to_screen(
+                        hit_pos
+                    )
+            end
         end)
 
-        A.misc_manipulation_hold_until = nil
-        A.misc_manipulation_hold_active = false
-        A.misc_manipulation_spoofed = false
-        A.misc_manipulation_can_hit = false
-        return
-    end
-
-    local offset =
-        A.misc_manipulation_cached_offset
-        or Vector3(0, 0, 0)
-
-    -- Hold the exact selected spoof position for the entire Mouse1 press.
-    -- Never visit base_pos between frames; release restores it once.
-    local held_pos =
-        Vector3(
-            base_pos.X + offset.X,
-            base_pos.Y + offset.Y,
-            base_pos.Z + offset.Z
-        )
-
-    pcall(function()
-        hrp:set_anchored(true)
-    end)
-
-    pcall(function()
-        hrp:set_velocity(
-            Vector3(0, 0, 0)
-        )
-    end)
-
-    pcall(function()
-        hrp:set_position(held_pos)
-    end)
-
-    A.misc_manipulation_hold_until = nil
-    A.misc_manipulation_hold_active = true
-
-    -- Sideways body spoof exists only while a valid armed LMB is held.
-    if type(base_rot) == "table" then
-        local flipped = FALLEN_MANIPULATION_MATRIX_MUL(
-            base_rot,
-            FALLEN_MANIPULATION_PITCH_MATRIX(
-                FALLEN_MANIPULATION_FLIP_DEG
-            )
-        )
-
-        if flipped then
-            pcall(function()
-                hrp:set_rotation(flipped)
-            end)
-        end
-    end
-
-    -- Final validation uses the exact spoofed head position we just applied.
-    -- Do NOT read head:get_position() in the same render: the wrapper can still
-    -- report the pre-teleport position for one frame, which inverted the logic
-    -- (visible targets passed while behind-cover manipulation got rejected).
-    local final_target =
-        A.misc_manipulation_target_pos
-
-    local actual_origin =
-        Vector3(
-            held_pos.X + base_head_offset.X,
-            held_pos.Y + base_head_offset.Y,
-            held_pos.Z + base_head_offset.Z
-        )
-
-    local final_ok =
-        final_target ~= nil
-        and FALLEN_MANIPULATION_CAN_HIT(
-            actual_origin,
-            final_target,
-            base_pos
-        )
-
-    if not final_ok then
-        local failed_name =
-            tostring(
-                A.misc_manipulation_direction
-                or ""
-            )
-
-        if failed_name ~= "" then
-            if type(A.misc_manipulation_failed_directions) ~= "table" then
-                A.misc_manipulation_failed_directions = {}
+        if screen
+            and screen.visible ~= false
+        then
+            if type(aim.prime_mouse) == "function" then
+                pcall(
+                    aim.prime_mouse,
+                    screen
+                )
             end
 
-            A.misc_manipulation_failed_directions[failed_name] = true
+            if key_down(VK_LBUTTON) == true
+                and type(aim.write_mouse) == "function"
+            then
+                pcall(
+                    aim.write_mouse,
+                    screen,
+                    16
+                )
+            end
         end
-
-        A.misc_manipulation_can_hit = false
-        A.misc_manipulation_spoofed = false
-        A.misc_manipulation_cached_offset = nil
-        A.misc_manipulation_direction = nil
-        A.misc_manipulation_last_eval = 0
-        A.misc_manipulation_hold_active = false
-
-        pcall(function()
-            hrp:set_anchored(false)
-        end)
-
-        pcall(function()
-            hrp:set_position(base_pos)
-        end)
-
-        if type(base_rot) == "table" then
-            pcall(function()
-                hrp:set_rotation(base_rot)
-            end)
-        end
-
-        pcall(function()
-            hrp:set_velocity(
-                Vector3(0, 0, 0)
-            )
-        end)
-
-        return
     end
 
-    A.misc_manipulation_can_hit = true
+    local firing =
+        can_hit
+        and key_down(VK_LBUTTON) == true
 
-    -- Lock only camera translation; look rotation remains controllable.
-    if cam and A.misc_manipulation_camera_anchor then
-        pcall(function()
-            cam:set_camera_pos(A.misc_manipulation_camera_anchor)
-        end)
-    end
+    -- Use the stock Raycast silent path only while the shot is actually being
+    -- fired. This is the closest exposed equivalent to ahook's origin/hit
+    -- rewriting; magic_bullet_pull is enabled when this build exposes it.
+    FALLEN_MANIPULATION_FORCE_SILENT(
+        firing
+    )
 
-    A.misc_manipulation_spoofed = true
+    -- No physical HRP teleport, rotation or Anchored state is used.
+    A.misc_manipulation_spoofed =
+        firing
 end
 
 hooks.on_render(function()
