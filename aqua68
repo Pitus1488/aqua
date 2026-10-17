@@ -13159,31 +13159,66 @@ FALLEN_VFX_SCAN_SHARED =
         snapshot = nil,
         queue = {},
         queue_used = 0,
+        generation = 0,
+        mode = nil,
     }
 
-function FALLEN_BT_VFX_SCAN()
+function FALLEN_BT_VFX_SCAN(
+    min_interval,
+    need_holes
+)
     local now = tick()
     local shared = FALLEN_VFX_SCAN_SHARED
 
+    min_interval =
+        clamp(
+            tonumber(min_interval)
+            or 0.040,
+            0.015,
+            0.50
+        )
+
+    local wanted_mode =
+        need_holes == false
+        and "blood"
+        or "full"
+
+    -- A "full" snapshot is also valid for BloodPart-only consumers.
+    local cached_mode_ok =
+        shared.mode == "full"
+        or shared.mode == wanted_mode
+
     if type(shared.snapshot) == "table"
-        and now - (tonumber(shared.time) or 0) < 0.008
+        and cached_mode_ok
+        and now - (tonumber(shared.time) or 0) < min_interval
     then
-        return shared.snapshot
+        return
+            shared.snapshot,
+            tonumber(shared.generation) or 0,
+            false
     end
 
-    local root = FALLEN_BT_VFX_ROOT()
+    local root =
+        FALLEN_BT_VFX_ROOT()
 
     if not root then
-        local empty = {}
-        shared.snapshot = empty
+        shared.snapshot = {}
         shared.time = now
-        return empty
+        shared.mode = wanted_mode
+        shared.generation =
+            (tonumber(shared.generation) or 0)
+            + 1
+
+        return
+            shared.snapshot,
+            shared.generation,
+            true
     end
 
     local out = {}
     local queue = shared.queue
 
-    -- Clear only slots used by the previous scan.
+    -- Reuse the traversal array instead of allocating a new queue.
     for i = 1, tonumber(shared.queue_used) or 0 do
         queue[i] = nil
     end
@@ -13209,12 +13244,17 @@ function FALLEN_BT_VFX_SCAN()
                     tostring(name or "")
                 )
 
-            if name == "hole"
-                or name == "metalhole"
-                or name == "bloodpart"
-                or name == "casinglarge"
-                or name == "casingsmall"
-            then
+            local relevant =
+                name == "bloodpart"
+                or (
+                    wanted_mode == "full"
+                    and (
+                        name == "hole"
+                        or name == "metalhole"
+                    )
+                )
+
+            if relevant then
                 local addr = inst.addr
 
                 if addr
@@ -13222,21 +13262,26 @@ function FALLEN_BT_VFX_SCAN()
                 then
                     out[tostring(addr)] = inst
                 end
-            end
 
-            local children = nil
+                -- Relevant VFX nodes are already the objects we need.
+                -- Their internal children are only used later by POSITION()
+                -- when necessary, so do not recursively scan inside them.
+            else
+                local children = nil
 
-            pcall(function()
-                children = inst:get_children()
-            end)
+                pcall(function()
+                    children = inst:get_children()
+                end)
 
-            if type(children) == "table" then
-                for i = 1, #children do
-                    local child = children[i]
+                if type(children) == "table" then
+                    -- Newer children tend to be at the end; enqueue them first.
+                    for i = #children, 1, -1 do
+                        local child = children[i]
 
-                    if child then
-                        qn = qn + 1
-                        queue[qn] = child
+                        if child then
+                            qn = qn + 1
+                            queue[qn] = child
+                        end
                     end
                 end
             end
@@ -13246,8 +13291,15 @@ function FALLEN_BT_VFX_SCAN()
     shared.queue_used = qn
     shared.snapshot = out
     shared.time = now
+    shared.mode = wanted_mode
+    shared.generation =
+        (tonumber(shared.generation) or 0)
+        + 1
 
-    return out
+    return
+        out,
+        shared.generation,
+        true
 end
 
 function FALLEN_BT_VFX_IS_IMPACT_NAME(
@@ -13554,7 +13606,7 @@ function FALLEN_BT_CAPTURE_SHOT_VIEW(force)
     local now = tick()
 
     if force ~= true
-        and now - (tonumber(FALLEN_BT.vfx_shot_view_last) or 0) < 0.035
+        and now - (tonumber(FALLEN_BT.vfx_shot_view_last) or 0) < 0.040
     then
         return
     end
@@ -14015,6 +14067,7 @@ function FALLEN_BT_SHOT_TICK()
             FALLEN_BT.vfx_shot_views = {}
             FALLEN_BT.vfx_shot_view_last = 0
             FALLEN_BT.vfx_idle_scan_last = 0
+            FALLEN_BT.vfx_scan_generation = nil
         end
 
         FALLEN_BT.vfx_runtime_active = false
@@ -14024,21 +14077,42 @@ function FALLEN_BT_SHOT_TICK()
     FALLEN_BT.vfx_runtime_active = true
 
     local now = tick()
-    local lmb = key_down(VK_LBUTTON) == true
+    local lmb =
+        key_down(VK_LBUTTON)
+        == true
+
     local watch_until =
-        tonumber(FALLEN_BT.vfx_watch_until)
+        tonumber(
+            FALLEN_BT.vfx_watch_until
+        )
         or 0
 
-    -- Baseline scan only four times a second while completely idle.
-    -- During/after a shot we still scan every render until the watch expires.
     if not lmb
         and now >= watch_until
     then
-        if now - (tonumber(FALLEN_BT.vfx_idle_scan_last) or 0) >= 0.25 then
-            FALLEN_BT.vfx_seen =
-                FALLEN_BT_VFX_SCAN()
+        if now
+            - (
+                tonumber(
+                    FALLEN_BT.vfx_idle_scan_last
+                )
+                or 0
+            )
+            >= 0.25
+        then
+            local current, generation =
+                FALLEN_BT_VFX_SCAN(
+                    0.25,
+                    true
+                )
 
-            FALLEN_BT.vfx_idle_scan_last = now
+            FALLEN_BT.vfx_seen =
+                current
+
+            FALLEN_BT.vfx_scan_generation =
+                generation
+
+            FALLEN_BT.vfx_idle_scan_last =
+                now
         end
 
         FALLEN_BT.vfx_prev_lmb = false
@@ -14067,20 +14141,44 @@ function FALLEN_BT_SHOT_TICK()
 
     FALLEN_BT.vfx_prev_lmb = lmb
 
+    -- Heavy Workspace/VFX traversal is capped at 25 Hz during fire.
+    -- The shared generation lets Tracer + HitFX consume the same scan once.
+    local current, generation =
+        FALLEN_BT_VFX_SCAN(
+            0.040,
+            true
+        )
+
+    if generation ~= nil
+        and generation
+            == FALLEN_BT.vfx_scan_generation
+    then
+        return
+    end
+
     local previous =
         FALLEN_BT.vfx_seen
         or {}
 
-    local current =
-        FALLEN_BT_VFX_SCAN()
+    FALLEN_BT.vfx_scan_generation =
+        generation
+
+    FALLEN_BT.vfx_seen =
+        current
 
     local origin =
         FALLEN_BT_ORIGIN()
 
+    if not origin then
+        return
+    end
+
     local shot_age =
         now
         - (
-            tonumber(FALLEN_BT.vfx_shot_time)
+            tonumber(
+                FALLEN_BT.vfx_shot_time
+            )
             or now
         )
 
@@ -14092,11 +14190,7 @@ function FALLEN_BT_SHOT_TICK()
             shot_age
         )
 
-    FALLEN_BT.vfx_seen = current
-
-    if origin
-        and impact
-    then
+    if impact then
         FALLEN_BT_ADD(
             origin,
             impact
@@ -15469,7 +15563,7 @@ function FALLEN_HITFX_CAPTURE_SHOT_VIEW(force)
     local now = tick()
 
     if force ~= true
-        and now - (tonumber(FALLEN_HITFX.vfx_shot_view_last) or 0) < 0.035
+        and now - (tonumber(FALLEN_HITFX.vfx_shot_view_last) or 0) < 0.040
     then
         return
     end
@@ -15739,6 +15833,7 @@ function FALLEN_HITFX_VFX_TICK()
             FALLEN_HITFX.vfx_shot_views = {}
             FALLEN_HITFX.vfx_shot_view_last = 0
             FALLEN_HITFX.vfx_idle_scan_last = 0
+            FALLEN_HITFX.vfx_scan_generation = nil
         end
 
         FALLEN_HITFX.vfx_runtime_active = false
@@ -15748,19 +15843,45 @@ function FALLEN_HITFX_VFX_TICK()
     FALLEN_HITFX.vfx_runtime_active = true
 
     local now = tick()
-    local lmb = key_down(VK_LBUTTON) == true
+    local lmb =
+        key_down(VK_LBUTTON)
+        == true
+
     local watch_until =
-        tonumber(FALLEN_HITFX.vfx_watch_until)
+        tonumber(
+            FALLEN_HITFX.vfx_watch_until
+        )
         or 0
+
+    local tracer_needs_holes =
+        S.bullet_tracer_enabled == true
 
     if not lmb
         and now >= watch_until
     then
-        if now - (tonumber(FALLEN_HITFX.vfx_idle_scan_last) or 0) >= 0.25 then
-            FALLEN_HITFX.vfx_seen =
-                FALLEN_BT_VFX_SCAN()
+        if now
+            - (
+                tonumber(
+                    FALLEN_HITFX.vfx_idle_scan_last
+                )
+                or 0
+            )
+            >= 0.25
+        then
+            local current, generation =
+                FALLEN_BT_VFX_SCAN(
+                    0.25,
+                    tracer_needs_holes
+                )
 
-            FALLEN_HITFX.vfx_idle_scan_last = now
+            FALLEN_HITFX.vfx_seen =
+                current
+
+            FALLEN_HITFX.vfx_scan_generation =
+                generation
+
+            FALLEN_HITFX.vfx_idle_scan_last =
+                now
         end
 
         FALLEN_HITFX.vfx_prev_lmb = false
@@ -15789,17 +15910,35 @@ function FALLEN_HITFX_VFX_TICK()
 
     FALLEN_HITFX.vfx_prev_lmb = lmb
 
+    local current, generation =
+        FALLEN_BT_VFX_SCAN(
+            0.040,
+            tracer_needs_holes
+        )
+
+    if generation ~= nil
+        and generation
+            == FALLEN_HITFX.vfx_scan_generation
+    then
+        return
+    end
+
     local previous =
         FALLEN_HITFX.vfx_seen
         or {}
 
-    local current =
-        FALLEN_BT_VFX_SCAN()
+    FALLEN_HITFX.vfx_scan_generation =
+        generation
+
+    FALLEN_HITFX.vfx_seen =
+        current
 
     local shot_age =
         now
         - (
-            tonumber(FALLEN_HITFX.vfx_shot_time)
+            tonumber(
+                FALLEN_HITFX.vfx_shot_time
+            )
             or now
         )
 
@@ -15809,8 +15948,6 @@ function FALLEN_HITFX_VFX_TICK()
             current,
             shot_age
         )
-
-    FALLEN_HITFX.vfx_seen = current
 
     if impact_pos then
         FALLEN_HITFX_ADD(
@@ -33496,7 +33633,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v78 | tracer-hitfx lifecycle + GC optimization | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v79 | throttled shared VFX scan | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
