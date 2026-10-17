@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v88 | source loader fn logo source size | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v89 | rounded modal dim + loading gradient | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -34046,7 +34046,10 @@ do
     function L.draw_dim(x, y, alpha)
         if not L.modal.open and not L.modal.closing then return end
         local dim = L.modal.alpha * 0.55 * alpha
-        DrawBoxFilled(x, y, x + 500, y + 400, 0, 0, 0, dim)
+
+        -- Keep the modal dim layer inside the same rounded 500x400 loader
+        -- silhouette instead of drawing a square overlay over rounded corners.
+        L.rounded_fill(x, y, 500, 400, 15, {0, 0, 0}, dim)
     end
 
     function L.draw_git_branch_icon(cx, cy, size, c, alpha)
@@ -34089,9 +34092,32 @@ do
         end
     end
 
+    function L.draw_loading_gradient(cx, y, alpha)
+        local text = "Loading"
+        local char_w = 6.5
+        local text_w = #text * char_w
+        local start_x = cx - text_w * 0.5
+        local phase = (L.time_sec * 0.62) % 1
+
+        for i = 1, #text do
+            local u = (i - 1) / math.max(1, #text - 1)
+            local d = math.abs(u - phase)
+            d = math.min(d, 1 - d)
+
+            -- Moving soft highlight: muted blue -> bright white/blue -> muted blue.
+            local glow = L.clamp01(1 - d / 0.34)
+            glow = L.ease_in_out_cubic(glow)
+
+            local base = L.mix_color(L.theme.caption, L.theme.accent, 0.58)
+            local col = L.mix_color(base, L.theme.text, glow)
+
+            L.text(start_x + (i - 1) * char_w, y, string.sub(text, i, i), col, alpha)
+        end
+    end
+
     function L.draw_inject(mx0, my0, modal_w, modal_h, alpha)
         local logo_size = 44
-        local text = "The game will start automatically"
+        local text = "Loading"
         local text_w = #text * 6.5
         local bar_h = 3
         local bar_w = text_w * 0.72
@@ -34114,8 +34140,8 @@ do
                 L.theme.progress_fill, alpha)
         end
 
-        L.text_center(mx0 + modal_w * 0.5, bar_y + bar_h + gap_bar_text,
-            text, L.theme.caption, alpha)
+        L.draw_loading_gradient(mx0 + modal_w * 0.5,
+            bar_y + bar_h + gap_bar_text, alpha)
     end
 
     function L.draw_branch_popup(mx0, my0, modal_w, modal_h, alpha, mx, my, click, dt, now)
@@ -34421,7 +34447,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | source UI port | fn logo source size | no blur")
+print("[Fallen loader] ready | rounded modal dim | loading gradient | no blur")
 
 
 -- Fallen toast renderer
