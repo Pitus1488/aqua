@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v85 | source loader clickable input fix | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v86 | source loader fn logo header | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -32791,6 +32791,12 @@ _G.FALLEN_LOADER_PRODUCT_PAGE_URL =
 
 _G.FALLEN_LOADER_PRODUCT_IMAGE_URL =
     _G.FALLEN_LOADER_PRODUCT_PAGE_URL
+
+_G.FALLEN_LOADER_HEADER_LOGO_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%91%D0%B5%D0%BB%D1%8B%D0%B9-%D0%BB%D0%BE%D0%B3%D0%BE%D1%82%D0%B8%D0%BF-FN-%D1%81-%D1%81%D0%B8%D0%BD%D0%B8%D0%BC-%D1%81%D0%B2%D0%B5%D1%87%D0%B5%D0%BD%D0%B8%D0%B5%D0%BC.1azOn"
+
+_G.FALLEN_LOADER_HEADER_LOGO_IMAGE_URL =
+    _G.FALLEN_LOADER_HEADER_LOGO_PAGE_URL
 
 function FALLEN_LOADER_RESOLVE_IMAGE_URL(url)
     if type(url) ~= "string"
@@ -33923,9 +33929,20 @@ do
     end
 
     function L.draw_logo_and_header(x, y, alpha)
-        -- Same double-draw offset as the source logo (accent at 18,15; face at 20,15).
-        L.text(x + 18, y + 15, "FL", L.theme.accent, alpha)
-        L.text(x + 20, y + 15, "FL", L.theme.text, alpha)
+        local drew_logo = false
+        local h = _G.FALLEN_LOADER_HEADER_LOGO_IMAGE
+
+        if h and L.image_ready(h) and type(DrawImage) == "function" then
+            -- Bigger custom FN logo instead of the small FL text mark.
+            pcall(DrawImage, h, x + 18, y + 11, 112, 52, 1, 1, 1, alpha, 0)
+            drew_logo = true
+        end
+
+        if not drew_logo then
+            -- Fallback while the image is still loading.
+            L.text(x + 18, y + 15, "FL", L.theme.accent, alpha)
+            L.text(x + 20, y + 15, "FL", L.theme.text, alpha)
+        end
 
         L.text(x + 165, y + 20, "Subscription", L.theme.text, alpha * 0.90)
         L.text(x + 165, y + 45, "Available subscriptions", L.theme.muted, alpha)
@@ -34287,7 +34304,24 @@ do
         end
     end
 
+    function L.prepare_header_logo()
+        local source = _G.FALLEN_LOADER_HEADER_LOGO_PAGE_URL
+        if _G.FALLEN_LOADER_HEADER_LOGO_IMAGE_SOURCE ~= source then
+            _G.FALLEN_LOADER_HEADER_LOGO_IMAGE = nil
+            _G.FALLEN_LOADER_HEADER_LOGO_IMAGE_SOURCE = source
+        end
+
+        _G.FALLEN_LOADER_HEADER_LOGO_IMAGE_URL = FALLEN_LOADER_RESOLVE_IMAGE_URL(source) or source
+
+        if not _G.FALLEN_LOADER_HEADER_LOGO_IMAGE and type(LoadImage) == "function" then
+            pcall(function()
+                _G.FALLEN_LOADER_HEADER_LOGO_IMAGE = LoadImage(_G.FALLEN_LOADER_HEADER_LOGO_IMAGE_URL)
+            end)
+        end
+    end
+
     L.prepare_product_image()
+    L.prepare_header_logo()
 
     hooks.on_render(function()
         if L.hidden then return end
@@ -34386,7 +34420,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | source UI port | clickable input fix | no blur")
+print("[Fallen loader] ready | source UI port | clickable input fix | fn header logo | no blur")
 
 
 -- Fallen toast renderer
