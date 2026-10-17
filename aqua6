@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v84 | source loader port no blur | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v85 | source loader clickable input fix | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -33576,8 +33576,9 @@ do
     end
 
     function L.mouse_pos()
-        if utility and type(utility.get_mouse_pos) == "function" then
-            local ok, mx, my = pcall(utility.get_mouse_pos)
+        -- Use the same mouse-coordinate helper as the working Fallen menu.
+        if type(mouse_pos) == "function" then
+            local ok, mx, my = pcall(mouse_pos)
             if ok then
                 mx = tonumber(mx)
                 my = tonumber(my)
@@ -33586,6 +33587,7 @@ do
                 end
             end
         end
+
         return -10000, -10000
     end
 
@@ -34384,7 +34386,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | source UI port | no blur")
+print("[Fallen loader] ready | source UI port | clickable input fix | no blur")
 
 
 -- Fallen toast renderer
