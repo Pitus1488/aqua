@@ -587,8 +587,16 @@ local A = {
     misc_manipulation_override_active = false,
     misc_manipulation_saved_silent_enabled = nil,
     misc_manipulation_saved_silent_method = nil,
+    misc_manipulation_saved_silent_key = nil,
+    misc_manipulation_saved_silent_key_mode = nil,
+    misc_manipulation_saved_silent_target_part = nil,
+    misc_manipulation_saved_silent_feature = nil,
+    misc_manipulation_saved_magic_feature = nil,
     misc_manipulation_saved_magic_bullet = nil,
     misc_manipulation_saved_magic_pull = nil,
+    misc_manipulation_camera_offset = nil,
+    misc_manipulation_camera_shifted = false,
+    misc_manipulation_hit_part = nil,
     misc_manipulation_magic_pull_key = nil,
     misc_manipulation_geo_center_x = nil,
     misc_manipulation_geo_center_z = nil,
@@ -12185,6 +12193,12 @@ end
 
 
 function FALLEN_SILENT_TICK()
+    -- Manipulation temporarily owns the stock Raycast Silent Aim while a shot
+    -- is being fired. Do not overwrite its enabled/key/magic-bullet state.
+    if A.misc_manipulation_override_active == true then
+        return
+    end
+
     local sa =
         FALLEN_SILENT_LIVE_SECTION()
 
@@ -33633,7 +33647,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v79 | throttled shared VFX scan | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v80 | registered manipulation origin + hitscan sync | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -37972,139 +37986,325 @@ function FALLEN_MANIPULATION_CLIP_ORIGIN(base_origin, wanted_origin)
 end
 
 
-function FALLEN_MANIPULATION_FIRST_HITSCAN(origin, target, base_origin, primary_pos)
-    if S.misc_hitscan_enabled ~= true or type(target) ~= "table" or type(target.bones) ~= "table" then
-        return nil, nil
+function FALLEN_MANIPULATION_FIRST_HITSCAN(
+    origin,
+    target,
+    base_origin,
+    primary_pos
+)
+    if S.misc_hitscan_enabled ~= true
+        or type(target) ~= "table"
+        or type(target.bones) ~= "table"
+    then
+        return nil, nil, nil
     end
 
     local bones = target.bones
+
+    -- Stock cheat.silent_aim.target_part only exposes:
+    --   0 = Head, 1 = Torso, 2 = Feet
+    -- Using hands/arms here can make our visibility scan succeed while the
+    -- actual Raycast Silent Aim still fires at Head. Keep scan + registration
+    -- on the exact target groups the host can really use.
     local preferred = {
-        "Head", "UpperTorso", "LowerTorso", "RightHand", "LeftHand",
-        "RightUpperArm", "LeftUpperArm", "RightUpperLeg", "LeftUpperLeg",
+        { name = "Head",       part = 0 },
+        { name = "UpperTorso", part = 1 },
+        { name = "LowerTorso", part = 1 },
+        { name = "LeftFoot",   part = 2 },
+        { name = "RightFoot",  part = 2 },
     }
 
     for rank = 1, #preferred do
-        local wanted = preferred[rank]
-        for i = 1, #bones do
-            local bone = bones[i]
-            if type(bone) == "table" and tostring(bone.name or bone.Name or "") == wanted then
-                local pos = bone.position or bone.pos or bone.Position
-                if pos then
-                    local same_primary = primary_pos
-                        and math.abs((tonumber(pos.X) or 0) - (tonumber(primary_pos.X) or 0)) < 0.001
-                        and math.abs((tonumber(pos.Y) or 0) - (tonumber(primary_pos.Y) or 0)) < 0.001
-                        and math.abs((tonumber(pos.Z) or 0) - (tonumber(primary_pos.Z) or 0)) < 0.001
+        local wanted =
+            preferred[rank]
 
-                    if not same_primary and FALLEN_MANIPULATION_CAN_HIT(origin, pos, base_origin) then
-                        return pos, rank
+        for i = 1, #bones do
+            local bone =
+                bones[i]
+
+            if type(bone) == "table"
+                and tostring(
+                    bone.name
+                    or bone.Name
+                    or ""
+                ) == wanted.name
+            then
+                local pos =
+                    bone.position
+                    or bone.pos
+                    or bone.Position
+
+                if pos then
+                    local same_primary =
+                        primary_pos
+                        and math.abs(
+                            (tonumber(pos.X) or 0)
+                            - (tonumber(primary_pos.X) or 0)
+                        ) < 0.001
+                        and math.abs(
+                            (tonumber(pos.Y) or 0)
+                            - (tonumber(primary_pos.Y) or 0)
+                        ) < 0.001
+                        and math.abs(
+                            (tonumber(pos.Z) or 0)
+                            - (tonumber(primary_pos.Z) or 0)
+                        ) < 0.001
+
+                    if not same_primary
+                        and FALLEN_MANIPULATION_CAN_HIT(
+                            origin,
+                            pos,
+                            base_origin
+                        )
+                    then
+                        return
+                            pos,
+                            rank,
+                            wanted.part
                     end
                 end
+
                 break
             end
         end
     end
 
-    for i = 1, #bones do
-        local bone = bones[i]
-        if type(bone) == "table" then
-            local name = tostring(bone.name or bone.Name or "")
-            local known = name == "Head" or name == "UpperTorso" or name == "LowerTorso"
-                or name == "RightHand" or name == "LeftHand" or name == "RightUpperArm"
-                or name == "LeftUpperArm" or name == "RightUpperLeg" or name == "LeftUpperLeg"
-
-            if not known then
-                local pos = bone.position or bone.pos or bone.Position
-                if pos and FALLEN_MANIPULATION_CAN_HIT(origin, pos, base_origin) then
-                    return pos, 10 + i
-                end
-            end
-        end
-    end
-
-    return nil, nil
+    return nil, nil, nil
 end
 
-
-function FALLEN_MANIPULATION_PICK_VIRTUAL(target, target_pos, base_origin, rot, distance)
-    if not target_pos or not base_origin then
-        return nil, nil, nil, false
+function FALLEN_MANIPULATION_PICK_VIRTUAL(
+    target,
+    target_pos,
+    base_origin,
+    rot,
+    distance
+)
+    if not target_pos
+        or not base_origin
+    then
+        return nil, nil, nil, false, nil
     end
 
     if S.misc_manipulation_enabled ~= true then
-        if FALLEN_MANIPULATION_CAN_HIT(base_origin, target_pos, base_origin) then
-            return base_origin, target_pos, "BASE", false
+        if FALLEN_MANIPULATION_CAN_HIT(
+            base_origin,
+            target_pos,
+            base_origin
+        )
+        then
+            return
+                base_origin,
+                target_pos,
+                "BASE",
+                false,
+                0
         end
 
-        local hit = FALLEN_MANIPULATION_FIRST_HITSCAN(base_origin, target, base_origin, target_pos)
-        if hit then return base_origin, hit, "BASE", true end
-        return nil, nil, nil, false
+        local hit,
+            _,
+            hit_part =
+            FALLEN_MANIPULATION_FIRST_HITSCAN(
+                base_origin,
+                target,
+                base_origin,
+                target_pos
+            )
+
+        if hit then
+            return
+                base_origin,
+                hit,
+                "BASE",
+                true,
+                hit_part
+        end
+
+        return nil, nil, nil, false, nil
     end
 
-    local rx, rz = FALLEN_MANIPULATION_BASIS(rot)
-    local diagonal = distance * 0.7071067811865476
+    local rx, rz =
+        FALLEN_MANIPULATION_BASIS(
+            rot
+        )
 
-    local right_origin = FALLEN_MANIPULATION_CLIP_ORIGIN(
-        base_origin,
-        Vector3(base_origin.X + rx * diagonal, base_origin.Y + diagonal, base_origin.Z + rz * diagonal)
-    )
-    local left_origin = FALLEN_MANIPULATION_CLIP_ORIGIN(
-        base_origin,
-        Vector3(base_origin.X - rx * diagonal, base_origin.Y + diagonal, base_origin.Z - rz * diagonal)
-    )
-    local up_origin = FALLEN_MANIPULATION_CLIP_ORIGIN(
-        base_origin,
-        Vector3(base_origin.X, base_origin.Y + distance, base_origin.Z)
-    )
+    local diagonal =
+        distance
+        * 0.7071067811865476
 
-    if right_origin and FALLEN_MANIPULATION_CAN_HIT(right_origin, target_pos, base_origin) then
-        return right_origin, target_pos, "UP-RIGHT", false
+    local right_origin =
+        FALLEN_MANIPULATION_CLIP_ORIGIN(
+            base_origin,
+            Vector3(
+                base_origin.X + rx * diagonal,
+                base_origin.Y + diagonal,
+                base_origin.Z + rz * diagonal
+            )
+        )
+
+    local left_origin =
+        FALLEN_MANIPULATION_CLIP_ORIGIN(
+            base_origin,
+            Vector3(
+                base_origin.X - rx * diagonal,
+                base_origin.Y + diagonal,
+                base_origin.Z - rz * diagonal
+            )
+        )
+
+    local up_origin =
+        FALLEN_MANIPULATION_CLIP_ORIGIN(
+            base_origin,
+            Vector3(
+                base_origin.X,
+                base_origin.Y + distance,
+                base_origin.Z
+            )
+        )
+
+    -- Primary target is the head selection used by our target scanner.
+    if right_origin
+        and FALLEN_MANIPULATION_CAN_HIT(
+            right_origin,
+            target_pos,
+            base_origin
+        )
+    then
+        return
+            right_origin,
+            target_pos,
+            "UP-RIGHT",
+            false,
+            0
     end
-    if left_origin and FALLEN_MANIPULATION_CAN_HIT(left_origin, target_pos, base_origin) then
-        return left_origin, target_pos, "UP-LEFT", false
+
+    if left_origin
+        and FALLEN_MANIPULATION_CAN_HIT(
+            left_origin,
+            target_pos,
+            base_origin
+        )
+    then
+        return
+            left_origin,
+            target_pos,
+            "UP-LEFT",
+            false,
+            0
     end
-    if up_origin and FALLEN_MANIPULATION_CAN_HIT(up_origin, target_pos, base_origin) then
-        return up_origin, target_pos, "UP", false
+
+    if up_origin
+        and FALLEN_MANIPULATION_CAN_HIT(
+            up_origin,
+            target_pos,
+            base_origin
+        )
+    then
+        return
+            up_origin,
+            target_pos,
+            "UP",
+            false,
+            0
     end
 
     if S.misc_hitscan_enabled ~= true then
-        return nil, nil, nil, false
+        return nil, nil, nil, false, nil
     end
 
-    local best_origin, best_hit, best_name = nil, nil, nil
+    local best_origin = nil
+    local best_hit = nil
+    local best_name = nil
+    local best_part = nil
     local best_score = -100000
 
     if right_origin then
-        local hit, rank = FALLEN_MANIPULATION_FIRST_HITSCAN(right_origin, target, base_origin, target_pos)
+        local hit,
+            rank,
+            part =
+            FALLEN_MANIPULATION_FIRST_HITSCAN(
+                right_origin,
+                target,
+                base_origin,
+                target_pos
+            )
+
         if hit then
-            local score = 4 - (tonumber(rank) or 999)
+            local score =
+                4
+                - (tonumber(rank) or 999)
+
             if score > best_score then
-                best_score, best_origin, best_hit, best_name = score, right_origin, hit, "UP-RIGHT"
+                best_score = score
+                best_origin = right_origin
+                best_hit = hit
+                best_name = "UP-RIGHT"
+                best_part = part
             end
         end
     end
 
     if left_origin then
-        local hit, rank = FALLEN_MANIPULATION_FIRST_HITSCAN(left_origin, target, base_origin, target_pos)
+        local hit,
+            rank,
+            part =
+            FALLEN_MANIPULATION_FIRST_HITSCAN(
+                left_origin,
+                target,
+                base_origin,
+                target_pos
+            )
+
         if hit then
-            local score = 4 - (tonumber(rank) or 999)
+            local score =
+                4
+                - (tonumber(rank) or 999)
+
             if score > best_score then
-                best_score, best_origin, best_hit, best_name = score, left_origin, hit, "UP-LEFT"
+                best_score = score
+                best_origin = left_origin
+                best_hit = hit
+                best_name = "UP-LEFT"
+                best_part = part
             end
         end
     end
 
     if up_origin then
-        local hit, rank = FALLEN_MANIPULATION_FIRST_HITSCAN(up_origin, target, base_origin, target_pos)
+        local hit,
+            rank,
+            part =
+            FALLEN_MANIPULATION_FIRST_HITSCAN(
+                up_origin,
+                target,
+                base_origin,
+                target_pos
+            )
+
         if hit then
-            local score = 2 - (tonumber(rank) or 999)
+            local score =
+                2
+                - (tonumber(rank) or 999)
+
             if score > best_score then
-                best_score, best_origin, best_hit, best_name = score, up_origin, hit, "UP"
+                best_score = score
+                best_origin = up_origin
+                best_hit = hit
+                best_name = "UP"
+                best_part = part
             end
         end
     end
 
-    if best_origin then return best_origin, best_hit, best_name, true end
-    return nil, nil, nil, false
+    if best_origin then
+        return
+            best_origin,
+            best_hit,
+            best_name,
+            true,
+            best_part
+    end
+
+    return nil, nil, nil, false, nil
 end
 
 function FALLEN_MANIPULATION_MAGIC_PULL_KEY()
@@ -38216,70 +38416,311 @@ function FALLEN_MANIPULATION_SET_MAGIC_PULL(
 end
 
 
-function FALLEN_MANIPULATION_FORCE_SILENT(active)
-    active = active == true
-    local was_active = A.misc_manipulation_override_active == true
-    if active == was_active then return end
+function FALLEN_MANIPULATION_FORCE_SILENT(
+    active
+)
+    active =
+        active == true
 
-    local sa = FALLEN_SILENT_LIVE_SECTION()
+    local was_active =
+        A.misc_manipulation_override_active
+        == true
+
+    if active == was_active then
+        return
+    end
+
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
     if not sa then
-        if not active then A.misc_manipulation_override_active = false end
+        if not active then
+            A.misc_manipulation_override_active = false
+        end
+
         return
     end
 
     if active then
         A.misc_manipulation_override_active = true
+
         pcall(function()
-            A.misc_manipulation_saved_silent_enabled = sa.enabled
-            A.misc_manipulation_saved_silent_method = sa.method
-            A.misc_manipulation_saved_magic_bullet = sa.magic_bullet
+            A.misc_manipulation_saved_silent_enabled =
+                sa.enabled
+
+            A.misc_manipulation_saved_silent_method =
+                sa.method
+
+            A.misc_manipulation_saved_silent_key =
+                sa.key
+
+            A.misc_manipulation_saved_silent_key_mode =
+                sa.key_mode
+
+            A.misc_manipulation_saved_silent_target_part =
+                sa.target_part
+
+            A.misc_manipulation_saved_magic_bullet =
+                sa.magic_bullet
         end)
 
-        local pull_key = FALLEN_MANIPULATION_MAGIC_PULL_KEY()
+        if cheat
+            and type(cheat.is_enabled) == "function"
+        then
+            pcall(function()
+                A.misc_manipulation_saved_silent_feature =
+                    cheat.is_enabled(
+                        "silent_aim"
+                    )
+
+                A.misc_manipulation_saved_magic_feature =
+                    cheat.is_enabled(
+                        "magic_bullet"
+                    )
+            end)
+        end
+
+        local pull_key =
+            FALLEN_MANIPULATION_MAGIC_PULL_KEY()
+
         if pull_key then
-            pcall(function() A.misc_manipulation_saved_magic_pull = sa[pull_key] end)
+            pcall(function()
+                A.misc_manipulation_saved_magic_pull =
+                    sa[pull_key]
+            end)
         end
 
+        -- Remove key gating while the manipulation shot owns Silent Aim.
         pcall(function()
-            sa.enabled = true
+            sa.key = 0
+            sa.key_mode = 1
             sa.method = 2
+            sa.enabled = true
             sa.magic_bullet = true
-        end)
-        FALLEN_MANIPULATION_SET_MAGIC_PULL(true)
 
-        if cheat and cheat.keybinds and type(cheat.keybinds._keys) == "function" then
-            local ok, keys = pcall(function() return cheat.keybinds:_keys() end)
-            if ok and type(keys) == "table" then
-                for i = 1, #keys do
-                    local raw = tostring(keys[i])
-                    local normalized = FALLEN_SILENT_NORMALIZE_KEY(raw)
-                    if string.find(normalized, "silent", 1, true) and string.find(normalized, "active", 1, true) then
-                        pcall(function() cheat.keybinds[raw] = true end)
-                        break
-                    end
-                end
+            if A.misc_manipulation_hit_part ~= nil then
+                sa.target_part =
+                    A.misc_manipulation_hit_part
             end
+        end)
+
+        FALLEN_MANIPULATION_SET_MAGIC_PULL(
+            true
+        )
+
+        -- cheat.enable() also handles the host's internal master/key latch.
+        if cheat
+            and type(cheat.enable) == "function"
+        then
+            pcall(
+                cheat.enable,
+                "silent_aim",
+                true
+            )
+
+            pcall(
+                cheat.enable,
+                "magic_bullet",
+                true
+            )
         end
+
         return
     end
 
+    -- Restore live fields before restoring the master feature state.
     pcall(function()
-        if A.misc_manipulation_saved_silent_enabled ~= nil then sa.enabled = A.misc_manipulation_saved_silent_enabled end
-        if A.misc_manipulation_saved_silent_method ~= nil then sa.method = A.misc_manipulation_saved_silent_method end
-        if A.misc_manipulation_saved_magic_bullet ~= nil then sa.magic_bullet = A.misc_manipulation_saved_magic_bullet end
+        if A.misc_manipulation_saved_silent_enabled ~= nil then
+            sa.enabled =
+                A.misc_manipulation_saved_silent_enabled
+        end
+
+        if A.misc_manipulation_saved_silent_method ~= nil then
+            sa.method =
+                A.misc_manipulation_saved_silent_method
+        end
+
+        if A.misc_manipulation_saved_silent_key ~= nil then
+            sa.key =
+                A.misc_manipulation_saved_silent_key
+        end
+
+        if A.misc_manipulation_saved_silent_key_mode ~= nil then
+            sa.key_mode =
+                A.misc_manipulation_saved_silent_key_mode
+        end
+
+        if A.misc_manipulation_saved_silent_target_part ~= nil then
+            sa.target_part =
+                A.misc_manipulation_saved_silent_target_part
+        end
+
+        if A.misc_manipulation_saved_magic_bullet ~= nil then
+            sa.magic_bullet =
+                A.misc_manipulation_saved_magic_bullet
+        end
     end)
 
-    local pull_key = FALLEN_MANIPULATION_MAGIC_PULL_KEY()
-    if pull_key and A.misc_manipulation_saved_magic_pull ~= nil then
-        pcall(function() sa[pull_key] = A.misc_manipulation_saved_magic_pull end)
+    local pull_key =
+        FALLEN_MANIPULATION_MAGIC_PULL_KEY()
+
+    if pull_key
+        and A.misc_manipulation_saved_magic_pull ~= nil
+    then
+        pcall(function()
+            sa[pull_key] =
+                A.misc_manipulation_saved_magic_pull
+        end)
+    end
+
+    if cheat
+        and type(cheat.enable) == "function"
+    then
+        if A.misc_manipulation_saved_silent_feature ~= nil then
+            pcall(
+                cheat.enable,
+                "silent_aim",
+                A.misc_manipulation_saved_silent_feature
+                    == true
+            )
+        end
+
+        if A.misc_manipulation_saved_magic_feature ~= nil then
+            pcall(
+                cheat.enable,
+                "magic_bullet",
+                A.misc_manipulation_saved_magic_feature
+                    == true
+            )
+        end
     end
 
     A.misc_manipulation_override_active = false
     A.misc_manipulation_saved_silent_enabled = nil
     A.misc_manipulation_saved_silent_method = nil
+    A.misc_manipulation_saved_silent_key = nil
+    A.misc_manipulation_saved_silent_key_mode = nil
+    A.misc_manipulation_saved_silent_target_part = nil
+    A.misc_manipulation_saved_silent_feature = nil
+    A.misc_manipulation_saved_magic_feature = nil
     A.misc_manipulation_saved_magic_bullet = nil
     A.misc_manipulation_saved_magic_pull = nil
 end
+
+
+function FALLEN_MANIPULATION_BASE_CAMERA_POS(
+    hrp_pos,
+    fallback
+)
+    if not hrp_pos then
+        return fallback
+    end
+
+    local off =
+        A.misc_manipulation_camera_offset
+
+    if type(off) == "table"
+        and off.X ~= nil
+        and off.Y ~= nil
+        and off.Z ~= nil
+    then
+        return Vector3(
+            hrp_pos.X + off.X,
+            hrp_pos.Y + off.Y,
+            hrp_pos.Z + off.Z
+        )
+    end
+
+    return fallback
+end
+
+
+function FALLEN_MANIPULATION_CAMERA_ORIGIN(
+    active,
+    hrp_pos,
+    base_cam_pos,
+    virtual_origin
+)
+    active =
+        active == true
+
+    if not aim
+        or type(aim.set_camera_position) ~= "function"
+    then
+        A.misc_manipulation_camera_shifted = false
+        A.misc_manipulation_camera_offset = nil
+        return false
+    end
+
+    if active then
+        if not hrp_pos
+            or not base_cam_pos
+            or not virtual_origin
+        then
+            return false
+        end
+
+        if type(A.misc_manipulation_camera_offset) ~= "table" then
+            A.misc_manipulation_camera_offset = {
+                X = base_cam_pos.X - hrp_pos.X,
+                Y = base_cam_pos.Y - hrp_pos.Y,
+                Z = base_cam_pos.Z - hrp_pos.Z,
+            }
+        end
+
+        local ok =
+            pcall(
+                aim.set_camera_position,
+                virtual_origin
+            )
+
+        if ok then
+            A.misc_manipulation_camera_shifted = true
+            return true
+        end
+
+        return false
+    end
+
+    if A.misc_manipulation_camera_shifted == true
+        and hrp_pos
+    then
+        local restore =
+            FALLEN_MANIPULATION_BASE_CAMERA_POS(
+                hrp_pos,
+                base_cam_pos
+            )
+
+        if restore then
+            pcall(
+                aim.set_camera_position,
+                restore
+            )
+        end
+    end
+
+    A.misc_manipulation_camera_shifted = false
+    A.misc_manipulation_camera_offset = nil
+    return true
+end
+
+
+function FALLEN_MANIPULATION_SYNC_SHOT_PART()
+    local sa =
+        FALLEN_SILENT_LIVE_SECTION()
+
+    if not sa
+        or A.misc_manipulation_hit_part == nil
+    then
+        return
+    end
+
+    pcall(function()
+        sa.target_part =
+            A.misc_manipulation_hit_part
+    end)
+end
+
 
 local function FALLEN_MANIPULATION_DRAW_INDICATOR()
     -- Pure availability indicator:
@@ -38351,87 +38792,279 @@ end
 
 
 function FALLEN_MANIPULATION_TICK()
-    local enabled = S.misc_manipulation_enabled == true or S.misc_hitscan_enabled == true
-
-    if not enabled then
-        FALLEN_MANIPULATION_FORCE_SILENT(false)
-        A.misc_manipulation_can_hit = false
-        A.misc_manipulation_virtual_origin = nil
-        A.misc_manipulation_hit_pos = nil
-        return
-    end
+    local enabled =
+        S.misc_manipulation_enabled == true
+        or S.misc_hitscan_enabled == true
 
     local hrp = nil
-    if rbx and type(rbx.local_hrp) == "function" then
-        local ok, value = pcall(rbx.local_hrp)
-        if ok then hrp = value end
-    end
 
-    if not hrp then
-        FALLEN_MANIPULATION_FORCE_SILENT(false)
-        A.misc_manipulation_can_hit = false
-        return
+    if rbx
+        and type(rbx.local_hrp) == "function"
+    then
+        local ok, value =
+            pcall(
+                rbx.local_hrp
+            )
+
+        if ok then
+            hrp = value
+        end
     end
 
     local hrp_pos = nil
-    pcall(function() hrp_pos = hrp:get_position() end)
-    if not hrp_pos then
-        FALLEN_MANIPULATION_FORCE_SILENT(false)
+
+    if hrp then
+        pcall(function()
+            hrp_pos =
+                hrp:get_position()
+        end)
+    end
+
+    if not enabled
+        or not hrp
+        or not hrp_pos
+    then
+        FALLEN_MANIPULATION_CAMERA_ORIGIN(
+            false,
+            hrp_pos,
+            nil,
+            nil
+        )
+
+        FALLEN_MANIPULATION_FORCE_SILENT(
+            false
+        )
+
         A.misc_manipulation_can_hit = false
+        A.misc_manipulation_virtual_origin = nil
+        A.misc_manipulation_hit_pos = nil
+        A.misc_manipulation_hit_part = nil
         return
     end
 
     local cam = nil
-    if rbx and type(rbx.camera) == "function" then
-        local ok, value = pcall(rbx.camera)
-        if ok then cam = value end
+
+    if rbx
+        and type(rbx.camera) == "function"
+    then
+        local ok, value =
+            pcall(
+                rbx.camera
+            )
+
+        if ok then
+            cam = value
+        end
     end
 
-    local cam_pos, cam_rot = nil, nil
+    local raw_cam_pos = nil
+    local cam_rot = nil
+
     if cam then
         pcall(function()
-            cam_pos = cam:camera_pos()
-            cam_rot = cam:camera_rotation()
+            raw_cam_pos =
+                cam:camera_pos()
+
+            cam_rot =
+                cam:camera_rotation()
         end)
     end
-    if not cam_pos then cam_pos = hrp_pos end
-    if not cam_rot then pcall(function() cam_rot = hrp:get_rotation() end) end
 
-    FALLEN_MANIPULATION_GEO_STEP(hrp_pos, 28)
+    if not raw_cam_pos
+        and aim
+        and type(aim.get_camera_position) == "function"
+    then
+        pcall(function()
+            raw_cam_pos =
+                aim.get_camera_position()
+        end)
+    end
+
+    if not raw_cam_pos then
+        raw_cam_pos =
+            hrp_pos
+    end
+
+    local cam_pos =
+        FALLEN_MANIPULATION_BASE_CAMERA_POS(
+            hrp_pos,
+            raw_cam_pos
+        )
+
+    if not cam_rot then
+        pcall(function()
+            cam_rot =
+                hrp:get_rotation()
+        end)
+    end
+
+    FALLEN_MANIPULATION_GEO_STEP(
+        hrp_pos,
+        28
+    )
 
     local now = tick()
-    if now - (tonumber(A.misc_manipulation_last_eval) or 0) >= 0.035 or A.misc_manipulation_virtual_origin == nil then
-        A.misc_manipulation_last_eval = now
-        local target, target_pos = FALLEN_MANIPULATION_TARGET()
-        local distance = clamp(tonumber(S.misc_manipulation_distance) or 5, 5, 10)
-        local origin, hit_pos = FALLEN_MANIPULATION_PICK_VIRTUAL(target, target_pos, cam_pos, cam_rot, distance)
-        A.misc_manipulation_virtual_origin = origin
-        A.misc_manipulation_hit_pos = hit_pos
-        A.misc_manipulation_can_hit = origin ~= nil and hit_pos ~= nil
+
+    if now
+        - (
+            tonumber(
+                A.misc_manipulation_last_eval
+            )
+            or 0
+        )
+        >= 0.035
+        or A.misc_manipulation_virtual_origin == nil
+    then
+        A.misc_manipulation_last_eval =
+            now
+
+        local target,
+            target_pos =
+            FALLEN_MANIPULATION_TARGET()
+
+        local distance =
+            clamp(
+                tonumber(
+                    S.misc_manipulation_distance
+                )
+                or 5,
+                5,
+                10
+            )
+
+        local origin,
+            hit_pos,
+            _,
+            _,
+            hit_part =
+            FALLEN_MANIPULATION_PICK_VIRTUAL(
+                target,
+                target_pos,
+                cam_pos,
+                cam_rot,
+                distance
+            )
+
+        A.misc_manipulation_virtual_origin =
+            origin
+
+        A.misc_manipulation_hit_pos =
+            hit_pos
+
+        A.misc_manipulation_hit_part =
+            hit_part
+
+        A.misc_manipulation_can_hit =
+            origin ~= nil
+            and hit_pos ~= nil
     end
 
-    local can_hit = A.misc_manipulation_can_hit == true
-    local hit_pos = A.misc_manipulation_hit_pos
-    local lmb = key_down(VK_LBUTTON) == true
+    local can_hit =
+        A.misc_manipulation_can_hit
+        == true
 
-    if can_hit and hit_pos and aim then
-        local w2s = nil
-        if type(aim.world_to_screen) == "function" then
-            w2s = aim.world_to_screen
-        elseif rbx and type(rbx.world_to_screen) == "function" then
-            w2s = rbx.world_to_screen
+    local hit_pos =
+        A.misc_manipulation_hit_pos
+
+    local virtual_origin =
+        A.misc_manipulation_virtual_origin
+
+    local lmb =
+        key_down(VK_LBUTTON)
+        == true
+
+    local firing =
+        can_hit
+        and lmb
+        and hit_pos ~= nil
+        and virtual_origin ~= nil
+
+    if firing then
+        -- Activate stock Raycast/Magic Bullet first so the following cursor and
+        -- origin writes are consumed by the same live shot path.
+        FALLEN_MANIPULATION_FORCE_SILENT(
+            true
+        )
+
+        FALLEN_MANIPULATION_SYNC_SHOT_PART()
+
+        local origin_ok =
+            FALLEN_MANIPULATION_CAMERA_ORIGIN(
+                true,
+                hrp_pos,
+                cam_pos,
+                virtual_origin
+            )
+
+        if S.misc_manipulation_enabled == true
+            and origin_ok ~= true
+        then
+            -- Do not claim a manipulation shot if the host cannot apply origin.
+            A.misc_manipulation_can_hit = false
+
+            FALLEN_MANIPULATION_FORCE_SILENT(
+                false
+            )
+
+            return
         end
 
-        if w2s then
-            local ok, screen = pcall(w2s, hit_pos)
-            if ok and screen and screen.visible ~= false then
-                if type(aim.prime_mouse) == "function" then pcall(aim.prime_mouse, screen) end
-                if lmb and type(aim.write_mouse) == "function" then pcall(aim.write_mouse, screen, 16) end
+        if aim then
+            local w2s = nil
+
+            if type(aim.world_to_screen) == "function" then
+                w2s =
+                    aim.world_to_screen
+
+            elseif rbx
+                and type(rbx.world_to_screen) == "function"
+            then
+                w2s =
+                    rbx.world_to_screen
+            end
+
+            if w2s then
+                local ok, screen =
+                    pcall(
+                        w2s,
+                        hit_pos
+                    )
+
+                if ok
+                    and screen
+                    and screen.visible ~= false
+                then
+                    if type(aim.prime_mouse) == "function" then
+                        pcall(
+                            aim.prime_mouse,
+                            screen
+                        )
+                    end
+
+                    if type(aim.write_mouse) == "function" then
+                        pcall(
+                            aim.write_mouse,
+                            screen,
+                            16
+                        )
+                    end
+                end
             end
         end
+
+        return
     end
 
-    FALLEN_MANIPULATION_FORCE_SILENT(can_hit and lmb)
+    FALLEN_MANIPULATION_CAMERA_ORIGIN(
+        false,
+        hrp_pos,
+        cam_pos,
+        nil
+    )
+
+    FALLEN_MANIPULATION_FORCE_SILENT(
+        false
+    )
 end
 
 hooks.on_render(function()
