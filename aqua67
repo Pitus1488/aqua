@@ -10120,32 +10120,43 @@ local function fap_predict(p, pos, cam)
     end
 
     local dist = 0
+    local horizontal_dist = 0
 
     if cam
-        and cam.X
+        and cam.X ~= nil
+        and cam.Y ~= nil
+        and cam.Z ~= nil
     then
         local dx = px - cam.X
         local dy = py - cam.Y
         local dz = pz - cam.Z
 
+        local horizontal_sq =
+            dx * dx
+            + dz * dz
+
+        horizontal_dist =
+            math.sqrt(
+                horizontal_sq
+            )
+
         dist =
             math.sqrt(
-                dx * dx
+                horizontal_sq
                 + dy * dy
-                + dz * dz
             )
     elseif p then
         dist =
             tonumber(p.distance)
             or 0
+
+        horizontal_dist = dist
     end
 
+    -- Full 3D travel time stays in use for movement lead.
     local time_to_hit =
-        dist / bullet_speed
-
-    time_to_hit =
         clamp(
-            time_to_hit,
+            dist / bullet_speed,
             0,
             3
         )
@@ -10164,6 +10175,7 @@ local function fap_predict(p, pos, cam)
         )
 
     local pred_scale = 1.0
+
     local weapon_name =
         string.lower(
             tostring(
@@ -10186,7 +10198,6 @@ local function fap_predict(p, pos, cam)
             true
         ) ~= nil
 
-    -- Same prediction scaling idea as the pasted Aimbot.
     if is_bow then
         if hspeed > 95 then
             pred_scale = 0.85
@@ -10252,13 +10263,22 @@ local function fap_predict(p, pos, cam)
         * time_to_hit
         * pred_scale
 
+    -- Height-aware gravity:
+    -- flat ground stays the same, but large elevation differences no longer
+    -- inflate the vertical compensation just because the 3D distance is longer.
+    local gravity_time =
+        clamp(
+            horizontal_dist
+            / bullet_speed,
+            0,
+            3
+        )
+
     local drop =
         0.5
         * gravity
-        * (
-            time_to_hit
-            * time_to_hit
-        )
+        * gravity_time
+        * gravity_time
 
     aim_y =
         aim_y
@@ -33288,7 +33308,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v76 | optimized runtime + dead-code cleanup | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v77 | height-aware auto prediction | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
