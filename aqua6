@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v86 | source loader fn logo header | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v87 | source loader fn logo aspect fix | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -33933,8 +33933,10 @@ do
         local h = _G.FALLEN_LOADER_HEADER_LOGO_IMAGE
 
         if h and L.image_ready(h) and type(DrawImage) == "function" then
-            -- Bigger custom FN logo instead of the small FL text mark.
-            pcall(DrawImage, h, x + 18, y + 11, 112, 52, 1, 1, 1, alpha, 0)
+            -- The supplied FN artwork uses a square transparent canvas.
+            -- Keep that canvas square so the logo itself is not stretched.
+            -- Slightly oversized on purpose to preserve the source-loader look.
+            pcall(DrawImage, h, x + 8, y - 3, 96, 96, 1, 1, 1, alpha, 0)
             drew_logo = true
         end
 
@@ -34420,7 +34422,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | source UI port | clickable input fix | fn header logo | no blur")
+print("[Fallen loader] ready | source UI port | fn logo aspect fix | no blur")
 
 
 -- Fallen toast renderer
