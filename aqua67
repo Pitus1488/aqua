@@ -31390,6 +31390,917 @@ hooks.on_render(function()
         sidebar_target_y =
             wy + WIN_H - 118
     elseif S.tab == 3 then
+        sidebar_target_y =
+            misc_tab_y
+    elseif S.tab == 2 then
+        sidebar_target_y =
+            wy + 219
+    elseif S.tab == 5 then
+        sidebar_target_y =
+            wy + 145
+    else
+        sidebar_target_y =
+            wy + 105
+    end
+
+    if A.sidebar_indicator_y == nil then
+        A.sidebar_indicator_y =
+            sidebar_target_y
+    end
+
+    local sidebar_now = tick()
+
+    if A.sidebar_indicator_last_t == nil then
+        A.sidebar_indicator_last_t =
+            sidebar_now
+    end
+
+    local sidebar_dt =
+        clamp(
+            sidebar_now
+            - A.sidebar_indicator_last_t,
+            0,
+            0.05
+        )
+
+    A.sidebar_indicator_last_t =
+        sidebar_now
+
+    A.sidebar_indicator_y =
+        exp_chase(
+            A.sidebar_indicator_y,
+            sidebar_target_y,
+            13,
+            sidebar_dt
+        )
+
+    if math.abs(
+        A.sidebar_indicator_y
+        - sidebar_target_y
+    ) < 0.08 then
+        A.sidebar_indicator_y =
+            sidebar_target_y
+    end
+
+    -- Sliding selected-tab pill.
+    rounded_fill(
+        wx + 10,
+        A.sidebar_indicator_y,
+        152,
+        35,
+        7,
+        C.selected
+    )
+
+    text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
+    sidebar_tab(
+        mx,
+        my,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
+        wx + 10,
+        wy + 105,
+        1
+    )
+
+    sidebar_tab(
+        mx,
+        my,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
+        wx + 10,
+        wy + 145,
+        5
+    )
+
+    text(wx + 22, wy + 199, "VISUALS", C.text_faint)
+
+    local visuals_parent_x =
+        wx + 10
+
+    local visuals_parent_y =
+        wy + 219
+
+    local visuals_parent_hot =
+        hover(
+            mx,
+            my,
+            visuals_parent_x,
+            visuals_parent_y,
+            152,
+            35
+        )
+
+    sidebar_tab(
+        mx,
+        my,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
+        visuals_parent_x,
+        visuals_parent_y,
+        2
+    )
+
+    -- Visuals is a standalone page.
+    if clicked
+        and visuals_parent_hot
+        and not A.world_color_picker_open
+        and (A.world_color_picker_anim or 0) <= 0.02
+    then
+        S.tab = 2
+        S.visuals_subtab = 0
+        S.anim = 0
+    end
+
+    -- RMB on Visuals expands/collapses World + Armor.
+    if rmb_clicked
+        and visuals_parent_hot
+        and not A.world_color_picker_open
+        and (A.world_color_picker_anim or 0) <= 0.02
+    then
+        -- RMB only expands/collapses the nested Visuals menu.
+        -- It must NOT change the currently selected main page.
+        A.visuals_expanded =
+            not A.visuals_expanded
+    end
+
+    local visuals_now =
+        tick()
+
+    if A.visuals_expand_last_t == nil then
+        A.visuals_expand_last_t =
+            visuals_now
+    end
+
+    local visuals_dt =
+        clamp(
+            visuals_now
+            - A.visuals_expand_last_t,
+            0,
+            0.05
+        )
+
+    A.visuals_expand_last_t =
+        visuals_now
+
+    local visuals_target =
+        A.visuals_expanded
+        and 1
+        or 0
+
+    A.visuals_expand_anim =
+        exp_chase(
+            A.visuals_expand_anim or 0,
+            visuals_target,
+            13,
+            visuals_dt
+        )
+
+    local visuals_expand =
+        clamp(
+            A.visuals_expand_anim or 0,
+            0,
+            1
+        )
+
+    if visuals_expand > 0.008 then
+        local old_sidebar_alpha =
+            MENU_RENDER_ALPHA
+
+        MENU_RENDER_ALPHA =
+            old_sidebar_alpha
+            * smooth01(visuals_expand)
+
+        local child_x =
+            wx + 26
+
+        local child_w =
+            136
+
+        local child_h =
+            31
+
+        local collapse_shift =
+            (1 - visuals_expand)
+            * 15
+
+        local world_y =
+            wy + 259
+            - collapse_shift
+
+        local armor_y =
+            wy + 292
+            - collapse_shift
+
+        -- Same smooth selected-background motion as the main Aimbot/Visuals tabs.
+        local child_selected =
+            S.tab == 2
+            and (
+                (tonumber(S.visuals_subtab) or 0) == 1
+                or (tonumber(S.visuals_subtab) or 0) == 2
+            )
+
+        local child_target_y =
+            (tonumber(S.visuals_subtab) or 0) == 2
+            and armor_y
+            or world_y
+
+        if A.visuals_child_indicator_y == nil then
+            A.visuals_child_indicator_y =
+                child_target_y
+        end
+
+        A.visuals_child_indicator_y =
+            exp_chase(
+                A.visuals_child_indicator_y,
+                child_target_y,
+                14,
+                visuals_dt
+            )
+
+        A.visuals_child_indicator_alpha =
+            exp_chase(
+                A.visuals_child_indicator_alpha or 0,
+                child_selected and 1 or 0,
+                13,
+                visuals_dt
+            )
+
+        if (A.visuals_child_indicator_alpha or 0) > 0.01 then
+            rounded_fill(
+                child_x,
+                A.visuals_child_indicator_y,
+                child_w,
+                child_h,
+                7,
+                alpha(
+                    C.selected,
+                    0.88
+                    * A.visuals_child_indicator_alpha
+                )
+            )
+        end
+
+        local world_hot =
+            hover(
+                mx,
+                my,
+                child_x,
+                world_y,
+                child_w,
+                child_h
+            )
+
+        local armor_hot =
+            hover(
+                mx,
+                my,
+                child_x,
+                armor_y,
+                child_w,
+                child_h
+            )
+
+        local child_interactive =
+            A.visuals_expanded
+            and visuals_expand > 0.92
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02
+
+        -- World child.
+        if world_hot
+            and not (
+                S.tab == 2
+                and (tonumber(S.visuals_subtab) or 0) == 1
+            )
+        then
+            rounded_fill(
+                child_x,
+                world_y,
+                child_w,
+                child_h,
+                7,
+                alpha(C.card_hover, 0.55)
+            )
+        end
+
+        local world_col =
+            FALLEN_HOVER_TEXT(
+                "sidebar_visual_world",
+                world_hot,
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 0) == 1
+                )
+                    and C.text
+                    or C.text_dim
+            )
+
+        local world_icon_handle =
+            FALLEN_WORLD_TAB_ICON_GET()
+
+        if world_icon_handle
+            and type(DrawImage) == "function"
+        then
+            local world_icon_col =
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 0) == 1
+                )
+                    and C.accent
+                    or C.text_dim
+
+            -- Static tab icon: hover does not whiten or resize it.
+            local world_icon_size = 18
+
+            local world_icon_px =
+                FALLEN_UI_LEN(
+                    world_icon_size
+                )
+
+            local world_icon_cx =
+                FALLEN_UI_X(
+                    child_x + 19
+                )
+
+            local world_icon_cy =
+                FALLEN_UI_Y(
+                    world_y + 16
+                )
+
+            pcall(
+                DrawImage,
+                world_icon_handle,
+                world_icon_cx - world_icon_px * 0.5,
+                world_icon_cy - world_icon_px * 0.5,
+                world_icon_px,
+                world_icon_px,
+                world_icon_col[1],
+                world_icon_col[2],
+                world_icon_col[3],
+                MENU_RENDER_ALPHA,
+                0
+            )
+        end
+
+        text(
+            child_x + 36,
+            world_y + 9,
+            "World",
+            world_col
+        )
+
+        -- Armor child.
+        if armor_hot
+            and not (
+                S.tab == 2
+                and (tonumber(S.visuals_subtab) or 0) == 2
+            )
+        then
+            rounded_fill(
+                child_x,
+                armor_y,
+                child_w,
+                child_h,
+                7,
+                alpha(C.card_hover, 0.55)
+            )
+        end
+
+        local armor_col =
+            FALLEN_HOVER_TEXT(
+                "sidebar_visual_armor",
+                armor_hot,
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 0) == 2
+                )
+                    and C.text
+                    or C.text_dim
+            )
+
+        local armor_icon_handle =
+            FALLEN_ARMOR_TAB_ICON_GET()
+
+        if armor_icon_handle
+            and type(DrawImage) == "function"
+        then
+            local armor_icon_col =
+                (
+                    S.tab == 2
+                    and (tonumber(S.visuals_subtab) or 0) == 2
+                )
+                    and C.accent
+                    or C.text_dim
+
+            -- Static tab icon: hover does not whiten or resize it.
+            local armor_icon_size = 18
+
+            local armor_icon_px =
+                FALLEN_UI_LEN(
+                    armor_icon_size
+                )
+
+            local armor_icon_cx =
+                FALLEN_UI_X(
+                    child_x + 19
+                )
+
+            local armor_icon_cy =
+                FALLEN_UI_Y(
+                    armor_y + 16
+                )
+
+            pcall(
+                DrawImage,
+                armor_icon_handle,
+                armor_icon_cx - armor_icon_px * 0.5,
+                armor_icon_cy - armor_icon_px * 0.5,
+                armor_icon_px,
+                armor_icon_px,
+                armor_icon_col[1],
+                armor_icon_col[2],
+                armor_icon_col[3],
+                MENU_RENDER_ALPHA,
+                0
+            )
+        end
+
+        text(
+            child_x + 36,
+            armor_y + 9,
+            "Armor",
+            armor_col
+        )
+
+        if child_interactive
+            and clicked
+        then
+            if world_hot then
+                S.tab = 2
+                S.visuals_subtab = 1
+                S.anim = 0
+
+                A.world_settings_open = false
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+                FALLEN_COLOR_INPUT_STOP(true)
+                numeric_stop(true)
+            elseif armor_hot then
+                S.tab = 2
+                S.visuals_subtab = 2
+                S.anim = 0
+
+                A.world_settings_open = false
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+                A.base_box_settings_open = false
+                FALLEN_COLOR_INPUT_STOP(true)
+                numeric_stop(true)
+            end
+        end
+
+        MENU_RENDER_ALPHA =
+            old_sidebar_alpha
+    end
+
+    -- Common section follows the same Visuals expansion animation.
+    -- Recalculate from the just-updated expand value so it tracks perfectly.
+    common_layout_expand =
+        smooth01(
+            clamp(
+                visuals_expand,
+                0,
+                1
+            )
+        )
+
+    common_layout_shift =
+        74 * common_layout_expand
+
+    common_label_y =
+        wy + 273 + common_layout_shift
+
+    misc_tab_y =
+        wy + 293 + common_layout_shift
+
+    text(
+        wx + 22,
+        common_label_y,
+        "COMMON",
+        C.text_faint
+    )
+
+    sidebar_tab(
+        mx,
+        my,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
+        wx + 10,
+        misc_tab_y,
+        3
+    )
+
+    -- Secret lives at the very bottom of the navigation, right above profile.
+    if A.secret_unlocked
+        and S.secret_enabled == true
+    then
+        sidebar_tab(
+            mx,
+            my,
+            clicked
+                and not A.world_color_picker_open
+                and (A.world_color_picker_anim or 0) <= 0.02,
+            wx + 10,
+            wy + WIN_H - 118,
+            4
+        )
+    end
+
+    -- Sidebar footer: live Roblox avatar + username.
+    update_profile()
+
+    line(wx + 12, wy + WIN_H - 74, wx + SIDEBAR_W - 12, wy + WIN_H - 74, C.divider, 1)
+
+    local avatar_size = 38
+
+    local avatar_x = wx + 19
+    local avatar_y = wy + WIN_H - 56
+
+    local avatar_drawn = false
+
+    circle_fill(
+        avatar_x + avatar_size * 0.5,
+        avatar_y + avatar_size * 0.5,
+        avatar_size * 0.5,
+        { 0.11, 0.12, 0.14, 1 }
+    )
+
+    if PROFILE.avatar
+        and type(DrawImage) == "function"
+    then
+        avatar_drawn =
+            FALLEN_AVATAR_DRAW_CROP_VIEW(
+                PROFILE.avatar,
+                avatar_x,
+                avatar_y,
+                avatar_size,
+                S.avatar_crop_zoom,
+                S.avatar_crop_pan_x,
+                S.avatar_crop_pan_y,
+                {
+                    C.sidebar[1],
+                    C.sidebar[2],
+                    C.sidebar[3],
+                    1,
+                },
+                true
+            )
+    end
+
+    if not avatar_drawn then
+        local first = string.sub(PROFILE.name or "F", 1, 1)
+        if first == "" then first = "F" end
+
+        centered_text(
+            avatar_x + avatar_size * 0.5,
+            avatar_y + avatar_size * 0.5 - 6,
+            string.upper(first),
+            C.accent
+        )
+    end
+
+    local avatar_hot =
+        hover(
+            mx,
+            my,
+            avatar_x,
+            avatar_y,
+            avatar_size,
+            avatar_size
+        )
+
+    A.avatar_hover_anim =
+        lerp(
+            tonumber(A.avatar_hover_anim) or 0,
+            avatar_hot and 1 or 0,
+            0.24
+        )
+
+    if (A.avatar_hover_anim or 0) > 0.003 then
+        -- Soft gray wash makes it obvious that the avatar is clickable.
+        circle_fill(
+            avatar_x + avatar_size * 0.5,
+            avatar_y + avatar_size * 0.5,
+            avatar_size * 0.5,
+            {
+                0.58,
+                0.58,
+                0.58,
+                0.22 * (A.avatar_hover_anim or 0),
+            }
+        )
+    end
+
+    FALLEN_AVATAR_EDITOR_FOOTER_CLICK(
+        mx,
+        my,
+        clicked,
+        avatar_x,
+        avatar_y,
+        avatar_size
+    )
+
+    local username = tostring(PROFILE.name or "Roblox User")
+    if #username > 14 then
+        username = string.sub(username, 1, 12) .. ".."
+    end
+
+    text(wx + 68, wy + WIN_H - 40, username, C.text)
+
+    local gear_x =
+        wx + SIDEBAR_W - 24
+
+    local gear_y =
+        wy + WIN_H - 34
+
+    local gear_hot =
+        hover(
+            mx,
+            my,
+            gear_x - 11,
+            gear_y - 11,
+            22,
+            22
+        )
+
+    local gear_hover_anim =
+        FALLEN_GEAR_HOVER_STEP(
+            gear_hot
+        )
+
+    if gear_hover_anim > 0.002 then
+        circle_fill(
+            gear_x,
+            gear_y,
+            10
+                + gear_hover_anim,
+            {
+                0.10,
+                0.105,
+                0.125,
+                0.18
+                    + 0.82
+                    * gear_hover_anim,
+            }
+        )
+    end
+
+    FALLEN_DRAW_GEAR(
+        gear_x,
+        gear_y,
+        gear_hot,
+        gear_hover_anim
+    )
+
+    if clicked
+        and gear_hot
+        and not A.world_color_picker_open
+        and (A.world_color_picker_anim or 0) <= 0.02
+    then
+        A.menu_settings_open =
+            not A.menu_settings_open
+
+        A.menu_scale_dropdown_open = false
+        A.menu_type_dropdown_open = false
+
+        if A.menu_settings_open then
+            A.config_open = false
+            FALLEN_CONFIGS.input_focus(false)
+
+            A.aim_settings_open = false
+            A.aim_part_dropdown_open = false
+            A.fov_picker_open = false
+
+            A.world_settings_open = false
+
+            if A.world_color_picker_key ~= "menu_glow"
+                and A.world_color_picker_key ~= "menu_gradient_a"
+                and A.world_color_picker_key ~= "menu_gradient_b"
+            then
+                A.world_color_picker_open = false
+                A.world_color_picker_drag = nil
+            end
+
+            numeric_stop(true)
+            aim_bind_cancel()
+        else
+        end
+    end
+
+    -- Top Configs dropdown.
+    local content_x = wx + SIDEBAR_W + 15
+    local content_w = WIN_W - SIDEBAR_W - 30
+
+    local cfg_x = content_x
+    local cfg_y = wy + 16
+    local cfg_w = 206
+    local cfg_h = 34
+
+    local cfg_hot =
+        hover(
+            mx,
+            my,
+            cfg_x,
+            cfg_y,
+            cfg_w,
+            cfg_h
+        )
+
+    rounded_fill(
+        cfg_x,
+        cfg_y,
+        cfg_w,
+        cfg_h,
+        8,
+        cfg_hot
+            and C.card_hover
+            or C.card
+    )
+
+    text(
+        cfg_x + 14,
+        cfg_y + 12,
+        "Configs",
+        FALLEN_HOVER_TEXT("configs_button", cfg_hot, C.text)
+    )
+
+    if FALLEN_CONFIGS.CONFIG.loaded_name then
+        local loaded =
+            tostring(
+                FALLEN_CONFIGS.CONFIG.loaded_name
+            )
+
+        if #loaded > 12 then
+            loaded =
+                string.sub(
+                    loaded,
+                    1,
+                    10
+                )
+                .. ".."
+        end
+
+        text(
+            cfg_x + 86,
+            cfg_y + 12,
+            loaded,
+            C.text_faint
+        )
+    end
+
+    text(
+        cfg_x + 188,
+        cfg_y + 12,
+        A.config_open
+            and "^"
+            or "v",
+        C.text_dim
+    )
+
+    if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
+            clicked,
+            "config_open"
+        )
+        and cfg_hot
+        and not A.world_color_picker_open
+        and (A.world_color_picker_anim or 0) <= 0.02
+    then
+        A.config_open =
+            not A.config_open
+
+        if A.config_open then
+            numeric_stop(true)
+            aim_bind_cancel()
+
+            A.menu_settings_open = false
+            A.menu_scale_dropdown_open = false
+            A.menu_type_dropdown_open = false
+
+            A.aim_settings_open = false
+            A.aim_part_dropdown_open = false
+            A.fov_picker_open = false
+
+            A.world_settings_open = false
+            A.world_color_picker_open = false
+            A.world_color_picker_drag = nil
+        else
+            FALLEN_CONFIGS.input_focus(false)
+        end
+    end
+
+    line(content_x, wy + 61, wx + WIN_W - 16, wy + 61, C.divider, 1)
+
+    -- Page content.
+    local page_x = content_x
+    local page_y = wy + 82
+    local page_w = content_w
+
+    local slide = (1 - S.anim) * 9
+    page_x = page_x + slide
+
+    local config_overlay_open =
+        A.config_open
+        or (A.config_anim or 0) > 0.02
+
+    local menu_settings_overlay_open =
+        A.menu_settings_open
+        or (A.menu_settings_anim or 0) > 0.02
+
+    local any_overlay_open =
+        config_overlay_open
+        or menu_settings_overlay_open
+        or A.world_color_picker_open == true
+        or (A.world_color_picker_anim or 0) > 0.02
+
+    local page_clicked =
+        clicked
+        and not any_overlay_open
+
+    local page_rmb_clicked =
+        rmb_clicked
+        and not any_overlay_open
+
+    if S.tab == 1 then
+        draw_aimbot_page(
+            mx,
+            my,
+            page_clicked,
+            lmb,
+            page_rmb_clicked,
+            page_x,
+            page_y,
+            page_w
+        )
+    elseif S.tab == 5 then
+        FALLEN_DRAW_SILENT_AIM_PAGE(
+            mx,
+            my,
+            page_clicked,
+            lmb,
+            page_rmb_clicked,
+            page_x,
+            page_y,
+            page_w
+        )
+    elseif S.tab == 2 then
+        local visuals_page =
+            tonumber(S.visuals_subtab)
+            or 0
+
+        if visuals_page == 1 then
+            -- World keeps the entire current World page.
+            draw_visuals_page(
+                mx,
+                my,
+                page_clicked,
+                lmb,
+                page_rmb_clicked,
+                page_x,
+                page_y,
+                page_w
+            )
+
+        elseif visuals_page == 2 then
+            FALLEN_DRAW_ARMOR_PAGE(
+                mx,
+                my,
+                page_clicked,
+                lmb,
+                page_rmb_clicked,
+                page_x,
+                page_y,
+                page_w
+            )
+
+        else
+            FALLEN_DRAW_VISUALS_MAIN_PAGE(
+                mx,
+                my,
+                page_clicked,
+                lmb,
+                page_rmb_clicked,
+                page_x,
+                page_y,
+                page_w
+            )
+        end
+
+    elseif S.tab == 3 then
         section_title(
             page_x,
             page_y,
@@ -31404,7 +32315,7 @@ hooks.on_render(function()
             page_x,
             page_y + 25,
             page_w,
-            82,
+            74,
             11
         )
 
@@ -31858,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v82 | clean misc without manipulation hitscan antiaim shot-on-air | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v84 | source loader port no blur | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -32483,2370 +33394,997 @@ FALLEN_PRELOAD_HITFX_IMMEDIATELY()
 FALLEN_START_IMAGE_PRELOAD()
 
 do
-    -- Loader state is deliberately block-scoped.
-    -- Its render callback captures these locals, while they stop consuming
-    -- active local slots in the main chunk after this block ends.
-    local loader_source_url =
-        _G.FALLEN_LOADER_PRODUCT_PAGE_URL
+    -- =====================================================
+    -- NL-source loader port for the custom Lua Drawing API
+    -- =====================================================
+    -- Visual layout and timings are taken from the supplied C++ loader:
+    --   Splash -> Expanding -> Ready -> Exiting
+    --   200x200 splash, 500x400 dashboard, 15px outer rounding
+    --   source cubic easing / modal / inject timings / hover behavior
+    -- Blur is intentionally omitted because this Lua API has no blur primitive.
+    --
+    -- Keep the entire loader in one table so this block consumes only one
+    -- additional active local in the main Lua chunk (important near Lua's
+    -- local-variable limit).
+    local L = {
+        phase = "Splash",
+        splash_t = 0,
+        expand_t = 0,
+        content_alpha = 0,
+        content_t = 0,
+        loader_alpha = 1,
+        window_alpha = 0,
+        hide_t = 0,
+        boot_fade_t = 0,
+        exit_from_alpha = 1,
+        win_w = 200,
+        win_h = 200,
+        target_w = 500,
+        target_h = 400,
+        exit_done = false,
+        hidden = false,
+        launch_success = false,
+        last_time = tick(),
+        time_sec = 0,
 
--- If the loader artwork URL changed between script reloads, discard the
--- previous cached image handle so the new picture is actually requested.
-if _G.FALLEN_LOADER_PRODUCT_IMAGE_SOURCE
-    ~= loader_source_url
-then
-    _G.FALLEN_LOADER_PRODUCT_IMAGE = nil
-    _G.FALLEN_LOADER_PRODUCT_IMAGE_SOURCE =
-        loader_source_url
-end
+        cx = nil,
+        cy = nil,
+        drag = false,
+        drag_off_x = 0,
+        drag_off_y = 0,
+        prev_lmb = false,
 
-_G.FALLEN_LOADER_PRODUCT_IMAGE_URL =
-    FALLEN_LOADER_RESOLVE_IMAGE_URL(
-        loader_source_url
-    )
-    or loader_source_url
+        close_hover = 0,
+        minimize_hover = 0,
+        site_hover = 0,
+        discord_hover = 0,
+        telegram_hover = 0,
+        community_hover = 0,
+        api_hover = 0,
 
-if not _G.FALLEN_LOADER_PRODUCT_IMAGE
-    and type(LoadImage) == "function"
-then
-    pcall(function()
-        _G.FALLEN_LOADER_PRODUCT_IMAGE =
-            LoadImage(
-                _G.FALLEN_LOADER_PRODUCT_IMAGE_URL
-            )
-    end)
-end
+        modal = {
+            open = false,
+            closing = false,
+            open_time = 0,
+            close_time = 0,
+            reopen_block_until = 0,
+            alpha = 0,
+            branch_menu = false,
+            branch_t = 0,
+            branch_hover = 0,
+        },
 
-local product_image =
-    _G.FALLEN_LOADER_PRODUCT_IMAGE
+        inject = {
+            active = false,
+            show_content = false,
+            start_time = 0,
+            content_alpha = 1,
+            modal_w = 450,
+            modal_h = 350,
+            logo_alpha = 0,
+            progress = 0,
+        },
 
-local logo_image =
-    product_image
+        last_launch = "Never",
 
-local last_time = tick()
+        -- Exact colors from Theme.h.
+        theme = {
+            bg = {0.000, 0.010, 0.010},
+            accent = {93 / 255, 123 / 255, 200 / 255},
+            card = {0.016, 0.035, 0.059},
+            outline = {0.067, 0.075, 0.090},
+            text = {1.000, 1.000, 1.000},
+            muted = {0.600, 0.600, 0.600},
+            dim = {0.700, 0.700, 0.700},
+            soft = {0.850, 0.850, 0.850},
+            hover = {230 / 255, 230 / 255, 230 / 255},
+            caption = {0.450, 0.450, 0.480},
+            progress_track = {1.000, 1.000, 1.000},
+            progress_fill = {0.930, 0.560, 0.200},
+            link = {108 / 255, 132 / 255, 186 / 255},
+            button = {72 / 255, 118 / 255, 214 / 255},
+            branch_icon = {0.780, 0.800, 0.860},
+            branch_label = {0.920, 0.920, 0.940},
+            popup_border = {0.040, 0.050, 0.070},
+        },
+    }
 
-local open_anim = 0
-local open_target = 1
-
-local page = "start"
-local details = false
-
-local details_transition = 0
-
-local profile_open = false
-local profile_anim = 0
-
-local start_hover = 0
-local card_hover = 0
-local close_hover = 0
-local back_hover = 0
-local load_hover = 0
-local user_hover = 0
-
-local last_lmb = false
-
-local loading = false
-local loading_started = 0
-
-local hidden = false
-
--- Smooth draggable loader position.
-local loader_cx = nil
-local loader_cy = nil
-local loader_target_cx = nil
-local loader_target_cy = nil
-local loader_dragging = false
-local loader_drag_off_x = 0
-local loader_drag_off_y = 0
-
--- Live local-Roblox profile used by the sidebar and profile popup.
-local profile_name = "Loading..."
-local profile_user_id = nil
-local profile_avatar = nil
-local profile_avatar_started = false
-local profile_avatar_failed = false
-local profile_last_scan = -100
-local profile_worker_id = nil
-
-local function clamp(v, a, b)
-    if v < a then
-        return a
+    function L.clamp01(t)
+        if t < 0 then return 0 end
+        if t > 1 then return 1 end
+        return t
     end
 
-    if v > b then
-        return b
+    function L.clamp(v, a, b)
+        if v < a then return a end
+        if v > b then return b end
+        return v
     end
 
-    return v
-end
-
-local function lerp(a, b, t)
-    return a + (b - a) * t
-end
-
-local function chase(v, target, speed, dt)
-    return v + (target - v) * clamp(dt * speed, 0, 1)
-end
-
-local function inside(mx, my, x, y, w, h)
-    return
-        mx >= x and
-        mx <= x + w and
-        my >= y and
-        my <= y + h
-end
-
-local function mouse_pos()
-    if utility and utility.get_mouse_pos then
-        local ok, mx, my =
-            pcall(utility.get_mouse_pos)
-
-        if ok then
-            mx = tonumber(mx)
-            my = tonumber(my)
-
-            if mx and my then
-                return mx, my
-            end
+    function L.ease_in_out_cubic(t)
+        t = L.clamp01(t)
+        if t < 0.5 then
+            return 4 * t * t * t
         end
+        return 1 - ((-2 * t + 2) ^ 3) / 2
     end
 
-    if utility and utility.GetMousePos then
-        local ok, mx, my =
-            pcall(utility.GetMousePos)
+    function L.bezier_1d(t, a, b)
+        local u = 1 - t
+        return 3 * u * u * t * a + 3 * u * t * t * b + t * t * t
+    end
 
-        if ok then
-            mx = tonumber(mx)
-            my = tonumber(my)
+    function L.bezier_1d_deriv(t, a, b)
+        local u = 1 - t
+        return 3 * u * u * a + 6 * u * t * (b - a) + 3 * t * t * (1 - b)
+    end
 
-            if mx and my then
-                return mx, my
+    function L.cubic_bezier_ease(x, x1, y1, x2, y2)
+        x = L.clamp01(x)
+        if x <= 0 then return 0 end
+        if x >= 1 then return 1 end
+
+        local t = x
+        for _ = 1, 8 do
+            local x_est = L.bezier_1d(t, x1, x2) - x
+            local dx = L.bezier_1d_deriv(t, x1, x2)
+            if math.abs(dx) < 0.000001 then
+                break
             end
+            t = L.clamp01(t - x_est / dx)
         end
+
+        return L.bezier_1d(t, y1, y2)
     end
 
-    if input then
-        local fn =
-            input.get_mouse_position or
-            input.get_mouse_pos or
-            input.GetMousePosition
+    function L.ease_out_expand(t)
+        t = L.clamp01(t)
+        local e = L.cubic_bezier_ease(t, 0.22, 1.0, 0.36, 1.0)
+        if t <= 0.55 then
+            return e
+        end
 
-        if fn then
-            local ok, a, b =
-                pcall(fn)
+        local mid_t = 0.55
+        local mid = L.cubic_bezier_ease(mid_t, 0.22, 1.0, 0.36, 1.0)
+        local u = (t - mid_t) / (1 - mid_t)
+        u = u * u * (3 - 2 * u)
+        return mid + (1 - mid) * u
+    end
 
+    function L.lerp(a, b, t)
+        return a + (b - a) * L.clamp01(t)
+    end
+
+    function L.hover_step(v, hovered, dt, speed)
+        speed = speed or 10
+        if hovered then
+            return L.clamp01(v + speed * dt)
+        end
+        return L.clamp01(v - speed * dt)
+    end
+
+    function L.mix_color(a, b, t)
+        return {
+            L.lerp(a[1], b[1], t),
+            L.lerp(a[2], b[2], t),
+            L.lerp(a[3], b[3], t),
+        }
+    end
+
+    function L.inside(mx, my, x, y, w, h)
+        return mx >= x and mx <= x + w and my >= y and my <= y + h
+    end
+
+    function L.mouse_pos()
+        if utility and type(utility.get_mouse_pos) == "function" then
+            local ok, mx, my = pcall(utility.get_mouse_pos)
             if ok then
-                if tonumber(a) and tonumber(b) then
-                    return tonumber(a), tonumber(b)
-                end
-
-                if a then
-                    local okx, px =
-                        pcall(function()
-                            return a.X
-                        end)
-
-                    local oky, py =
-                        pcall(function()
-                            return a.Y
-                        end)
-
-                    if okx and oky then
-                        px = tonumber(px)
-                        py = tonumber(py)
-
-                        if px and py then
-                            return px, py
-                        end
-                    end
+                mx = tonumber(mx)
+                my = tonumber(my)
+                if mx and my then
+                    return mx, my
                 end
             end
         end
+        return -10000, -10000
     end
 
-    if Windows and Windows.GetMousePos then
-        local ok, m =
-            pcall(Windows.GetMousePos)
+    function L.lmb_down()
+        if type(key_down) == "function" then
+            local ok, down = pcall(key_down, 0x01)
+            if ok then
+                return down == true
+            end
+        end
+        return false
+    end
 
-        if ok and m then
+    -- Non-overlapping rounded fill so window/modal fades do not create the
+    -- dark alpha seams that overlapping circles + boxes would produce.
+    function L.rounded_fill(x, y, w, h, r, c, a)
+        if w <= 0 or h <= 0 or a <= 0 then return end
+        r = math.floor(L.clamp(r or 0, 0, math.min(w, h) * 0.5))
+        if r <= 0 then
+            DrawBoxFilled(x, y, x + w, y + h, c[1], c[2], c[3], a)
             return
-                tonumber(m.X) or -1,
-                tonumber(m.Y) or -1
         end
-    end
 
-    return -1, -1
-end
+        DrawBoxFilled(x + r, y, x + w - r, y + h, c[1], c[2], c[3], a)
+        if h - r * 2 > 0 then
+            DrawBoxFilled(x, y + r, x + r, y + h - r, c[1], c[2], c[3], a)
+            DrawBoxFilled(x + w - r, y + r, x + w, y + h - r, c[1], c[2], c[3], a)
+        end
 
-local function lmb_down()
-    if input then
-        local fn =
-            input.is_key_down or
-            input.IsKeyDown
+        local rr = r * r
+        for i = 0, r - 1 do
+            local top_dy = (i + 0.5) - r
+            local top_dx = math.sqrt(math.max(0, rr - top_dy * top_dy))
+            local bot_dy = i + 0.5
+            local bot_dx = math.sqrt(math.max(0, rr - bot_dy * bot_dy))
 
-        if fn then
-            local ok, value =
-                pcall(fn, 0x01)
+            if top_dx > 0 then
+                DrawBoxFilled(x + r - top_dx, y + i, x + r, y + i + 1, c[1], c[2], c[3], a)
+                DrawBoxFilled(x + w - r, y + i, x + w - r + top_dx, y + i + 1, c[1], c[2], c[3], a)
+            end
 
-            if ok then
-                return value == true
+            if bot_dx > 0 then
+                local by = y + h - r + i
+                DrawBoxFilled(x + r - bot_dx, by, x + r, by + 1, c[1], c[2], c[3], a)
+                DrawBoxFilled(x + w - r, by, x + w - r + bot_dx, by + 1, c[1], c[2], c[3], a)
             end
         end
     end
 
-    if Windows and Windows.IsKeyPressed then
-        local ok, value =
-            pcall(Windows.IsKeyPressed, 0x01)
-
-        if ok then
-            return value == true
+    function L.arc(cx, cy, r, a0, a1, c, alpha, thickness)
+        if type(DrawLine) ~= "function" then return end
+        local segs = 8
+        local px = cx + math.cos(a0) * r
+        local py = cy + math.sin(a0) * r
+        for i = 1, segs do
+            local t = i / segs
+            local ang = a0 + (a1 - a0) * t
+            local nx = cx + math.cos(ang) * r
+            local ny = cy + math.sin(ang) * r
+            DrawLine(px, py, nx, ny, c[1], c[2], c[3], alpha, thickness)
+            px, py = nx, ny
         end
     end
 
-    return false
-end
+    function L.rounded_outline(x, y, w, h, r, c, a, thickness)
+        if type(DrawLine) ~= "function" or a <= 0 then return end
+        r = L.clamp(r or 0, 0, math.min(w, h) * 0.5)
+        thickness = thickness or 1
 
-local function rect(
-    x,
-    y,
-    w,
-    h,
-    r,
-    cr,
-    cg,
-    cb,
-    ca
-)
-    if w <= 0 or h <= 0 then
-        return
+        DrawLine(x + r, y, x + w - r, y, c[1], c[2], c[3], a, thickness)
+        DrawLine(x + r, y + h, x + w - r, y + h, c[1], c[2], c[3], a, thickness)
+        DrawLine(x, y + r, x, y + h - r, c[1], c[2], c[3], a, thickness)
+        DrawLine(x + w, y + r, x + w, y + h - r, c[1], c[2], c[3], a, thickness)
+
+        L.arc(x + r, y + r, r, math.pi, math.pi * 1.5, c, a, thickness)
+        L.arc(x + w - r, y + r, r, math.pi * 1.5, math.pi * 2, c, a, thickness)
+        L.arc(x + w - r, y + h - r, r, 0, math.pi * 0.5, c, a, thickness)
+        L.arc(x + r, y + h - r, r, math.pi * 0.5, math.pi, c, a, thickness)
     end
 
-    r =
-        math.min(
-            tonumber(r) or 0,
-            w / 2,
-            h / 2
-        )
-
-    if r <= 0 then
-        Drawing.DrawBoxFilled(
-            x,
-            y,
-            x + w,
-            y + h,
-            cr, cg, cb, ca
-        )
-        return
+    function L.text(x, y, value, c, a)
+        if a <= 0 then return end
+        DrawText(x, y, tostring(value or ""), c[1], c[2], c[3], a)
     end
 
-    -- Fully opaque shapes can use the cheap overlap method because
-    -- alpha does not accumulate into dark seams.
-    if (ca or 1) >= 0.999 then
-        Drawing.DrawBoxFilled(
-            x + r,
-            y,
-            x + w - r,
-            y + h,
-            cr, cg, cb, ca
-        )
-
-        Drawing.DrawBoxFilled(
-            x,
-            y + r,
-            x + w,
-            y + h - r,
-            cr, cg, cb, ca
-        )
-
-        Drawing.DrawCircleFilled(
-            x + r,
-            y + r,
-            r,
-            cr, cg, cb, ca
-        )
-
-        Drawing.DrawCircleFilled(
-            x + w - r,
-            y + r,
-            r,
-            cr, cg, cb, ca
-        )
-
-        Drawing.DrawCircleFilled(
-            x + r,
-            y + h - r,
-            r,
-            cr, cg, cb, ca
-        )
-
-        Drawing.DrawCircleFilled(
-            x + w - r,
-            y + h - r,
-            r,
-            cr, cg, cb, ca
-        )
-
-        return
+    function L.text_center(cx, y, value, c, a)
+        -- Drawing API has no text measurement/font metrics. This estimate only
+        -- positions source labels; animation/timing/layout dimensions stay exact.
+        local s = tostring(value or "")
+        L.text(cx - (#s * 3.25), y, s, c, a)
     end
 
-    -- Alpha-safe path.
-    --
-    -- The original loader made a rounded rectangle from two overlapping
-    -- rectangles plus four overlapping circles. On translucent hover/glow
-    -- elements those overlaps blended twice and became visible as dark/black
-    -- patches where a straight edge turned into a rounded corner.
-    --
-    -- Here each pixel region is covered only once:
-    --   center strip + side strips + four non-overlapping quarter-circle strips.
-    local ri =
-        math.max(
-            1,
-            math.floor(r + 0.5)
-        )
-
-    ri =
-        math.min(
-            ri,
-            math.floor(w / 2),
-            math.floor(h / 2)
-        )
-
-    if ri <= 0 then
-        Drawing.DrawBoxFilled(
-            x,
-            y,
-            x + w,
-            y + h,
-            cr, cg, cb, ca
-        )
-        return
+    function L.image_ready(handle)
+        if not handle or type(IsImageReady) ~= "function" then return false end
+        local ok, ready = pcall(IsImageReady, handle)
+        return ok and ready == true
     end
 
-    Drawing.DrawBoxFilled(
-        x + ri,
-        y,
-        x + w - ri,
-        y + h,
-        cr, cg, cb, ca
-    )
-
-    if h - ri * 2 > 0 then
-        Drawing.DrawBoxFilled(
-            x,
-            y + ri,
-            x + ri,
-            y + h - ri,
-            cr, cg, cb, ca
-        )
-
-        Drawing.DrawBoxFilled(
-            x + w - ri,
-            y + ri,
-            x + w,
-            y + h - ri,
-            cr, cg, cb, ca
-        )
-    end
-
-    local rr = ri * ri
-
-    for row = 0, ri - 1 do
-        local top_dy =
-            (row + 0.5) - ri
-
-        local top_dx =
-            math.sqrt(
-                math.max(
-                    0,
-                    rr - top_dy * top_dy
-                )
-            )
-
-        local bottom_dy =
-            row + 0.5
-
-        local bottom_dx =
-            math.sqrt(
-                math.max(
-                    0,
-                    rr - bottom_dy * bottom_dy
-                )
-            )
-
-        if top_dx > 0 then
-            Drawing.DrawBoxFilled(
-                x + ri - top_dx,
-                y + row,
-                x + ri,
-                y + row + 1,
-                cr, cg, cb, ca
-            )
-
-            Drawing.DrawBoxFilled(
-                x + w - ri,
-                y + row,
-                x + w - ri + top_dx,
-                y + row + 1,
-                cr, cg, cb, ca
-            )
+    function L.draw_product(x, y, size, alpha, rounding)
+        local h = _G.FALLEN_LOADER_PRODUCT_IMAGE
+        if h and L.image_ready(h) and type(DrawImage) == "function" then
+            pcall(DrawImage, h, x, y, size, size, 1, 1, 1, alpha, rounding or 5)
+            return true
         end
 
-        if bottom_dx > 0 then
-            local by =
-                y + h - ri + row
+        L.rounded_fill(x, y, size, size, rounding or 5, L.theme.accent, alpha * 0.85)
+        L.text_center(x + size * 0.5, y + size * 0.25, "F", L.theme.text, alpha)
+        return false
+    end
 
-            Drawing.DrawBoxFilled(
-                x + ri - bottom_dx,
-                by,
-                x + ri,
-                by + 1,
-                cr, cg, cb, ca
-            )
+    function L.draw_avatar(x, y, size, alpha)
+        if type(update_profile) == "function" then
+            pcall(update_profile)
+        end
 
-            Drawing.DrawBoxFilled(
-                x + w - ri,
-                by,
-                x + w - ri + bottom_dx,
-                by + 1,
-                cr, cg, cb, ca
-            )
+        local h = PROFILE and PROFILE.avatar or nil
+        if h and L.image_ready(h) and type(DrawImage) == "function" then
+            pcall(DrawImage, h, x, y, size, size, 1, 1, 1, alpha, size * 0.5)
+            return
+        end
+
+        DrawCircleFilled(x + size * 0.5, y + size * 0.5, size * 0.5,
+            L.theme.card[1], L.theme.card[2], L.theme.card[3], alpha)
+        DrawCircleFilled(x + size * 0.5, y + size * 0.5, size * 0.46,
+            L.theme.accent[1], L.theme.accent[2], L.theme.accent[3], alpha * 0.55)
+
+        local name = PROFILE and PROFILE.name or "F"
+        local first = string.sub(tostring(name), 1, 1)
+        if first == "" then first = "F" end
+        L.text_center(x + size * 0.5, y + size * 0.33, string.upper(first), L.theme.text, alpha)
+    end
+
+    function L.draw_spinner(cx, cy, alpha)
+        if type(DrawLine) ~= "function" or alpha <= 0 then return end
+
+        local segments = 64
+        local rotation_speed = 17
+        local full_circle = math.pi * 2
+        local fade_length = 0.75 * full_circle
+        local rotation = L.time_sec * rotation_speed
+        local radius = 20
+        local thickness = 4
+
+        local angle0 = rotation
+        local px = cx + math.cos(angle0) * radius
+        local py = cy + math.sin(angle0) * radius
+
+        for i = 1, segments do
+            local t = i / segments
+            local angle = rotation - t * fade_length
+            local nx = cx + math.cos(angle) * radius
+            local ny = cy + math.sin(angle) * radius
+            local a = alpha * (1 - t)
+            DrawLine(px, py, nx, ny,
+                L.theme.accent[1], L.theme.accent[2], L.theme.accent[3], a, thickness)
+            px, py = nx, ny
         end
     end
-end
 
-local function bordered_rect(
-    x,
-    y,
-    w,
-    h,
-    r,
-    br,
-    bg,
-    bb,
-    ba,
-    cr,
-    cg,
-    cb,
-    ca
-)
-    rect(
-        x,
-        y,
-        w,
-        h,
-        r,
-        br,
-        bg,
-        bb,
-        ba
-    )
-
-    rect(
-        x + 1,
-        y + 1,
-        w - 2,
-        h - 2,
-        math.max(r - 1, 1),
-        cr,
-        cg,
-        cb,
-        ca
-    )
-end
-
-local function draw_image(
-    image,
-    x,
-    y,
-    w,
-    h,
-    alpha,
-    rounding
-)
-    local target = image
-
-    if target
-        and Drawing.IsImageFailed
-        and Drawing.IsImageFailed(target)
-    then
-        target = nil
+    function L.begin_exit(success)
+        if L.phase == "Exiting" or L.exit_done then return end
+        L.launch_success = success == true
+        L.phase = "Exiting"
+        L.hide_t = 0
+        L.exit_done = false
+        L.exit_from_alpha = L.window_alpha
     end
 
-    if target
-        and Drawing.IsImageReady(target) then
-
-        Drawing.DrawImage(
-            target,
-            x,
-            y,
-            w,
-            h,
-            1,
-            1,
-            1,
-            alpha,
-            rounding or 6
-        )
-        return true
-    end
-
-    return false
-end
-
-local function refresh_local_profile()
-    if tick() - profile_last_scan < 0.75 then
-        return
-    end
-
-    profile_last_scan = tick()
-
-    if not rbx or type(rbx.local_player) ~= "function" then
-        return
-    end
-
-    local ok, player =
-        pcall(rbx.local_player)
-
-    if not ok or not player then
-        return
-    end
-
-    local ok_name, name =
-        pcall(function()
-            return player:get_name()
-        end)
-
-    if ok_name
-        and type(name) == "string"
-        and name ~= "" then
-
-        profile_name = name
-    end
-
-    local ok_id, uid =
-        pcall(function()
-            return player:user_id()
-        end)
-
-    if ok_id then
-        uid = tonumber(uid)
-
-        if uid and uid > 0 then
-            profile_user_id = uid
+    function L.tick_boot(dt)
+        if L.phase == "Exiting" then
+            L.hide_t = L.clamp01(L.hide_t + dt / 0.28)
+            L.window_alpha = L.exit_from_alpha * (1 - L.ease_in_out_cubic(L.hide_t))
+            if L.hide_t >= 1 then
+                L.window_alpha = 0
+                L.exit_done = true
+            end
+            return
         end
-    end
-end
 
-local function fetch_profile_avatar()
-    if profile_avatar
-        or profile_avatar_failed
-    then
-        return
-    end
+        if L.phase == "Splash" or L.phase == "Expanding" then
+            L.boot_fade_t = L.clamp01(L.boot_fade_t + dt / 0.20)
+            L.window_alpha = L.ease_in_out_cubic(L.boot_fade_t)
+        elseif L.phase == "Ready" then
+            L.window_alpha = 1
+        end
 
-    local custom =
-        FALLEN_CUSTOM_AVATAR_LOAD()
+        if L.phase == "Splash" then
+            L.splash_t = L.clamp01(L.splash_t + dt / 2.00)
+            L.loader_alpha = 1
+            L.content_alpha = 0
+            L.content_t = 0
+            L.win_w = 200
+            L.win_h = 200
 
-    if custom then
-        profile_avatar = custom
-        return
-    end
+            if L.splash_t >= 1 then
+                L.phase = "Expanding"
+                L.expand_t = 0
+            end
+        elseif L.phase == "Expanding" then
+            L.expand_t = L.clamp01(L.expand_t + dt / 0.32)
+            local t = L.ease_out_expand(L.expand_t)
+            L.win_w = math.floor(200 + (L.target_w - 200) * t + 0.5)
+            L.win_h = math.floor(200 + (L.target_h - 200) * t + 0.5)
+            L.loader_alpha = 1 - t
 
-    if not profile_user_id then
-        return
-    end
-
-    if not Http
-        or type(Http.roblox_avatar_headshot_url) ~= "function"
-        or type(Http.get) ~= "function"
-        or not Json
-        or type(Json.decode) ~= "function"
-        or type(Drawing.LoadImage) ~= "function" then
-
-        profile_avatar_failed = true
-        return
-    end
-
-    local ok, err =
-        pcall(function()
-            local meta_url =
-                Http.roblox_avatar_headshot_url(
-                    profile_user_id,
-                    "150x150",
-                    "Png",
-                    false
-                )
-
-            local http_ok, status, body =
-                Http.get(
-                    meta_url,
-                    { timeout_ms = 7000 }
-                )
-
-            if not http_ok
-                or status ~= 200 then
-
-                error(
-                    "avatar HTTP "
-                    .. tostring(status)
-                )
+            if t > 0.88 then
+                L.content_t = L.clamp01((t - 0.88) / 0.12) * 0.08
+                L.content_alpha = L.ease_in_out_cubic(L.content_t)
+            else
+                L.content_t = 0
+                L.content_alpha = 0
             end
 
-            local decoded, json_err =
-                Json.decode(body)
-
-            if not decoded then
-                error(
-                    json_err
-                    or "avatar JSON decode failed"
-                )
+            if L.expand_t >= 1 then
+                L.win_w = L.target_w
+                L.win_h = L.target_h
+                L.loader_alpha = 0
+                L.phase = "Ready"
+                if L.content_t < 0.08 then L.content_t = 0.08 end
+                L.content_alpha = L.ease_in_out_cubic(L.content_t)
             end
-
-            local row =
-                decoded.data
-                and decoded.data[1]
-
-            local image_url =
-                row
-                and row.imageUrl
-
-            if type(image_url) ~= "string"
-                or image_url == "" then
-
-                error(
-                    "avatar imageUrl missing"
-                )
-            end
-
-            profile_avatar =
-                Drawing.LoadImage(
-                    image_url
-                )
-
-            if not profile_avatar then
-                error(
-                    "avatar LoadImage failed"
-                )
-            end
-        end)
-
-    if not ok then
-        profile_avatar_failed = true
-        warn(
-            "[Fallen loader] "
-            .. tostring(err)
-        )
-    end
-end
-
-local function ensure_profile_avatar()
-    if profile_avatar
-        or profile_avatar_failed
-        or profile_avatar_started
-    then
-        return
-    end
-
-    profile_avatar_started = true
-
-    local create =
-        thread
-        and (
-            thread.create
-            or thread.Create
-        )
-
-    local stop =
-        thread
-        and (
-            thread.stop
-            or thread.Stop
-        )
-
-    if type(create) ~= "function" then
-        -- Old API build fallback. This is a single request only.
-        fetch_profile_avatar()
-        return
-    end
-
-    local worker_id = nil
-
-    local function worker()
-        if not profile_avatar
-            and not profile_avatar_failed then
-
-            fetch_profile_avatar()
-        end
-
-        if (
-            profile_avatar
-            or profile_avatar_failed
-        )
-            and worker_id
-            and type(stop) == "function"
-        then
-            pcall(
-                stop,
-                worker_id
-            )
+        elseif L.phase == "Ready" then
+            L.content_t = L.clamp01(L.content_t + dt / 0.40)
+            L.content_alpha = L.ease_in_out_cubic(L.content_t)
+            L.loader_alpha = 0
         end
     end
 
-    local ok, id =
-        pcall(
-            create,
-            worker,
-            250
-        )
-
-    if ok and id then
-        worker_id = id
-        profile_worker_id = id
-    else
-        -- Thread startup failed: do the one request directly.
-        fetch_profile_avatar()
-    end
-end
-
-local function update_profile()
-    refresh_local_profile()
-    ensure_profile_avatar()
-end
-
-local function draw_avatar(
-    x,
-    y,
-    size,
-    alpha,
-    fallback_scale
-)
-    if profile_avatar
-        and Drawing.IsImageReady(
-            profile_avatar
-        )
-    then
-        Drawing.DrawImage(
-            profile_avatar,
-            x,
-            y,
-            size,
-            size,
-            1, 1, 1,
-            alpha,
-            size / 2
-        )
-
-        return
-    end
-
-    if profile_avatar
-        and Drawing.IsImageFailed
-        and Drawing.IsImageFailed(
-            profile_avatar
-        )
-    then
-        profile_avatar_failed = true
-    end
-
-    Drawing.DrawCircleFilled(
-        x + size / 2,
-        y + size / 2,
-        size / 2,
-        0.10,
-        0.10,
-        0.12,
-        alpha
-    )
-
-    local first =
-        string.sub(
-            profile_name or "F",
-            1,
-            1
-        )
-
-    if first == "" then
-        first = "F"
-    end
-
-    Drawing.DrawTextWithOutline(
-        x + size / 2,
-        y + size * (fallback_scale or 0.28),
-        string.upper(first),
-        0.84,
-        0.84,
-        0.87,
-        alpha,
-        0, 0, 0,
-        alpha
-    )
-end
-
-hooks.on_render(function()
-    if hidden then
-        return
-    end
-
-    local now = tick()
-    local dt = now - last_time
-    last_time = now
-
-    if dt < 0 then
-        dt = 0
-    end
-
-    if dt > 0.05 then
-        dt = 0.05
-    end
-
-    open_anim =
-        chase(
-            open_anim,
-            open_target,
-            9,
-            dt
-        )
-    details_transition =
-        chase(
-            details_transition,
-            details and 1 or 0,
-            11,
-            dt
-        )
-
-    profile_anim =
-        chase(
-            profile_anim,
-            profile_open and 1 or 0,
-            12,
-            dt
-        )
-
-    if open_target == 0
-        and open_anim < 0.015 then
-
-        hidden = true
-
-        if _G.FallenSurvivalLoaded == true then
-            _G.FallenLua_Menu =
-                _G.FallenLua_Menu or {}
-
-            _G.FallenLua_Menu.visible = true
-            _G.FallenMenuReady = true
-        end
-
-        return
-    end
-
-    local screen = ScreenSize()
-
-    if not screen then
-        return
-    end
-
-    local sw = screen.Width
-    local sh = screen.Height
-
-    local mx, my = mouse_pos()
-
-    local lmb = lmb_down()
-
-    local click =
-        lmb and not last_lmb
-
-    last_lmb = lmb
-
-    local scale =
-        0.90 +
-        open_anim * 0.10
-
-    local alpha = open_anim
-
-    local w = 520 * scale
-    local h = 330 * scale
-
-    if loader_cx == nil then
-        loader_cx = sw * 0.5
-        loader_cy = sh * 0.5
-        loader_target_cx = loader_cx
-        loader_target_cy = loader_cy
-    end
-
-    local x =
-        loader_cx -
-        w / 2
-
-    local y =
-        loader_cy -
-        h / 2
-
-    -- Grab the top edge of the loader and drag it smoothly.
-    -- Close button remains clickable because the right-most area is excluded.
-    local loader_drag_hot =
-        inside(
-            mx, my,
-            x + 8 * scale,
-            y + 2 * scale,
-            w - 50 * scale,
-            24 * scale
-        )
-
-    if click and loader_drag_hot and not loading then
-        loader_dragging = true
-        loader_drag_off_x = mx - loader_cx
-        loader_drag_off_y = my - loader_cy
-    end
-
-    if loader_dragging and lmb and not loading then
-        loader_target_cx =
-            clamp(
-                mx - loader_drag_off_x,
-                w * 0.5 + 4,
-                sw - w * 0.5 - 4
-            )
-
-        loader_target_cy =
-            clamp(
-                my - loader_drag_off_y,
-                h * 0.5 + 4,
-                sh - h * 0.5 - 4
-            )
-    end
-
-    if not lmb then
-        loader_dragging = false
-    end
-
-    loader_cx =
-        chase(
-            loader_cx,
-            loader_target_cx,
-            loader_dragging and 18 or 12,
-            dt
-        )
-
-    loader_cy =
-        chase(
-            loader_cy,
-            loader_target_cy,
-            loader_dragging and 18 or 12,
-            dt
-        )
-
-    x =
-        loader_cx -
-        w / 2
-
-    y =
-        loader_cy -
-        h / 2
-
-    -- Snap the loader root to integer pixels so text/button edges are sharper.
-    x = snap(x)
-    y = snap(y)
-    w = snap(w)
-    h = snap(h)
-
-    local side_w =
-        124 * scale
-
-    for i = 1, 4 do
-        local grow =
-            i * 3 * scale
-
-        rect(
-            x - grow,
-            y - grow + 4 * scale,
-            w + grow * 2,
-            h + grow * 2,
-            11 * scale,
-            0,
-            0,
-            0,
-            alpha * (0.05 / i)
-        )
-    end
-
-    bordered_rect(
-        x,
-        y,
-        w,
-        h,
-        10 * scale,
-
-        0.15,
-        0.15,
-        0.17,
-        alpha,
-
-        0.025,
-        0.026,
-        0.030,
-        alpha
-    )
-
-    rect(
-        x + 1,
-        y + 1,
-        side_w,
-        h - 2,
-        9 * scale,
-        0.020,
-        0.021,
-        0.025,
-        alpha
-    )
-
-    Drawing.DrawLine(
-        x + side_w,
-        y + 10 * scale,
-        x + side_w,
-        y + h - 10 * scale,
-        0.11,
-        0.11,
-        0.13,
-        alpha,
-        1
-    )
-
-    -- Clean loader header: no image here.
-    Drawing.DrawText(
-        snap(x + 12 * scale),
-        snap(y + 18 * scale),
-        "Fallen-lua",
-        0.90, 0.90, 0.93, alpha
-    )
-
-
-    local close_x =
-        x + w - 30 * scale
-
-    local close_y =
-        y + 10 * scale
-
-    local close_size =
-        22 * scale
-
-    local close_hot =
-        inside(
-            mx,
-            my,
-            close_x,
-            close_y,
-            close_size,
-            close_size
-        )
-
-    close_hover =
-        chase(
-            close_hover,
-            close_hot and 1 or 0,
-            14,
-            dt
-        )
-
-    if close_hover > 0.01 then
-        rect(
-            close_x,
-            close_y,
-            close_size,
-            close_size,
-            5 * scale,
-            0.18,
-            0.06,
-            0.06,
-            alpha * close_hover * 0.45
-        )
-    end
-
-    local cc =
-        lerp(
-            0.36,
-            0.91,
-            close_hover
-        )
-
-    Drawing.DrawLine(
-        close_x + 6 * scale,
-        close_y + 6 * scale,
-        close_x + close_size - 6 * scale,
-        close_y + close_size - 6 * scale,
-        cc,
-        cc,
-        cc,
-        alpha,
-        1
-    )
-
-    Drawing.DrawLine(
-        close_x + close_size - 6 * scale,
-        close_y + 6 * scale,
-        close_x + 6 * scale,
-        close_y + close_size - 6 * scale,
-        cc,
-        cc,
-        cc,
-        alpha,
-        1
-    )
-
-    if click and close_hot then
-        open_target = 0
-    end
-
-    local nav_x =
-        x + 8 * scale
-
-    local nav_w =
-        side_w - 16 * scale
-
-    local nav_h =
-        28 * scale
-
-    local start_y =
-        y + 61 * scale
-
-    local start_hot =
-        inside(
-            mx,
-            my,
-            nav_x,
-            start_y,
-            nav_w,
-            nav_h
-        )
-
-    start_hover =
-        chase(
-            start_hover,
-            start_hot and 1 or 0,
-            14,
-            dt
-        )
-
-    if click
-        and start_hot
-        and not loading then
-
-        page = "start"
-        details = false
-        profile_open = false
-    end
-
-    local function nav_item(
-        ny,
-        text,
-        selected,
-        hover
-    )
-        local state =
-            selected and 1 or hover
-
-        if state > 0.01 then
-            rect(
-                nav_x,
-                ny,
-                nav_w,
-                nav_h,
-                6 * scale,
-                0.045 + state * 0.028,
-                0.045 + state * 0.028,
-                0.053 + state * 0.030,
-                alpha
-            )
-        end
-
-        if selected then
-            rect(
-                nav_x,
-                ny + 4 * scale,
-                nav_w,
-                nav_h - 8 * scale,
-                6 * scale,
-                0.090,
-                0.090,
-                0.100,
-                alpha * 0.65
-            )
-
-            rect(
-                nav_x + nav_w - 4 * scale,
-                ny + 4 * scale,
-                4 * scale,
-                20 * scale,
-                2 * scale,
-                0.92,
-                0.57,
-                0.15,
-                alpha
-            )
-        end
-
-        local dot =
-            selected
-            and 0.82
-            or lerp(
-                0.29,
-                0.72,
-                hover
-            )
-
-        if selected then
-            Drawing.DrawCircle(
-                nav_x + 15 * scale,
-                ny + 14 * scale,
-                (4.2 + hover * 0.5) * scale,
-                0.78,
-                0.79,
-                0.83,
-                alpha,
-                1
-            )
-
-            Drawing.DrawCircleFilled(
-                nav_x + 15 * scale,
-                ny + 14 * scale,
-                (1.7 + hover * 0.35) * scale,
-                0.92,
-                0.57,
-                0.15,
-                alpha
-            )
+    function L.tick_inject(now)
+        if not L.inject.active then return end
+
+        local elapsed = now - L.inject.start_time
+        local fade_out = 0.280
+        local shrink = 0.320
+        local fade_in = 0.360
+        local hold = 2.200
+        local progress_time = 1.800
+        local fade_out_end = fade_out
+        local shrink_end = fade_out + shrink
+        local inject_end = shrink_end + fade_in + hold
+
+        if elapsed < fade_out_end then
+            L.inject.show_content = false
+            L.inject.modal_w = 450
+            L.inject.modal_h = 350
+            L.inject.logo_alpha = 0
+            L.inject.progress = 0
+            L.inject.content_alpha = 1 - L.ease_in_out_cubic(elapsed / fade_out)
+        elseif elapsed < shrink_end then
+            L.inject.show_content = false
+            L.inject.content_alpha = 0
+            L.inject.logo_alpha = 0
+            local t = L.ease_out_expand((elapsed - fade_out_end) / shrink)
+            L.inject.modal_w = 450 + (350 - 450) * t
+            L.inject.modal_h = 350 + (200 - 350) * t
+        elseif elapsed < inject_end then
+            L.inject.show_content = true
+            L.inject.modal_w = 350
+            L.inject.modal_h = 200
+            local local_t = elapsed - shrink_end
+            L.inject.logo_alpha = L.ease_in_out_cubic(math.min(1, local_t / fade_in))
+            L.inject.content_alpha = 0
+            L.inject.progress = L.ease_out_expand(math.min(1, local_t / progress_time))
         else
-            Drawing.DrawCircle(
-                nav_x + 15 * scale,
-                ny + 14 * scale,
-                (3 + hover * 0.5) * scale,
-                dot,
-                dot,
-                dot,
-                alpha,
-                1
-            )
-        end
-
-        local text_color =
-            selected
-            and 0.82
-            or lerp(
-                0.40,
-                0.80,
-                hover
-            )
-
-        Drawing.DrawText(
-            nav_x + (27 + hover * 2) * scale,
-            ny + 7 * scale,
-            text,
-            text_color,
-            text_color,
-            text_color + 0.02,
-            alpha
-        )
-    end
-
-    nav_item(
-        start_y,
-        "Loader",
-        true,
-        start_hover
-    )
-
-    local user_x =
-        x + 8 * scale
-
-    local user_y =
-        y + h - 44 * scale
-
-    local user_w =
-        side_w - 16 * scale
-
-    local user_h =
-        32 * scale
-
-    local user_hot =
-        inside(
-            mx,
-            my,
-            user_x,
-            user_y,
-            user_w,
-            user_h
-        )
-
-    user_hover =
-        chase(
-            user_hover,
-            user_hot and 1 or 0,
-            14,
-            dt
-        )
-
-    if user_hover > 0.01
-        or profile_open then
-
-        local ua =
-            profile_open
-            and 1
-            or user_hover
-
-        rect(
-            user_x,
-            user_y,
-            user_w,
-            user_h,
-            6 * scale,
-            0.045 + ua * 0.025,
-            0.045 + ua * 0.025,
-            0.052 + ua * 0.028,
-            alpha
-        )
-    end
-
-    update_profile()
-
-    draw_avatar(
-        user_x + 4 * scale,
-        user_y + 7 * scale,
-        18 * scale,
-        alpha,
-        0.25
-    )
-
-    local shown_name =
-        tostring(
-            profile_name
-            or "Roblox User"
-        )
-
-    if #shown_name > 10 then
-        shown_name =
-            string.sub(
-                shown_name,
-                1,
-                8
-            ) .. ".."
-    end
-
-    Drawing.DrawText(
-        user_x + (27 + user_hover * 2) * scale,
-        user_y + 10 * scale,
-        shown_name,
-        lerp(
-            0.44,
-            0.78,
-            user_hover
-        ),
-        lerp(
-            0.44,
-            0.78,
-            user_hover
-        ),
-        lerp(
-            0.48,
-            0.82,
-            user_hover
-        ),
-        alpha
-    )
-
-    if click
-        and user_hot
-        and not loading then
-
-        profile_open =
-            not profile_open
-    end
-
-    local content_x =
-        x +
-        side_w +
-        21 * scale
-
-    local content_w =
-        w -
-        side_w -
-        42 * scale
-
-    if page == "start"
-        and details_transition < 0.99 then
-
-        local pa =
-            alpha *
-            (1 - details_transition)
-
-        local slide =
-            -details_transition *
-            25 *
-            scale
-
-        local cx =
-            content_x +
-            slide
-
-        Drawing.DrawText(
-            cx,
-            y + 17 * scale,
-            "Fallen survival",
-            0.90,
-            0.90,
-            0.92,
-            pa
-        )
-
-        Drawing.DrawText(
-            cx,
-            y + 35 * scale,
-            "Ready to launch",
-            0.38,
-            0.38,
-            0.42,
-            pa
-        )
-
-        local card_x = cx
-        local card_y = y + 70 * scale
-        local card_w = content_w
-        local card_h = 72 * scale
-
-        local card_hot =
-            not details and
-            not profile_open and
-            inside(
-                mx,
-                my,
-                card_x,
-                card_y,
-                card_w,
-                card_h
-            )
-
-        card_hover =
-            chase(
-                card_hover,
-                card_hot and 1 or 0,
-                12,
-                dt
-            )
-
-        local lift =
-            card_hover *
-            3 *
-            scale
-
-        local pulse =
-            (
-                math.sin(now * 2.5) +
-                1
-            ) * 0.5
-
-        if card_hover > 0.01 then
-            rect(
-                card_x - 4 * scale,
-                card_y - lift - 4 * scale,
-                card_w + 8 * scale,
-                card_h + 8 * scale,
-                9 * scale,
-                0.90,
-                0.55,
-                0.13,
-                pa *
-                card_hover *
-                (0.06 + pulse * 0.03)
-            )
-        end
-
-        bordered_rect(
-            card_x,
-            card_y - lift,
-            card_w,
-            card_h,
-            7 * scale,
-
-            lerp(
-                0.11,
-                0.28,
-                card_hover
-            ),
-            lerp(
-                0.11,
-                0.19,
-                card_hover
-            ),
-            lerp(
-                0.13,
-                0.09,
-                card_hover
-            ),
-            pa,
-
-            lerp(
-                0.042,
-                0.060,
-                card_hover
-            ),
-            lerp(
-                0.043,
-                0.052,
-                card_hover
-            ),
-            lerp(
-                0.048,
-                0.043,
-                card_hover
-            ),
-            pa
-        )
-
-        local image_size =
-            (42 + card_hover * 4) * scale
-
-        local card_img_ok =
-            draw_image(
-                product_image,
-                card_x + 12 * scale,
-                card_y -
-                lift +
-                15 * scale -
-                card_hover * 2 * scale,
-                image_size,
-                image_size,
-                pa,
-                8 * scale
-            )
-
-        if not card_img_ok then
-            bordered_rect(
-                card_x + 12 * scale,
-                card_y -
-                lift +
-                15 * scale -
-                card_hover * 2 * scale,
-                image_size,
-                image_size,
-                8 * scale,
-                0.10, 0.10, 0.11, pa,
-                0.04, 0.04, 0.05, pa
-            )
-
-            Drawing.DrawTextWithOutline(
-                card_x + 12 * scale + image_size / 2,
-                card_y - lift + 28 * scale,
-                "FS",
-                0.86, 0.55, 0.14, pa,
-                0, 0, 0, pa
-            )
-        end
-
-        Drawing.DrawText(
-            card_x + (64 + card_hover * 2) * scale,
-            card_y - lift + 15 * scale,
-            "Fallen survival",
-            0.87,
-            0.87,
-            0.89,
-            pa
-        )
-
-        Drawing.DrawText(
-            card_x + (64 + card_hover * 2) * scale,
-            card_y - lift + 35 * scale,
-            "Fallen survival loader",
-            0.40,
-            0.40,
-            0.44,
-            pa
-        )
-
-        rect(
-            card_x + card_w - 72 * scale,
-            card_y - lift + 18 * scale,
-            52 * scale,
-            20 * scale,
-            4 * scale,
-            0.17,
-            0.115,
-            0.045,
-            pa
-        )
-
-        Drawing.DrawCircleFilled(
-            card_x + card_w - 62 * scale,
-            card_y - lift + 28 * scale,
-            (2.5 + pulse * 0.4) * scale,
-            0.94,
-            0.60,
-            0.18,
-            pa
-        )
-
-        Drawing.DrawText(
-            card_x + card_w - 55 * scale,
-            card_y - lift + 21 * scale,
-            "Ready",
-            0.89,
-            0.63,
-            0.29,
-            pa
-        )
-
-        Drawing.DrawText(
-            card_x +
-            card_w -
-            (24 - card_hover * 3) * scale,
-            card_y - lift + 48 * scale,
-            ">",
-            lerp(
-                0.32,
-                0.90,
-                card_hover
-            ),
-            lerp(
-                0.32,
-                0.90,
-                card_hover
-            ),
-            lerp(
-                0.35,
-                0.90,
-                card_hover
-            ),
-            pa
-        )
-
-        if click and card_hot then
-            details = true
+            L.inject.active = false
+            L.inject.show_content = true
+            L.inject.logo_alpha = 1
+            L.inject.progress = 1
+            _G.FallenSurvivalLoaded = true
+            L.begin_exit(true)
         end
     end
 
-    if page == "start"
-        and details_transition > 0.01 then
+    function L.modal_open(now)
+        if now < (L.modal.reopen_block_until or 0) then return end
+        L.modal.open = true
+        L.modal.closing = false
+        L.modal.open_time = now
+        L.modal.alpha = 0
+        L.modal.branch_menu = false
+        L.modal.branch_t = 0
+        L.modal.branch_hover = 0
+        L.inject.active = false
+        L.inject.show_content = false
+        L.inject.content_alpha = 1
+        L.inject.modal_w = 450
+        L.inject.modal_h = 350
+        L.inject.logo_alpha = 0
+        L.inject.progress = 0
+    end
 
-        local pa =
-            alpha *
-            details_transition
+    function L.modal_close(now)
+        if L.inject.active or L.modal.closing then return end
+        L.modal.branch_menu = false
+        L.modal.closing = true
+        L.modal.close_time = now
+    end
 
-        local slide =
-            (1 - details_transition) *
-            25 *
-            scale
-
-        local cx =
-            content_x +
-            slide
-
-        local back_x = cx
-        local back_y = y + 18 * scale
-
-        local back_hot =
-            not loading and
-            not profile_open and
-            inside(
-                mx,
-                my,
-                back_x,
-                back_y,
-                65 * scale,
-                23 * scale
-            )
-
-        back_hover =
-            chase(
-                back_hover,
-                back_hot and 1 or 0,
-                14,
-                dt
-            )
-
-        if back_hover > 0.01 then
-            rect(
-                back_x - 5 * scale,
-                back_y - 3 * scale,
-                61 * scale,
-                24 * scale,
-                5 * scale,
-                0.07,
-                0.07,
-                0.08,
-                pa * back_hover
-            )
+    function L.tick_modal(now, dt)
+        if not L.modal.open and not L.modal.closing then
+            return
         end
 
-        Drawing.DrawText(
-            back_x - back_hover * 2 * scale,
-            back_y,
-            "<",
-            lerp(
-                0.43,
-                0.91,
-                back_hover
-            ),
-            lerp(
-                0.43,
-                0.91,
-                back_hover
-            ),
-            lerp(
-                0.46,
-                0.93,
-                back_hover
-            ),
-            pa
-        )
+        L.tick_inject(now)
 
-        Drawing.DrawText(
-            back_x + 15 * scale,
-            back_y,
-            "Back",
-            lerp(
-                0.43,
-                0.84,
-                back_hover
-            ),
-            lerp(
-                0.43,
-                0.84,
-                back_hover
-            ),
-            lerp(
-                0.46,
-                0.86,
-                back_hover
-            ),
-            pa
-        )
+        local modal_t
+        if L.modal.closing then
+            modal_t = 1 - math.min((now - L.modal.close_time) / 0.300, 1)
+        else
+            modal_t = math.min((now - L.modal.open_time) / 0.300, 1)
+        end
+        L.modal.alpha = L.ease_in_out_cubic(modal_t)
 
-        if click and back_hot then
-            details = false
+        if modal_t <= 0 and L.modal.closing then
+            L.modal.open = false
+            L.modal.closing = false
+            L.modal.alpha = 0
+            L.modal.branch_menu = false
+            L.modal.branch_t = 0
+            L.modal.branch_hover = 0
+            L.modal.reopen_block_until = now + 0.280
+            L.inject.active = false
+            L.inject.show_content = false
+            return
         end
 
-        local detail_img_ok =
-            draw_image(
-                product_image,
-                cx,
-                y + 58 * scale,
-                52 * scale,
-                52 * scale,
-                pa,
-                8 * scale
-            )
-
-        if not detail_img_ok then
-            bordered_rect(
-                cx,
-                y + 58 * scale,
-                52 * scale,
-                52 * scale,
-                8 * scale,
-                0.10, 0.10, 0.11, pa,
-                0.04, 0.04, 0.05, pa
-            )
-
-            Drawing.DrawTextWithOutline(
-                cx + 26 * scale,
-                y + 75 * scale,
-                "FS",
-                0.86, 0.55, 0.14, pa,
-                0, 0, 0, pa
-            )
-        end
-
-        Drawing.DrawText(
-            cx + 65 * scale,
-            y + 62 * scale,
-            "Fallen survival",
-            0.90,
-            0.90,
-            0.92,
-            pa
-        )
-
-        Drawing.DrawText(
-            cx + 65 * scale,
-            y + 83 * scale,
-            "Survival loader",
-            0.42,
-            0.42,
-            0.46,
-            pa
-        )
-
-        Drawing.DrawCircleFilled(
-            cx + 69 * scale,
-            y + 106 * scale,
-            2.5 * scale,
-            0.43,
-            0.80,
-            0.45,
-            pa
-        )
-
-        Drawing.DrawText(
-            cx + 78 * scale,
-            y + 99 * scale,
-            "Ready",
-            0.52,
-            0.70,
-            0.54,
-            pa
-        )
-
-        bordered_rect(
-            cx,
-            y + 128 * scale,
-            content_w,
-            93 * scale,
-            7 * scale,
-
-            0.075,
-            0.075,
-            0.085,
-            pa,
-
-            0.033,
-            0.034,
-            0.039,
-            pa
-        )
-
-        Drawing.DrawText(
-            cx + 14 * scale,
-            y + 143 * scale,
-            "Product",
-            0.35,
-            0.35,
-            0.39,
-            pa
-        )
-
-        Drawing.DrawText(
-            cx + 126 * scale,
-            y + 143 * scale,
-            "Fallen survival",
-            0.73,
-            0.73,
-            0.76,
-            pa
-        )
-
-        Drawing.DrawText(
-            cx + 14 * scale,
-            y + 167 * scale,
-            "Platform",
-            0.35,
-            0.35,
-            0.39,
-            pa
-        )
-
-        Drawing.DrawText(
-            cx + 126 * scale,
-            y + 167 * scale,
-            "Roblox",
-            0.73,
-            0.73,
-            0.76,
-            pa
-        )
-
-        Drawing.DrawText(
-            cx + 14 * scale,
-            y + 191 * scale,
-            "Status",
-            0.35,
-            0.35,
-            0.39,
-            pa
-        )
-
-        Drawing.DrawText(
-            cx + 126 * scale,
-            y + 191 * scale,
-            "Available",
-            0.48,
-            0.78,
-            0.50,
-            pa
-        )
-
-        local bw =
-            snap(150 * scale)
-
-        local bh =
-            snap(32 * scale)
-
-        local bx =
-            snap(
-                cx +
-                content_w -
-                bw
-            )
-
-        local by =
-            snap(
-                y +
-                h -
-                54 * scale
-            )
-
-        local hot =
-            not loading and
-            not profile_open and
-            inside(
-                mx,
-                my,
-                bx,
-                by,
-                bw,
-                bh
-            )
-
-        load_hover =
-            chase(
-                load_hover,
-                hot and 1 or 0,
-                14,
-                dt
-            )
-
-        if load_hover > 0.01 then
-            rect(
-                bx - 5 * scale,
-                by - 5 * scale,
-                bw + 10 * scale,
-                bh + 10 * scale,
-                9 * scale,
-                0.92,
-                0.56,
-                0.14,
-                pa *
-                load_hover *
-                0.12
-            )
-        end
-
-        rect(
-            bx,
-            by - load_hover * 2 * scale,
-            bw,
-            bh,
-            6 * scale,
-            lerp(
-                0.74,
-                0.94,
-                load_hover
-            ),
-            lerp(
-                0.44,
-                0.58,
-                load_hover
-            ),
-            lerp(
-                0.09,
-                0.16,
-                load_hover
-            ),
-            pa
-        )
-
-        Drawing.DrawText(
-            snap(bx + bw * 0.5 - 17),
-            snap(by + 9 * scale - load_hover * 2 * scale),
-            "Launch",
-            0.10,
-            0.08,
-            0.04,
-            pa
-        )
-
-        if click and hot then
-            profile_open = false
-            loading = true
-            loading_started = now
+        local step = dt / 0.20
+        if L.modal.branch_menu then
+            L.modal.branch_t = math.min(1, L.modal.branch_t + step)
+        else
+            L.modal.branch_t = math.max(0, L.modal.branch_t - step)
         end
     end
 
-    if profile_anim > 0.01 then
-        local pa =
-            alpha *
-            profile_anim
+    function L.draw_logo_and_header(x, y, alpha)
+        -- Same double-draw offset as the source logo (accent at 18,15; face at 20,15).
+        L.text(x + 18, y + 15, "FL", L.theme.accent, alpha)
+        L.text(x + 20, y + 15, "FL", L.theme.text, alpha)
 
-        local popup_w =
-            235 * scale
-
-        local popup_h =
-            133 * scale
-
-        local popup_x =
-            x + 12 * scale
-
-        local popup_y =
-            user_y -
-            popup_h -
-            8 * scale +
-            (1 - profile_anim) *
-            12 *
-            scale
-
-        for i = 1, 4 do
-            local grow =
-                i * 3 * scale
-
-            rect(
-                popup_x - grow,
-                popup_y - grow,
-                popup_w + grow * 2,
-                popup_h + grow * 2,
-                9 * scale,
-                0,
-                0,
-                0,
-                pa * (0.10 / i)
-            )
-        end
-
-        bordered_rect(
-            popup_x,
-            popup_y,
-            popup_w,
-            popup_h,
-            8 * scale,
-
-            0.15,
-            0.15,
-            0.18,
-            pa,
-
-            0.028,
-            0.029,
-            0.034,
-            pa
-        )
-
-        draw_avatar(
-            popup_x + 11 * scale,
-            popup_y + 13 * scale,
-            28 * scale,
-            pa,
-            0.27
-        )
-
-        Drawing.DrawText(
-            popup_x + 50 * scale,
-            popup_y + 14 * scale,
-            profile_name,
-            0.88,
-            0.88,
-            0.91,
-            pa
-        )
-
-        Drawing.DrawText(
-            popup_x + 50 * scale,
-            popup_y + 33 * scale,
-            "User Account",
-            0.40,
-            0.40,
-            0.44,
-            pa
-        )
-
-        Drawing.DrawCircleFilled(
-            popup_x + popup_w - 25 * scale,
-            popup_y + 27 * scale,
-            3 * scale,
-            0.40,
-            0.82,
-            0.45,
-            pa
-        )
-
-        Drawing.DrawLine(
-            popup_x + 13 * scale,
-            popup_y + 55 * scale,
-            popup_x + popup_w - 13 * scale,
-            popup_y + 55 * scale,
-            0.10,
-            0.10,
-            0.12,
-            pa,
-            1
-        )
-
-        Drawing.DrawText(
-            popup_x + 15 * scale,
-            popup_y + 68 * scale,
-            "Username",
-            0.38,
-            0.38,
-            0.42,
-            pa
-        )
-
-        Drawing.DrawText(
-            popup_x + 126 * scale,
-            popup_y + 68 * scale,
-            profile_name,
-            0.73,
-            0.73,
-            0.77,
-            pa
-        )
-
-        Drawing.DrawText(
-            popup_x + 15 * scale,
-            popup_y + 89 * scale,
-            "Product",
-            0.38,
-            0.38,
-            0.42,
-            pa
-        )
-
-        Drawing.DrawText(
-            popup_x + 126 * scale,
-            popup_y + 89 * scale,
-            "Fallen survival",
-            0.73,
-            0.73,
-            0.77,
-            pa
-        )
-
-        Drawing.DrawText(
-            popup_x + 15 * scale,
-            popup_y + 110 * scale,
-            "Status",
-            0.38,
-            0.38,
-            0.42,
-            pa
-        )
-
-        Drawing.DrawText(
-            popup_x + 126 * scale,
-            popup_y + 110 * scale,
-            "Active",
-            0.48,
-            0.82,
-            0.51,
-            pa
-        )
+        L.text(x + 165, y + 20, "Subscription", L.theme.text, alpha * 0.90)
+        L.text(x + 165, y + 45, "Available subscriptions", L.theme.muted, alpha)
     end
 
-    if loading then
-        local elapsed =
-            now -
-            loading_started
+    function L.draw_side_links(x, y, alpha, mx, my, click, dt, modal_open)
+        local rows = {
+            {"Site", 50, "site_hover"},
+            {"Discord", 70, "discord_hover"},
+            {"Telegram", 80, "telegram_hover"},
+        }
 
-        local progress =
-            clamp(
-                elapsed / 3,
-                0,
-                1
-            )
+        local yy = 100
+        for i = 1, #rows do
+            local row = rows[i]
+            local hot = L.inside(mx, my, x + 20, y + yy, row[2], 20)
+            L[row[3]] = L.hover_step(L[row[3]] or 0, hot, dt, 10)
+            local col = L.mix_color(L.theme.dim, L.theme.text, L[row[3]] or 0)
+            L.text(x + 20, y + yy, row[1], col, alpha)
+            -- Source opens URLs here. The custom Lua API has no shell/browser
+            -- primitive, so the visual/hover behavior is preserved and no
+            -- substitute action is invented.
+            if click and hot and not modal_open then
+                -- intentionally no-op
+            end
+            yy = yy + 35
+        end
+    end
 
-        local oa =
-            clamp(
-                elapsed * 6,
-                0,
-                1
-            )
+    function L.draw_product_card(x, y, alpha, mx, my, click, now)
+        local start_x = 165
+        local card_x = x + start_x
+        local card_y = y + 100
+        local card_w = 500 - start_x - 20
+        local card_h = 80
 
-        -- Fully opaque launch screen: nothing from the old page bleeds through.
-        rect(
-            x,
-            y,
-            w,
-            h,
-            10 * scale,
-            0.010,
-            0.011,
-            0.015,
-            1.0
-        )
+        L.rounded_fill(card_x, card_y, card_w, card_h, 10, L.theme.card, alpha)
+        L.rounded_outline(card_x, card_y, card_w, card_h, 10, L.theme.outline, alpha, 1.5)
 
-        local cx =
-            x +
-            w / 2
+        L.text(card_x + 15, card_y + 10, "Fallen survival", L.theme.text, alpha)
+        L.text(card_x + 15, card_y + 35, "Lifetime", L.theme.muted, alpha)
+        L.draw_product(card_x + card_w - 30, card_y + 10, 20, alpha, 5)
 
-        local cy =
-            y +
-            h / 2 -
-            20 * scale
+        if click
+            and not L.modal.open
+            and not L.modal.closing
+            and now >= (L.modal.reopen_block_until or 0)
+            and L.inside(mx, my, card_x, card_y, card_w, card_h)
+        then
+            L.modal_open(now)
+        end
+    end
 
-        local spin =
-            now * 5
+    function L.draw_avatar_footer(x, y, alpha)
+        local image_size = 40
+        local ax = x + 20
+        local ay = y + 400 - image_size - 25
+        L.draw_avatar(ax, ay, image_size, alpha)
 
-        for i = 1, 14 do
-            local p =
-                i / 14
+        local name = PROFILE and PROFILE.name or "Player"
+        if name == "Loading..." then name = "Player" end
+        L.text(ax + image_size + 10, ay + 12, name, L.theme.text, alpha * 0.90)
+    end
 
-            local angle =
-                spin +
-                p *
-                math.pi *
-                2
+    function L.draw_window_chrome(x, y, alpha, mx, my, click, dt, modal_open)
+        local close_hot = L.inside(mx, my, x + 500 - 35, y + 20, 20, 20)
+        local min_hot = L.inside(mx, my, x + 500 - 60, y + 25, 20, 20)
+        L.close_hover = L.hover_step(L.close_hover, close_hot, dt, 10)
+        L.minimize_hover = L.hover_step(L.minimize_hover, min_hot, dt, 10)
 
-            local radius =
-                20 * scale
+        local close_col = L.mix_color(L.theme.dim, L.theme.text, L.close_hover)
+        local min_col = L.mix_color(L.theme.dim, L.theme.text, L.minimize_hover)
 
-            local px =
-                cx +
-                math.cos(angle) *
-                radius
+        DrawLine(x + 470, y + 25, x + 480, y + 35,
+            close_col[1], close_col[2], close_col[3], alpha, 2)
+        DrawLine(x + 470, y + 35, x + 480, y + 25,
+            close_col[1], close_col[2], close_col[3], alpha, 2)
+        DrawLine(x + 445, y + 30, x + 457, y + 30,
+            min_col[1], min_col[2], min_col[3], alpha, 2)
 
-            local py =
-                cy +
-                math.sin(angle) *
-                radius
-
-            local glow =
-                (
-                    math.sin(
-                        angle -
-                        spin +
-                        now * 4
-                    ) +
-                    1
-                ) * 0.5
-
-            Drawing.DrawCircleFilled(
-                px,
-                py,
-                (
-                    1.4 +
-                    glow * 1.6
-                ) * scale,
-                0.92,
-                0.57,
-                0.15,
-                oa *
-                (
-                    0.15 +
-                    glow * 0.85
-                )
-            )
+        if click and close_hot and not modal_open then
+            L.begin_exit(false)
         end
 
-        local dots =
-            math.floor(
-                elapsed * 3
-            ) % 4
+        -- Source minimizes the OS window here. There is no minimize primitive
+        -- in the supplied Lua API; keep the source button/hover, no fake action.
+        if click and min_hot and not modal_open then
+            -- intentionally no-op
+        end
+    end
 
-        local text =
-            "Launching Fallen survival"
+    function L.draw_dashboard(x, y, alpha, mx, my, click, dt, now)
+        L.draw_logo_and_header(x, y, alpha)
+        L.draw_side_links(x, y, alpha, mx, my, click, dt, L.modal.open or L.modal.closing)
+        L.draw_product_card(x, y, alpha, mx, my, click, now)
+        L.draw_avatar_footer(x, y, alpha)
+        L.draw_window_chrome(x, y, alpha, mx, my, click, dt, L.modal.open or L.modal.closing)
+    end
 
-        for i = 1, dots do
-            text =
-                text .. "."
+    function L.draw_dim(x, y, alpha)
+        if not L.modal.open and not L.modal.closing then return end
+        local dim = L.modal.alpha * 0.55 * alpha
+        DrawBoxFilled(x, y, x + 500, y + 400, 0, 0, 0, dim)
+    end
+
+    function L.draw_git_branch_icon(cx, cy, size, c, alpha)
+        local radius = size * 0.13
+        local thickness = 1.25
+        local bx, by = cx - size * 0.08, cy + size * 0.34
+        local tx, ty = cx - size * 0.08, cy - size * 0.34
+        local fx, fy = cx - size * 0.08, cy + size * 0.02
+        local ex, ey = cx + size * 0.10, cy - size * 0.08
+        local sx, sy = cx + size * 0.34, cy - size * 0.26
+
+        DrawLine(bx, by, tx, ty, c[1], c[2], c[3], alpha, thickness)
+        DrawLine(fx, fy, ex, ey, c[1], c[2], c[3], alpha, thickness)
+        DrawLine(ex, ey, sx, sy, c[1], c[2], c[3], alpha, thickness)
+        DrawCircleFilled(bx, by, radius, c[1], c[2], c[3], alpha)
+        DrawCircleFilled(tx, ty, radius, c[1], c[2], c[3], alpha)
+        DrawCircleFilled(sx, sy, radius, c[1], c[2], c[3], alpha)
+    end
+
+    function L.draw_footer_links(mx0, my0, load_y, alpha, mx, my, click, dt)
+        local community = "Community"
+        local api = "API Documentation"
+        local left_x = mx0 + 20
+        local text_y = load_y + 8
+        local cw = #community * 6.5
+        local aw = #api * 6.5
+        local hot_c = L.inside(mx, my, left_x, text_y - 3, cw, 20)
+        local hot_a = L.inside(mx, my, left_x + cw + 15, text_y - 3, aw, 20)
+
+        L.community_hover = L.hover_step(L.community_hover, hot_c, dt, 10)
+        L.api_hover = L.hover_step(L.api_hover, hot_a, dt, 10)
+
+        local cc = L.mix_color(L.theme.dim, L.theme.hover, L.community_hover)
+        local ac = L.mix_color(L.theme.dim, L.theme.hover, L.api_hover)
+        L.text(left_x, text_y, community, cc, alpha)
+        L.text(left_x + cw + 15, text_y, api, ac, alpha)
+
+        if click and (hot_c or hot_a) and not L.inject.active then
+            -- Source opens URLs. No shell/browser API exists here.
+        end
+    end
+
+    function L.draw_inject(mx0, my0, modal_w, modal_h, alpha)
+        local logo_size = 44
+        local text = "The game will start automatically"
+        local text_w = #text * 6.5
+        local bar_h = 3
+        local bar_w = text_w * 0.72
+        local gap_logo_bar = 14
+        local gap_bar_text = 12
+        local total_h = logo_size + gap_logo_bar + bar_h + gap_bar_text + 13
+        local group_y = my0 + (modal_h - total_h) * 0.5
+        local logo_x = mx0 + (modal_w - logo_size) * 0.5
+
+        L.draw_product(logo_x, group_y, logo_size, alpha, 10)
+
+        local bar_x = mx0 + (modal_w - bar_w) * 0.5
+        local bar_y = group_y + logo_size + gap_logo_bar
+        L.rounded_fill(bar_x, bar_y, bar_w, bar_h, bar_h * 0.5,
+            L.theme.progress_track, 0.06 * alpha)
+
+        local fill_w = bar_w * L.inject.progress
+        if fill_w > 0.5 then
+            L.rounded_fill(bar_x, bar_y, fill_w, bar_h, bar_h * 0.5,
+                L.theme.progress_fill, alpha)
         end
 
-        Drawing.DrawText(
-            snap(cx - (#text * 3.2)),
-            snap(cy + 38 * scale),
-            text,
-            0.79,
-            0.79,
-            0.82,
-            oa
-        )
+        L.text_center(mx0 + modal_w * 0.5, bar_y + bar_h + gap_bar_text,
+            text, L.theme.caption, alpha)
+    end
 
-        local bar_w =
-            210 * scale
+    function L.draw_branch_popup(mx0, my0, modal_w, modal_h, alpha, mx, my, click, dt, now)
+        local menu_t = L.ease_in_out_cubic(L.modal.branch_t)
+        if menu_t <= 0.001 then
+            L.modal.branch_hover = 0
+            return false
+        end
 
-        local bar_h =
-            5 * scale
+        local load_x = mx0 + modal_w - 20 - 100
+        local load_y = my0 + modal_h - 20 - 30
+        local pop_w = 108
+        local pop_h = 42
+        local pop_bottom = load_y + 30 + 2
+        local pop_right = load_x + 100 + 2
+        local slide = (1 - menu_t) * 10
+        local px = pop_right - pop_w
+        local py = pop_bottom - pop_h + slide
+        local pa = alpha * menu_t
 
-        local bx =
-            cx -
-            bar_w / 2
+        L.rounded_fill(px, py, pop_w, pop_h, 5, L.theme.card, pa)
+        L.rounded_outline(px, py, pop_w, pop_h, 5, L.theme.popup_border, pa, 1)
 
-        local by =
-            cy +
-            63 * scale
+        local r0x, r0y = px + 3, py + 6
+        local r1x, r1y = px + pop_w - 3, r0y + 30
+        local interactive = L.modal.branch_menu and L.modal.branch_t > 0.55
+        local hot = interactive and L.inside(mx, my, r0x, r0y, r1x - r0x, r1y - r0y)
+        local target = (interactive and hot) and 1 or 0
+        L.modal.branch_hover = L.modal.branch_hover
+            + (target - L.modal.branch_hover) * math.min(1, 14 * dt)
 
-        rect(
-            bx,
-            by,
-            bar_w,
-            bar_h,
-            2.5 * scale,
-            0.075,
-            0.075,
-            0.085,
-            oa
-        )
+        if L.modal.branch_hover > 0.01 then
+            L.rounded_fill(r0x, r0y, r1x - r0x, r1y - r0y, 4,
+                L.theme.text, 0.08 * L.modal.branch_hover * pa)
+        end
 
-        local fw =
-            bar_w *
-            progress
+        L.draw_git_branch_icon(r0x + 10 + 7 - 3, r0y + 15, 14,
+            L.theme.branch_icon, pa)
+        L.text(r0x + 10 + 14 + 2, r0y + 8, "Release", L.theme.branch_label, pa)
 
-        if fw > 1 then
-            rect(
-                bx,
-                by,
-                fw,
-                bar_h,
-                2.5 * scale,
-                0.90,
-                0.55,
-                0.14,
-                oa
-            )
-
-            local shine =
-                (
-                    now * 95
-                ) %
-                bar_w
-
-            if shine <= fw then
-                Drawing.DrawCircleFilled(
-                    bx + shine,
-                    by + bar_h / 2,
-                    3 * scale,
-                    1.0,
-                    0.75,
-                    0.28,
-                    oa * 0.75
-                )
+        if click and hot and not L.inject.active then
+            L.modal.branch_menu = false
+        elseif click and interactive and not L.inside(mx, my, px, py, pop_w, pop_h) then
+            local bx = load_x - 8 - 30
+            local by = load_y
+            if not L.inside(mx, my, bx, by, 30, 30) then
+                L.modal.branch_menu = false
             end
         end
 
-        Drawing.DrawTextWithOutline(
-            cx,
-            by + 14 * scale,
-            tostring(
-                math.floor(
-                    progress * 100
-                )
-            ) .. "%",
-            0.40,
-            0.40,
-            0.44,
-            oa,
-            0,
-            0,
-            0,
-            oa
-        )
+        return L.inside(mx, my, px, py, pop_w, pop_h)
+    end
 
-        if progress >= 1 then
-            loading = false
-            profile_open = false
-            _G.FallenSurvivalLoaded = true
+    function L.draw_modal(x, y, global_alpha, mx, my, click, dt, now)
+        if not L.modal.open and not L.modal.closing then return end
 
-            -- Close the loader first. The menu is enabled only after the
-            -- loader's close animation reaches zero.
-            open_target = 0
+        local modal_w = L.inject.modal_w
+        local modal_h = L.inject.modal_h
+        local modal_x = x + (500 - modal_w) * 0.5
+        local modal_y = y + (400 - modal_h) * 0.5
+        local modal_alpha = L.modal.alpha * global_alpha
+        local content_alpha = L.inject.content_alpha
+
+        L.draw_dim(x, y, global_alpha)
+        L.rounded_fill(modal_x, modal_y, modal_w, modal_h, 10,
+            L.theme.card, modal_alpha)
+        L.rounded_outline(modal_x, modal_y, modal_w, modal_h, 10,
+            L.theme.outline, modal_alpha, 1.5)
+
+        if L.inject.show_content then
+            L.draw_inject(modal_x, modal_y, modal_w, modal_h,
+                modal_alpha * L.inject.logo_alpha)
+            return
+        end
+
+        local body_alpha = modal_alpha * content_alpha
+        L.draw_product(modal_x + 20, modal_y + 20, 40, body_alpha, 10)
+        L.text(modal_x + 70, modal_y + 27, "Fallen survival", L.theme.text, body_alpha)
+
+        -- Source metadata columns.
+        local base_y = modal_y + 100
+        local line_sp = 25
+        local left_x = modal_x + 20
+        local value_x = modal_x + 102
+        local labels = {"Branch:", "Updated:", "Valid Until:", "Last Launch:"}
+        local values = {"Release", "Today", "Lifetime", L.last_launch}
+        for i = 1, 4 do
+            L.text(left_x, base_y + (i - 1) * line_sp, labels[i], L.theme.soft, body_alpha)
+            L.text(value_x, base_y + (i - 1) * line_sp, values[i], L.theme.link, body_alpha)
+        end
+
+        local change_x = modal_x + 255
+        L.text(change_x, base_y, "Today", L.theme.text, body_alpha)
+        L.text(change_x, base_y + 23, "Fallen-lua loader", L.theme.dim, body_alpha)
+        L.text(change_x, base_y + 42, "Ready to launch", L.theme.dim, body_alpha)
+
+        local btn_h = 30
+        local load_w = 100
+        local branch_sz = 30
+        local btn_gap = 8
+        local load_x = modal_x + modal_w - 20 - load_w
+        local load_y = modal_y + modal_h - 20 - btn_h
+        local branch_x = load_x - btn_gap - branch_sz
+        local branch_y = load_y
+        local branch_hot = L.inside(mx, my, branch_x, branch_y, branch_sz, branch_sz)
+        local load_hot = L.inside(mx, my, load_x, load_y, load_w, btn_h)
+
+        if click and branch_hot and not L.inject.active and not L.modal.closing then
+            L.modal.branch_menu = not L.modal.branch_menu
+        end
+
+        local menu_t = L.ease_in_out_cubic(L.modal.branch_t)
+        local load_blocked = menu_t > 0.001
+        local ba = (branch_hot or L.modal.branch_menu) and 1 or 0.92
+        L.rounded_fill(branch_x, branch_y, branch_sz, branch_sz, 5,
+            L.theme.button, body_alpha * ba)
+
+        local ccx = branch_x + branch_sz * 0.5
+        local ccy = branch_y + branch_sz * 0.5 + 0.5
+        DrawLine(ccx - 4.2, ccy - 0.84, ccx, ccy + 2.4,
+            L.theme.text[1], L.theme.text[2], L.theme.text[3], body_alpha, 1.4)
+        DrawLine(ccx, ccy + 2.4, ccx + 4.2, ccy - 0.84,
+            L.theme.text[1], L.theme.text[2], L.theme.text[3], body_alpha, 1.4)
+
+        local load_alpha = body_alpha
+        local load_mul = load_hot and 0.90 or 1.0
+        L.rounded_fill(load_x, load_y, load_w, btn_h, 5,
+            L.theme.button, load_alpha * load_mul)
+        L.text_center(load_x + load_w * 0.5, load_y + 8, "Load", L.theme.text, load_alpha)
+
+        if click and load_hot and not load_blocked and not L.inject.active and not L.modal.closing then
+            L.modal.branch_menu = false
+            L.modal.branch_t = 0
+            L.inject.active = true
+            L.inject.start_time = now
+            L.inject.modal_w = 450
+            L.inject.modal_h = 350
+            L.inject.content_alpha = 1
+            L.inject.logo_alpha = 0
+            L.inject.progress = 0
+            L.inject.show_content = false
+            L.last_launch = "Just now"
+        end
+
+        L.draw_footer_links(modal_x, modal_y, load_y, body_alpha, mx, my, click, dt)
+        local in_popup = L.draw_branch_popup(modal_x, modal_y, modal_w, modal_h,
+            body_alpha, mx, my, click, dt, now)
+
+        -- Modal close button from the source.
+        local close_hit_x = modal_x + modal_w - 35
+        local close_hit_y = modal_y + 27
+        local close_hot = L.inside(mx, my, close_hit_x, close_hit_y, 20, 20)
+        local close_col = close_hot and L.theme.text or L.theme.dim
+        local cp_x = close_hit_x + 5
+        local cp_y = close_hit_y + 5
+        DrawLine(cp_x, cp_y, cp_x + 10, cp_y + 10,
+            close_col[1], close_col[2], close_col[3], body_alpha, 2)
+        DrawLine(cp_x, cp_y + 10, cp_x + 10, cp_y,
+            close_col[1], close_col[2], close_col[3], body_alpha, 2)
+
+        if click and close_hot and not L.inject.active and not L.modal.closing then
+            L.modal_close(now)
+            return
+        end
+
+        if click and not L.inject.active and not L.modal.closing then
+            local in_card = L.inside(mx, my, modal_x, modal_y, modal_w, modal_h)
+            if not in_card and not in_popup then
+                L.modal_close(now)
+            end
         end
     end
-end)
 
+    function L.prepare_product_image()
+        local source = _G.FALLEN_LOADER_PRODUCT_PAGE_URL
+        if _G.FALLEN_LOADER_PRODUCT_IMAGE_SOURCE ~= source then
+            _G.FALLEN_LOADER_PRODUCT_IMAGE = nil
+            _G.FALLEN_LOADER_PRODUCT_IMAGE_SOURCE = source
+        end
+
+        _G.FALLEN_LOADER_PRODUCT_IMAGE_URL = FALLEN_LOADER_RESOLVE_IMAGE_URL(source) or source
+
+        if not _G.FALLEN_LOADER_PRODUCT_IMAGE and type(LoadImage) == "function" then
+            pcall(function()
+                _G.FALLEN_LOADER_PRODUCT_IMAGE = LoadImage(_G.FALLEN_LOADER_PRODUCT_IMAGE_URL)
+            end)
+        end
+    end
+
+    L.prepare_product_image()
+
+    hooks.on_render(function()
+        if L.hidden then return end
+
+        local now = tick()
+        local dt = now - L.last_time
+        L.last_time = now
+        if dt < 0 then dt = 0 end
+        if dt > 0.05 then dt = 0.05 end
+        if dt < 0.0001 then dt = 0.0001 end
+        L.time_sec = L.time_sec + dt
+
+        L.tick_boot(dt)
+        L.tick_modal(now, dt)
+
+        if L.exit_done then
+            L.hidden = true
+            if L.launch_success and _G.FallenSurvivalLoaded == true then
+                _G.FallenLua_Menu = _G.FallenLua_Menu or {}
+                _G.FallenLua_Menu.visible = true
+                _G.FallenMenuReady = true
+            end
+            return
+        end
+
+        local screen = ScreenSize()
+        if not screen then return end
+        local sw = tonumber(screen.Width) or 1920
+        local sh = tonumber(screen.Height) or 1080
+
+        if L.cx == nil or L.cy == nil then
+            L.cx = sw * 0.5
+            L.cy = sh * 0.5
+        end
+
+        local mx, my = L.mouse_pos()
+        local lmb = L.lmb_down()
+        local click = lmb and not L.prev_lmb
+        local release = (not lmb) and L.prev_lmb
+        L.prev_lmb = lmb
+
+        local draw_w = L.win_w
+        local draw_h = L.win_h
+        local x = L.cx - draw_w * 0.5
+        local y = L.cy - draw_h * 0.5
+
+        -- Source window dragging is disabled while the modal is open.
+        if L.phase == "Ready" and not L.modal.open and not L.modal.closing then
+            local close_zone = L.inside(mx, my, x + 500 - 70, y, 70, 55)
+            local top_hot = L.inside(mx, my, x, y, 500, 70) and not close_zone
+            if click and top_hot then
+                L.drag = true
+                L.drag_off_x = mx - L.cx
+                L.drag_off_y = my - L.cy
+            end
+        end
+
+        if L.drag and lmb then
+            L.cx = L.clamp(mx - L.drag_off_x, 250, math.max(250, sw - 250))
+            L.cy = L.clamp(my - L.drag_off_y, 200, math.max(200, sh - 200))
+        end
+        if release or not lmb then
+            L.drag = false
+        end
+
+        x = L.cx - draw_w * 0.5
+        y = L.cy - draw_h * 0.5
+
+        local wa = L.window_alpha
+        L.rounded_fill(x, y, draw_w, draw_h, 15, L.theme.bg, wa)
+
+        if (L.phase == "Splash" or L.phase == "Expanding") and L.loader_alpha > 0.01 then
+            L.draw_spinner(L.cx, L.cy, wa * L.loader_alpha)
+            return
+        end
+
+        if L.phase == "Ready" or L.phase == "Exiting" then
+            -- Ready always uses the final source size. During exit the same
+            -- dashboard/modal remains visible while the whole window alpha fades.
+            local full_x = L.cx - 250
+            local full_y = L.cy - 200
+            if draw_w ~= 500 or draw_h ~= 400 then
+                full_x = x
+                full_y = y
+            end
+
+            local content_a = L.content_alpha * wa
+            if L.phase == "Exiting" then
+                content_a = math.max(L.content_alpha, wa) * wa
+            end
+
+            L.draw_dashboard(full_x, full_y, content_a, mx, my, click, dt, now)
+            L.draw_modal(full_x, full_y, wa, mx, my, click, dt, now)
+        end
+    end)
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | v44 syntax fix")
+print("[Fallen loader] ready | source UI port | no blur")
 
 
 -- Fallen toast renderer
