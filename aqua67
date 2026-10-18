@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v91 | static loading text | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v92 | loading progress width fix | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -34102,7 +34102,12 @@ do
         local text = "Loading"
         local text_w = #text * 6.5
         local bar_h = 3
-        local bar_w = text_w * 0.72
+
+        -- The source loader sized the bar from the old long caption
+        -- ("The game will start automatically"). After changing the caption
+        -- to "Loading", keeping that formula made the bar collapse to ~33 px.
+        -- Keep the original visual scale instead of tying it to caption length.
+        local bar_w = 150
         local gap_logo_bar = 14
         local gap_bar_text = 12
         local total_h = logo_size + gap_logo_bar + bar_h + gap_bar_text + 13
@@ -34429,7 +34434,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | rounded modal dim | static loading | no blur")
+print("[Fallen loader] ready | normal loading bar | static loading | no blur")
 
 
 -- Fallen toast renderer
