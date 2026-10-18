@@ -31232,41 +31232,29 @@ hooks.on_render(function()
         A.menu_dragging = false
     end
 
-    -- Compact text-based brand header: rounded FN tile + white FALLEN text.
-    local brand_icon_x = wx + 16
-    local brand_icon_y = wy + 12
-    local brand_icon_w = 36
-    local brand_icon_h = 30
-    local brand_text_x = wx + 60
+    -- Real FN PNG from the supplied URL (not text). The label on the right
+    -- stays plain Drawing.DrawText as requested.
+    local brand_icon_x = wx + 12
+    local brand_icon_y = wy + 8
+    local brand_icon_size = 40
+    local brand_text_x = wx + 63
     local brand_title_y = wy + 10
     local brand_sub_y = wy + 27
 
-    rounded_fill(
-        brand_icon_x,
-        brand_icon_y,
-        brand_icon_w,
-        brand_icon_h,
-        5,
-        alpha(C.frame_active, 0.95)
-    )
-
-    rounded_outline(
-        brand_icon_x,
-        brand_icon_y,
-        brand_icon_w,
-        brand_icon_h,
-        5,
-        alpha(C.border, 0.95),
-        1,
-        alpha(C.frame_active, 0.95)
-    )
-
-    centered_text(
-        brand_icon_x + brand_icon_w * 0.5,
-        brand_icon_y + 8,
-        "FN",
-        C.text
-    )
+    local brand_fn_handle = FALLEN_BRAND_FN_ICON_GET()
+    if brand_fn_handle and type(DrawImage) == "function" then
+        -- The API's rounding parameter clips the actual icon image.
+        pcall(
+            DrawImage,
+            brand_fn_handle,
+            FALLEN_UI_X(brand_icon_x),
+            FALLEN_UI_Y(brand_icon_y),
+            FALLEN_UI_LEN(brand_icon_size),
+            FALLEN_UI_LEN(brand_icon_size),
+            1, 1, 1, MENU_RENDER_ALPHA,
+            FALLEN_UI_LEN(7)
+        )
+    end
 
     text(
         brand_text_x,
@@ -32455,7 +32443,6 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
 
     _G.FALLEN_IMAGE_PRELOAD_SPECIALS = {
         FALLEN_GRENADE_ICON_GET,
-        FALLEN_BRAND_IMAGE_GET,
         FALLEN_BRAND_FN_ICON_GET,
         FALLEN_SAVE_ICON_GET,
         FALLEN_SEARCH_ICON_GET,
