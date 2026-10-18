@@ -31232,56 +31232,52 @@ hooks.on_render(function()
         A.menu_dragging = false
     end
 
-    -- Neverlose-like compact brand header.
-    -- The FALLEN PNG has transparent padding: position the whole image
-    -- so the *visible* letters align with the subtitle and FN icon.
-    local brand_icon_handle =
-        FALLEN_BRAND_FN_ICON_GET()
+    -- Compact text-based brand header: rounded FN tile + white FALLEN text.
+    local brand_icon_x = wx + 16
+    local brand_icon_y = wy + 12
+    local brand_icon_w = 36
+    local brand_icon_h = 30
+    local brand_text_x = wx + 60
+    local brand_title_y = wy + 10
+    local brand_sub_y = wy + 27
 
-    local brand_handle =
-        FALLEN_BRAND_IMAGE_GET()
+    rounded_fill(
+        brand_icon_x,
+        brand_icon_y,
+        brand_icon_w,
+        brand_icon_h,
+        5,
+        alpha(C.frame_active, 0.95)
+    )
 
-    if brand_icon_handle
-        and type(DrawImage) == "function"
-    then
-        pcall(
-            DrawImage,
-            brand_icon_handle,
-            FALLEN_UI_X(wx + 15),
-            FALLEN_UI_Y(wy + 13),
-            FALLEN_UI_LEN(30),
-            FALLEN_UI_LEN(30),
-            1,
-            1,
-            1,
-            MENU_RENDER_ALPHA,
-            0
-        )
-    end
+    rounded_outline(
+        brand_icon_x,
+        brand_icon_y,
+        brand_icon_w,
+        brand_icon_h,
+        5,
+        alpha(C.border, 0.95),
+        1,
+        alpha(C.frame_active, 0.95)
+    )
 
-    if brand_handle
-        and type(DrawImage) == "function"
-    then
-        pcall(
-            DrawImage,
-            brand_handle,
-            FALLEN_UI_X(wx + 22),
-            FALLEN_UI_Y(wy + 0),
-            FALLEN_UI_LEN(140),
-            FALLEN_UI_LEN(48),
-            1,
-            1,
-            1,
-            MENU_RENDER_ALPHA,
-            0
-        )
-    end
+    centered_text(
+        brand_icon_x + brand_icon_w * 0.5,
+        brand_icon_y + 8,
+        "FN",
+        C.text
+    )
 
-    -- Secondary label: aligned with the *visible* FALLEN glyphs,
-    -- slightly under the title with 30% opacity as requested.
     text(
-        wx + 48,
-        wy + 32,
+        brand_text_x,
+        brand_title_y,
+        "FALLEN",
+        C.text
+    )
+
+    text(
+        brand_text_x,
+        brand_sub_y,
         "Fallen survival",
         alpha(C.text, 0.30)
     )
@@ -31292,9 +31288,9 @@ hooks.on_render(function()
             mx,
             my,
             wx + 13,
-            wy + 5,
-            154,
-            46
+            wy + 6,
+            156,
+            42
         )
     then
         FALLEN_SECRET_BRAND_CLICK()
