@@ -31232,7 +31232,9 @@ hooks.on_render(function()
         A.menu_dragging = false
     end
 
-    -- Brand block. Slightly higher/right, with FN icon on the left and a faint subtitle.
+    -- Neverlose-like compact brand header.
+    -- The FALLEN PNG has transparent padding: position the whole image
+    -- so the *visible* letters align with the subtitle and FN icon.
     local brand_icon_handle =
         FALLEN_BRAND_FN_ICON_GET()
 
@@ -31245,8 +31247,8 @@ hooks.on_render(function()
         pcall(
             DrawImage,
             brand_icon_handle,
-            FALLEN_UI_X(wx + 18),
-            FALLEN_UI_Y(wy + 9),
+            FALLEN_UI_X(wx + 17),
+            FALLEN_UI_Y(wy + 16),
             FALLEN_UI_LEN(24),
             FALLEN_UI_LEN(24),
             1,
@@ -31263,8 +31265,8 @@ hooks.on_render(function()
         pcall(
             DrawImage,
             brand_handle,
-            FALLEN_UI_X(wx + 46),
-            FALLEN_UI_Y(wy + 8),
+            FALLEN_UI_X(wx + 22),
+            FALLEN_UI_Y(wy + 0),
             FALLEN_UI_LEN(140),
             FALLEN_UI_LEN(48),
             1,
@@ -31275,23 +31277,24 @@ hooks.on_render(function()
         )
     end
 
+    -- Secondary label: aligned with the *visible* FALLEN glyphs,
+    -- slightly under the title with 30% opacity as requested.
     text(
-        wx + 49,
-        wy + 38,
+        wx + 48,
+        wy + 32,
         "Fallen survival",
         alpha(C.text, 0.30)
     )
 
-    -- Hidden gesture: three quick clicks on the brand reveal the ??? setting.
-    -- The hitbox has no hover color, cursor effect, glow, tooltip, or other hint.
+    -- Preserve the secret triple-click gesture on the compact brand.
     if clicked
         and hover(
             mx,
             my,
-            wx + 14,
-            wy + 6,
-            176,
-            48
+            wx + 13,
+            wy + 5,
+            154,
+            46
         )
     then
         FALLEN_SECRET_BRAND_CLICK()
