@@ -3967,11 +3967,9 @@ end
 local function draw_switch_track(x, y, w, h, off_color, on_color, t)
     local progress = clamp(tonumber(t) or 0, 0, 1)
     local rounding = h * 0.5
-    local border = mix_color(
-        { 0.105, 0.145, 0.220, 1.0 },
-        { 0.145, 0.235, 0.395, 1.0 },
-        progress
-    )
+    -- Keep the thin outline neutral at all toggle states.
+    -- Only the inside track and knob animate between off/on colors.
+    local border = { 0.16, 0.16, 0.17, 1.0 }
     local inside = mix_color(off_color, on_color, progress)
     -- During the whole-menu fade avoid drawing two translucent overlapping
     -- rounded surfaces; the outline appears once the menu is opaque.
