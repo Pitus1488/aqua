@@ -30616,18 +30616,20 @@ local function fallen_search_draw(wx, wy, mx, my, clicked)
     local head_x, head_y, head_w, head_h = wx + WIN_W - 216, wy + 18, 198, 27
 
     if anim > 0.005 then
-        -- Dim just the menu: no game-world tint.
-        fill(wx, wy, WIN_W, WIN_H, { 0, 0, 0, 0.74 * anim })
+        -- Darken only the menu. Match its rounded outer corners instead
+        -- of painting a square translucent rectangle over the shell.
+        rounded_fill(wx, wy, WIN_W, WIN_H, OUTER_R,
+            { 0, 0, 0, 0.74 * anim })
 
         local w, h = 436, 294
         local px = wx + (WIN_W - w) * 0.5
         local py = wy + (WIN_H - h) * 0.5 + (1 - anim) * 12
         local prev_alpha = MENU_RENDER_ALPHA
         MENU_RENDER_ALPHA = prev_alpha * anim
-        rounded_fill(px, py, w, h, 9, C.group_box_bg)
-        rounded_outline(px, py, w, h, 9,
-            {0.13, 0.21, 0.34, 0.65}, 1, C.group_box_bg)
-        text(px + 19, py + 17, "Search functions", C.text)
+        -- Black with a little transparency, one alpha-safe pass so the
+        -- corners remain smooth without dark overlap artifacts.
+        rounded_fill(px, py, w, h, 11,
+            { 0.004, 0.004, 0.006, 0.92 })
         text(px + w - 60, py + 17, "ESC", C.text_dim)
         line(px + 16, py + 42, px + w - 16, py + 42, C.divider, 1)
 
