@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v90 | loading text spacing fix | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v91 | static loading text | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -34093,35 +34093,8 @@ do
     end
 
     function L.draw_loading_gradient(cx, y, alpha)
-        local text = "Loading"
-        local base = L.mix_color(L.theme.caption, L.theme.accent, 0.58)
-
-        -- Draw the word once as a single string so glyph spacing always stays intact.
-        L.text_center(cx, y, text, base, alpha)
-
-        -- Animated shimmer goes on top only. The base word remains continuous,
-        -- so the narrow "i" can no longer create a visible split before "n".
-        local phase = (L.time_sec * 0.62) % 1
-        local start_x = cx - (#text * 3.25)
-
-        -- Approximate glyph advances for the current fixed Drawing font.
-        -- "i" is intentionally much narrower than the other letters.
-        local offsets = {0.0, 6.3, 12.6, 18.9, 25.2, 28.2, 34.6}
-
-        for i = 1, #text do
-            local u = (i - 1) / math.max(1, #text - 1)
-            local d = math.abs(u - phase)
-            d = math.min(d, 1 - d)
-
-            local glow = L.clamp01(1 - d / 0.30)
-            glow = L.ease_in_out_cubic(glow)
-
-            if glow > 0.02 then
-                local col = L.mix_color(L.theme.accent, L.theme.text, glow)
-                L.text(start_x + offsets[i], y, string.sub(text, i, i),
-                    col, alpha * glow * 0.95)
-            end
-        end
+        -- Static loading label: no gradient/shimmer animation.
+        L.text_center(cx, y, "Loading", L.theme.caption, alpha)
     end
 
     function L.draw_inject(mx0, my0, modal_w, modal_h, alpha)
@@ -34456,7 +34429,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | rounded modal dim | loading spacing fix | no blur")
+print("[Fallen loader] ready | rounded modal dim | static loading | no blur")
 
 
 -- Fallen toast renderer
