@@ -1,4 +1,5 @@
 -- FALLEN UI BASE SAFE MODE
+-- v101: Neverlose-source navigation + source-styled Configs page.
 -- Feature modules can be disabled later without deleting UI code.
 
 -- Loader/menu transition gate.
@@ -642,6 +643,7 @@ local A = {
     config_input_buffer = "",
     config_key_prev = {},
     config_selected = nil,
+    config_list_page = 1,
 
     -- Smooth left-sidebar tab transition.
     sidebar_indicator_y = nil,
@@ -2812,6 +2814,7 @@ return {
     save = cfg_save,
     load = cfg_load,
     delete = cfg_delete,
+    refresh = cfg_read_index,
     input_focus = config_input_focus,
     input_poll = config_input_poll,
     sanitize = cfg_sanitize_name,
@@ -23208,7 +23211,7 @@ end)
 
 
 -- =========================================================
--- Configs animated dropdown
+-- Configs management (source-style content page)
 -- =========================================================
 
 function FALLEN_CONFIGS.anim_step()
@@ -23321,283 +23324,67 @@ function FALLEN_CONFIGS.button(
         and hot
 end
 
-function FALLEN_CONFIGS.draw_popup(
-    mx,
-    my,
-    clicked,
-    lmb,
-    anchor_x,
-    anchor_y,
-    anchor_w
-)
-    local raw =
-        FALLEN_CONFIGS.anim_step()
+-- The supplied C++ Neverlose sample only paints a Save button; it contains
+-- no config manager. This source-style page keeps Fallen's real config IO.
+-- It uses the original sample's 690x500 layout, 2-column group boxes,
+-- 6px rounding, palette, and item spacing without the old drop-down.
+function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, px, py, pw)
+    local fade = FALLEN_CONFIGS.anim_step()
+    if not A.config_open or fade <= 0.001 then return end
 
-    if raw <= 0.001
-        and not A.config_open
-    then
-        return false
-    end
+    local old_alpha = MENU_RENDER_ALPHA
+    MENU_RENDER_ALPHA = old_alpha * ease_out_cubic(fade)
+    local interactive = fade >= 0.85
+    local ui_clicked = clicked and interactive
+    local config = FALLEN_CONFIGS.CONFIG
+    local count = #config.list
 
-    local parent_alpha =
-        MENU_RENDER_ALPHA
+    local gap = 8
+    local left_w = math.floor((pw - gap) * 0.51)
+    local right_x = px + left_w + gap
+    local right_w = pw - left_w - gap
+    local box_y = py + 20
+    local box_h = 355
 
-    local fade =
-        ease_out_cubic(raw)
+    text(px + 11, py, "Configs", C.text_faint)
+    text(right_x + 10, py, "Actions", C.text_faint)
+    rounded_outline(px, box_y, left_w, box_h, 6,
+        C.border, 1, C.group_box_bg)
+    rounded_outline(right_x, box_y, right_w, box_h, 6,
+        C.border, 1, C.group_box_bg)
 
-    MENU_RENDER_ALPHA =
-        parent_alpha
-        * fade
+    -- Left group: selectable saved profiles with explicit pagination.
+    text(px + 12, box_y + 15, "Saved configurations", C.text_dim)
+    local per_page = 8
+    local pages = math.max(1, math.ceil(count / per_page))
+    A.config_list_page = clamp(math.floor(tonumber(A.config_list_page) or 1), 1, pages)
+    local page_idx = A.config_list_page
+    local first_idx = (page_idx - 1) * per_page + 1
+    local list_top = box_y + 42
 
-    local anim =
-        A.config_open
-        and ease_out_cubic(raw)
-        or ease_in_out_cubic(raw)
-
-    local visible_count =
-        math.min(
-            #FALLEN_CONFIGS.CONFIG.list,
-            6
-        )
-
-    local empty_extra =
-        #FALLEN_CONFIGS.CONFIG.list == 0
-        and 29
-        or 0
-
-    local full_h =
-        160
-        + visible_count * 29
-        + empty_extra
-
-    local pw = 300
-
-    local retract =
-        1 - anim
-
-    local px =
-        snap(
-            anchor_x
-        )
-
-    local py =
-        snap(
-            anchor_y
-            + 30
-            - retract * 20
-        )
-
-    local ph =
-        math.max(
-            42,
-            full_h
-            - retract * 62
-        )
-
-    local interactive =
-        raw > 0.95
-        and A.config_open
-
-    local ui_clicked =
-        clicked
-        and interactive
-
-    FALLEN_POPUP_GLOW(px, py, pw, ph, 11, 1)
-
-    rounded_fill(
-        px,
-        py,
-        pw,
-        ph,
-        11,
-        { 0.062, 0.066, 0.077, 1 }
-    )
-
-    text(
-        px + 13,
-        py + 12,
-        "Configs",
-        C.text
-    )
-
-    if ph > 39 then
-        line(
-            px + 12,
-            py + 34,
-            px + pw - 12,
-            py + 34,
-            C.divider,
-            1
-        )
-    end
-
-    -- Name input.
-    local input_x = px + 12
-    local input_y = py + 44
-    local input_w = pw - 24
-    local input_h = 31
-
-    if ph > 76 then
-        local input_hot =
-            hover(
-                mx,
-                my,
-                input_x,
-                input_y,
-                input_w,
-                input_h
-            )
-
-        rounded_fill(
-            input_x,
-            input_y,
-            input_w,
-            input_h,
-            7,
-            A.config_input_focus
-                and { 0.112, 0.118, 0.145, 1 }
-                or (
-                    input_hot
-                    and { 0.100, 0.104, 0.124, 1 }
-                    or C.button
-                )
-        )
-
-        if A.config_input_focus then
-            rounded_outline(
-                input_x,
-                input_y,
-                input_w,
-                input_h,
-                7,
-                alpha(C.accent, 0.65),
-                1,
-                { 0.112, 0.118, 0.145, 1 }
-            )
-        end
-
-        local shown =
-            tostring(
-                A.config_input_buffer
-                or ""
-            )
-
-        if shown == ""
-            and not A.config_input_focus
-        then
-            text(
-                input_x + 10,
-                input_y + 9,
-                "Config name",
-                C.text_faint
-            )
-        else
-            if A.config_input_focus
-                and math.floor(tick() * 2) % 2 == 0
-            then
-                shown =
-                    shown
-                    .. "|"
-            end
-
-            text(
-                input_x + 10,
-                input_y + 9,
-                shown,
-                C.text
-            )
-        end
-
-        if ui_clicked
-            and input_hot
-        then
-            FALLEN_CONFIGS.input_focus(true)
-        end
-    end
-
-    local list_y =
-        py + 84
-
-    if ph > 112 then
-        text(
-            px + 13,
-            list_y,
-            "Saved",
-            C.text_dim
-        )
-
-        list_y =
-            list_y + 18
-
-        if #FALLEN_CONFIGS.CONFIG.list == 0 then
-            text(
-                px + 13,
-                list_y + 5,
-                "No saved configs",
-                C.text_faint
-            )
-        else
-            for i = 1, visible_count do
-                local name =
-                    FALLEN_CONFIGS.CONFIG.list[i]
-
-                local iy =
-                    list_y
-                    + (i - 1) * 29
-
-                local hot =
-                    hover(
-                        mx,
-                        my,
-                        px + 10,
-                        iy,
-                        pw - 20,
-                        26
-                    )
-
-                local selected =
-                    A.config_selected == name
-
-                if hot
-                    or selected
-                then
-                    rounded_fill(
-                        px + 10,
-                        iy,
-                        pw - 20,
-                        26,
-                        6,
-                        selected
-                            and { 0.105, 0.119, 0.158, 1 }
-                            or { 0.086, 0.091, 0.108, 1 }
-                    )
+    if count == 0 then
+        text(px + 17, list_top + 12, "No saved configs", C.text_faint)
+        text(px + 17, list_top + 29, "Create one on the right", C.text_dim)
+    else
+        for row = 1, per_page do
+            local i = first_idx + row - 1
+            local name = config.list[i]
+            if name then
+                local ry = list_top + (row - 1) * 30
+                local hot = hover(mx, my, px + 9, ry, left_w - 18, 27)
+                local selected = A.config_selected == name
+                if hot or selected then
+                    rounded_fill(px + 9, ry, left_w - 18, 27, 5,
+                        selected and C.frame_active or C.button_hovered)
                 end
-
                 if selected then
-                    rounded_fill(
-                        px + 10,
-                        iy + 4,
-                        3,
-                        18,
-                        1,
-                        C.accent
-                    )
+                    rounded_fill(px + 9, ry + 5, 3, 17, 1, C.accent)
                 end
-
-                text(
-                    px + 19,
-                    iy + 7,
-                    name,
-                    FALLEN_HOVER_TEXT(
-                        "config_option:" .. tostring(name),
-                        hot,
-                        selected and C.text or C.text_dim
-                    )
-                )
-
-                if ui_clicked
-                    and hot
-                then
+                local display = tostring(name)
+                if #display > 26 then display = display:sub(1, 24) .. ".." end
+                text(px + 19, ry + 7, display,
+                    selected and C.text or C.text_dim)
+                if ui_clicked and hot then
                     A.config_selected = name
                     A.config_input_buffer = name
                     FALLEN_CONFIGS.input_focus(false)
@@ -23606,116 +23393,98 @@ function FALLEN_CONFIGS.draw_popup(
         end
     end
 
-    local buttons_y =
-        py
-        + full_h
-        - 43
-
-    if ph > full_h - 48 then
-        local gap = 7
-        local bw =
-            math.floor(
-                (pw - 24 - gap * 2)
-                / 3
-            )
-
-        local bx = px + 12
-
-        if FALLEN_CONFIGS.button(
-            mx,
-            my,
-            ui_clicked,
-            bx,
-            buttons_y,
-            bw,
-            31,
-            "Save",
-            false
-        ) then
-            FALLEN_CONFIGS.input_focus(false)
-            FALLEN_CONFIGS.save(
-                A.config_input_buffer
-            )
-        end
-
-        bx =
-            bx + bw + gap
-
-        if FALLEN_CONFIGS.button(
-            mx,
-            my,
-            ui_clicked,
-            bx,
-            buttons_y,
-            bw,
-            31,
-            "Load",
-            false
-        ) then
-            FALLEN_CONFIGS.input_focus(false)
-
-            FALLEN_CONFIGS.load(
-                A.config_selected
-                or A.config_input_buffer
-            )
-        end
-
-        bx =
-            bx + bw + gap
-
-        if FALLEN_CONFIGS.button(
-            mx,
-            my,
-            ui_clicked,
-            bx,
-            buttons_y,
-            bw,
-            31,
-            "Delete",
-            true
-        ) then
-            FALLEN_CONFIGS.input_focus(false)
-
-            FALLEN_CONFIGS.delete(
-                A.config_selected
-                or A.config_input_buffer
-            )
-        end
-    end
-
-    local popup_hot =
-        hover(
-            mx,
-            my,
-            px,
-            py,
-            pw,
-            ph
-        )
-
-    local anchor_hot =
-        hover(
-            mx,
-            my,
-            anchor_x,
-            anchor_y,
-            anchor_w,
-            25
-        )
-
-    if interactive
-        and clicked
-        and not popup_hot
-        and not anchor_hot
+    local pager_y = box_y + box_h - 39
+    line(px + 12, pager_y - 7, px + left_w - 12, pager_y - 7, C.divider, 1)
+    if FALLEN_CONFIGS.button(mx, my, ui_clicked,
+        px + 11, pager_y, 55, 26, "<", false)
     then
-        A.config_open = false
-        FALLEN_CONFIGS.input_focus(false)
+        A.config_list_page = math.max(1, A.config_list_page - 1)
+    end
+    centered_text(px + left_w * 0.5, pager_y + 7,
+        tostring(page_idx) .. " / " .. tostring(pages), C.text_dim)
+    if FALLEN_CONFIGS.button(mx, my, ui_clicked,
+        px + left_w - 66, pager_y, 55, 26, ">", false)
+    then
+        A.config_list_page = math.min(pages, A.config_list_page + 1)
     end
 
-    MENU_RENDER_ALPHA =
-        parent_alpha
+    -- Right group: name input, current profile, Save/Load/Delete.
+    local rx = right_x + 11
+    local rw = right_w - 22
+    text(rx + 1, box_y + 15, "Configuration name", C.text_dim)
+    local iy = box_y + 38
+    local ih = 31
+    local input_hot = hover(mx, my, rx, iy, rw, ih)
+    local input_bg = A.config_input_focus
+        and C.frame_active
+        or (input_hot and C.button_hovered or C.frame_inactive)
+    rounded_outline(rx, iy, rw, ih, 5,
+        A.config_input_focus and C.accent or C.border,
+        1, input_bg)
 
-    return popup_hot
+    local shown = tostring(A.config_input_buffer or "")
+    if #shown > 27 then shown = shown:sub(-27) end
+    if shown == "" and not A.config_input_focus then
+        shown = "Config name"
+    elseif A.config_input_focus and math.floor(tick() * 2) % 2 == 0 then
+        shown = shown .. "|"
+    end
+    text(rx + 8, iy + 9, shown,
+        (A.config_input_buffer or "") == "" and not A.config_input_focus
+        and C.text_faint or C.text)
+    if ui_clicked and input_hot then
+        FALLEN_CONFIGS.input_focus(true)
+    end
+
+    local loaded = config.loaded_name or "None"
+    if #loaded > 24 then loaded = loaded:sub(1, 22) .. ".." end
+    text(rx + 1, box_y + 83, "Loaded:", C.text_dim)
+    text(rx + 52, box_y + 83, loaded,
+        config.loaded_name and C.accent or C.text_faint)
+    line(rx, box_y + 107, rx + rw, box_y + 107, C.divider, 1)
+
+    local by = box_y + 121
+    local bh = 31
+    if FALLEN_CONFIGS.button(mx, my, ui_clicked,
+        rx, by, rw, bh, "Save", false)
+    then
+        FALLEN_CONFIGS.input_focus(false)
+        if FALLEN_CONFIGS.save(A.config_input_buffer) then
+            for i, name in ipairs(config.list) do
+                if name == A.config_selected then
+                    A.config_list_page = math.ceil(i / per_page)
+                    break
+                end
+            end
+        end
+    end
+    if FALLEN_CONFIGS.button(mx, my, ui_clicked,
+        rx, by + 42, rw, bh, "Load", false)
+    then
+        FALLEN_CONFIGS.input_focus(false)
+        FALLEN_CONFIGS.load(A.config_selected or A.config_input_buffer)
+    end
+    if FALLEN_CONFIGS.button(mx, my, ui_clicked,
+        rx, by + 84, rw, bh, "Delete", true)
+    then
+        FALLEN_CONFIGS.input_focus(false)
+        FALLEN_CONFIGS.delete(A.config_selected or A.config_input_buffer)
+    end
+    if FALLEN_CONFIGS.button(mx, my, ui_clicked,
+        rx, by + 126, rw, bh, "Refresh list", false)
+    then
+        FALLEN_CONFIGS.input_focus(false)
+        if type(FALLEN_CONFIGS.refresh) == "function" then
+            FALLEN_CONFIGS.refresh()
+        end
+    end
+    line(rx, box_y + box_h - 46,
+        rx + rw, box_y + box_h - 46, C.divider, 1)
+    text(rx + 1, box_y + box_h - 33,
+        "Profiles: " .. tostring(#config.list), C.text_dim)
+    text(rx + 1, box_y + box_h - 18,
+        "Press Save above to return", C.text_faint)
+    MENU_RENDER_ALPHA = old_alpha
 end
 
 
@@ -30958,7 +30727,7 @@ function FALLEN_NL_DRAW_TOP_SUBTABS(
     wx,
     wy
 )
-    if S.tab ~= 2 then
+    if S.tab ~= 2 or A.config_open then
         return
     end
 
@@ -31079,1421 +30848,77 @@ function FALLEN_NL_DRAW_TOP_SUBTABS(
     end
 end
 
-
--- =========================================================
--- FULL SOURCE UI PORT (gui.cpp / widgets.cpp / tabs.cpp)
--- =========================================================
--- The previous v100 only borrowed colors/sizing from a different reference.
--- This renderer ports the actual uploaded source architecture:
--- 606x970 root, title bar, horizontal main tabs, 2 source columns,
--- source panels/widgets/popups/config page/footer. Existing Fallen settings
--- remain the data/model layer; only the menu presentation is replaced.
-
-FALLEN_NL2 = FALLEN_NL2 or {}
-FALLEN_NL2.state = FALLEN_NL2.state or {
-    page = 1,
-    aim_tab = 1,
-    silent_tab = 1,
-    tracer_tab = 1,
-    world_tab = 1,
-    base_selected = 1,
-    combo = nil,
-    color = nil,
-    color_drag = nil,
-    slider = nil,
-    tooltip = nil,
-    prev_lmb = false,
-    prev_rmb = false,
-    prev_rshift = false,
-    brand_clicks = 0,
-    brand_click_t = 0,
-    online_count = 0,
-    online_t = -100,
-}
-
-FALLEN_NL2.col = {
-    window      = {30/255, 30/255, 39/255, 176/255},
-    border      = {1, 1, 1, 30/255},
-    panel       = {1, 1, 1, 10/255},
-    outline     = {1, 1, 1, 25/255},
-    divider     = {1, 1, 1, 8/255},
-    control     = {1, 1, 1, 15/255},
-    button      = {1, 1, 1, 17/255},
-    hovered     = {1, 1, 1, 24/255},
-    frame       = {1, 1, 1, 14/255},
-    check       = {1, 1, 1, 46/255},
-    check_hover = {1, 1, 1, 57/255},
-    popup       = {40/255, 40/255, 46/255, 1},
-    checked     = {165/255, 93/255, 94/255, 1},
-    fill        = {142/255, 75/255, 75/255, 1},
-    text        = {140/255, 140/255, 150/255, 1},
-    bright      = {175/255, 175/255, 185/255, 1},
-    dim         = {80/255, 80/255, 90/255, 1},
-    faint       = {89/255, 89/255, 97/255, 1},
-    accent      = {181/255, 96/255, 96/255, 1},
-    accent_dim  = {120/255, 67/255, 68/255, 1},
-    tint        = {181/255, 96/255, 96/255, 18/255},
-    yellow      = {181/255, 150/255, 57/255, 1},
-    red         = {195/255, 75/255, 75/255, 1},
-    green       = {83/255, 153/255, 98/255, 1},
-    error       = {1, 0, 0, 1},
-}
-
--- One-time switch from v100's blue mockup to the real uploaded source accent.
-if S.neverlose_full_source_ui_v2 ~= true then
-    S.menu_style_h = 0.0
-    S.menu_style_s = 0.4696132597
-    S.menu_style_v = 0.7098039216
-    S.menu_style_alpha = 100
-    S.menu_type = "default"
-    S.menu_glow_strength = 0
-    S.neverlose_full_source_ui_v2 = true
-end
-
-function FALLEN_NL2.tw(v)
-    return #tostring(v or "") * 6.05
-end
-
-function FALLEN_NL2.accent()
-    local r, g, b = hsv_to_rgb(
-        tonumber(S.menu_style_h) or 0,
-        tonumber(S.menu_style_s) or 0.4696132597,
-        tonumber(S.menu_style_v) or 0.7098039216
-    )
-    return {r, g, b, clamp((tonumber(S.menu_style_alpha) or 100) / 100, 0, 1)}
-end
-
-function FALLEN_NL2.white(a)
-    return {1, 1, 1, clamp((tonumber(a) or 255) / 255, 0, 1)}
-end
-
-function FALLEN_NL2.draw_text_center(x, y, value, color)
-    text(x - FALLEN_NL2.tw(value) * 0.5, y, value, color)
-end
-
-function FALLEN_NL2.changed(key, value)
-    if type(key) ~= "string" then return end
-
-    if string.sub(key, 1, 7) == "silent_"
-        and type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function"
-    then
-        pcall(FALLEN_SILENT_UI_VALUE_CHANGED, key, value)
+-- Neverlose-source vertical navigation: original 30px animated tabs,
+-- section labels and top Save control. Individual Fallen features keep their
+-- existing Lua runtimes and state; only their navigation was remapped.
+local function FALLEN_NL_NAV_ITEM(mx, my, clicked, x, y, key, label, selected, action)
+    local hot = hover(mx, my, x, y, 150, 30)
+    A.sidebar_tab_anim[key] = lerp(
+        A.sidebar_tab_anim[key] or (selected and 1 or 0),
+        selected and 1 or 0, 0.05)
+    local a = clamp(A.sidebar_tab_anim[key], 0, 1)
+    if a > 0.002 then
+        rounded_fill(x, y, 150, 30, 5,
+            alpha(C.frame_active, 0.5 * a))
     end
-
-    if string.sub(key, 1, 6) == "world_" then
-        _G.FALLEN_WORLD_FORCE_RESCAN = true
-        if key == "world_grenade_esp_enabled" then
-            _G.FALLEN_GRENADE_FORCE_RESCAN = true
-            _G.FALLEN_GRENADE_RESET_TRACKS = true
-        end
+    -- Use Fallen's existing accent-tinted icon PNGs where possible.
+    -- Font Awesome glyphs from the C++ source are not exposed by Drawing.
+    local icon_handle = nil
+    if key == "rage" then
+        icon_handle = FALLEN_AIMBOT_TAB_ICON_GET()
+    elseif key == "silent" then
+        icon_handle = FALLEN_SILENT_TAB_ICON_GET()
+    elseif key == "players" then
+        icon_handle = FALLEN_VISUALS_TAB_ICON_GET()
+    elseif key == "world" then
+        icon_handle = FALLEN_WORLD_TAB_ICON_GET()
+    elseif key == "main" then
+        icon_handle = FALLEN_MISC_TAB_ICON_GET()
+    end
+    if icon_handle and type(DrawImage) == "function" then
+        local sz = FALLEN_UI_LEN(17)
+        local cx = FALLEN_UI_X(x + 19)
+        local cy = FALLEN_UI_Y(y + 15)
+        pcall(DrawImage, icon_handle,
+            cx - sz * 0.5, cy - sz * 0.5, sz, sz,
+            C.accent[1], C.accent[2], C.accent[3],
+            MENU_RENDER_ALPHA, 0)
+    else
+        circle(x + 19, y + 15, 5, C.accent, 1.1)
+    end
+    text(x + 35, y + 8, label, C.text)
+    if clicked and hot and type(action) == "function" then
+        action()
     end
 end
 
-function FALLEN_NL2.close_popups()
-    FALLEN_NL2.state.combo = nil
-    FALLEN_NL2.state.color = nil
-    FALLEN_NL2.state.color_drag = nil
-    FALLEN_NL2.state.slider = nil
+local function FALLEN_NL_NAV_SELECT(tab, visuals)
+    A.config_open = false
+    A.config_anim = 0
     FALLEN_CONFIGS.input_focus(false)
-end
-
-function FALLEN_NL2.begin_frame(wx, wy, click, lmb, rmb_click)
-    local st = FALLEN_NL2.state
-    st.wx = wx
-    st.wy = wy
-    st.click = click
-    st.lmb = lmb
-    st.rmb_click = rmb_click
-    st.page_click = click and st.combo == nil and st.color == nil
-    st.page_lmb = lmb and st.combo == nil and st.color == nil
-    st.tooltip = nil
-    st.col_y = {wy + 88, wy + 88}
-    st.panel = nil
-    st.last_row = nil
-end
-
-function FALLEN_NL2.panel_begin(column, title_name, height, tabs, tab_field)
-    local st = FALLEN_NL2.state
-    local col = FALLEN_NL2.col
-    local x = st.wx + (column == 1 and 14 or 308)
-    local w = column == 1 and 283 or 284
-    local y = st.col_y[column]
-    local h = tonumber(height) or 0
-    if h < 0 then
-        h = (st.wy + 932) - y
-    end
-    if h <= 0 then h = 120 end
-
-    rounded_outline(x, y, w, h, 6, col.outline, 1, col.panel)
-
-    local content_y
-    if type(tabs) == "table" and #tabs > 0 then
-        local tx = x + 14
-        local active = tonumber(st[tab_field]) or 1
-        for i, label in ipairs(tabs) do
-            local tw = FALLEN_NL2.tw(label) + 16
-            local hot = hover(st.mx, st.my, tx, y + 12, tw, 20)
-            if active == i then
-                rounded_fill(tx, y + 12, tw, 20, 4, col.tint)
-            end
-            text(
-                tx + 8,
-                y + 16,
-                label,
-                active == i and FALLEN_NL2.accent() or (hot and col.text or col.dim)
-            )
-            if st.page_click and hot then
-                st[tab_field] = i
-                active = i
-                st.slider = nil
-            end
-            tx = tx + tw + 6
-        end
-        line(x + 14, y + 38, x + w - 14, y + 38, col.divider, 1)
-        content_y = y + 48
-    else
-        text(x + 14, y + 11, title_name, col.text)
-        line(x + 14, y + 30, x + w - 14, y + 30, col.divider, 1)
-        content_y = y + 40
-    end
-
-    st.panel = {
-        column = column,
-        x = x,
-        y = y,
-        w = w,
-        h = h,
-        work_x = x + 14,
-        work_w = w - 28,
-        right = x + w - 14,
-        cy = content_y,
-    }
-    return st.panel
-end
-
-function FALLEN_NL2.panel_end(gap)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return end
-    st.col_y[p.column] = p.y + p.h + (gap == nil and 9 or gap)
-    st.panel = nil
-    st.last_row = nil
-end
-
-function FALLEN_NL2.set_row(x, y, w, h)
-    local st = FALLEN_NL2.state
-    st.last_row = {x=x, y=y, w=w, h=h, right=x+w}
-end
-
-function FALLEN_NL2.checkbox(label, key, label_color)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return false end
-    local col = FALLEN_NL2.col
-    local x, y = p.work_x, p.cy
-    local label_w = FALLEN_NL2.tw(label)
-    local hot = hover(st.mx, st.my, x, y, 26 + label_w, 18)
-    local old = S[key] == true
-    local changed = false
-    if st.page_click and hot then
-        S[key] = not old
-        changed = true
-        FALLEN_NL2.changed(key, S[key])
-    end
-    local value = S[key] == true
-    rounded_fill(x, y, 18, 18, 4, value and col.checked or (hot and col.check_hover or col.check))
-    text(x + 26, y + 3, label, label_color or col.text)
-    FALLEN_NL2.set_row(x, y, p.work_w, 18)
-    p.cy = p.cy + 26
-    return changed
-end
-
-function FALLEN_NL2.row(label, color)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return end
-    local x, y = p.work_x, p.cy
-    text(x, y + 3, label, color or FALLEN_NL2.col.text)
-    FALLEN_NL2.set_row(x, y, p.work_w, 18)
-    p.cy = p.cy + 26
-end
-
-function FALLEN_NL2.label(label, color)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return end
-    p.cy = p.cy + 3
-    text(p.work_x, p.cy, label, color or FALLEN_NL2.col.text)
-    p.cy = p.cy + 17
-end
-
-function FALLEN_NL2.center(label, color)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return end
-    FALLEN_NL2.draw_text_center(p.work_x + p.work_w * 0.5, p.cy, label, color or FALLEN_NL2.col.text)
-    p.cy = p.cy + 16
-end
-
-function FALLEN_NL2.spacing(h)
-    local p = FALLEN_NL2.state.panel
-    if p then p.cy = p.cy + (tonumber(h) or 0) end
-end
-
-function FALLEN_NL2.separator()
-    local p = FALLEN_NL2.state.panel
-    if not p then return end
-    line(p.work_x, p.cy, p.work_x + p.work_w, p.cy, FALLEN_NL2.col.frame, 1)
-    p.cy = p.cy + 9
-end
-
-function FALLEN_NL2.trailing_rect(width, height, overhang)
-    local row = FALLEN_NL2.state.last_row
-    if not row then return nil end
-    local right = row.right + (tonumber(overhang) or 0)
-    local x = right - width
-    local y = row.y + (row.h - height) * 0.5
-    row.right = x - 6
-    return x, y, width, height
-end
-
-function FALLEN_NL2.keybind(kind)
-    local st = FALLEN_NL2.state
-    local col = FALLEN_NL2.col
-    local waiting = kind == "aim" and A.aim_bind_listening or A.silent_bind_listening
-    local vk = kind == "aim" and S.aim_hold_key or S.silent_key
-    local name = waiting and "..." or string.lower(aim_vk_name(vk))
-    local w = math.max(40, FALLEN_NL2.tw(name) + 20)
-    local x, y, rw, rh = FALLEN_NL2.trailing_rect(w, 20, 4)
-    if not x then return end
-    local hot = hover(st.mx, st.my, x, y, rw, rh)
-    rounded_outline(x, y, rw, rh, 10, FALLEN_NL2.white(27), 1, hot and col.hovered or col.control)
-    FALLEN_NL2.draw_text_center(x + rw * 0.5, y + 4, name, waiting and FALLEN_NL2.accent() or col.text)
-    if st.page_click and hot then
-        if kind == "aim" then
-            if A.aim_bind_listening then aim_bind_cancel() else aim_bind_start() end
-        else
-            if A.silent_bind_listening then FALLEN_SILENT_BIND_CANCEL() else FALLEN_SILENT_BIND_START() end
-        end
-    end
-end
-
-function FALLEN_NL2.color_value(prefix)
-    local h = tonumber(S[prefix .. "_h"]) or 0
-    local s = tonumber(S[prefix .. "_s"]) or 0
-    local v = tonumber(S[prefix .. "_v"]) or 1
-    local a = clamp((tonumber(S[prefix .. "_alpha"]) or 100) / 100, 0, 1)
-    local r, g, b = hsv_to_rgb(h, s, v)
-    return {r, g, b, a}
-end
-
-function FALLEN_NL2.color(prefix)
-    local st = FALLEN_NL2.state
-    local col = FALLEN_NL2.col
-    local x, y, w, h = FALLEN_NL2.trailing_rect(18, 18, 0)
-    if not x then return end
-    local c = FALLEN_NL2.color_value(prefix)
-
-    -- Source RenderColorRectWithAlphaCheckerboard approximation.
-    local cell = 6
-    for yy = 0, 2 do
-        for xx = 0, 2 do
-            local light = ((xx + yy) % 2) == 0
-            fill(x + xx*cell, y + yy*cell, cell, cell, light and {0.48,0.48,0.50,1} or {0.28,0.28,0.30,1})
-        end
-    end
-    rounded_fill(x, y, w, h, 4, c)
-    rounded_outline(x, y, w, h, 4, col.frame, 1, c)
-
-    local hot = hover(st.mx, st.my, x, y, w, h)
-    if st.page_click and hot then
-        st.color = {prefix=prefix, x=x, y=y, w=w, h=h}
-        st.combo = nil
-        st.color_drag = nil
-        FALLEN_CONFIGS.input_focus(false)
-    end
-end
-
-function FALLEN_NL2.help(tip)
-    local st = FALLEN_NL2.state
-    local x, y, w, h = FALLEN_NL2.trailing_rect(FALLEN_NL2.tw("?"), 13, -2)
-    if not x then return end
-    local hot = hover(st.mx, st.my, x, y, w, h)
-    text(x, y, "?", hot and FALLEN_NL2.col.text or FALLEN_NL2.col.faint)
-    if hot then st.tooltip = tostring(tip) end
-end
-
-function FALLEN_NL2.slider(label, key, minv, maxv, fmt)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return end
-    local col = FALLEN_NL2.col
-    local x, y, w = p.work_x, p.cy, p.work_w
-    local track_y = y + 17
-    local track_h = 8
-    local track_hot = hover(st.mx, st.my, x, track_y - 5, w, track_h + 10)
-    local value = clamp(tonumber(S[key]) or minv, minv, maxv)
-
-    if st.page_click and track_hot then st.slider = key end
-    if st.slider == key and st.page_lmb then
-        local tx = FALLEN_UI_X(x)
-        local tw = FALLEN_UI_LEN(w)
-        local t = clamp((st.mx - tx) / math.max(1, tw), 0, 1)
-        value = minv + (maxv - minv) * t
-        if fmt == "int" then value = math.floor(value + 0.5) end
-        S[key] = value
-        FALLEN_NL2.changed(key, value)
-    else
-        S[key] = value
-    end
-
-    local shown
-    if fmt == "%.2f" then shown = string.format("%.2f", value)
-    elseif fmt == "%.1f" then shown = string.format("%.1f", value)
-    elseif fmt == "int" then shown = tostring(math.floor(value + 0.5))
-    else shown = tostring(math.floor(value + 0.5)) end
-
-    text(x, y - 3, label, col.text)
-    text(x + w - FALLEN_NL2.tw(shown), y - 3, shown, col.text)
-    rounded_fill(x, track_y, w, track_h, 3, (track_hot or st.slider == key) and col.hovered or col.control)
-    local t = clamp((value - minv) / math.max(0.0001, maxv - minv), 0, 1)
-    if t > 0 then
-        rounded_fill(x, track_y, math.max(4, w*t), track_h, 3, col.fill)
-    end
-    p.cy = p.cy + 38
-end
-
-function FALLEN_NL2.combo(label, key, options)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return end
-    local col = FALLEN_NL2.col
-    local x, y, w = p.work_x, p.cy, p.work_w
-    local by = y + 20
-    local bh = 28
-    local id = key .. "@" .. tostring(label)
-    local open = st.combo and st.combo.id == id
-    local hot = hover(st.mx, st.my, x, by, w, bh)
-    text(x, y - 3, label, col.text)
-    rounded_outline(x, by, w, bh, 4, col.frame, 1, (hot or open) and col.hovered or col.control)
-    text(x + 12, by + 7, tostring(S[key] or options[1] or ""), col.text)
-    text(x + w - 20, by + 7, "v", col.dim)
-
-    if st.page_click and hot then
-        st.combo = {id=id, key=key, options=options, x=x, y=by, w=w, h=bh}
-        st.color = nil
-        st.color_drag = nil
-        FALLEN_CONFIGS.input_focus(false)
-    end
-    p.cy = p.cy + 58
-end
-
-function FALLEN_NL2.button(label, width, height)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return false end
-    local col = FALLEN_NL2.col
-    local w = tonumber(width) or p.work_w
-    if w <= 0 then w = p.work_w end
-    local h = tonumber(height) or 26
-    local x, y = p.work_x, p.cy
-    local hot = hover(st.mx, st.my, x, y, w, h)
-    local held = hot and st.page_lmb
-    rounded_outline(x, y, w, h, 4, FALLEN_NL2.white(10), 1, held and col.control or (hot and col.hovered or col.button))
-    FALLEN_NL2.draw_text_center(x + w*0.5, y + (h-13)*0.5, label, hot and col.bright or col.text)
-    p.cy = p.cy + h + 8
-    return st.page_click and hot
-end
-
-function FALLEN_NL2.buttons(labels)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return -1 end
-    local col = FALLEN_NL2.col
-    local count = #labels
-    local gap = 6
-    local w = math.floor((p.work_w - gap*(count-1)) / math.max(1,count))
-    local y = p.cy
-    local pressed = -1
-    for i, label in ipairs(labels) do
-        local x = p.work_x + (i-1)*(w+gap)
-        local hot = hover(st.mx, st.my, x, y, w, 26)
-        local held = hot and st.page_lmb
-        rounded_outline(x, y, w, 26, 4, FALLEN_NL2.white(10), 1, held and col.control or (hot and col.hovered or col.button))
-        FALLEN_NL2.draw_text_center(x+w*0.5, y+6, label, hot and col.bright or col.text)
-        if st.page_click and hot then pressed = i end
-    end
-    p.cy = p.cy + 34
-    return pressed
-end
-
-function FALLEN_NL2.input_config(hint)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return end
-    local col = FALLEN_NL2.col
-    local x, y, w, h = p.work_x, p.cy, p.work_w, 28
-    local hot = hover(st.mx, st.my, x, y, w, h)
-    rounded_outline(x, y, w, h, 4, col.frame, 1, (A.config_input_focus or hot) and col.hovered or col.control)
-    local shown = tostring(A.config_input_buffer or "")
-    if shown == "" and not A.config_input_focus then
-        shown = hint or ""
-        text(x+10, y+7, shown, col.dim)
-    else
-        if A.config_input_focus and math.floor(tick()*2)%2==0 then shown = shown .. "|" end
-        text(x+10, y+7, shown, col.text)
-    end
-    if st.page_click and hot then
-        FALLEN_CONFIGS.input_focus(true)
-        st.combo = nil
-        st.color = nil
-    elseif st.page_click and A.config_input_focus and not hot then
-        FALLEN_CONFIGS.input_focus(false)
-    end
-    p.cy = p.cy + 36
-end
-
-function FALLEN_NL2.list_configs(height)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return end
-    local col = FALLEN_NL2.col
-    local h = tonumber(height) or 272
-    local x, y, w = p.work_x, p.cy, p.work_w
-    rounded_outline(x, y, w, h, 8, col.frame, 1, col.control)
-    local max_items = math.max(1, math.floor((h - 16) / 28))
-    for i = 1, math.min(#FALLEN_CONFIGS.CONFIG.list, max_items) do
-        local name = FALLEN_CONFIGS.CONFIG.list[i]
-        local iy = y + 8 + (i-1)*28
-        local hot = hover(st.mx, st.my, x+8, iy, w-16, 28)
-        local sel = A.config_selected == name
-        if hot or sel then
-            rounded_fill(x+8, iy, w-16, 28, 4, FALLEN_NL2.white(sel and 20 or 12))
-        end
-        text(x+21, iy+7, name, sel and FALLEN_NL2.accent() or col.text)
-        if st.page_click and hot then
-            A.config_selected = name
-            A.config_input_buffer = name
-            FALLEN_CONFIGS.input_focus(false)
-        end
-    end
-    if #FALLEN_CONFIGS.CONFIG.list == 0 then
-        FALLEN_NL2.draw_text_center(x+w*0.5, y+16, "No configs", col.dim)
-    end
-    p.cy = p.cy + h + 8
-end
-
-function FALLEN_NL2.badge(label)
-    local st = FALLEN_NL2.state
-    local p = st.panel
-    if not p then return end
-    local w = FALLEN_NL2.tw(label) + 16
-    local x = p.work_x + (p.work_w - w)*0.5
-    local y = p.cy
-    rounded_outline(x, y, w, 16, 4, {181/255,96/255,96/255,32/255}, 1, FALLEN_NL2.col.tint)
-    text(x+8, y+2, label, FALLEN_NL2.accent())
-    p.cy = p.cy + 24
-end
-
-function FALLEN_NL2.color_row(label, prefix, color)
-    FALLEN_NL2.row(label, color)
-    FALLEN_NL2.color(prefix)
-end
-
-function FALLEN_NL2.combo_popup()
-    local st = FALLEN_NL2.state
-    local c = st.combo
-    if not c then return end
-    local col = FALLEN_NL2.col
-    local ph = 8 + #c.options*24 + math.max(0,#c.options-1)*2
-    local px, py, pw = c.x, c.y + c.h + 4, c.w
-    rounded_outline(px, py, pw, ph, 4, col.outline, 1, col.popup)
-    for i, option in ipairs(c.options) do
-        local iy = py + 4 + (i-1)*26
-        local hot = hover(st.mx, st.my, px+4, iy, pw-8, 24)
-        local sel = tostring(S[c.key]) == tostring(option)
-        if hot or sel then
-            rounded_fill(px+4, iy, pw-8, 24, 4, FALLEN_NL2.white(sel and 20 or 12))
-        end
-        text(px+12, iy+6, option, sel and FALLEN_NL2.accent() or col.text)
-        if st.click and hot then
-            S[c.key] = option
-            FALLEN_NL2.changed(c.key, option)
-            st.combo = nil
-            return
-        end
-    end
-    local inside = hover(st.mx, st.my, px, py, pw, ph)
-    local anchor = hover(st.mx, st.my, c.x, c.y, c.w, c.h)
-    if st.click and not inside and not anchor then st.combo = nil end
-end
-
-function FALLEN_NL2.color_popup()
-    local st = FALLEN_NL2.state
-    local c = st.color
-    if not c then return end
-    local col = FALLEN_NL2.col
-    local pw, ph = 186, 156
-    local px = c.x + c.w - pw
-    local py = c.y + c.h + 6
-    rounded_outline(px, py, pw, ph, 4, col.outline, 1, col.popup)
-
-    local sv_x, sv_y, sv_s = px+8, py+8, 140
-    local hue_x, hue_w = sv_x+145, 10
-    local alpha_x, alpha_w = hue_x+15, 10
-    local prefix = c.prefix
-    local hh = clamp(tonumber(S[prefix.."_h"]) or 0, 0, 1)
-    local ss = clamp(tonumber(S[prefix.."_s"]) or 0, 0, 1)
-    local vv = clamp(tonumber(S[prefix.."_v"]) or 1, 0, 1)
-    local aa = clamp((tonumber(S[prefix.."_alpha"]) or 100)/100, 0, 1)
-
-    -- Compact ColorPicker4-like SV field.
-    local cells = 14
-    local cs = sv_s / cells
-    for yy=0,cells-1 do
-        local v = 1 - yy/(cells-1)
-        for xx=0,cells-1 do
-            local s = xx/(cells-1)
-            local r,g,b = hsv_to_rgb(hh,s,v)
-            fill(sv_x+xx*cs, sv_y+yy*cs, cs+0.6, cs+0.6, {r,g,b,1})
-        end
-    end
-    rounded_outline(sv_x, sv_y, sv_s, sv_s, 2, col.outline, 1, {0,0,0,0})
-
-    for i=0,23 do
-        local h0 = i/24
-        local r,g,b = hsv_to_rgb(h0,1,1)
-        fill(hue_x, sv_y + i*(sv_s/24), hue_w, sv_s/24+0.5, {r,g,b,1})
-    end
-
-    local cr,cg,cb = hsv_to_rgb(hh,ss,vv)
-    for i=0,13 do
-        local a0 = i/13
-        local yy = sv_y + (13-i)*(sv_s/14)
-        local cellh = sv_s/14+0.5
-        local bg = (i%2==0) and 0.48 or 0.28
-        fill(alpha_x, yy, alpha_w, cellh, {bg,bg,bg,1})
-        fill(alpha_x, yy, alpha_w, cellh, {cr,cg,cb,a0})
-    end
-
-    circle(sv_x + ss*sv_s, sv_y + (1-vv)*sv_s, 5, {1,1,1,1}, 2)
-    line(hue_x-2, sv_y+hh*sv_s, hue_x+hue_w+2, sv_y+hh*sv_s, {1,1,1,1}, 2)
-    line(alpha_x-2, sv_y+(1-aa)*sv_s, alpha_x+alpha_w+2, sv_y+(1-aa)*sv_s, {1,1,1,1}, 2)
-
-    if not st.lmb then st.color_drag = nil end
-    if st.click then
-        if hover(st.mx,st.my,sv_x,sv_y,sv_s,sv_s) then st.color_drag="sv"
-        elseif hover(st.mx,st.my,hue_x,sv_y,hue_w,sv_s) then st.color_drag="hue"
-        elseif hover(st.mx,st.my,alpha_x,sv_y,alpha_w,sv_s) then st.color_drag="alpha" end
-    end
-
-    if st.lmb and st.color_drag then
-        if st.color_drag == "sv" then
-            local sx, sy = FALLEN_UI_X(sv_x), FALLEN_UI_Y(sv_y)
-            local sw = FALLEN_UI_LEN(sv_s)
-            S[prefix.."_s"] = clamp((st.mx-sx)/math.max(1,sw),0,1)
-            S[prefix.."_v"] = 1-clamp((st.my-sy)/math.max(1,sw),0,1)
-        elseif st.color_drag == "hue" then
-            local sy = FALLEN_UI_Y(sv_y)
-            local sh = FALLEN_UI_LEN(sv_s)
-            S[prefix.."_h"] = clamp((st.my-sy)/math.max(1,sh),0,1)
-        elseif st.color_drag == "alpha" then
-            local sy = FALLEN_UI_Y(sv_y)
-            local sh = FALLEN_UI_LEN(sv_s)
-            S[prefix.."_alpha"] = math.floor((1-clamp((st.my-sy)/math.max(1,sh),0,1))*100+0.5)
-        end
-    end
-
-    local inside = hover(st.mx,st.my,px,py,pw,ph)
-    local anchor = hover(st.mx,st.my,c.x,c.y,c.w,c.h)
-    if st.click and not inside and not anchor then
-        st.color = nil
-        st.color_drag = nil
-    end
-end
-
-function FALLEN_NL2.tooltip_draw()
-    local st = FALLEN_NL2.state
-    if not st.tooltip then return end
-    local w = math.min(260, FALLEN_NL2.tw(st.tooltip)+18)
-    local x = st.logical_mx + 14
-    local y = st.logical_my + 14
-    rounded_outline(x,y,w,28,4,FALLEN_NL2.col.outline,1,FALLEN_NL2.col.popup)
-    text(x+9,y+8,st.tooltip,FALLEN_NL2.col.text)
-end
-
-function FALLEN_NL2.draw_icon(index, x, y, color)
-    -- Primitive replacements for the source Lucide font (custom API has no font merge).
-    if index == 1 then
-        circle(x+6,y+6,5,color,1.2); line(x+6,y+1,x+6,y+11,color,1); line(x+1,y+6,x+11,y+6,color,1)
-    elseif index == 2 then
-        circle(x+6,y+6,4,color,1.2); circle_fill(x+6,y+6,1.5,color); line(x,y+6,x+2,y+4,color,1); line(x+10,y+4,x+12,y+6,color,1)
-    elseif index == 3 then
-        circle(x+6,y+6,5,color,1.2); line(x+1,y+6,x+11,y+6,color,1); line(x+6,y+1,x+6,y+11,color,1)
-    elseif index == 4 then
-        circle(x+6,y+3,2.5,color,1.2); line(x+6,y+6,x+6,y+12,color,1.2); line(x+2,y+8,x+10,y+8,color,1.2)
-    elseif index == 5 then
-        circle(x+6,y+6,4,color,1.2); circle_fill(x+6,y+6,1.5,color); line(x+6,y,x+6,y+2,color,1); line(x+6,y+10,x+6,y+12,color,1)
-    elseif index == 6 then
-        rounded_outline(x+1,y+1,10,12,2,color,1,{0,0,0,0}); line(x+3,y+4,x+9,y+4,color,1); line(x+3,y+7,x+9,y+7,color,1)
-    elseif index == 7 then
-        circle(x+6,y+4,3,color,1.2); line(x+2,y+11,x+10,y+11,color,1.2); line(x+3,y+9,x+9,y+9,color,1.2)
-    else
-        circle(x+4,y+4,2.2,color,1); circle(x+9,y+4,2.2,color,1); line(x+1,y+11,x+12,y+11,color,1.2)
-    end
-end
-
-function FALLEN_NL2.badge_at(x,y,label)
-    local w = FALLEN_NL2.tw(label)+16
-    rounded_outline(x,y,w,16,4,{181/255,96/255,96/255,32/255},1,FALLEN_NL2.col.tint)
-    text(x+8,y+2,label,FALLEN_NL2.accent())
-    return w
-end
-
-function FALLEN_NL2.title_and_tabs()
-    local st = FALLEN_NL2.state
-    local wx, wy = st.wx, st.wy
-    local col = FALLEN_NL2.col
-
-    -- Source title gradient: white(15) -> white(9), y=1..44.
-    for i=0,10 do
-        local t = i/10
-        local a = ((15*(1-t)+9*t)/255)
-        fill(wx+1, wy+1+i*4, 604, math.min(4,43-i*4), {1,1,1,a})
-    end
-
-    local accent = FALLEN_NL2.accent()
-    local brand = "Fallen-lua"
-    local x = wx + 18
-    text(x, wy+15, brand, accent)
-    local brand_w = FALLEN_NL2.tw(brand)
-
-    if st.page_click and hover(st.mx,st.my,x,wy+10,brand_w,22) then
-        local now = tick()
-        if now - (st.brand_click_t or 0) > 0.65 then st.brand_clicks = 0 end
-        st.brand_click_t = now
-        st.brand_clicks = (st.brand_clicks or 0) + 1
-        if st.brand_clicks >= 3 then
-            st.brand_clicks = 0
-            A.secret_unlocked = true
-            S.secret_enabled = true
-            fallen_toast("Secret unlocked", "success")
-        end
-    end
-
-    x = x + brand_w
-    circle_fill(x+6,wy+22,1.5,FALLEN_NL2.white(18))
-    x = x + 11
-    text(x,wy+15,"Interface",col.text)
-    x = x + FALLEN_NL2.tw("Interface") + 7
-    FALLEN_NL2.badge_at(x,wy+14,"Pro")
-
-    local username = tostring(PROFILE and PROFILE.name or "user")
-    text(wx+606-17-FALLEN_NL2.tw(username),wy+15,username,col.text)
-
-    local pages = {"Combat","Visuals","World","Character","Options","Configs","NPC","Teams"}
-    local tx = wx + 18
-    for i,label in ipairs(pages) do
-        local iw = 12
-        local bw = 6 + iw + 3 + FALLEN_NL2.tw(label) + 6
-        local hot = hover(st.mx,st.my,tx,wy+52,bw,24)
-        local active = st.page == i
-        if active then rounded_fill(tx,wy+52,bw,24,12,FALLEN_NL2.white(26)) end
-        local c = active and accent or (hot and col.bright or col.text)
-        FALLEN_NL2.draw_icon(i,tx+6,wy+58,c)
-        text(tx+6+iw+3,wy+58,label,c)
-        if st.page_click and hot and not active then
-            st.page = i
-            FALLEN_NL2.close_popups()
-        end
-        tx = tx + bw + 9
-    end
-end
-
-function FALLEN_NL2.online_count()
-    local st = FALLEN_NL2.state
-    local now = tick()
-    if now - (st.online_t or -100) < 0.5 then return st.online_count or 0 end
-    st.online_t = now
-    local count = 0
-    pcall(function()
-        if rbx and type(rbx.players_service) == "function" then
-            local ps = rbx.players_service()
-            if ps then
-                local children = ps:get_children()
-                if type(children)=="table" then count = #children end
-            end
-        end
-    end)
-    st.online_count = count
-    return count
-end
-
-function FALLEN_NL2.footer()
-    local st = FALLEN_NL2.state
-    local wx, wy = st.wx, st.wy
-    local col = FALLEN_NL2.col
-    fill(wx+1,wy+944,604,25,FALLEN_NL2.white(9))
-    local y = wy+950
-    local accent = FALLEN_NL2.accent()
-    -- tiny users icon
-    circle(wx+22,y+5,2.2,accent,1); circle(wx+28,y+5,2.2,accent,1); line(wx+18,y+11,wx+32,y+11,accent,1)
-    local online = tostring(FALLEN_NL2.online_count()) .. " online"
-    text(wx+36,y,online,col.dim)
-    FALLEN_NL2.draw_text_center(wx+303,y,"Fallen-lua",col.dim)
-    local date = "Oct 18 2026"
-    local right = wx+586
-    text(right-FALLEN_NL2.tw(date),y,date,col.accent_dim)
-    text(right-FALLEN_NL2.tw(date)-FALLEN_NL2.tw("Build: "),y,"Build: ",col.dim)
-end
-
-function FALLEN_NL2.page_combat()
-    local st = FALLEN_NL2.state
-    local col = FALLEN_NL2.col
-
-    local at = st.aim_tab or 1
-    local ah = at == 4 and 344 or (at == 1 and 292 or 170)
-    FALLEN_NL2.panel_begin(1,"aimbot",ah,{"Aimbot","Prediction","Smoothness","FOV"},"aim_tab")
-    at = st.aim_tab or 1
-    if at == 1 then
-        FALLEN_NL2.checkbox("Enabled","aim_enabled")
-        FALLEN_NL2.keybind("aim")
-        FALLEN_NL2.slider("Distance","aim_max_dist",0,10000,"int")
-        FALLEN_NL2.combo("Hit Part","aim_target_part",{"Head","Torso","UpperTorso","LowerTorso","HumanoidRootPart"})
-    elseif at == 2 then
-        FALLEN_NL2.checkbox("Enabled","aim_auto_prediction")
-        FALLEN_NL2.spacing(8)
-        FALLEN_NL2.label("Automatic weapon prediction",col.dim)
-    elseif at == 3 then
-        FALLEN_NL2.checkbox("Sticky Aim","sticky_aim")
-        FALLEN_NL2.spacing(8)
-        FALLEN_NL2.label("Keeps the current target",col.dim)
-    else
-        FALLEN_NL2.checkbox("Show FOV","aim_fov_enabled")
-        FALLEN_NL2.color("aim_fov")
-        FALLEN_NL2.checkbox("Filled","aim_fov_filled")
-        FALLEN_NL2.slider("Radius","aim_fov_size",10,800,"int")
-        FALLEN_NL2.checkbox("Glow","aim_fov_glow_enabled")
-        FALLEN_NL2.color("aim_fov_glow")
-        FALLEN_NL2.slider("Glow Strength","aim_fov_glow_strength",0,100,"int")
-        FALLEN_NL2.slider("Glow Spread","aim_fov_glow_spread",1,18,"int")
-    end
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(1,"Misc",92)
-    FALLEN_NL2.checkbox("FPS Boost","misc_fps_enabled")
-    FALLEN_NL2.panel_end()
-
-    local stt = st.silent_tab or 1
-    local sh = stt == 3 and 344 or (stt == 1 and 360 or 150)
-    FALLEN_NL2.panel_begin(2,"silent",sh,{"Silent Aim","Prediction","FOV"},"silent_tab")
-    stt = st.silent_tab or 1
-    if stt == 1 then
-        FALLEN_NL2.checkbox("Enabled","silent_enabled")
-        FALLEN_NL2.keybind("silent")
-        FALLEN_NL2.checkbox("Team Check","silent_team_check")
-        FALLEN_NL2.checkbox("Sticky Aim","silent_sticky_aim")
-        FALLEN_NL2.slider("Distance","silent_max_dist",0,10000,"int")
-        FALLEN_NL2.combo("Hit Part","silent_target_part",{"Head","Torso","Closest"})
-    elseif stt == 2 then
-        FALLEN_NL2.checkbox("Magic Bullet","silent_magic_bullet")
-        FALLEN_NL2.spacing(8)
-        FALLEN_NL2.label("Fallen silent method",col.dim)
-    else
-        FALLEN_NL2.checkbox("Show FOV","silent_fov_enabled")
-        FALLEN_NL2.color("silent_fov")
-        FALLEN_NL2.checkbox("Filled","silent_fov_filled")
-        FALLEN_NL2.slider("Radius","silent_fov",10,800,"int")
-        FALLEN_NL2.checkbox("Glow","silent_fov_glow_enabled")
-        FALLEN_NL2.color("silent_fov_glow")
-        FALLEN_NL2.slider("Glow Strength","silent_fov_glow_strength",0,100,"int")
-        FALLEN_NL2.slider("Glow Spread","silent_fov_glow_spread",1,18,"int")
-    end
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(2,"Trigger Bot",92)
-    FALLEN_NL2.checkbox("Enabled","trigger_enabled")
-    FALLEN_NL2.panel_end()
-end
-
-function FALLEN_NL2.page_visuals()
-    local st = FALLEN_NL2.state
-
-    FALLEN_NL2.panel_begin(1,"tracer",474,{"Tracer","Animation"},"tracer_tab")
-    if (st.tracer_tab or 1) == 1 then
-        FALLEN_NL2.checkbox("Enabled","bullet_tracer_enabled")
-        FALLEN_NL2.color("bullet_tracer")
-        FALLEN_NL2.combo("Style","bullet_tracer_style",{"Neon","Lightning","Rainbow","Water","Lava"})
-        FALLEN_NL2.slider("Tracer Life","bullet_tracer_life",0.2,3.0,"%.2f")
-        FALLEN_NL2.slider("Thickness","bullet_tracer_thickness",0.5,6.0,"%.2f")
-        FALLEN_NL2.slider("Reveal","bullet_tracer_reveal",0.03,1.0,"%.2f")
-        FALLEN_NL2.slider("Delay","bullet_tracer_delay",0.0,0.5,"%.2f")
-    else
-        FALLEN_NL2.combo("Animation","bullet_tracer_animation",{"None","Sway","Wave"})
-        FALLEN_NL2.spacing(8)
-        FALLEN_NL2.label("Animation is applied to every tracer",FALLEN_NL2.col.dim)
-    end
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(1,"Hit Effects",244)
-    FALLEN_NL2.checkbox("Enabled","hit_effect_enabled")
-    FALLEN_NL2.combo("Style","hit_effect_style",{"Spark","SmokeRing","particles.js","Idk","Cosmos","Ice","Crystal"})
-    FALLEN_NL2.slider("Size","hit_effect_size",0.2,2.0,"%.2f")
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(2,"Armor ESP",480)
-    FALLEN_NL2.checkbox("Enabled","armor_esp_enabled")
-    FALLEN_NL2.combo("Mode","armor_esp_mode",{"Normal","On Player"})
-    FALLEN_NL2.checkbox("Show Weapon","armor_show_weapon")
-    FALLEN_NL2.checkbox("Background","armor_onplayer_background")
-    FALLEN_NL2.checkbox("Glass","armor_onplayer_glass")
-    FALLEN_NL2.slider("Size","armor_esp_size",8,42,"int")
-    FALLEN_NL2.slider("Distance","armor_esp_range",100,5000,"int")
-    FALLEN_NL2.slider("Smooth","armor_esp_smooth",1,40,"int")
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(2,"Armor Glow",284)
-    FALLEN_NL2.checkbox("Enabled","armor_glow_enabled")
-    FALLEN_NL2.color("armor_glow")
-    FALLEN_NL2.slider("Strength","armor_glow_strength",0,200,"int")
-    FALLEN_NL2.slider("Spread","armor_glow_spread",1,30,"int")
-    FALLEN_NL2.panel_end()
-end
-
-function FALLEN_NL2.world_resource_checkbox(cfg)
-    if not cfg then return end
-    FALLEN_NL2.checkbox(cfg.label,cfg.key)
-    FALLEN_NL2.color(world_color_prefix(cfg.id))
-end
-
-function FALLEN_NL2.page_world()
-    local st = FALLEN_NL2.state
-    local col = FALLEN_NL2.col
-
-    FALLEN_NL2.panel_begin(1,"World ESP",430)
-    FALLEN_NL2.checkbox("Enabled","world_esp_enabled")
-    FALLEN_NL2.checkbox("Node ESP","world_node_esp_enabled")
-    FALLEN_NL2.checkbox("Plant ESP","world_plant_esp_enabled")
-    FALLEN_NL2.checkbox("Base ESP","world_base_esp_enabled")
-    FALLEN_NL2.slider("Render Distance","world_max_dist",50,5000,"int")
-    FALLEN_NL2.checkbox("Show Names","world_show_names")
-    FALLEN_NL2.checkbox("Show Distance","world_show_distance")
-    FALLEN_NL2.checkbox("Show Icons","world_show_icons")
-    FALLEN_NL2.checkbox("Fade Distance","world_fade_distance")
-    FALLEN_NL2.slider("Icon Size","world_icon_size",8,40,"int")
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(1,"Items",362)
-    FALLEN_NL2.checkbox("Dropped Items","world_dropped_esp_enabled")
-    FALLEN_NL2.color("world_color_dropped_item")
-    FALLEN_NL2.checkbox("Body Bag ESP","world_body_bag_esp_enabled")
-    FALLEN_NL2.color("world_color_body_bag")
-    FALLEN_NL2.checkbox("Visual Grenade","world_grenade_esp_enabled")
-    FALLEN_NL2.color("world_color_grenade")
-    FALLEN_NL2.checkbox("Grenade Trail","world_grenade_trail_enabled")
-    FALLEN_NL2.slider("Trail Thickness","world_grenade_trail_thickness",0.5,6,"%.2f")
-    FALLEN_NL2.checkbox("Icon Glow","world_icon_glow_enabled")
-    FALLEN_NL2.color("world_icon_glow")
-    FALLEN_NL2.slider("Glow Strength","world_icon_glow_strength",0,100,"int")
-    FALLEN_NL2.slider("Glow Spread","world_icon_glow_spread",1,30,"int")
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(2,"resources",838,{"Nodes","Plants","Bases","Tune"},"world_tab")
-    local tab = st.world_tab or 1
-    if tab == 1 then
-        for i=1,math.min(3,#WORLD_UI_ITEMS) do
-            FALLEN_NL2.world_resource_checkbox(WORLD_UI_ITEMS[i])
-        end
-        FALLEN_NL2.spacing(8)
-        FALLEN_NL2.color_row("Icon Border","world_icon_border",col.text)
-    elseif tab == 2 then
-        for i=4,#WORLD_UI_ITEMS do
-            FALLEN_NL2.world_resource_checkbox(WORLD_UI_ITEMS[i])
-        end
-    elseif tab == 3 then
-        for i=1,#WORLD_BASE_ITEMS do
-            local cfg = WORLD_BASE_ITEMS[i]
-            world_base_ensure_state(cfg)
-            local key = "world_base_" .. tostring(cfg.id)
-            FALLEN_NL2.checkbox(cfg.label,key)
-            FALLEN_NL2.color(world_base_color_prefix(cfg.id))
-        end
-    else
-        local total = #WORLD_BASE_ITEMS
-        if total < 1 then
-            FALLEN_NL2.center("No base components",col.dim)
-        else
-            st.base_selected =
-                clamp(
-                    math.floor(
-                        tonumber(st.base_selected)
-                        or 1
-                    ),
-                    1,
-                    total
-                )
-
-            local pressed =
-                FALLEN_NL2.buttons(
-                    {"Previous","Next"}
-                )
-
-            if pressed == 1 then
-                st.base_selected =
-                    st.base_selected - 1
-
-                if st.base_selected < 1 then
-                    st.base_selected = total
-                end
-            elseif pressed == 2 then
-                st.base_selected =
-                    st.base_selected + 1
-
-                if st.base_selected > total then
-                    st.base_selected = 1
-                end
-            end
-
-            local cfg =
-                WORLD_BASE_ITEMS[
-                    st.base_selected
-                ]
-
-            world_base_ensure_state(cfg)
-
-            local pfx =
-                "world_base_"
-                .. tostring(cfg.id)
-
-            FALLEN_NL2.spacing(5)
-            FALLEN_NL2.center(
-                tostring(cfg.label),
-                FALLEN_NL2.accent()
-            )
-            FALLEN_NL2.spacing(7)
-
-            FALLEN_NL2.checkbox(
-                "Enabled",
-                pfx
-            )
-
-            FALLEN_NL2.color_row(
-                "Color",
-                world_base_color_prefix(cfg.id),
-                col.text
-            )
-
-            FALLEN_NL2.separator()
-            FALLEN_NL2.label(
-                "Box Size",
-                col.dim
-            )
-
-            FALLEN_NL2.slider(
-                "Size X",
-                pfx .. "_sx",
-                0.25,
-                20,
-                "%.2f"
-            )
-            FALLEN_NL2.slider(
-                "Size Y",
-                pfx .. "_sy",
-                0.25,
-                20,
-                "%.2f"
-            )
-            FALLEN_NL2.slider(
-                "Size Z",
-                pfx .. "_sz",
-                0.25,
-                20,
-                "%.2f"
-            )
-
-            FALLEN_NL2.separator()
-            FALLEN_NL2.label(
-                "Box Offset",
-                col.dim
-            )
-
-            FALLEN_NL2.slider(
-                "Offset X",
-                pfx .. "_ox",
-                -12,
-                12,
-                "%.2f"
-            )
-            FALLEN_NL2.slider(
-                "Offset Y",
-                pfx .. "_oy",
-                -12,
-                12,
-                "%.2f"
-            )
-            FALLEN_NL2.slider(
-                "Offset Z",
-                pfx .. "_oz",
-                -12,
-                12,
-                "%.2f"
-            )
-
-            FALLEN_NL2.slider(
-                "Thickness",
-                pfx .. "_thick",
-                0.5,
-                6,
-                "%.2f"
-            )
-        end
-    end
-    FALLEN_NL2.panel_end()
-end
-
-function FALLEN_NL2.page_character()
-    local st = FALLEN_NL2.state
-    local col = FALLEN_NL2.col
-
-    FALLEN_NL2.panel_begin(1,"Movement",132)
-    FALLEN_NL2.checkbox("FPS Boost","misc_fps_enabled")
-    FALLEN_NL2.panel_end()
-
-    if A.secret_unlocked and S.secret_enabled == true then
-        FALLEN_NL2.panel_begin(1,"Secret",360)
-        FALLEN_NL2.checkbox("Crosshair","secret_crosshair")
-        FALLEN_NL2.color("secret_crosshair")
-        FALLEN_NL2.slider("Size","secret_crosshair_size",8,40,"int")
-        FALLEN_NL2.combo("Style","secret_crosshair_style",{"Sharp","Cross","Dot"})
-        FALLEN_NL2.checkbox("Rotate Animation","secret_crosshair_rotate")
-        FALLEN_NL2.checkbox("Desync","secret_desync_enabled")
-        FALLEN_NL2.panel_end()
-    end
-
-    FALLEN_NL2.panel_begin(2,"Profile",240)
-    FALLEN_NL2.center(tostring(PROFILE and PROFILE.name or "user"),col.bright)
-    FALLEN_NL2.badge("Pro")
-    FALLEN_NL2.spacing(8)
-    FALLEN_NL2.row("Product",col.dim)
-    local r = FALLEN_NL2.state.last_row
-    if r then text(r.right-FALLEN_NL2.tw("Fallen Survival"),r.y+3,"Fallen Survival",FALLEN_NL2.accent()) end
-    FALLEN_NL2.row("Subscription",col.dim)
-    r = FALLEN_NL2.state.last_row
-    if r then text(r.right-FALLEN_NL2.tw("Lifetime"),r.y+3,"Lifetime",col.text) end
-    FALLEN_NL2.panel_end()
-end
-
-function FALLEN_NL2.page_options()
-    local col = FALLEN_NL2.col
-
-    FALLEN_NL2.panel_begin(1,"Theme",156)
-    FALLEN_NL2.row("Menu Key")
-    local r = FALLEN_NL2.state.last_row
-    if r then
-        local name = "rshift"
-        local w = math.max(40,FALLEN_NL2.tw(name)+20)
-        local x,y = FALLEN_NL2.trailing_rect(w,20,4)
-        if x then
-            rounded_outline(x,y,w,20,10,FALLEN_NL2.white(27),1,col.control)
-            FALLEN_NL2.draw_text_center(x+w*0.5,y+4,name,col.text)
-        end
-    end
-    FALLEN_NL2.color_row("Accent Color","menu_style",col.text)
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(1,"General",140)
-    FALLEN_NL2.checkbox("FPS Boost","misc_fps_enabled")
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(1,"User Interface",286)
-    FALLEN_NL2.checkbox("Dark Background","menu_dark_background")
-    FALLEN_NL2.checkbox("Snow Effect","menu_snow")
-    FALLEN_NL2.checkbox("Rain Effect","menu_rain")
-    FALLEN_NL2.checkbox("Lightning Effect","menu_lightning")
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(2,"Session",270)
-    FALLEN_NL2.center(tostring(PROFILE and PROFILE.name or "user"),col.bright)
-    FALLEN_NL2.badge("Pro")
-    FALLEN_NL2.spacing(4)
-    FALLEN_NL2.row("Product",col.dim)
-    local rr = FALLEN_NL2.state.last_row
-    if rr then text(rr.right-FALLEN_NL2.tw("Fallen Survival"),rr.y+3,"Fallen Survival",col.text) end
-    FALLEN_NL2.row("Plan",col.dim)
-    rr = FALLEN_NL2.state.last_row
-    if rr then text(rr.right-FALLEN_NL2.tw("Lifetime"),rr.y+3,"Lifetime",FALLEN_NL2.accent()) end
-    FALLEN_NL2.spacing(4)
-
-    local session_pressed =
-        FALLEN_NL2.buttons(
-            {"Edit Avatar","Rescan"}
-        )
-
-    if session_pressed == 1 then
-        if type(FALLEN_AVATAR_EDITOR_OPEN) == "function" then
-            FALLEN_AVATAR_EDITOR_OPEN()
-            FALLEN_NL2.close_popups()
-        end
-    elseif session_pressed == 2 then
-        _G.FALLEN_IMAGE_PRELOAD_STARTED = false
-        _G.FALLEN_IMAGE_PRELOAD_DONE = false
-        _G.FALLEN_IMAGE_PRELOAD_INDEX = 0
-        _G.FALLEN_IMAGE_PRELOAD_TOTAL = 0
-        _G.FALLEN_IMAGE_PRELOAD_STATE = nil
-        _G.FALLEN_IMAGE_PRELOAD_SPECIALS = nil
-
-        if type(FALLEN_START_IMAGE_PRELOAD) == "function" then
-            pcall(
-                FALLEN_START_IMAGE_PRELOAD
-            )
-        end
-
-        fallen_toast(
-            "Image rescan started",
-            "normal"
-        )
-    end
-
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(2,"UI Elements",320)
-    FALLEN_NL2.checkbox("Keybind List","keybinds_list_enabled")
-    FALLEN_NL2.help("Lists active keybinds on screen")
-    FALLEN_NL2.checkbox("Dark Background","menu_dark_background")
-    FALLEN_NL2.checkbox("Snow Effect","menu_snow")
-    FALLEN_NL2.checkbox("Rain Effect","menu_rain")
-    FALLEN_NL2.checkbox("Lightning Effect","menu_lightning")
-    FALLEN_NL2.panel_end()
-end
-
-function FALLEN_NL2.page_configs()
-    local col = FALLEN_NL2.col
-    FALLEN_NL2.panel_begin(1,"Scripts",838)
-    if FALLEN_NL2.button("Open Folder##scripts") then
-        fallen_toast("Folder action unavailable in custom Lua API","warning")
-    end
-    FALLEN_NL2.label("Script List")
-    local p = FALLEN_NL2.state.panel
-    local x,y,w,h = p.work_x,p.cy,p.work_w,290
-    rounded_outline(x,y,w,h,8,col.frame,1,col.control)
-    rounded_fill(x+8,y+8,w-16,28,4,FALLEN_NL2.white(20))
-    text(x+21,y+15,"Fallen-lua",FALLEN_NL2.accent())
-    p.cy = p.cy + h + 8
-    if FALLEN_NL2.button("Load Script") then fallen_toast("Already loaded","normal") end
-    if FALLEN_NL2.button("Set Auto Execute") then fallen_toast("Handled by executor","normal") end
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(2,"Config",838)
-    if FALLEN_NL2.button("Open Folder##configs") then
-        fallen_toast("Folder action unavailable in custom Lua API","warning")
-    end
-    FALLEN_NL2.label("Config List")
-    FALLEN_NL2.list_configs(272)
-    FALLEN_NL2.label("Config Name")
-    FALLEN_NL2.input_config("Config name")
-    local pressed = FALLEN_NL2.buttons({"Load","Save"})
-    if pressed == 1 then
-        FALLEN_CONFIGS.input_focus(false)
-        FALLEN_CONFIGS.load(A.config_selected or A.config_input_buffer)
-    elseif pressed == 2 then
-        FALLEN_CONFIGS.input_focus(false)
-        FALLEN_CONFIGS.save(A.config_input_buffer)
-    end
-    if FALLEN_NL2.button("Delete") then
-        FALLEN_CONFIGS.input_focus(false)
-        FALLEN_CONFIGS.delete(A.config_selected or A.config_input_buffer)
-    end
-    FALLEN_NL2.panel_end()
-end
-
-function FALLEN_NL2.page_npc()
-    local col = FALLEN_NL2.col
-    FALLEN_NL2.panel_begin(1,"NPC List",838)
-    FALLEN_NL2.buttons({"+ Model","+ Directory"})
-    local p = FALLEN_NL2.state.panel
-    rounded_outline(p.work_x,p.cy,p.work_w,720,8,col.frame,1,col.control)
-    FALLEN_NL2.draw_text_center(p.work_x+p.work_w*0.5,p.cy+18,"No NPC system in this script",col.dim)
-    p.cy = p.cy + 728
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(2,"npc",150,{"General","Visuals"},"npc_tab")
-    FALLEN_NL2.spacing(27)
-    FALLEN_NL2.center("Select an NPC to edit",col.dim)
-    FALLEN_NL2.panel_end(13)
-    FALLEN_NL2.panel_begin(2,"Config##npc",230)
-    FALLEN_NL2.label("NPC configs are not used by Fallen-lua",col.dim)
-    FALLEN_NL2.panel_end()
-end
-
-function FALLEN_NL2.page_teams()
-    local col = FALLEN_NL2.col
-    FALLEN_NL2.panel_begin(1,"Teams [0]",838)
-    FALLEN_NL2.label("Team",col.dim)
-    FALLEN_NL2.row("Status",col.dim)
-    FALLEN_NL2.separator()
-    FALLEN_NL2.spacing(14)
-    FALLEN_NL2.center("No teams in this game",col.dim)
-    FALLEN_NL2.panel_end()
-
-    FALLEN_NL2.panel_begin(2,"Editor",132)
-    FALLEN_NL2.spacing(26)
-    FALLEN_NL2.center("Select a team to edit",col.dim)
-    FALLEN_NL2.panel_end(13)
-    FALLEN_NL2.panel_begin(2,"Quick Actions",140)
-    FALLEN_NL2.buttons({"All Enemy","All Ally"})
-    FALLEN_NL2.button("Reset to Default")
-    FALLEN_NL2.panel_end()
-end
-
-function FALLEN_NL2.page_draw()
-    local p = FALLEN_NL2.state.page
-    if p == 1 then FALLEN_NL2.page_combat()
-    elseif p == 2 then FALLEN_NL2.page_visuals()
-    elseif p == 3 then FALLEN_NL2.page_world()
-    elseif p == 4 then FALLEN_NL2.page_character()
-    elseif p == 5 then FALLEN_NL2.page_options()
-    elseif p == 6 then FALLEN_NL2.page_configs()
-    elseif p == 7 then FALLEN_NL2.page_npc()
-    else FALLEN_NL2.page_teams() end
-end
-
-function FALLEN_SOURCE_UI_RENDER()
-    local st = FALLEN_NL2.state
-
-    local rshift = key_down(VK_RSHIFT)
-    if rshift and not st.prev_rshift
-        and not A.aim_bind_listening
-        and not A.silent_bind_listening
-        and not A.config_input_focus
-        and not A.color_input.focus
-    then
-        S.visible = not S.visible
-        if not S.visible then
-            FALLEN_NL2.close_popups()
-            aim_bind_cancel()
-            FALLEN_SILENT_BIND_CANCEL()
-        end
-    end
-    st.prev_rshift = rshift
-
-    if S.visible ~= true then
-        MENU_UI_TRANSFORM_ACTIVE = false
-        MENU_RENDER_ALPHA = 1
+    if S.tab == tab and
+        (visuals == nil or tonumber(S.visuals_subtab) == visuals) then
         return
     end
-
-    numeric_poll()
-    aim_bind_poll()
-    FALLEN_SILENT_BIND_POLL()
-    FALLEN_CONFIGS.input_poll()
-    FALLEN_COLOR_INPUT_POLL()
-
-    local lmb = key_down(VK_LBUTTON)
-    local rmb = key_down(VK_RBUTTON)
-    local click = lmb and not st.prev_lmb
-    local rmb_click = rmb and not st.prev_rmb
-    st.prev_lmb = lmb
-    st.prev_rmb = rmb
-    if not lmb then st.slider = nil; st.color_drag = nil end
-
-    local sw, sh = screen_size()
-    local scale = math.min(1, (sw-20)/606, (sh-20)/970)
-    if scale < 0.62 then scale = 0.62 end
-    local wx = snap((sw - 606*scale)*0.5)
-    local wy = snap((sh - 970*scale)*0.5)
-
-    MENU_RENDER_ALPHA = 1
-    MENU_UI_ORIGIN_X = wx
-    MENU_UI_ORIGIN_Y = wy
-    MENU_UI_SCALE = scale
-    MENU_UI_TRANSFORM_ACTIVE = true
-
-    local mx,my = mouse_pos()
-    st.mx, st.my = mx,my
-    st.logical_mx = wx + (mx-wx)/math.max(0.001,scale)
-    st.logical_my = wy + (my-wy)/math.max(0.001,scale)
-
-    FALLEN_NL2.begin_frame(wx,wy,click,lmb,rmb_click)
-    st.mx,st.my = mx,my
-    st.logical_mx = wx + (mx-wx)/math.max(0.001,scale)
-    st.logical_my = wy + (my-wy)/math.max(0.001,scale)
-
-    local c = FALLEN_NL2.col
-    local accent = FALLEN_NL2.accent()
-
-    -- Keep external Fallen UI elements (keybind list/toasts) in the source palette too.
-    C.outer = c.window
-    C.sidebar = c.window
-    C.content = c.window
-    C.card = c.panel
-    C.group_box_bg = c.panel
-    C.button = c.button
-    C.button_hovered = c.hovered
-    C.frame_inactive = c.control
-    C.frame_active = c.hovered
-    C.border = c.outline
-    C.divider = c.divider
-    C.text = c.text
-    C.text_dim = c.dim
-    C.text_faint = c.faint
-    C.accent = accent
-    C.accent_dim = c.accent_dim
-
-    -- Optional game dim stays behind the source window.
-    if S.menu_dark_background == true then
-        MENU_UI_TRANSFORM_ACTIVE = false
-        DrawBoxFilled(0,0,sw,sh,0,0,0,0.28)
-        MENU_UI_TRANSFORM_ACTIVE = true
-    end
-
-    fill(wx,wy,606,970,c.window)
-    line(wx,wy,wx+606,wy,c.border,1)
-    line(wx,wy+970,wx+606,wy+970,c.border,1)
-    line(wx,wy,wx,wy+970,c.border,1)
-    line(wx+606,wy,wx+606,wy+970,c.border,1)
-
-    FALLEN_NL2.title_and_tabs()
-    FALLEN_NL2.page_draw()
-    FALLEN_NL2.footer()
-
-    -- Source popups are always last, above child panels.
-    FALLEN_NL2.combo_popup()
-    FALLEN_NL2.color_popup()
-    FALLEN_NL2.tooltip_draw()
-
-    -- Existing Fallen avatar functionality stays reachable from the
-    -- source-style Session panel and renders as the top-most modal.
-    if A.avatar_editor_open
-        and type(FALLEN_DRAW_AVATAR_EDITOR) == "function"
-    then
-        A.avatar_editor_frame_clicked =
-            click
-
-        FALLEN_DRAW_AVATAR_EDITOR(
-            mx,
-            my,
-            click,
-            lmb,
-            wx,
-            wy,
-            606,
-            970
-        )
-    end
-
-    -- Weather pass uses this rectangle later and remains behind the UI.
-    FALLEN_WEATHER_MENU_RECT = {
-        screen_w = sw,
-        screen_h = sh,
-        x = FALLEN_UI_X(wx),
-        y = FALLEN_UI_Y(wy),
-        w = FALLEN_UI_LEN(606),
-        h = FALLEN_UI_LEN(970),
-        open_alpha = 1,
-    }
-
-    MENU_UI_TRANSFORM_ACTIVE = false
-    MENU_RENDER_ALPHA = 1
+    S.tab = tab
+    if visuals ~= nil then S.visuals_subtab = visuals end
+    S.anim = 0
+    A.aim_settings_open = false
+    A.aim_part_dropdown_open = false
+    A.silent_part_dropdown_open = false
+    A.fov_settings_open = false
+    A.silent_fov_settings_open = false
+    A.damage_numbers_settings_open = false
+    A.fov_picker_open = false
+    A.world_settings_open = false
+    A.world_color_picker_open = false
+    A.world_color_picker_drag = nil
+    A.base_box_settings_open = false
+    A.menu_settings_open = false
+    FALLEN_COLOR_INPUT_STOP(true)
+    numeric_stop(true)
+    aim_bind_cancel()
+    FALLEN_SILENT_BIND_CANCEL()
 end
 
 -- =========================================================
@@ -32503,12 +30928,6 @@ end
 hooks.on_render(function()
     -- Wait until the loader has fully faded away before showing the menu.
     if _G.FallenMenuReady ~= true then
-        return
-    end
-
-    -- v101: the actual uploaded gui.cpp/widgets.cpp/tabs.cpp architecture.
-    FALLEN_SOURCE_UI_RENDER()
-    do
         return
     end
 
@@ -32954,551 +31373,60 @@ hooks.on_render(function()
         S.anim = 0
     end
 
-    -- Sidebar
-    -- World/Armor moved to the source-style top subtabs.
+    -- Neverlose-source sidebar: section headings and 30px rows. The source
+    -- shows two Visuals entries; Armor stays available as a top subtab.
     A.visuals_expanded = false
     A.visuals_expand_anim = 0
-
-    -- COMMON/Misc is physically pushed down by the Visuals child expansion.
-    -- 0 => close under Visuals, 1 => below World + Armor.
-    local common_layout_expand =
-        smooth01(
-            clamp(
-                A.visuals_expand_anim or 0,
-                0,
-                1
-            )
-        )
-
-    local common_layout_shift =
-        74 * common_layout_expand
-
-    local common_label_y =
-        wy + 265 + common_layout_shift
-
-    local misc_tab_y =
-        wy + 285 + common_layout_shift
-
-    local sidebar_target_y
-
-    if S.tab == 4
-        and A.secret_unlocked
-        and S.secret_enabled == true
-    then
-        sidebar_target_y =
-            wy + WIN_H - 118
-    elseif S.tab == 3 then
-        sidebar_target_y =
-            misc_tab_y
-    elseif S.tab == 2 then
-        sidebar_target_y =
-            wy + 195
-    elseif S.tab == 5 then
-        sidebar_target_y =
-            wy + 125
-    else
-        sidebar_target_y =
-            wy + 90
-    end
-
-    if A.sidebar_indicator_y == nil then
-        A.sidebar_indicator_y =
-            sidebar_target_y
-    end
-
-    local sidebar_now = tick()
-
-    if A.sidebar_indicator_last_t == nil then
-        A.sidebar_indicator_last_t =
-            sidebar_now
-    end
-
-    local sidebar_dt =
-        clamp(
-            sidebar_now
-            - A.sidebar_indicator_last_t,
-            0,
-            0.05
-        )
-
-    A.sidebar_indicator_last_t =
-        sidebar_now
-
-    A.sidebar_indicator_y =
-        exp_chase(
-            A.sidebar_indicator_y,
-            sidebar_target_y,
-            13,
-            sidebar_dt
-        )
-
-    if math.abs(
-        A.sidebar_indicator_y
-        - sidebar_target_y
-    ) < 0.08 then
-        A.sidebar_indicator_y =
-            sidebar_target_y
-    end
-
-    -- Source tabs animate their own selected backgrounds.
-
-    text(wx + 20, wy + 70, "Aimbot", C.text_faint)
-    sidebar_tab(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        wx + 10,
-        wy + 90,
-        1
-    )
-
-    sidebar_tab(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        wx + 10,
-        wy + 125,
-        5
-    )
-
-    text(wx + 20, wy + 175, "Visuals", C.text_faint)
-
-    local visuals_parent_x =
-        wx + 10
-
-    local visuals_parent_y =
-        wy + 195
-
-    local visuals_parent_hot =
-        hover(
-            mx,
-            my,
-            visuals_parent_x,
-            visuals_parent_y,
-            150,
-            30
-        )
-
-    sidebar_tab(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        visuals_parent_x,
-        visuals_parent_y,
-        2
-    )
-
-    -- Visuals is a standalone page.
-    if clicked
-        and visuals_parent_hot
+    local nav_click = clicked
         and not A.world_color_picker_open
         and (A.world_color_picker_anim or 0) <= 0.02
-    then
-        S.tab = 2
-        S.visuals_subtab = 0
-        S.anim = 0
-    end
+        and not A.menu_settings_open
+        and not A.avatar_editor_open
+    local nav_x = wx + 10
 
-    -- World/Armor are selected from the source-style top subtabs.
+    text(wx + 20, wy + 70, "Aimbot", C.text_faint)
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 90,
+        "rage", "Ragebot", not A.config_open and S.tab == 1,
+        function() FALLEN_NL_NAV_SELECT(1) end)
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 123,
+        "silent", "Silent Aim", not A.config_open and S.tab == 5,
+        function() FALLEN_NL_NAV_SELECT(5) end)
 
-    local visuals_now =
-        tick()
+    text(wx + 20, wy + 175, "Visuals", C.text_faint)
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 195,
+        "players", "Players",
+        not A.config_open and S.tab == 2
+            and (tonumber(S.visuals_subtab) or 0) ~= 1,
+        function() FALLEN_NL_NAV_SELECT(2, 0) end)
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 228,
+        "world", "World",
+        not A.config_open and S.tab == 2
+            and (tonumber(S.visuals_subtab) or 0) == 1,
+        function() FALLEN_NL_NAV_SELECT(2, 1) end)
 
-    if A.visuals_expand_last_t == nil then
-        A.visuals_expand_last_t =
-            visuals_now
-    end
-
-    local visuals_dt =
-        clamp(
-            visuals_now
-            - A.visuals_expand_last_t,
-            0,
-            0.05
-        )
-
-    A.visuals_expand_last_t =
-        visuals_now
-
-    local visuals_target =
-        A.visuals_expanded
-        and 1
-        or 0
-
-    A.visuals_expand_anim =
-        exp_chase(
-            A.visuals_expand_anim or 0,
-            visuals_target,
-            13,
-            visuals_dt
-        )
-
-    local visuals_expand =
-        clamp(
-            A.visuals_expand_anim or 0,
-            0,
-            1
-        )
-
-    if visuals_expand > 0.008 then
-        local old_sidebar_alpha =
-            MENU_RENDER_ALPHA
-
-        MENU_RENDER_ALPHA =
-            old_sidebar_alpha
-            * smooth01(visuals_expand)
-
-        local child_x =
-            wx + 26
-
-        local child_w =
-            136
-
-        local child_h =
-            31
-
-        local collapse_shift =
-            (1 - visuals_expand)
-            * 15
-
-        local world_y =
-            wy + 259
-            - collapse_shift
-
-        local armor_y =
-            wy + 292
-            - collapse_shift
-
-        -- Same smooth selected-background motion as the main Aimbot/Visuals tabs.
-        local child_selected =
-            S.tab == 2
-            and (
-                (tonumber(S.visuals_subtab) or 0) == 1
-                or (tonumber(S.visuals_subtab) or 0) == 2
-            )
-
-        local child_target_y =
-            (tonumber(S.visuals_subtab) or 0) == 2
-            and armor_y
-            or world_y
-
-        if A.visuals_child_indicator_y == nil then
-            A.visuals_child_indicator_y =
-                child_target_y
-        end
-
-        A.visuals_child_indicator_y =
-            exp_chase(
-                A.visuals_child_indicator_y,
-                child_target_y,
-                14,
-                visuals_dt
-            )
-
-        A.visuals_child_indicator_alpha =
-            exp_chase(
-                A.visuals_child_indicator_alpha or 0,
-                child_selected and 1 or 0,
-                13,
-                visuals_dt
-            )
-
-        if (A.visuals_child_indicator_alpha or 0) > 0.01 then
-            rounded_fill(
-                child_x,
-                A.visuals_child_indicator_y,
-                child_w,
-                child_h,
-                7,
-                alpha(
-                    C.selected,
-                    0.88
-                    * A.visuals_child_indicator_alpha
-                )
-            )
-        end
-
-        local world_hot =
-            hover(
-                mx,
-                my,
-                child_x,
-                world_y,
-                child_w,
-                child_h
-            )
-
-        local armor_hot =
-            hover(
-                mx,
-                my,
-                child_x,
-                armor_y,
-                child_w,
-                child_h
-            )
-
-        local child_interactive =
-            A.visuals_expanded
-            and visuals_expand > 0.92
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02
-
-        -- World child.
-        if world_hot
-            and not (
-                S.tab == 2
-                and (tonumber(S.visuals_subtab) or 0) == 1
-            )
-        then
-            rounded_fill(
-                child_x,
-                world_y,
-                child_w,
-                child_h,
-                7,
-                alpha(C.card_hover, 0.55)
-            )
-        end
-
-        local world_col =
-            FALLEN_HOVER_TEXT(
-                "sidebar_visual_world",
-                world_hot,
-                (
-                    S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 0) == 1
-                )
-                    and C.text
-                    or C.text_dim
-            )
-
-        local world_icon_handle =
-            FALLEN_WORLD_TAB_ICON_GET()
-
-        if world_icon_handle
-            and type(DrawImage) == "function"
-        then
-            local world_icon_col =
-                (
-                    S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 0) == 1
-                )
-                    and C.accent
-                    or C.text_dim
-
-            -- Static tab icon: hover does not whiten or resize it.
-            local world_icon_size = 18
-
-            local world_icon_px =
-                FALLEN_UI_LEN(
-                    world_icon_size
-                )
-
-            local world_icon_cx =
-                FALLEN_UI_X(
-                    child_x + 19
-                )
-
-            local world_icon_cy =
-                FALLEN_UI_Y(
-                    world_y + 16
-                )
-
-            pcall(
-                DrawImage,
-                world_icon_handle,
-                world_icon_cx - world_icon_px * 0.5,
-                world_icon_cy - world_icon_px * 0.5,
-                world_icon_px,
-                world_icon_px,
-                world_icon_col[1],
-                world_icon_col[2],
-                world_icon_col[3],
-                MENU_RENDER_ALPHA,
-                0
-            )
-        end
-
-        text(
-            child_x + 36,
-            world_y + 9,
-            "World",
-            world_col
-        )
-
-        -- Armor child.
-        if armor_hot
-            and not (
-                S.tab == 2
-                and (tonumber(S.visuals_subtab) or 0) == 2
-            )
-        then
-            rounded_fill(
-                child_x,
-                armor_y,
-                child_w,
-                child_h,
-                7,
-                alpha(C.card_hover, 0.55)
-            )
-        end
-
-        local armor_col =
-            FALLEN_HOVER_TEXT(
-                "sidebar_visual_armor",
-                armor_hot,
-                (
-                    S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 0) == 2
-                )
-                    and C.text
-                    or C.text_dim
-            )
-
-        local armor_icon_handle =
-            FALLEN_ARMOR_TAB_ICON_GET()
-
-        if armor_icon_handle
-            and type(DrawImage) == "function"
-        then
-            local armor_icon_col =
-                (
-                    S.tab == 2
-                    and (tonumber(S.visuals_subtab) or 0) == 2
-                )
-                    and C.accent
-                    or C.text_dim
-
-            -- Static tab icon: hover does not whiten or resize it.
-            local armor_icon_size = 18
-
-            local armor_icon_px =
-                FALLEN_UI_LEN(
-                    armor_icon_size
-                )
-
-            local armor_icon_cx =
-                FALLEN_UI_X(
-                    child_x + 19
-                )
-
-            local armor_icon_cy =
-                FALLEN_UI_Y(
-                    armor_y + 16
-                )
-
-            pcall(
-                DrawImage,
-                armor_icon_handle,
-                armor_icon_cx - armor_icon_px * 0.5,
-                armor_icon_cy - armor_icon_px * 0.5,
-                armor_icon_px,
-                armor_icon_px,
-                armor_icon_col[1],
-                armor_icon_col[2],
-                armor_icon_col[3],
-                MENU_RENDER_ALPHA,
-                0
-            )
-        end
-
-        text(
-            child_x + 36,
-            armor_y + 9,
-            "Armor",
-            armor_col
-        )
-
-        if child_interactive
-            and clicked
-        then
-            if world_hot then
-                S.tab = 2
-                S.visuals_subtab = 1
-                S.anim = 0
-
-                A.world_settings_open = false
-                A.world_color_picker_open = false
-                A.world_color_picker_drag = nil
-                FALLEN_COLOR_INPUT_STOP(true)
+    text(wx + 20, wy + 265, "Miscellaneous", C.text_faint)
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 285,
+        "main", "Main", not A.config_open and S.tab == 3,
+        function() FALLEN_NL_NAV_SELECT(3) end)
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 318,
+        "scripts", "Scripts", A.config_open,
+        function()
+            if not A.config_open then
+                A.config_open = true
+                A.config_anim = 0
                 numeric_stop(true)
-            elseif armor_hot then
-                S.tab = 2
-                S.visuals_subtab = 2
-                S.anim = 0
-
-                A.world_settings_open = false
+                aim_bind_cancel()
                 A.world_color_picker_open = false
-                A.world_color_picker_drag = nil
-                A.base_box_settings_open = false
-                FALLEN_COLOR_INPUT_STOP(true)
-                numeric_stop(true)
+                A.menu_settings_open = false
             end
-        end
+        end)
 
-        MENU_RENDER_ALPHA =
-            old_sidebar_alpha
-    end
-
-    -- Common section follows the same Visuals expansion animation.
-    -- Recalculate from the just-updated expand value so it tracks perfectly.
-    common_layout_expand =
-        smooth01(
-            clamp(
-                visuals_expand,
-                0,
-                1
-            )
-        )
-
-    common_layout_shift =
-        74 * common_layout_expand
-
-    common_label_y =
-        wy + 265 + common_layout_shift
-
-    misc_tab_y =
-        wy + 285 + common_layout_shift
-
-    text(
-        wx + 22,
-        common_label_y,
-        "Miscellaneous",
-        C.text_faint
-    )
-
-    sidebar_tab(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        wx + 10,
-        misc_tab_y,
-        3
-    )
-
-    -- Secret lives at the very bottom of the navigation, right above profile.
-    if A.secret_unlocked
-        and S.secret_enabled == true
-    then
-        sidebar_tab(
-            mx,
-            my,
-            clicked
-                and not A.world_color_picker_open
-                and (A.world_color_picker_anim or 0) <= 0.02,
-            wx + 10,
-            wy + WIN_H - 118,
-            4
-        )
+    -- Original hidden Fallen item remains hidden until its triple-click.
+    if A.secret_unlocked and S.secret_enabled == true then
+        FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x,
+            wy + WIN_H - 118, "secret", "Secret",
+            not A.config_open and S.tab == 4,
+            function() FALLEN_NL_NAV_SELECT(4) end)
     end
 
     -- Sidebar footer: live Roblox avatar + username.
@@ -33684,7 +31612,7 @@ hooks.on_render(function()
         end
     end
 
-    -- Top Configs dropdown.
+    -- Top source Save button; opens the integrated Configs page.
     local content_x = wx + SIDEBAR_W + 15
     local content_w = WIN_W - SIDEBAR_W - 30
 
@@ -33730,7 +31658,7 @@ hooks.on_render(function()
     centered_text(
         cfg_x + cfg_w * 0.5,
         cfg_y + 7,
-        "Configs",
+        "Save",
         cfg_hot and C.text or C.text_dim
     )
 
@@ -33745,6 +31673,7 @@ hooks.on_render(function()
     then
         A.config_open =
             not A.config_open
+        A.config_anim = 0
 
         if A.config_open then
             numeric_stop(true)
@@ -33810,7 +31739,12 @@ hooks.on_render(function()
 
     MENU_RENDER_ALPHA = detail_alpha * S.anim
 
-    if S.tab == 1 then
+    if A.config_open then
+        FALLEN_CONFIGS.draw_page(
+            mx, my, clicked and not A.avatar_editor_open,
+            lmb, page_x, page_y, page_w
+        )
+    elseif S.tab == 1 then
         draw_aimbot_page(
             mx,
             my,
@@ -34196,19 +32130,6 @@ hooks.on_render(function()
 
     MENU_RENDER_ALPHA = detail_alpha
 
-    -- Config dropdown is rendered last so it always sits above page controls.
-    FALLEN_CONFIGS.draw_popup(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        lmb,
-        cfg_x,
-        cfg_y,
-        cfg_w
-    )
-
     -- Menu appearance popup sits above the footer and page.
     FALLEN_DRAW_MENU_SETTINGS(
         mx,
@@ -34344,7 +32265,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v102 | FULL source UI architecture + complete Fallen controls | 606x970 | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v101 | Neverlose source UI rebuild | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
