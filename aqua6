@@ -4658,11 +4658,11 @@ local function color_preview(x, y, w, h, override_color)
 
     -- One visual standard everywhere: same as Bullet Tracer.
     -- Keep the old caller rectangle's center so existing row layout stays intact.
-    local draw_w = 24
-    local draw_h = 20
+    local draw_w = 18
+    local draw_h = 18
     local draw_x = x + (w - draw_w) * 0.5
     local draw_y = y + (h - draw_h) * 0.5
-    local radius = 5
+    local radius = 4
 
     -- Dark rounded base so alpha still has a visible background.
     rounded_fill(
@@ -7386,10 +7386,9 @@ local function world_item_color(item)
 end
 
 local function world_square_swatch(x, y, size, c)
-    -- Keep legacy call sites/layout centers, but render the exact same
-    -- 24x20 rounded color preview used by Bullet Tracer everywhere.
-    local draw_w = 24
-    local draw_h = 20
+    -- One compact color preview everywhere.
+    local draw_w = 18
+    local draw_h = 18
     local draw_x = x + (size - draw_w) * 0.5
     local draw_y = y + (size - draw_h) * 0.5
 
@@ -7398,7 +7397,7 @@ local function world_square_swatch(x, y, size, c)
         draw_y,
         draw_w,
         draw_h,
-        5,
+        4,
         c
     )
 end
@@ -7674,10 +7673,9 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
         or my
         or 0
 
-    -- All color previews are visually standardized to Bullet Tracer size.
-    -- Use that same geometry for popup attachment on every page.
-    local anchor_w = 24
-    local anchor_h = 20
+    -- All color previews use the same compact square geometry.
+    local anchor_w = 18
+    local anchor_h = 18
 
     local pw = 264
     local ph = 342
@@ -19590,16 +19588,16 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
                 )
             )
 
-            local swatch_w = 24
-            local swatch_h = 20
+            local swatch_w = 18
+            local swatch_h = 18
 
             local swatch_x =
                 row_x
                 + row_w
-                - 34
+                - 28
 
             local swatch_y =
-                row_y + 10
+                row_y + 11
 
             local col =
                 FALLEN_ARMOR_GLOW_COLOR()
@@ -25518,10 +25516,10 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             FALLEN_HOVER_TEXT("menu_glow_color", glow_color_hot, C.text)
         )
 
-        local swatch_x = color_row_x + color_row_w - 34
-        local swatch_y = color_row_y + 10
-        local swatch_w = 24
-        local swatch_h = 20
+        local swatch_x = color_row_x + color_row_w - 28
+        local swatch_y = color_row_y + 11
+        local swatch_w = 18
+        local swatch_h = 18
 
         local gr, gg, gb = hsv_to_rgb(
             tonumber(S.menu_glow_h) or 0,
@@ -25534,7 +25532,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             swatch_y,
             swatch_w,
             swatch_h,
-            5,
+            4,
             {gr, gg, gb, (tonumber(S.menu_glow_alpha) or 100) / 100}
         )
 
@@ -29165,10 +29163,10 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
         )
     )
 
-    local swatch_w = 24
-    local swatch_h = 20
-    local swatch_x = x + card_w - 46
-    local swatch_y = color_row_y + 10
+    local swatch_w = 18
+    local swatch_h = 18
+    local swatch_x = x + card_w - 40
+    local swatch_y = color_row_y + 11
 
     rounded_fill(
         swatch_x,
@@ -32659,17 +32657,17 @@ hooks.on_render(function()
             )
         )
 
-        local sc_swatch_w = 24
-        local sc_swatch_h = 20
-        local sc_swatch_x = page_x + page_w - 46
-        local sc_swatch_y = color_row_y + 10
+        local sc_swatch_w = 18
+        local sc_swatch_h = 18
+        local sc_swatch_x = page_x + page_w - 40
+        local sc_swatch_y = color_row_y + 11
 
         rounded_fill(
             sc_swatch_x,
             sc_swatch_y,
             sc_swatch_w,
             sc_swatch_h,
-            5,
+            4,
             FALLEN_SECRET_CROSSHAIR_COLOR()
         )
 
@@ -32919,7 +32917,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v98 | unified 24x20 color swatches | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v99 | unified compact 18x18 color swatches | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
