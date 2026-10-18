@@ -649,6 +649,14 @@ local A = {
     config_selected = nil,
     config_list_page = 1,
 
+    -- Search modal: kept separate from saved user settings.
+    search_open = false,
+    search_anim = 0,
+    search_query = "",
+    search_prev_keys = {},
+    search_results_anim = 0,
+    search_last_query = "",
+
     -- Smooth left-sidebar tab transition.
     sidebar_indicator_y = nil,
     sidebar_indicator_last_t = nil,
@@ -3609,6 +3617,45 @@ function FALLEN_SAVE_ICON_GET()
         if not ok or ready ~= true then return nil end
     end
     return handle
+end
+
+-- Search magnifier: resolved and loaded by the same loader as all other UI art.
+_G.FALLEN_SEARCH_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%91%D0%B5%D0%BB%D0%B0%D1%8F-%D0%BB%D1%83%D0%BF%D0%B0-%D0%BD%D0%B0-%D1%87%D1%91%D1%80%D0%BD%D0%BE%D0%BC-%D1%84%D0%BE%D0%BD%D0%B5-%281%29.1wvlF"
+_G.FALLEN_SEARCH_ICON_SOURCE = _G.FALLEN_SEARCH_ICON_SOURCE or nil
+_G.FALLEN_SEARCH_ICON_URL = _G.FALLEN_SEARCH_ICON_URL or nil
+_G.FALLEN_SEARCH_ICON_HANDLE = _G.FALLEN_SEARCH_ICON_HANDLE or nil
+
+function FALLEN_SEARCH_ICON_GET()
+    local source = _G.FALLEN_SEARCH_ICON_PAGE_URL
+    if _G.FALLEN_SEARCH_ICON_SOURCE ~= source then
+        _G.FALLEN_SEARCH_ICON_SOURCE = source
+        _G.FALLEN_SEARCH_ICON_URL = nil
+        _G.FALLEN_SEARCH_ICON_HANDLE = nil
+    end
+    if not _G.FALLEN_SEARCH_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+        _G.FALLEN_SEARCH_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(source) or source
+    end
+    if not _G.FALLEN_SEARCH_ICON_HANDLE and type(LoadImage) == "function" then
+        pcall(function()
+            _G.FALLEN_SEARCH_ICON_HANDLE = LoadImage(_G.FALLEN_SEARCH_ICON_URL)
+        end)
+    end
+    local img = _G.FALLEN_SEARCH_ICON_HANDLE
+    if not img then return nil end
+    if type(IsImageFailed) == "function" then
+        local ok, failed = pcall(IsImageFailed, img)
+        if ok and failed then return nil end
+    end
+    if type(IsImageReady) == "function" then
+        local ok, ready = pcall(IsImageReady, img)
+        if not ok or not ready then return nil end
+    end
+    return img
 end
 
 -- Sidebar
@@ -30417,6 +30464,260 @@ local function FALLEN_NL_NAV_SELECT(tab, visuals)
 end
 
 -- =========================================================
+-- Neverlose-inspired function finder (native Drawing UI).
+-- Search mirrors the exact same S keys as the original function switches.
+-- =========================================================
+local FALLEN_SEARCH_ITEMS = {
+    { "Aimbot", "aim_enabled", "Ragebot" },
+    { "Auto Prediction", "aim_auto_prediction", "Ragebot" },
+    { "Sticky Aim", "sticky_aim", "Ragebot" },
+    { "Aim FOV", "aim_fov_enabled", "Ragebot" },
+    { "FOV Glow", "aim_fov_glow_enabled", "Ragebot" },
+    { "Filled FOV", "aim_fov_filled", "Ragebot" },
+    { "Silent Aim", "silent_enabled", "Silent Aim" },
+    { "Team Check", "silent_team_check", "Silent Aim" },
+    { "Silent Sticky Aim", "silent_sticky_aim", "Silent Aim" },
+    { "Magic Bullet", "silent_magic_bullet", "Silent Aim" },
+    { "Silent FOV", "silent_fov_enabled", "Silent Aim" },
+    { "Silent FOV Glow", "silent_fov_glow_enabled", "Silent Aim" },
+    { "Silent Filled FOV", "silent_fov_filled", "Silent Aim" },
+    { "World ESP", "world_esp_enabled", "World" },
+    { "Node ESP", "world_node_esp_enabled", "World" },
+    { "Plant ESP", "world_plant_esp_enabled", "World" },
+    { "Base ESP", "world_base_esp_enabled", "World" },
+    { "Dropped Items", "world_dropped_esp_enabled", "World" },
+    { "Body Bag ESP", "world_body_bag_esp_enabled", "World" },
+    { "Visual Grenade", "world_grenade_esp_enabled", "World" },
+    { "Show Names", "world_show_names", "World" },
+    { "Show Distance", "world_show_distance", "World" },
+    { "Show Icons", "world_show_icons", "World" },
+    { "Fade by Distance", "world_fade_distance", "World" },
+    { "Icon Glow", "world_icon_glow_enabled", "World" },
+    { "Armor ESP", "armor_esp_enabled", "Armor" },
+    { "Show Weapon", "armor_show_weapon", "Armor" },
+    { "Armor Glow", "armor_glow_enabled", "Armor" },
+    { "Armor Background", "armor_onplayer_background", "Armor" },
+    { "Armor Glass", "armor_onplayer_glass", "Armor" },
+    { "Bullet Tracers", "bullet_tracer_enabled", "Visuals" },
+    { "Hit Effects", "hit_effect_enabled", "Visuals" },
+    { "FPS", "misc_fps_enabled", "Main" },
+    { "Snow", "menu_snow", "Menu settings" },
+    { "Rain", "menu_rain", "Menu settings" },
+    { "Lightning", "menu_lightning", "Menu settings" },
+    { "Dark Background", "menu_dark_background", "Menu settings" },
+    { "Hotkeys", "keybinds_list_enabled", "Menu settings" },
+}
+
+local function fallen_search_close()
+    A.search_open = false
+    A.search_prev_keys = {}
+    A.search_results_anim = 0
+end
+
+local function fallen_search_open()
+    A.search_open = true
+    A.search_query = ""
+    A.search_last_query = ""
+    A.search_results_anim = 0
+    A.search_prev_keys = {}
+    numeric_stop(true)
+    aim_bind_cancel()
+    FALLEN_SILENT_BIND_CANCEL()
+    FALLEN_CONFIGS.input_focus(false)
+    FALLEN_COLOR_INPUT_STOP(true)
+    A.config_open = false
+    A.config_anim = 0
+    A.menu_settings_open = false
+    A.menu_settings_anim = 0
+    A.fov_picker_open = false
+    A.aim_settings_open = false
+    A.fov_settings_open = false
+    A.silent_fov_settings_open = false
+    A.world_settings_open = false
+    A.armor_settings_open = false
+    A.world_color_picker_open = false
+    A.world_color_picker_anim = 0
+    A.base_box_settings_open = false
+    A.aim_part_dropdown_open = false
+    A.silent_part_dropdown_open = false
+    A.menu_scale_dropdown_open = false
+    A.active_slider = nil
+    A.menu_dragging = false
+end
+
+local function fallen_search_edge(vk)
+    local held = key_down(vk)
+    local prev = A.search_prev_keys[vk] == true
+    A.search_prev_keys[vk] = held
+    return held and not prev
+end
+
+local function fallen_search_poll()
+    if not A.search_open then return end
+    if fallen_search_edge(0x1B) then
+        fallen_search_close()
+        return
+    end
+    if fallen_search_edge(0x08) then
+        A.search_query = string.sub(A.search_query, 1, math.max(0, #A.search_query - 1))
+        return
+    end
+    local ctrl = key_down(0x11) or key_down(0xA2) or key_down(0xA3)
+    if ctrl and fallen_search_edge(0x56) then
+        if type(get_clipboard) == "function" then
+            local ok, value = pcall(get_clipboard)
+            if ok and type(value) == "string" then
+                local plain = value:gsub("[^%w%s]", "")
+                A.search_query = (A.search_query .. plain):sub(1, 27)
+            end
+        end
+        return
+    end
+    if ctrl then return end
+    -- Only physical keys documented by this API; edge detection avoids repeats.
+    if #(A.search_query or "") >= 27 then return end
+    for vk = 0x41, 0x5A do
+        if fallen_search_edge(vk) then
+            A.search_query = A.search_query .. string.lower(string.char(vk))
+            return
+        end
+    end
+    for number = 0, 9 do
+        if fallen_search_edge(0x30 + number) or fallen_search_edge(0x60 + number) then
+            A.search_query = A.search_query .. tostring(number)
+            return
+        end
+    end
+    if fallen_search_edge(0x20) then
+        A.search_query = A.search_query .. " "
+    end
+end
+
+local function fallen_search_normalize(q)
+    return tostring(q or ""):lower():gsub("[^%w]", "")
+end
+
+local function fallen_search_draw_icon(x, y)
+    local icon = FALLEN_SEARCH_ICON_GET()
+    if icon and type(DrawImage) == "function" then
+        pcall(DrawImage, icon,
+            FALLEN_UI_X(x), FALLEN_UI_Y(y),
+            FALLEN_UI_LEN(17), FALLEN_UI_LEN(17),
+            1, 1, 1, MENU_RENDER_ALPHA, 0)
+    else
+        -- Native fallback while a remotely hosted PNG is unavailable.
+        circle(x + 7, y + 7, 5, C.text_dim, 1.4)
+        line(x + 11, y + 11, x + 16, y + 16, C.text_dim, 1.4)
+    end
+end
+
+local function fallen_search_draw(wx, wy, mx, my, clicked)
+    local anim = clamp(A.search_anim or 0, 0, 1)
+    local head_x, head_y, head_w, head_h = wx + WIN_W - 216, wy + 18, 198, 27
+
+    if anim > 0.005 then
+        -- Dim just the menu: no game-world tint.
+        fill(wx, wy, WIN_W, WIN_H, { 0, 0, 0, 0.74 * anim })
+
+        local w, h = 436, 294
+        local px = wx + (WIN_W - w) * 0.5
+        local py = wy + (WIN_H - h) * 0.5 + (1 - anim) * 12
+        local prev_alpha = MENU_RENDER_ALPHA
+        MENU_RENDER_ALPHA = prev_alpha * anim
+        rounded_fill(px, py, w, h, 9, C.group_box_bg)
+        rounded_outline(px, py, w, h, 9,
+            {0.13, 0.21, 0.34, 0.65}, 1, C.group_box_bg)
+        text(px + 19, py + 17, "Search functions", C.text)
+        text(px + w - 60, py + 17, "ESC", C.text_dim)
+        line(px + 16, py + 42, px + w - 16, py + 42, C.divider, 1)
+
+        local query = fallen_search_normalize(A.search_query)
+        if query ~= "" then
+            local results = {}
+            for _, entry in ipairs(FALLEN_SEARCH_ITEMS) do
+                if S[entry[2]] ~= nil
+                    and (fallen_search_normalize(entry[1]):find(query, 1, true)
+                        or fallen_search_normalize(entry[3]):find(query, 1, true))
+                then
+                    results[#results + 1] = entry
+                end
+            end
+
+            if query ~= A.search_last_query then
+                A.search_results_anim = 0
+                A.search_last_query = query
+            end
+            A.search_results_anim = lerp(A.search_results_anim or 0, 1, 0.17)
+            local vis = clamp(A.search_results_anim, 0, 1)
+
+            if #results == 0 then
+                text(px + 19, py + 66, "No matching functions", C.text_dim)
+            else
+                local limit = math.min(#results, 5)
+                for i = 1, limit do
+                    local entry = results[i]
+                    local key = entry[2]
+                    local yy = py + 49 + (i - 1) * 44 + (1 - vis) * 8
+                    local hot = hover(mx, my, px + 14, yy, w - 28, 42)
+                    if hot then
+                        rounded_fill(px + 14, yy, w - 28, 40, 5, C.frame_active)
+                    end
+                    local value = S[key] == true
+                    if clicked and A.search_open and anim > 0.75 and hot then
+                        value = not value
+                        S[key] = value
+                        if type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function" then
+                            FALLEN_SILENT_UI_VALUE_CHANGED(key, value)
+                        end
+                    end
+                    -- Same 30x17 switch geometry and animated track as original menu.
+                    local target = value and 1 or 0
+                    local t = A.toggles[key]
+                    if t == nil then t = target end
+                    t = lerp(t, target, 0.11)
+                    A.toggles[key] = t
+                    local old_alpha = MENU_RENDER_ALPHA
+                    MENU_RENDER_ALPHA = old_alpha * vis
+                    text(px + 25, yy + 7, entry[1], value and C.text or C.text_dim)
+                    text(px + 25, yy + 23, entry[3], C.text_faint)
+                    local tx, ty = px + w - 63, yy + 12
+                    draw_switch_track(tx, ty, 30, 17, C.frame_inactive, C.frame_active, t)
+                    circle_fill(tx + 8 + 14 * t, ty + 8.5, 7,
+                        value and C.accent or C.text_dim)
+                    MENU_RENDER_ALPHA = old_alpha
+                    if i < limit then
+                        line(px + 23, yy + 42, px + w - 23, yy + 42, C.divider, 1)
+                    end
+                end
+                if #results > limit then
+                    text(px + 20, py + h - 19, "Keep typing to narrow results", C.text_dim)
+                end
+            end
+        else
+            A.search_last_query = ""
+            A.search_results_anim = 0
+        end
+        MENU_RENDER_ALPHA = prev_alpha
+    end
+
+    -- Search box stays bright and interactive above the dimmed shell.
+    local hot = hover(mx, my, head_x, head_y, head_w, head_h)
+    rounded_fill(head_x, head_y, head_w, head_h, 5,
+        A.search_open and C.frame_active or (hot and C.button_hovered or C.button))
+    rounded_outline(head_x, head_y, head_w, head_h, 5,
+        A.search_open and C.accent_dim or C.border, 1,
+        A.search_open and C.frame_active or (hot and C.button_hovered or C.button))
+    fallen_search_draw_icon(head_x + 9, head_y + 5)
+    local q = A.search_query or ""
+    if q == "" then
+        text(head_x + 35, head_y + 7, "Search functions...", C.text_dim)
+    else
+        local cursor = A.search_open and (math.floor(tick() * 2) % 2 == 0) and "|" or ""
+        text(head_x + 35, head_y + 7, q .. cursor, C.text)
+    end
+end
+
+-- =========================================================
 -- Render
 -- =========================================================
 
@@ -30461,6 +30762,9 @@ hooks.on_render(function()
             A.config_open = false
             A.config_anim = 0
             FALLEN_CONFIGS.input_focus(false)
+            A.search_open = false
+            A.search_anim = 0
+            A.search_prev_keys = {}
 
             A.menu_settings_open = false
             A.menu_settings_anim = 0
@@ -30502,11 +30806,15 @@ hooks.on_render(function()
     end
 
     -- Poll focused UI input.
-    numeric_poll()
-    aim_bind_poll()
-    FALLEN_SILENT_BIND_POLL()
-    FALLEN_CONFIGS.input_poll()
-    FALLEN_COLOR_INPUT_POLL()
+    if A.search_open then
+        fallen_search_poll()
+    else
+        numeric_poll()
+        aim_bind_poll()
+        FALLEN_SILENT_BIND_POLL()
+        FALLEN_CONFIGS.input_poll()
+        FALLEN_COLOR_INPUT_POLL()
+    end
 
     local lmb = key_down(VK_LBUTTON)
     local clicked =
@@ -30604,6 +30912,8 @@ hooks.on_render(function()
 
     if clicked
         and drag_hot
+        and not A.search_open
+        and not hover(mx, my, wx + WIN_W - 216, wy + 18, 198, 27)
         and not A.world_color_picker_open
         and (A.world_color_picker_anim or 0) <= 0.02
     then
@@ -30817,6 +31127,36 @@ hooks.on_render(function()
             C.divider,
             1
         )
+    end
+
+    -- Search takes input priority over all underlying menu widgets.
+    -- Keep the real click separately for controls inside the search modal.
+    local search_input_click = clicked
+    local search_field_hot = hover(mx, my,
+        wx + WIN_W - 216, wy + 18, 198, 27)
+    if search_input_click and search_field_hot then
+        if A.search_open then
+            -- Clicking an active input keeps focus (Escape or outside click closes).
+        else
+            fallen_search_open()
+        end
+    end
+    A.search_anim = exp_chase(
+        tonumber(A.search_anim) or 0,
+        A.search_open and 1 or 0,
+        16,
+        0.016
+    )
+    if math.abs(A.search_anim - (A.search_open and 1 or 0)) < 0.001 then
+        A.search_anim = A.search_open and 1 or 0
+    end
+    local search_blocks_menu = A.search_open or (A.search_anim or 0) > 0.02
+    if search_blocks_menu then
+        clicked = false
+        rmb_clicked = false
+        lmb = false
+        A.active_slider = nil
+        A.menu_dragging = false
     end
 
     -- Brand image. Replaces the old visible "Fallen-lua" text.
@@ -31659,6 +31999,18 @@ hooks.on_render(function()
         )
     end
 
+    -- Search appears over every normal menu component.
+    if A.search_open and search_input_click and not search_field_hot then
+        local mw, mh = 436, 294
+        local px = wx + (WIN_W - mw) * 0.5
+        local py = wy + (WIN_H - mh) * 0.5
+        -- Clicking outside the search panel closes it; result clicks stay inside.
+        if not hover(mx, my, px, py, mw, mh) then
+            fallen_search_close()
+        end
+    end
+    fallen_search_draw(wx, wy, mx, my, search_input_click)
+
     -- Avatar editor is a true modal and renders above everything else.
     FALLEN_DRAW_AVATAR_EDITOR(
         mx,
@@ -31769,7 +32121,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v107 | Neverlose popups + LMB three-dots | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v108 | Neverlose search + LMB three-dots | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -32006,6 +32358,7 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
         FALLEN_GRENADE_ICON_GET,
         FALLEN_BRAND_IMAGE_GET,
         FALLEN_SAVE_ICON_GET,
+        FALLEN_SEARCH_ICON_GET,
         FALLEN_AIMBOT_TAB_ICON_GET,
         FALLEN_HITFX_SPARK_SHEET_GET,
         FALLEN_HITFX_SMOKERING_SHEET_GET,
