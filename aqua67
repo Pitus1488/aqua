@@ -31256,10 +31256,11 @@ hooks.on_render(function()
         )
     end
 
+    -- A title-case wordmark fits the compact header better than all caps.
     text(
         brand_text_x,
         brand_title_y,
-        "FALLEN",
+        "Fallen",
         C.text
     )
 
