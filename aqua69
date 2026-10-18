@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v95 | fast frame-budget menu preload | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v96 | adaptive 2-per-frame image preload | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -33041,10 +33041,11 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
         url_index = 1,
         next_url_start = 0,
         inflight = {},
-        max_inflight = 6,
-        start_interval = 0.035,
+        max_inflight = 12,
+        start_interval = 0.0,
         image_timeout = 5.0,
         special_timeout = 2.2,
+        last_tick = tick(),
     }
 end
 
@@ -33157,49 +33158,69 @@ function FALLEN_PRELOAD_TICK()
         i = i - 1
     end
 
-    -- At most ONE new direct LoadImage per frame, but keep up to 6 async
-    -- requests in flight. This is much faster than v94's pool of 2 while
-    -- still avoiding the v93 burst/freeze.
-    if #st.inflight < (st.max_inflight or 6)
+    -- Adaptive frame budget:
+    -- normally start up to TWO new direct images per render frame;
+    -- if the previous frame was slow, fall back to ONE automatically.
+    local frame_dt =
+        now - (tonumber(st.last_tick) or now)
+
+    st.last_tick = now
+
+    local starts_this_frame = 2
+
+    if frame_dt > 0.030 then
+        starts_this_frame = 1
+    end
+
+    local started_now = 0
+
+    while started_now < starts_this_frame
+        and #st.inflight < (st.max_inflight or 12)
         and now >= (st.next_url_start or 0)
-    then
+    do
         local url =
             _G.FALLEN_IMAGE_PRELOAD_QUEUE[st.url_index]
 
-        if url then
-            st.url_index = st.url_index + 1
-            st.next_url_start = now + (st.start_interval or 0.035)
-
-            local handle =
-                _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
-
-            if not handle and type(LoadImage) == "function" then
-                local ok, loaded =
-                    pcall(
-                        LoadImage,
-                        url
-                    )
-
-                if ok and loaded then
-                    handle = loaded
-                    _G.FALLEN_IMAGE_PRELOAD_HANDLES[url] = loaded
-                end
-            end
-
-            if handle then
-                table.insert(
-                    st.inflight,
-                    {
-                        handle = handle,
-                        started = now,
-                    }
-                )
-            else
-                FALLEN_PRELOAD_FINISH_ONE()
-            end
-
-            return
+        if not url then
+            break
         end
+
+        st.url_index = st.url_index + 1
+        st.next_url_start = now + (st.start_interval or 0)
+
+        local handle =
+            _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
+
+        if not handle and type(LoadImage) == "function" then
+            local ok, loaded =
+                pcall(
+                    LoadImage,
+                    url
+                )
+
+            if ok and loaded then
+                handle = loaded
+                _G.FALLEN_IMAGE_PRELOAD_HANDLES[url] = loaded
+            end
+        end
+
+        if handle then
+            table.insert(
+                st.inflight,
+                {
+                    handle = handle,
+                    started = now,
+                }
+            )
+        else
+            FALLEN_PRELOAD_FINISH_ONE()
+        end
+
+        started_now = started_now + 1
+    end
+
+    if started_now > 0 then
+        return
     end
 
     local direct_done =
@@ -34360,7 +34381,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | fast frame-budget preload | max 6 inflight | no blur")
+print("[Fallen loader] ready | adaptive fast preload | max 12 inflight | no blur")
 
 
 -- Fallen toast renderer
