@@ -380,6 +380,10 @@ for k, v in pairs(defaults) do
     if S[k] == nil then S[k] = v end
 end
 
+-- The menu now uses only the Neverlose Default surface style.
+-- Override any stale value from the persistent _G menu state.
+S.menu_type = "default"
+
 -- One-time migration to the supplied Neverlose-source base style.
 -- The user can still change these later from Menu settings.
 if S.neverlose_source_ui_v1 ~= true then
@@ -2087,6 +2091,7 @@ local CONFIG_EXCLUDE = {
     tab = true,
     visuals_subtab = true,
     anim = true,
+    menu_type = true, -- Fixed Default style, never saved or loaded.
 }
 
 for key, value in pairs(defaults) do
@@ -2976,7 +2981,7 @@ end
 
 -- Custom World nested-tab image icon.
 _G.FALLEN_WORLD_TAB_ICON_PAGE_URL =
-    "https://fotovssylku.ru/i/%D0%98%D0%B7%D0%BE%D0%B1%D1%80%D0%B0%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5-ChatGPT-30-%D1%81%D0%B5%D0%BD%D1%82.-2026-%D0%B3.%2C-19-38-32-%281%29.Q85L8"
+    "https://fotovssylku.ru/i/%D0%91%D0%B5%D0%BB%D1%8B%D0%B9-%D0%B3%D0%BB%D0%BE%D0%B1%D1%83%D1%81-%D0%BD%D0%B0-%D0%BF%D1%80%D0%BE%D0%B7%D1%80%D0%B0%D1%87%D0%BD%D0%BE%D0%BC-%D1%84%D0%BE%D0%BD%D0%B5-%283%29.1hM6a"
 
 _G.FALLEN_WORLD_TAB_ICON_SOURCE =
     _G.FALLEN_WORLD_TAB_ICON_SOURCE
@@ -4883,7 +4888,7 @@ local function draw_aim_part_dropdown(
         w,
         panel_h,
         7,
-        { 0.070, 0.074, 0.087, 1 }
+        C.group_box_bg
     )
 
     local panel_hot =
@@ -4929,7 +4934,7 @@ local function draw_aim_part_dropdown(
                     w - 8,
                     item_h - 4,
                     5,
-                    { 0.105, 0.111, 0.132, 1 }
+                    C.frame_active
                 )
             end
 
@@ -5068,7 +5073,7 @@ local function draw_aim_settings_popup(
         pw,
         shell_h,
         11,
-        { 0.062, 0.066, 0.077, 1 }
+        C.group_box_bg
     )
 
     -- Hide deeper controls progressively while retracting so they don't
@@ -5314,16 +5319,7 @@ local function draw_aim_settings_popup(
                     25
                 )
 
-            if interactive
-                and not A.aim_bind_listening
-                and clicked
-                and not popup_hot
-                and not dots_hot
-                and not dropdown_hot
-            then
-                A.aim_settings_open = false
-                A.aim_part_dropdown_open = false
-            end
+    -- Remains open until RMB on the same three-dots control.
 
             MENU_RENDER_ALPHA = parent_menu_alpha
             return
@@ -5350,15 +5346,7 @@ local function draw_aim_settings_popup(
             25
         )
 
-    if interactive
-        and not A.aim_bind_listening
-        and clicked
-        and not popup_hot
-        and not dots_hot
-    then
-        A.aim_settings_open = false
-        A.aim_part_dropdown_open = false
-    end
+    -- Remains open until RMB on the same three-dots control.
 
     MENU_RENDER_ALPHA = parent_menu_alpha
 end
@@ -5508,7 +5496,7 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
         pw,
         shell_h,
         11,
-        { 0.062, 0.066, 0.077, 1 }
+        C.group_box_bg
     )
 
     local details_visible =
@@ -5719,13 +5707,7 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
             25
         )
 
-    if interactive
-        and clicked
-        and not popup_hot
-        and not dots_hot
-    then
-        A.fov_settings_open = false
-    end
+    -- Remains open until RMB on the same three-dots control.
 
     MENU_RENDER_ALPHA = parent_menu_alpha
 end
@@ -5826,7 +5808,7 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
         pw,
         shell_h,
         11,
-        { 0.062, 0.066, 0.077, 1 }
+        C.group_box_bg
     )
 
     local details_visible =
@@ -6069,18 +6051,8 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
             25
         )
 
-    -- Same behavior as the Aimbot FOV popup:
-    -- repeated RMB on the FOV row toggles it,
-    -- while LMB on empty space outside closes it.
-    if interactive
-        and clicked
-        and not popup_hot
-        and not dots_hot
-        and not A.world_color_picker_open
-    then
-        A.silent_fov_settings_open =
-            false
-    end
+    -- RMB on the three dots opens/closes; outside clicks do not dismiss.
+    -- Remains open until RMB on the same three-dots control.
 
     MENU_RENDER_ALPHA =
         parent_menu_alpha
@@ -6195,7 +6167,7 @@ function FALLEN_DRAW_SILENT_PART_DROPDOWN(
         w,
         panel_h,
         7,
-        { 0.050, 0.053, 0.062, 0.98 }
+        C.group_box_bg
     )
 
     local panel_hot =
@@ -6244,7 +6216,7 @@ function FALLEN_DRAW_SILENT_PART_DROPDOWN(
                     w - 8,
                     item_h - 4,
                     5,
-                    { 0.105, 0.111, 0.132, 1 }
+                    C.frame_active
                 )
             end
 
@@ -6723,10 +6695,9 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         true
     )
 
-    -- RMB on the FOV row (including the dots) toggles the popup.
-    -- Repeating RMB closes it.
+    -- Only RMB on the three dots toggles this popup.
     if rmb_clicked
-        and silent_fov_row_hot
+        and silent_fov_dots_hot
     then
         A.silent_fov_settings_open =
             not A.silent_fov_settings_open
@@ -6962,7 +6933,7 @@ local function draw_aimbot_page(
             41
         )
 
-    if rmb_clicked and aimbot_row_hot then
+    if rmb_clicked and dots_left_hot then
         A.aim_settings_open =
             not A.aim_settings_open
 
@@ -7058,9 +7029,7 @@ local function draw_aimbot_page(
             41
         )
 
-    if (base_clicked and fov_dots_hot)
-        or (rmb_clicked and fov_row_hot)
-    then
+    if rmb_clicked and fov_dots_hot then
         A.fov_settings_open =
             not A.fov_settings_open
 
@@ -8424,7 +8393,7 @@ local function draw_world_settings_popup(
         pw,
         shell_h,
         11,
-        { 0.062, 0.066, 0.077, 1 }
+        C.group_box_bg
     )
 
     text(
@@ -9283,14 +9252,7 @@ local function draw_world_settings_popup(
             25
         )
 
-    if interactive
-        and clicked
-        and not popup_hot
-        and not dots_hot
-        and not A.world_color_picker_open
-    then
-        A.world_settings_open = false
-    end
+    -- Remains open until RMB on the same three-dots control.
 
     MENU_RENDER_ALPHA =
         parent_alpha
@@ -19149,7 +19111,7 @@ function FALLEN_DRAW_ARMOR_MODE_DROPDOWN(
         w,
         panel_h,
         7,
-        { 0.070, 0.074, 0.087, 1 }
+        C.group_box_bg
     )
 
     local panel_hot =
@@ -19197,7 +19159,7 @@ function FALLEN_DRAW_ARMOR_MODE_DROPDOWN(
                     w - 8,
                     item_h - 4,
                     5,
-                    { 0.105, 0.111, 0.132, 1 }
+                    C.frame_active
                 )
             end
 
@@ -19473,7 +19435,7 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
         pw,
         shell_h,
         11,
-        { 0.062, 0.066, 0.077, 1 }
+        C.group_box_bg
     )
 
     text(
@@ -19689,14 +19651,7 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
             25
         )
 
-    if interactive
-        and clicked
-        and not picker_active
-        and not popup_hot
-        and not dots_hot
-    then
-        A.armor_settings_open = false
-    end
+    -- Remains open until RMB on the same three-dots control.
 
     MENU_RENDER_ALPHA =
         parent_alpha
@@ -19841,15 +19796,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
             41
         )
 
-    if (
-        rmb_clicked
-        and armor_row_hot
-    )
-        or (
-            clicked
-            and dots_hot
-        )
-    then
+    if rmb_clicked and dots_hot then
         A.armor_settings_open =
             not A.armor_settings_open
 
@@ -23544,9 +23491,15 @@ function FALLEN_POPUP_GLOW(
     radius,
     strength
 )
-    -- The supplied source uses blur here. Custom Lua API has no blur,
-    -- so do not substitute the old Fallen glow.
-    return
+    -- Uniform Neverlose-like popup border: no old Fallen bright halo.
+    -- Drawn BEFORE the popup surface, using only the documented Drawing API.
+    if (tonumber(w) or 0) <= 0 or (tonumber(h) or 0) <= 0 then return end
+    local r = math.max(1, tonumber(radius) or 7)
+    local opacity = clamp(tonumber(strength) or 1, 0, 1)
+    rounded_fill(x - 2, y - 2, w + 4, h + 4, r + 2,
+        { 0, 0, 0, 0.32 * opacity })
+    rounded_fill(x - 1, y - 1, w + 2, h + 2, r + 1,
+        { 0.095, 0.142, 0.242, 0.94 * opacity })
 end
 
 
@@ -24060,9 +24013,9 @@ function FALLEN_DRAW_MENU_DIAGONAL_GRADIENT(
 end
 
 function FALLEN_APPLY_STYLE_COLOR()
-    local t =
-        tostring(S.menu_type or "default")
-        :lower()
+    -- Enforce Default after any external or legacy configuration changes.
+    S.menu_type = "default"
+    local t = "default"
 
     local cache_h = tonumber(S.menu_style_h) or 0.6214285714
     local cache_s = tonumber(S.menu_style_s) or 0.70
@@ -24651,7 +24604,7 @@ function FALLEN_DRAW_MENU_SCALE_DROPDOWN(
         w,
         panel_h,
         7,
-        { 0.050, 0.053, 0.062, 1 }
+        C.group_box_bg
     )
 
     local panel_hot =
@@ -24700,7 +24653,7 @@ function FALLEN_DRAW_MENU_SCALE_DROPDOWN(
                     w - 8,
                     item_h - 4,
                     5,
-                    { 0.105, 0.111, 0.132, 1 }
+                    C.frame_active
                 )
             end
 
@@ -24751,209 +24704,6 @@ function FALLEN_DRAW_MENU_SCALE_DROPDOWN(
 
     return panel_hot
 end
-
-function FALLEN_MENU_TYPE_DROPDOWN_STEP()
-    local now = tick()
-
-    if A.menu_type_dropdown_last_t == nil then
-        A.menu_type_dropdown_last_t = now
-    end
-
-    local dt =
-        clamp(
-            now - A.menu_type_dropdown_last_t,
-            0,
-            0.05
-        )
-
-    A.menu_type_dropdown_last_t = now
-
-    local target =
-        A.menu_type_dropdown_open
-        and 1
-        or 0
-
-    local speed =
-        target > (A.menu_type_dropdown_anim or 0)
-        and 14
-        or 10
-
-    A.menu_type_dropdown_anim =
-        exp_chase(
-            A.menu_type_dropdown_anim or 0,
-            target,
-            speed,
-            dt
-        )
-
-    if target == 0
-        and (A.menu_type_dropdown_anim or 0) < 0.015
-    then
-        A.menu_type_dropdown_anim = 0
-    elseif target == 1
-        and (A.menu_type_dropdown_anim or 0) > 0.992
-    then
-        A.menu_type_dropdown_anim = 1
-    end
-
-    return
-        clamp(
-            A.menu_type_dropdown_anim or 0,
-            0,
-            1
-        )
-end
-
-function FALLEN_DRAW_MENU_TYPE_DROPDOWN(
-    mx,
-    my,
-    clicked,
-    x,
-    y,
-    w
-)
-    local raw =
-        FALLEN_MENU_TYPE_DROPDOWN_STEP()
-
-    if raw <= 0.002
-        and not A.menu_type_dropdown_open
-    then
-        return false
-    end
-
-    local options = {
-        "Default",
-        "Glass",
-        "Gradient",
-        "Ass",
-    }
-
-    local item_h = 27
-    local full_h =
-        #options
-        * item_h
-
-    local visible_h =
-        full_h
-        * ease_out_cubic(raw)
-
-    local panel_h =
-        math.max(
-            2,
-            visible_h
-        )
-
-    FALLEN_POPUP_GLOW(
-        x,
-        y,
-        w,
-        panel_h,
-        7,
-        0.95
-    )
-
-    rounded_fill(
-        x,
-        y,
-        w,
-        panel_h,
-        7,
-        { 0.050, 0.053, 0.062, 0.96 }
-    )
-
-    local panel_hot =
-        hover(
-            mx,
-            my,
-            x,
-            y,
-            w,
-            panel_h
-        )
-
-    for i, value in ipairs(options) do
-        local iy =
-            y
-            + (i - 1)
-            * item_h
-
-        local reveal =
-            clamp(
-                (
-                    visible_h
-                    - (i - 1) * item_h
-                )
-                / item_h,
-                0,
-                1
-            )
-
-        if reveal > 0.12 then
-            local item_hot =
-                reveal > 0.92
-                and hover(
-                    mx,
-                    my,
-                    x + 4,
-                    iy + 2,
-                    w - 8,
-                    item_h - 4
-                )
-
-            if item_hot then
-                rounded_fill(
-                    x + 4,
-                    iy + 2,
-                    w - 8,
-                    item_h - 4,
-                    5,
-                    { 0.105, 0.111, 0.132, 1 }
-                )
-            end
-
-            local selected =
-                tostring(S.menu_type or "glass")
-                :lower()
-                == tostring(value):lower()
-
-            if selected then
-                rounded_fill(
-                    x + 4,
-                    iy + 3,
-                    3,
-                    item_h - 6,
-                    1,
-                    C.accent
-                )
-            end
-
-            text(
-                x + 12,
-                iy + 8,
-                value,
-                FALLEN_HOVER_TEXT(
-                    "menu_type_option:" .. tostring(value),
-                    item_hot,
-                    selected and C.text or C.text_dim
-                )
-            )
-
-            if clicked
-                and item_hot
-                and A.menu_type_dropdown_open
-            then
-                S.menu_type =
-                    tostring(value):lower()
-
-                A.menu_type_dropdown_open = false
-                return true
-            end
-        end
-    end
-
-    return panel_hot
-end
-
 
 function FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
     mx,
@@ -25071,8 +24821,6 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
     if raw <= 0.001 and not A.menu_settings_open then
         A.menu_scale_dropdown_open = false
         A.menu_scale_dropdown_anim = 0
-        A.menu_type_dropdown_open = false
-        A.menu_type_dropdown_anim = 0
         return false
     end
 
@@ -25085,29 +24833,8 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or ease_in_out_cubic(raw)
 
     local pw = 278
-
-    local menu_type_lower =
-        tostring(
-            S.menu_type
-            or "glass"
-        ):lower()
-
-    local gradient_selected =
-        menu_type_lower == "gradient"
-        or menu_type_lower == "blur"
-
-    local ph =
-        467
-        + (
-            gradient_selected
-            and 82
-            or 0
-        )
-        + (
-            A.secret_unlocked
-            and 41
-            or 0
-        )
+    -- Type row removed (41px). Weather/Hotkeys/Style rows slide up.
+    local ph = 426 + (A.secret_unlocked and 41 or 0)
 
     local px = snap(anchor_x + 18)
     local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
@@ -25121,8 +24848,6 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         and (
             A.world_color_picker_key == "menu_glow"
             or A.world_color_picker_key == "menu_style"
-            or A.world_color_picker_key == "menu_gradient_a"
-            or A.world_color_picker_key == "menu_gradient_b"
         )
     then
         interactive = true
@@ -25132,13 +24857,12 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
     local row_clicked =
         ui_clicked
         and not A.menu_scale_dropdown_open
-        and not A.menu_type_dropdown_open
 
     FALLEN_POPUP_GLOW(px, py, pw, shell_h, 12, 1)
 
     rounded_fill(
         px, py, pw, shell_h, 12,
-        { 0.050, 0.053, 0.062, 0.96 }
+        C.group_box_bg
     )
 
     text(px + 14, py + 12, "Menu settings", C.text)
@@ -25169,7 +24893,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             box_x, box_y, box_w, box_h, 6,
             hot
                 and C.button_hovered
-                or { 0.075, 0.079, 0.093, 1 }
+                or C.frame_inactive
         )
 
         local shown =
@@ -25195,7 +24919,6 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             and hot
         then
             A.menu_scale_dropdown_open = not A.menu_scale_dropdown_open
-            A.menu_type_dropdown_open = false
         end
     end
 
@@ -25279,120 +25002,9 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
 
         line(px + 12, py + 162, px + pw - 12, py + 162, C.divider, 1)
 
-        local row_x = px + 8
-        local row_y = py + 163
-        local row_w = pw - 16
-
-        local menu_type_hot =
-            row_hover(mx, my, row_x, row_y, row_w, 41)
-
-        text(
-            row_x + 13,
-            row_y + 14,
-            "Type",
-            FALLEN_HOVER_TEXT("menu_type_row", menu_type_hot, C.text)
-        )
-
-        local type_box_x = row_x + row_w - 92 - 12
-        local type_box_y = row_y + 8
-        local type_box_w = 92
-        local type_box_h = 25
-
-        local type_hot =
-            hover(
-                mx,
-                my,
-                type_box_x,
-                type_box_y,
-                type_box_w,
-                type_box_h
-            )
-
-        rounded_fill(
-            type_box_x,
-            type_box_y,
-            type_box_w,
-            type_box_h,
-            6,
-            type_hot
-                and C.button_hovered
-                or { 0.075, 0.079, 0.093, 1 }
-        )
-
-        local type_text =
-            tostring(S.menu_type or "glass")
-                :gsub("^%l", string.upper)
-
-        text(type_box_x + 10, type_box_y + 7, type_text, C.text)
-        text(
-            type_box_x + type_box_w - 16,
-            type_box_y + 7,
-            A.menu_type_dropdown_open and "^" or "v",
-            C.text_dim
-        )
-
-        if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
-                ui_clicked,
-                "menu_type_dropdown_open"
-            )
-            and type_hot
-        then
-            A.menu_type_dropdown_open =
-                not A.menu_type_dropdown_open
-
-            A.menu_scale_dropdown_open = false
-        end
-
-        local weather_offset = 0
-
-        if gradient_selected then
-            if shell_h > 246 then
-                line(
-                    px + 12,
-                    py + 203,
-                    px + pw - 12,
-                    py + 203,
-                    C.divider,
-                    1
-                )
-
-                FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
-                    mx,
-                    my,
-                    row_clicked,
-                    px + 8,
-                    py + 204,
-                    pw - 16,
-                    "Gradient Color 1",
-                    "menu_gradient_a"
-                )
-            end
-
-            if shell_h > 287 then
-                line(
-                    px + 12,
-                    py + 244,
-                    px + pw - 12,
-                    py + 244,
-                    C.divider,
-                    1
-                )
-
-                FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
-                    mx,
-                    my,
-                    row_clicked,
-                    px + 8,
-                    py + 245,
-                    pw - 16,
-                    "Gradient Color 2",
-                    "menu_gradient_b"
-                )
-            end
-
-            weather_offset = 82
-
-        end
+        -- No menu Type selector: only Default is supported.
+        -- Start the weather controls immediately under Glow Color.
+        local weather_offset = -41
 
         -- Animated background weather.
         local snow_y =
@@ -25578,16 +25190,6 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             )
         end
 
-        local type_dropdown_hot =
-            FALLEN_DRAW_MENU_TYPE_DROPDOWN(
-                mx,
-                my,
-                ui_clicked,
-                type_box_x,
-                type_box_y + type_box_h + 4,
-                type_box_w
-            )
-
         local scale_dropdown_hot =
             FALLEN_DRAW_MENU_SCALE_DROPDOWN(
                 mx, my, ui_clicked,
@@ -25601,19 +25203,16 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             and clicked
             and not popup_hot
             and not anchor_hot
-            and not type_dropdown_hot
             and not scale_dropdown_hot
         then
             A.menu_settings_open = false
             A.world_rain_settings_open = false
             A.world_thunder_settings_open = false
             A.menu_scale_dropdown_open = false
-            A.menu_type_dropdown_open = false
-            A.menu_type_dropdown_open = false
         end
 
         MENU_RENDER_ALPHA = parent_alpha
-        return popup_hot or type_dropdown_hot or scale_dropdown_hot
+        return popup_hot or scale_dropdown_hot
     end
 
     local scale_dropdown_hot =
@@ -25630,18 +25229,15 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         and not popup_hot
         and not anchor_hot
         and not scale_dropdown_hot
-        and not type_dropdown_hot
     then
         A.menu_settings_open = false
         A.menu_scale_dropdown_open = false
-        A.menu_type_dropdown_open = false
     end
 
     MENU_RENDER_ALPHA = parent_alpha
     return
         popup_hot
         or scale_dropdown_hot
-        or type_dropdown_hot
 end
 
 
@@ -28064,7 +27660,7 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
         w,
         panel_h,
         7,
-        { 0.070, 0.074, 0.087, 1 }
+        C.group_box_bg
     )
 
     local panel_hot =
@@ -28111,7 +27707,7 @@ function FALLEN_DRAW_BT_STYLE_DROPDOWN(
                     w - 8,
                     item_h - 4,
                     5,
-                    { 0.105, 0.111, 0.132, 1 }
+                    C.frame_active
                 )
             end
 
@@ -28262,7 +27858,7 @@ function FALLEN_DRAW_BT_ANIMATION_DROPDOWN(
         w,
         panel_h,
         7,
-        { 0.070, 0.074, 0.087, 1 }
+        C.group_box_bg
     )
 
     local panel_hot =
@@ -28309,7 +27905,7 @@ function FALLEN_DRAW_BT_ANIMATION_DROPDOWN(
                     w - 8,
                     item_h - 4,
                     5,
-                    { 0.105, 0.111, 0.132, 1 }
+                    C.frame_active
                 )
             end
 
@@ -28465,7 +28061,7 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
         w,
         panel_h,
         7,
-        { 0.070, 0.074, 0.087, 1 }
+        C.group_box_bg
     )
 
     local panel_hot =
@@ -28512,7 +28108,7 @@ function FALLEN_DRAW_HITFX_STYLE_DROPDOWN(
                     w - 8,
                     item_h - 4,
                     5,
-                    { 0.105, 0.111, 0.132, 1 }
+                    C.frame_active
                 )
             end
 
@@ -30338,7 +29934,7 @@ function FALLEN_DRAW_AVATAR_EDITOR(
         + (win_h - ph) * 0.5
 
     local panel_color =
-        { 0.055, 0.060, 0.073, 1 }
+        C.group_box_bg
 
     rounded_fill(
         wx + 4,
@@ -32192,7 +31788,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v103 | Neverlose source UI navigation fixes | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v105 | Neverlose popups + RMB three-dots | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -33928,7 +33524,7 @@ function FALLEN_DRAW_SECRET_CROSSHAIR_STYLE_DROPDOWN(
         w,
         panel_h,
         7,
-        { 0.070, 0.074, 0.087, 1 }
+        C.group_box_bg
     )
 
     local panel_hot =
@@ -33970,7 +33566,7 @@ function FALLEN_DRAW_SECRET_CROSSHAIR_STYLE_DROPDOWN(
                     w - 8,
                     item_h - 4,
                     5,
-                    { 0.105, 0.111, 0.132, 1 }
+                    C.frame_active
                 )
             end
 
