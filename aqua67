@@ -1027,7 +1027,7 @@ local function fetch_avatar_once()
 
         local http_ok, status, body = Http.get(
             api_url,
-            { timeout_ms = 7000 }
+            { timeout_ms = 2200 }
         )
 
         if not http_ok or status ~= 200 then
@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v93 | loader-only startup preload + real menu preload on load | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v94 | frame-budget menu image preload | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -32817,7 +32817,7 @@ function FALLEN_LOADER_RESOLVE_IMAGE_URL(url)
         local http_ok, status, body =
             Http.get(
                 url,
-                { timeout_ms = 7000 }
+                { timeout_ms = 2200 }
             )
 
         if not http_ok
@@ -32952,141 +32952,14 @@ function FALLEN_PRELOAD_QUEUE_PRIMARY(value, seen)
     end
 end
 
-function FALLEN_PRELOAD_WAIT_HANDLE(handle, timeout_seconds)
-    if not handle then
-        return false
-    end
-
-    local timeout =
-        tonumber(timeout_seconds)
-        or 3.0
-
-    local started =
-        tick()
-
-    while tick() - started < timeout do
-        if type(IsImageReady) == "function" then
-            local ok, ready =
-                pcall(
-                    IsImageReady,
-                    handle
-                )
-
-            if ok and ready == true then
-                return true
-            end
-        end
-
-        if type(IsImageFailed) == "function" then
-            local ok, failed =
-                pcall(
-                    IsImageFailed,
-                    handle
-                )
-
-            if ok and failed == true then
-                return false
-            end
-        end
-
-        -- This runs only in the preload worker, never in on_render.
-        if type(wait) == "function" then
-            wait(0.035)
-        else
-            break
-        end
-    end
-
-    return false
-end
-
-function FALLEN_PRELOAD_IMAGE_URL_SEQUENTIAL(url)
-    if type(url) ~= "string"
-        or url == ""
-        or type(LoadImage) ~= "function"
-    then
-        return nil
-    end
-
-    local handle =
-        _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
-
-    if not handle then
-        local ok, loaded =
-            pcall(
-                LoadImage,
-                url
-            )
-
-        if ok and loaded then
-            handle = loaded
-
-            _G.FALLEN_IMAGE_PRELOAD_HANDLES[url] =
-                loaded
-        end
-    end
-
-    if handle then
-        FALLEN_PRELOAD_WAIT_HANDLE(
-            handle,
-            3.0
-        )
-    end
-
-    -- Tiny spacing between downloads keeps texture creation smooth.
-    if type(wait) == "function" then
-        wait(0.025)
-    end
-
-    return handle
-end
-
-function FALLEN_PRELOAD_WAIT_GETTER(getter, timeout_seconds)
-    if type(getter) ~= "function" then
-        return nil
-    end
-
-    local timeout =
-        tonumber(timeout_seconds)
-        or 4.0
-
-    local started =
-        tick()
-
-    while tick() - started < timeout do
-        local ok, handle =
-            pcall(
-                getter
-            )
-
-        if ok and handle then
-            return handle
-        end
-
-        if type(wait) == "function" then
-            wait(0.040)
-        else
-            break
-        end
-    end
-
-    return nil
-end
-
 function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
     _G.FALLEN_IMAGE_PRELOAD_QUEUE = {}
     _G.FALLEN_IMAGE_PRELOAD_QUEUED = {}
 
-    -- IMPORTANT: grenade first. It must be ready before gameplay VFX needs it.
     FALLEN_PRELOAD_QUEUE_PRIMARY(
         FALLEN_GRENADE_ICON_URLS
     )
 
-    -- Galaxy is preloaded through FALLEN_GALAXY_IMAGE_GET below,
-    -- exactly like the Aimbot sidebar icon, so it is intentionally not
-    -- duplicated in the generic URL queue.
-
-    -- Then normal item / armor / weapon assets.
     FALLEN_PRELOAD_QUEUE_PRIMARY(
         FALLEN_ARMOR_ICON_URLS
     )
@@ -33103,8 +32976,6 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
         FALLEN_KEYCARD_ICON_URLS
     )
 
-    -- Resource / plant icons. Each direct_urls list is a fallback chain,
-    -- therefore only its primary URL is queued.
     if type(WORLD_UI_ITEMS) == "table" then
         for _, cfg in ipairs(WORLD_UI_ITEMS) do
             if cfg
@@ -33116,25 +32987,22 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
             end
         end
     end
-
-    _G.FALLEN_IMAGE_PRELOAD_TOTAL =
-        #_G.FALLEN_IMAGE_PRELOAD_QUEUE
 end
 
-function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
-    if _G.FALLEN_IMAGE_PRELOAD_DONE == true then
+function FALLEN_PRELOAD_FINISH_ONE()
+    _G.FALLEN_IMAGE_PRELOAD_INDEX =
+        (tonumber(_G.FALLEN_IMAGE_PRELOAD_INDEX) or 0)
+        + 1
+end
+
+function FALLEN_BEGIN_IMAGE_PRELOAD()
+    if _G.FALLEN_IMAGE_PRELOAD_STARTED == true then
         return
     end
 
-    _G.FALLEN_IMAGE_PRELOAD_DONE = false
-    _G.FALLEN_IMAGE_PRELOAD_INDEX = 0
-    _G.FALLEN_IMAGE_PRELOAD_TOTAL = 0
-    _G.FALLEN_IMAGE_PRELOAD_SPECIAL_TOTAL = 0
+    FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
 
-    -- First preload special UI images one-by-one. Their getters may resolve
-    -- a page URL before calling LoadImage, so keeping them sequential avoids
-    -- simultaneous HTTP/page-resolution spikes.
-    local getters = {
+    _G.FALLEN_IMAGE_PRELOAD_SPECIALS = {
         FALLEN_GRENADE_ICON_GET,
         FALLEN_BRAND_IMAGE_GET,
         FALLEN_AIMBOT_TAB_ICON_GET,
@@ -33156,196 +33024,187 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         FALLEN_WORLD_BODY_BAG_ICON,
     }
 
-    FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
-
+    _G.FALLEN_IMAGE_PRELOAD_STARTED = true
+    _G.FALLEN_IMAGE_PRELOAD_DONE = false
+    _G.FALLEN_IMAGE_PRELOAD_INDEX = 0
     _G.FALLEN_IMAGE_PRELOAD_SPECIAL_TOTAL =
-        #getters
-
+        #_G.FALLEN_IMAGE_PRELOAD_SPECIALS
     _G.FALLEN_IMAGE_PRELOAD_TOTAL =
-        _G.FALLEN_IMAGE_PRELOAD_SPECIAL_TOTAL
+        #_G.FALLEN_IMAGE_PRELOAD_SPECIALS
         + #_G.FALLEN_IMAGE_PRELOAD_QUEUE
 
-    for _, getter in ipairs(getters) do
-        FALLEN_PRELOAD_WAIT_GETTER(
-            getter,
-            4.0
-        )
-
-        _G.FALLEN_IMAGE_PRELOAD_INDEX =
-            (_G.FALLEN_IMAGE_PRELOAD_INDEX or 0)
-            + 1
-
-        if type(wait) == "function" then
-            wait(0.030)
-        end
-    end
-
-    for _, url in ipairs(
-        _G.FALLEN_IMAGE_PRELOAD_QUEUE
-    ) do
-        FALLEN_PRELOAD_IMAGE_URL_SEQUENTIAL(
-            url
-        )
-
-        _G.FALLEN_IMAGE_PRELOAD_INDEX =
-            (_G.FALLEN_IMAGE_PRELOAD_INDEX or 0)
-            + 1
-    end
-
-    -- Prime Galaxy through the same getter used by the Aimbot-style preview.
-    pcall(function()
-        local h = FALLEN_GALAXY_IMAGE_GET()
-        if h and type(FALLEN_BT_IMAGE) == "table" then
-            FALLEN_BT_IMAGE.galaxy = h
-        end
-    end)
-
-    -- Hit Effect sheets were already resolved/loaded one-by-one through the
-    -- same getter path as sidebar icons. Touch ALL styles once more so their
-    -- cached handles are warm before gameplay BloodPart VFX can request them.
-    pcall(FALLEN_HITFX_SPARK_SHEET_GET)
-    pcall(FALLEN_HITFX_SMOKERING_SHEET_GET)
-    pcall(FALLEN_HITFX_PARTICLES_SHEET_GET)
-    pcall(FALLEN_HITFX_TEST1_SHEET_GET)
-    pcall(FALLEN_HITFX_TEST2_SHEET_GET)
-    pcall(FALLEN_HITFX_ICE_SHEET_GET)
-    pcall(FALLEN_HITFX_CRYSTAL_SHEET_GET)
-    pcall(FALLEN_BT_WATER_IMAGE_GET)
-
-    -- Prime runtime caches only AFTER the sequential queue has completed.
-    -- Drawing.LoadImage caches by URL, so these getter calls should reuse the
-    -- already-created texture handles instead of causing a new download burst.
-    pcall(function()
-        if type(FALLEN_ARMOR_ICON_URLS) == "table"
-            and type(FALLEN_ARMOR_ICON) == "function"
-        then
-            for name, _ in pairs(FALLEN_ARMOR_ICON_URLS) do
-                pcall(
-                    FALLEN_ARMOR_ICON,
-                    name
-                )
-            end
-        end
-    end)
-
-    pcall(function()
-        if type(FALLEN_WEAPON_DIRECT_ICON_URLS) == "table"
-            and type(FALLEN_WEAPON_ICON) == "function"
-        then
-            for name, _ in pairs(FALLEN_WEAPON_DIRECT_ICON_URLS) do
-                pcall(
-                    FALLEN_WEAPON_ICON,
-                    name
-                )
-            end
-        end
-    end)
-
-    pcall(function()
-        if type(FALLEN_KEYCARD_ICON_URLS) == "table"
-            and type(FALLEN_KEYCARD_ICON) == "function"
-        then
-            for name, _ in pairs(FALLEN_KEYCARD_ICON_URLS) do
-                pcall(
-                    FALLEN_KEYCARD_ICON,
-                    name
-                )
-            end
-        end
-    end)
-
-    pcall(function()
-        if type(WORLD_UI_ITEMS) == "table"
-            and type(world_load_direct_icon) == "function"
-        then
-            for _, cfg in ipairs(WORLD_UI_ITEMS) do
-                pcall(
-                    world_load_direct_icon,
-                    cfg
-                )
-            end
-        end
-    end)
-
-    if type(FALLEN_CUSTOM_AVATAR_LOAD) == "function" then
-        pcall(
-            FALLEN_CUSTOM_AVATAR_LOAD
-        )
-    end
-
-    if type(update_profile) == "function" then
-        pcall(
-            update_profile
-        )
-    end
-
-    _G.FALLEN_IMAGE_PRELOAD_INDEX =
-        _G.FALLEN_IMAGE_PRELOAD_TOTAL
-
-    _G.FALLEN_IMAGE_PRELOAD_DONE = true
+    _G.FALLEN_IMAGE_PRELOAD_STATE = {
+        stage = "special",
+        special_index = 1,
+        special_started = 0,
+        special_next_try = 0,
+        url_index = 1,
+        next_url_start = 0,
+        inflight = {},
+        max_inflight = 2,
+        start_interval = 0.10,
+        image_timeout = 6.0,
+        special_timeout = 3.0,
+    }
 end
 
-function FALLEN_START_IMAGE_PRELOAD()
-    if _G.FALLEN_IMAGE_PRELOAD_STARTED == true then
+function FALLEN_PRELOAD_HANDLE_STATUS(handle, started, timeout_seconds)
+    if not handle then
+        return "failed"
+    end
+
+    if type(IsImageFailed) == "function" then
+        local ok, failed = pcall(IsImageFailed, handle)
+        if ok and failed == true then
+            return "failed"
+        end
+    end
+
+    if type(IsImageReady) == "function" then
+        local ok, ready = pcall(IsImageReady, handle)
+        if ok and ready == true then
+            return "ready"
+        end
+    else
+        return "ready"
+    end
+
+    if tick() - (tonumber(started) or tick()) >= (tonumber(timeout_seconds) or 6.0) then
+        return "timeout"
+    end
+
+    return "pending"
+end
+
+function FALLEN_PRELOAD_TICK()
+    if _G.FALLEN_IMAGE_PRELOAD_STARTED ~= true
+        or _G.FALLEN_IMAGE_PRELOAD_DONE == true
+    then
         return
     end
 
-    _G.FALLEN_IMAGE_PRELOAD_STARTED = true
+    local st = _G.FALLEN_IMAGE_PRELOAD_STATE
+    if type(st) ~= "table" then
+        return
+    end
 
-    local create =
-        thread
-        and (
-            thread.create
-            or thread.Create
-        )
+    local now = tick()
 
-    local stop =
-        thread
-        and (
-            thread.stop
-            or thread.Stop
-        )
+    -- Special/page-resolved images: one getter at a time, never a wait loop.
+    if st.stage == "special" then
+        local list = _G.FALLEN_IMAGE_PRELOAD_SPECIALS
+        local getter = list and list[st.special_index]
 
-    if type(create) == "function" then
-        local worker_id = nil
+        if not getter then
+            st.stage = "direct"
+            st.next_url_start = now
+            return
+        end
 
-        local function worker()
-            if _G.FALLEN_IMAGE_PRELOAD_DONE ~= true then
-                pcall(
-                    FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL
-                )
-            end
+        if st.special_started == 0 then
+            st.special_started = now
+            st.special_next_try = now
+        end
 
-            if worker_id
-                and type(stop) == "function"
-            then
-                pcall(
-                    stop,
-                    worker_id
-                )
+        if now >= (st.special_next_try or 0) then
+            st.special_next_try = now + 0.12
+
+            local ok, handle = pcall(getter)
+            if ok and handle then
+                FALLEN_PRELOAD_FINISH_ONE()
+                st.special_index = st.special_index + 1
+                st.special_started = 0
+                return
             end
         end
 
-        local ok, id =
-            pcall(
-                create,
-                worker,
-                25
+        if now - st.special_started >= (st.special_timeout or 3.0) then
+            FALLEN_PRELOAD_FINISH_ONE()
+            st.special_index = st.special_index + 1
+            st.special_started = 0
+        end
+
+        return
+    end
+
+    if st.stage ~= "direct" then
+        return
+    end
+
+    -- Poll only the tiny bounded inflight set.
+    local i = #st.inflight
+    while i >= 1 do
+        local item = st.inflight[i]
+        local status =
+            FALLEN_PRELOAD_HANDLE_STATUS(
+                item.handle,
+                item.started,
+                st.image_timeout
             )
 
-        if ok and id then
-            worker_id = id
-            _G.FALLEN_IMAGE_PRELOAD_WORKER = id
+        if status ~= "pending" then
+            table.remove(st.inflight, i)
+            FALLEN_PRELOAD_FINISH_ONE()
+        end
+
+        i = i - 1
+    end
+
+    -- At most ONE new LoadImage this frame and max TWO direct images in flight.
+    if #st.inflight < (st.max_inflight or 2)
+        and now >= (st.next_url_start or 0)
+    then
+        local url =
+            _G.FALLEN_IMAGE_PRELOAD_QUEUE[st.url_index]
+
+        if url then
+            st.url_index = st.url_index + 1
+            st.next_url_start = now + (st.start_interval or 0.10)
+
+            local handle =
+                _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
+
+            if not handle and type(LoadImage) == "function" then
+                local ok, loaded =
+                    pcall(
+                        LoadImage,
+                        url
+                    )
+
+                if ok and loaded then
+                    handle = loaded
+                    _G.FALLEN_IMAGE_PRELOAD_HANDLES[url] = loaded
+                end
+            end
+
+            if handle then
+                table.insert(
+                    st.inflight,
+                    {
+                        handle = handle,
+                        started = now,
+                    }
+                )
+            else
+                FALLEN_PRELOAD_FINISH_ONE()
+            end
+
             return
         end
     end
 
-    -- No thread API: run the same sequential loader synchronously after Load.
-    -- This can stall the modal for a moment, but it still preserves the
-    -- user's requested behavior: real Loading ends only after all images are ready.
-    pcall(
-        FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL
-    )
+    if not _G.FALLEN_IMAGE_PRELOAD_QUEUE[st.url_index]
+        and #st.inflight == 0
+    then
+        _G.FALLEN_IMAGE_PRELOAD_INDEX =
+            _G.FALLEN_IMAGE_PRELOAD_TOTAL
+        _G.FALLEN_IMAGE_PRELOAD_DONE = true
+    end
+end
+
+function FALLEN_START_IMAGE_PRELOAD()
+    -- Compatibility name used by the loader. No thread and no blocking worker.
+    FALLEN_BEGIN_IMAGE_PRELOAD()
 end
 
 function FALLEN_PRELOAD_LOADER_IMAGES_ONLY()
@@ -33872,6 +33731,11 @@ do
             )
         end
 
+        -- Hard frame budget: this returns immediately every render frame.
+        pcall(
+            FALLEN_PRELOAD_TICK
+        )
+
         local total =
             tonumber(_G.FALLEN_IMAGE_PRELOAD_TOTAL)
             or 0
@@ -34304,6 +34168,8 @@ do
             _G.FALLEN_IMAGE_PRELOAD_INDEX = 0
             _G.FALLEN_IMAGE_PRELOAD_TOTAL = 0
             _G.FALLEN_IMAGE_PRELOAD_SPECIAL_TOTAL = 0
+            _G.FALLEN_IMAGE_PRELOAD_STATE = nil
+            _G.FALLEN_IMAGE_PRELOAD_SPECIALS = nil
             L.inject.active = true
             L.inject.start_time = now
             L.inject.modal_w = 450
@@ -34476,7 +34342,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | loader-only startup images | menu images preload after Load | no blur")
+print("[Fallen loader] ready | frame-budget menu preload | max 2 inflight | no blur")
 
 
 -- Fallen toast renderer
