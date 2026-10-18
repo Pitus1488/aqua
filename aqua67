@@ -4656,37 +4656,38 @@ local function color_preview(x, y, w, h, override_color)
         override_color
         or fov_color()
 
-    local radius =
-        math.floor(
-            math.min(w, h)
-            * 0.28
-        )
+    -- One visual standard everywhere: same as Bullet Tracer.
+    -- Keep the old caller rectangle's center so existing row layout stays intact.
+    local draw_w = 24
+    local draw_h = 20
+    local draw_x = x + (w - draw_w) * 0.5
+    local draw_y = y + (h - draw_h) * 0.5
+    local radius = 5
 
-    -- Dark rounded base so alpha still has a visible background,
-    -- but without the hard checker-square look on the tiny swatch.
+    -- Dark rounded base so alpha still has a visible background.
     rounded_fill(
-        x,
-        y,
-        w,
-        h,
+        draw_x,
+        draw_y,
+        draw_w,
+        draw_h,
         radius,
         { 0.22, 0.23, 0.27, 1 }
     )
 
     rounded_fill(
-        x,
-        y,
-        w,
-        h,
+        draw_x,
+        draw_y,
+        draw_w,
+        draw_h,
         radius,
         { c[1], c[2], c[3], c[4] }
     )
 
     rounded_outline(
-        x,
-        y,
-        w,
-        h,
+        draw_x,
+        draw_y,
+        draw_w,
+        draw_h,
         radius,
         C.border,
         1,
@@ -7385,12 +7386,19 @@ local function world_item_color(item)
 end
 
 local function world_square_swatch(x, y, size, c)
+    -- Keep legacy call sites/layout centers, but render the exact same
+    -- 24x20 rounded color preview used by Bullet Tracer everywhere.
+    local draw_w = 24
+    local draw_h = 20
+    local draw_x = x + (size - draw_w) * 0.5
+    local draw_y = y + (size - draw_h) * 0.5
+
     rounded_fill(
-        x,
-        y,
-        size,
-        size,
-        4,
+        draw_x,
+        draw_y,
+        draw_w,
+        draw_h,
+        5,
         c
     )
 end
@@ -7666,13 +7674,10 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
         or my
         or 0
 
-    local anchor_w =
-        tonumber(A.world_color_picker_anchor_w)
-        or 18
-
-    local anchor_h =
-        tonumber(A.world_color_picker_anchor_h)
-        or 18
+    -- All color previews are visually standardized to Bullet Tracer size.
+    -- Use that same geometry for popup attachment on every page.
+    local anchor_w = 24
+    local anchor_h = 20
 
     local pw = 264
     local ph = 342
@@ -17800,12 +17805,153 @@ function FALLEN_ARMOR_ITEMS(p)
     return items
 end
 
+function FALLEN_ARMOR_REFRESH_SERVER_MEMBERS()
+    local now = tick()
+
+    if type(A.armor_server_members) == "table"
+        and now - (tonumber(A.armor_server_members_t) or 0) < 0.12
+    then
+        return A.armor_server_members
+    end
+
+    local members = {}
+
+    if rbx
+        and type(rbx.players_service) == "function"
+    then
+        local ok_ps, ps =
+            pcall(
+                rbx.players_service
+            )
+
+        if ok_ps and ps then
+            local ok_children, children =
+                pcall(function()
+                    return ps:get_children()
+                end)
+
+            if ok_children
+                and type(children) == "table"
+            then
+                for _, plr in ipairs(children) do
+                    local name =
+                        FALLEN_ARMOR_SAFE_NAME(plr)
+
+                    if name
+                        and name ~= ""
+                    then
+                        local rec = {
+                            player = plr,
+                            character = nil,
+                            alive = false,
+                        }
+
+                        local ok_char, char =
+                            pcall(function()
+                                return plr:get_character()
+                            end)
+
+                        if ok_char and char then
+                            rec.character = char
+
+                            local humanoid = nil
+
+                            pcall(function()
+                                humanoid =
+                                    char:find_first_child_of_class(
+                                        "Humanoid"
+                                    )
+                            end)
+
+                            if humanoid then
+                                local ok_hp, hp =
+                                    pcall(function()
+                                        return humanoid:health()
+                                    end)
+
+                                rec.alive =
+                                    ok_hp
+                                    and tonumber(hp) ~= nil
+                                    and tonumber(hp) > 0
+                            else
+                                -- Some game character rigs may not expose a Humanoid
+                                -- through the wrapper. Character existence still proves
+                                -- that this Player is currently spawned on the server;
+                                -- p.health below remains the secondary death check.
+                                rec.alive = true
+                            end
+                        end
+
+                        members[
+                            string.lower(
+                                tostring(name)
+                            )
+                        ] = rec
+                    end
+                end
+            end
+        end
+    end
+
+    A.armor_server_members = members
+    A.armor_server_members_t = now
+
+    return members
+end
+
+function FALLEN_ARMOR_ON_SERVER_AND_ALIVE(p)
+    if not p then
+        return false
+    end
+
+    local name =
+        p.name
+        or p.Name
+
+    if not name
+        or tostring(name) == ""
+    then
+        return false
+    end
+
+    local members =
+        FALLEN_ARMOR_REFRESH_SERVER_MEMBERS()
+
+    if type(members) ~= "table" then
+        return false
+    end
+
+    local rec =
+        members[
+            string.lower(
+                tostring(name)
+            )
+        ]
+
+    if not rec
+        or not rec.player
+        or not rec.character
+        or rec.alive ~= true
+    then
+        return false
+    end
+
+    return true
+end
+
 function FALLEN_ARMOR_VALID_PLAYER(p)
     if not p
         or p.is_self == true
         or p.is_knocked == true
         or p.is_dead == true
     then
+        return false
+    end
+
+    -- Reject stale player-cache entries. players.get_all() can briefly retain
+    -- old data after death/leave, so require the player to still exist in the
+    -- live Players service and to have a living current Character.
+    if FALLEN_ARMOR_ON_SERVER_AND_ALIVE(p) ~= true then
         return false
     end
 
@@ -18871,6 +19017,10 @@ function FALLEN_ARMOR_ESP_TICK()
     then
         return
     end
+
+    -- Refresh the live server membership snapshot before drawing. This prevents
+    -- a stale cached player/character from surviving visually after leave/death.
+    FALLEN_ARMOR_REFRESH_SERVER_MEMBERS()
 
     if tostring(S.armor_esp_mode) == "On Player" then
         FALLEN_ARMOR_DRAW_ON_PLAYERS()
@@ -32769,7 +32919,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v96 | adaptive 2-per-frame image preload | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v98 | unified 24x20 color swatches | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
