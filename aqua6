@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v92 | loading progress width fix | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v93 | loader-only startup preload + real menu preload on load | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -32882,6 +32882,7 @@ _G.FALLEN_IMAGE_PRELOAD_STARTED = false
 _G.FALLEN_IMAGE_PRELOAD_DONE = false
 _G.FALLEN_IMAGE_PRELOAD_INDEX = 0
 _G.FALLEN_IMAGE_PRELOAD_TOTAL = 0
+_G.FALLEN_IMAGE_PRELOAD_SPECIAL_TOTAL = 0
 
 function FALLEN_PRELOAD_QUEUE_URL(url)
     if type(url) ~= "string"
@@ -33125,6 +33126,11 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         return
     end
 
+    _G.FALLEN_IMAGE_PRELOAD_DONE = false
+    _G.FALLEN_IMAGE_PRELOAD_INDEX = 0
+    _G.FALLEN_IMAGE_PRELOAD_TOTAL = 0
+    _G.FALLEN_IMAGE_PRELOAD_SPECIAL_TOTAL = 0
+
     -- First preload special UI images one-by-one. Their getters may resolve
     -- a page URL before calling LoadImage, so keeping them sequential avoids
     -- simultaneous HTTP/page-resolution spikes.
@@ -33150,27 +33156,40 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         FALLEN_WORLD_BODY_BAG_ICON,
     }
 
+    FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
+
+    _G.FALLEN_IMAGE_PRELOAD_SPECIAL_TOTAL =
+        #getters
+
+    _G.FALLEN_IMAGE_PRELOAD_TOTAL =
+        _G.FALLEN_IMAGE_PRELOAD_SPECIAL_TOTAL
+        + #_G.FALLEN_IMAGE_PRELOAD_QUEUE
+
     for _, getter in ipairs(getters) do
         FALLEN_PRELOAD_WAIT_GETTER(
             getter,
             4.0
         )
 
+        _G.FALLEN_IMAGE_PRELOAD_INDEX =
+            (_G.FALLEN_IMAGE_PRELOAD_INDEX or 0)
+            + 1
+
         if type(wait) == "function" then
             wait(0.030)
         end
     end
 
-    FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
-
-    for i, url in ipairs(
+    for _, url in ipairs(
         _G.FALLEN_IMAGE_PRELOAD_QUEUE
     ) do
-        _G.FALLEN_IMAGE_PRELOAD_INDEX = i
-
         FALLEN_PRELOAD_IMAGE_URL_SEQUENTIAL(
             url
         )
+
+        _G.FALLEN_IMAGE_PRELOAD_INDEX =
+            (_G.FALLEN_IMAGE_PRELOAD_INDEX or 0)
+            + 1
     end
 
     -- Prime Galaxy through the same getter used by the Aimbot-style preview.
@@ -33260,6 +33279,9 @@ function FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL()
         )
     end
 
+    _G.FALLEN_IMAGE_PRELOAD_INDEX =
+        _G.FALLEN_IMAGE_PRELOAD_TOTAL
+
     _G.FALLEN_IMAGE_PRELOAD_DONE = true
 end
 
@@ -33318,86 +33340,62 @@ function FALLEN_START_IMAGE_PRELOAD()
         end
     end
 
-    -- Fallback: if thread.* does not exist, do not hammer LoadImage with the
-    -- entire library. Start only the critical grenade + UI icons immediately.
+    -- No thread API: run the same sequential loader synchronously after Load.
+    -- This can stall the modal for a moment, but it still preserves the
+    -- user's requested behavior: real Loading ends only after all images are ready.
     pcall(
-        FALLEN_GRENADE_ICON_GET
-    )
-
-    pcall(
-        FALLEN_BRAND_IMAGE_GET
-    )
-
-    pcall(
-        FALLEN_AIMBOT_TAB_ICON_GET
-    )
-
-    -- No thread API: hit-effect sheets still begin loading immediately.
-    pcall(FALLEN_HITFX_SPARK_SHEET_GET)
-    pcall(FALLEN_HITFX_SMOKERING_SHEET_GET)
-    pcall(FALLEN_HITFX_PARTICLES_SHEET_GET)
-    pcall(FALLEN_HITFX_TEST1_SHEET_GET)
-    pcall(FALLEN_HITFX_TEST2_SHEET_GET)
-    pcall(FALLEN_HITFX_ICE_SHEET_GET)
-    pcall(FALLEN_HITFX_CRYSTAL_SHEET_GET)
-    pcall(FALLEN_BT_WATER_IMAGE_GET)
-
-    pcall(
-        FALLEN_GALAXY_IMAGE_GET
-    )
-
-    pcall(
-        FALLEN_VISUALS_TAB_ICON_GET
-    )
-
-    pcall(
-        FALLEN_MISC_TAB_ICON_GET
-    )
-
-    pcall(
-        FALLEN_SILENT_TAB_ICON_GET
-    )
-
-    pcall(
-        FALLEN_WORLD_TAB_ICON_GET
-    )
-
-    pcall(
-        FALLEN_ARMOR_TAB_ICON_GET
-    )
-
-    pcall(
-        FALLEN_HOTKEYS_ICON_GET
+        FALLEN_PRELOAD_ALL_IMAGES_SEQUENTIAL
     )
 end
 
-function FALLEN_PRELOAD_HITFX_IMMEDIATELY()
-    -- Kick every hit-effect sheet loader immediately at Lua startup.
-    -- The per-sheet getter caches its resolved URL + image handle, so the
-    -- later sequential preload only waits for the same handles to become ready.
-    local getters = {
-        FALLEN_HITFX_SPARK_SHEET_GET,
-        FALLEN_HITFX_SMOKERING_SHEET_GET,
-        FALLEN_HITFX_PARTICLES_SHEET_GET,
-        FALLEN_HITFX_TEST1_SHEET_GET,
-        FALLEN_HITFX_TEST2_SHEET_GET,
-        FALLEN_HITFX_ICE_SHEET_GET,
-        FALLEN_HITFX_CRYSTAL_SHEET_GET,
-        FALLEN_BT_WATER_IMAGE_GET,
-    }
+function FALLEN_PRELOAD_LOADER_IMAGES_ONLY()
+    -- On Lua startup preload ONLY the images visible in the loader itself.
+    -- Everything from the real menu is loaded later, after the user presses Load.
+    if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) == "function" then
+        pcall(function()
+            local source =
+                _G.FALLEN_LOADER_PRODUCT_PAGE_URL
 
-    for _, getter in ipairs(getters) do
-        if type(getter) == "function" then
-            pcall(getter)
-        end
+            if source and source ~= "" then
+                _G.FALLEN_LOADER_PRODUCT_IMAGE_URL =
+                    FALLEN_LOADER_RESOLVE_IMAGE_URL(source)
+                    or source
+
+                if not _G.FALLEN_LOADER_PRODUCT_IMAGE
+                    and type(LoadImage) == "function"
+                then
+                    _G.FALLEN_LOADER_PRODUCT_IMAGE =
+                        LoadImage(
+                            _G.FALLEN_LOADER_PRODUCT_IMAGE_URL
+                        )
+                end
+            end
+        end)
+
+        pcall(function()
+            local source =
+                _G.FALLEN_LOADER_HEADER_LOGO_PAGE_URL
+
+            if source and source ~= "" then
+                _G.FALLEN_LOADER_HEADER_LOGO_IMAGE_URL =
+                    FALLEN_LOADER_RESOLVE_IMAGE_URL(source)
+                    or source
+
+                if not _G.FALLEN_LOADER_HEADER_LOGO_IMAGE
+                    and type(LoadImage) == "function"
+                then
+                    _G.FALLEN_LOADER_HEADER_LOGO_IMAGE =
+                        LoadImage(
+                            _G.FALLEN_LOADER_HEADER_LOGO_IMAGE_URL
+                        )
+                end
+            end
+        end)
     end
 end
 
--- Hit effects start loading first, immediately when the Lua is executed.
-FALLEN_PRELOAD_HITFX_IMMEDIATELY()
-
--- Then start the rest of the image preload pipeline.
-FALLEN_START_IMAGE_PRELOAD()
+-- Only loader visuals are warmed up immediately.
+FALLEN_PRELOAD_LOADER_IMAGES_ONLY()
 
 do
     -- =====================================================
@@ -33829,11 +33827,8 @@ do
         local fade_out = 0.280
         local shrink = 0.320
         local fade_in = 0.360
-        local hold = 2.200
-        local progress_time = 1.800
         local fade_out_end = fade_out
         local shrink_end = fade_out + shrink
-        local inject_end = shrink_end + fade_in + hold
 
         if elapsed < fade_out_end then
             L.inject.show_content = false
@@ -33842,26 +33837,68 @@ do
             L.inject.logo_alpha = 0
             L.inject.progress = 0
             L.inject.content_alpha = 1 - L.ease_in_out_cubic(elapsed / fade_out)
-        elseif elapsed < shrink_end then
+            return
+        end
+
+        if elapsed < shrink_end then
             L.inject.show_content = false
             L.inject.content_alpha = 0
             L.inject.logo_alpha = 0
             local t = L.ease_out_expand((elapsed - fade_out_end) / shrink)
             L.inject.modal_w = 450 + (350 - 450) * t
             L.inject.modal_h = 350 + (200 - 350) * t
-        elseif elapsed < inject_end then
-            L.inject.show_content = true
-            L.inject.modal_w = 350
-            L.inject.modal_h = 200
-            local local_t = elapsed - shrink_end
-            L.inject.logo_alpha = L.ease_in_out_cubic(math.min(1, local_t / fade_in))
-            L.inject.content_alpha = 0
-            L.inject.progress = L.ease_out_expand(math.min(1, local_t / progress_time))
+            return
+        end
+
+        L.inject.show_content = true
+        L.inject.modal_w = 350
+        L.inject.modal_h = 200
+        L.inject.content_alpha = 0
+
+        local local_t = elapsed - shrink_end
+        L.inject.logo_alpha =
+            L.ease_in_out_cubic(
+                math.min(
+                    1,
+                    local_t / fade_in
+                )
+            )
+
+        -- Real loading starts here: after pressing Load, sequentially preload
+        -- every image used by the main menu without freezing the game.
+        if _G.FALLEN_IMAGE_PRELOAD_STARTED ~= true then
+            pcall(
+                FALLEN_START_IMAGE_PRELOAD
+            )
+        end
+
+        local total =
+            tonumber(_G.FALLEN_IMAGE_PRELOAD_TOTAL)
+            or 0
+
+        local done =
+            tonumber(_G.FALLEN_IMAGE_PRELOAD_INDEX)
+            or 0
+
+        if total > 0 then
+            L.inject.progress =
+                L.clamp01(
+                    done / total
+                )
         else
+            -- Small visual seed while the preload worker builds the queue.
+            L.inject.progress =
+                math.min(
+                    0.08,
+                    L.inject.logo_alpha * 0.08
+                )
+        end
+
+        if _G.FALLEN_IMAGE_PRELOAD_DONE == true then
+            L.inject.progress = 1
             L.inject.active = false
             L.inject.show_content = true
             L.inject.logo_alpha = 1
-            L.inject.progress = 1
             _G.FallenSurvivalLoaded = true
             L.begin_exit(true)
         end
@@ -34262,6 +34299,11 @@ do
         if click and load_hot and not load_blocked and not L.inject.active and not L.modal.closing then
             L.modal.branch_menu = false
             L.modal.branch_t = 0
+            _G.FALLEN_IMAGE_PRELOAD_STARTED = false
+            _G.FALLEN_IMAGE_PRELOAD_DONE = false
+            _G.FALLEN_IMAGE_PRELOAD_INDEX = 0
+            _G.FALLEN_IMAGE_PRELOAD_TOTAL = 0
+            _G.FALLEN_IMAGE_PRELOAD_SPECIAL_TOTAL = 0
             L.inject.active = true
             L.inject.start_time = now
             L.inject.modal_w = 450
@@ -34434,7 +34476,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | normal loading bar | static loading | no blur")
+print("[Fallen loader] ready | loader-only startup images | menu images preload after Load | no blur")
 
 
 -- Fallen toast renderer
