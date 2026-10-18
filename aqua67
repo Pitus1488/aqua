@@ -172,13 +172,14 @@ local defaults = {
     menu_gradient_b_alpha = 100,
 
     -- Menu accent/style color. Changes small UI accents only; never the shell/background.
-    menu_style_h = 0.625,
-    menu_style_s = 0.55,
-    menu_style_v = 0.76,
+    -- Neverlose-source accent: RGB(0.30, 0.49, 1.00).
+    menu_style_h = 0.6214285714,
+    menu_style_s = 0.70,
+    menu_style_v = 1.00,
     menu_style_alpha = 100,
 
-    -- Main UI outer glow strength. 0 = disabled, 200 = maximum.
-    menu_glow_strength = 100,
+    -- Source menu has no outer glow. Keep the setting available, default it off.
+    menu_glow_strength = 0,
 
     -- Animated menu-background weather.
     menu_snow = false,
@@ -378,6 +379,18 @@ for k, v in pairs(defaults) do
     if S[k] == nil then S[k] = v end
 end
 
+-- One-time migration to the supplied Neverlose-source base style.
+-- The user can still change these later from Menu settings.
+if S.neverlose_source_ui_v1 ~= true then
+    S.menu_type = "default"
+    S.menu_style_h = 0.6214285714
+    S.menu_style_s = 0.70
+    S.menu_style_v = 1.00
+    S.menu_style_alpha = 100
+    S.menu_glow_strength = 0
+    S.neverlose_source_ui_v1 = true
+end
+
 -- Current menu exposes Aimbot + Visuals + Misc.
 -- Clamp stale state from older builds to an available tab.
 if tonumber(S.tab) ~= 1
@@ -393,39 +406,49 @@ end
 -- =========================================================
 
 local C = {
-    shadow      = { 0.000, 0.000, 0.000, 0.13 },
-    outer       = { 0.058, 0.063, 0.073, 1.00 },
-    sidebar     = { 0.079, 0.082, 0.094, 1.00 },
-    content     = { 0.052, 0.055, 0.063, 1.00 },
+    -- Exact/custom source colors from gui.hpp + StyleColorsDark.
+    shadow          = { 0.000, 0.000, 0.000, 0.13 },
 
-    card        = { 0.055, 0.058, 0.067, 1.00 },
-    card_hover  = { 0.073, 0.076, 0.087, 1.00 },
-    selected    = { 0.125, 0.126, 0.137, 1.00 },
+    outer           = { 0.008, 0.008, 0.008, 1.00 },
+    sidebar         = { 0.008, 0.008, 0.008, 0.90 },
+    content         = { 0.008, 0.008, 0.008, 1.00 },
 
-    border      = { 0.210, 0.220, 0.250, 0.18 },
-    divider     = { 0.220, 0.230, 0.260, 0.15 },
+    group_box_bg    = { 0.019, 0.035, 0.062, 1.00 },
+    frame_inactive  = { 0.023, 0.039, 0.070, 1.00 },
+    frame_active    = { 0.043, 0.070, 0.137, 1.00 },
 
-    text        = { 0.700, 0.710, 0.740, 1.00 },
-    text_dim    = { 0.485, 0.500, 0.555, 1.00 },
-    text_faint  = { 0.320, 0.340, 0.410, 1.00 },
+    button          = { 0.031, 0.035, 0.058, 1.00 },
+    button_hovered  = { 0.050, 0.054, 0.078, 1.00 },
+    button_active   = { 0.070, 0.074, 0.098, 1.00 },
 
-    accent      = { 0.340, 0.450, 0.760, 1.00 },
-    accent_dim  = { 0.240, 0.320, 0.600, 1.00 },
-    accent_soft = { 0.210, 0.260, 0.430, 0.65 },
+    card            = { 0.019, 0.035, 0.062, 1.00 },
+    card_hover      = { 0.050, 0.054, 0.078, 1.00 },
+    selected        = { 0.043, 0.070, 0.137, 0.80 },
 
-    toggle_off  = { 0.160, 0.170, 0.195, 1.00 },
-    toggle_knob = { 0.530, 0.550, 0.610, 1.00 },
-    white       = { 0.970, 0.970, 0.980, 1.00 },
+    border          = { 1.000, 1.000, 1.000, 0.03 },
+    divider         = { 1.000, 1.000, 1.000, 0.03 },
+
+    text            = { 1.000, 1.000, 1.000, 1.00 },
+    text_dim        = { 0.510, 0.520, 0.560, 1.00 },
+    text_faint      = { 1.000, 1.000, 1.000, 0.50 },
+
+    accent          = { 0.300, 0.490, 1.000, 1.00 },
+    accent_dim      = { 0.043, 0.070, 0.137, 1.00 },
+    accent_soft     = { 0.043, 0.070, 0.137, 0.65 },
+
+    toggle_off      = { 0.023, 0.039, 0.070, 1.00 },
+    toggle_knob     = { 0.510, 0.520, 0.560, 1.00 },
+    white           = { 1.000, 1.000, 1.000, 1.00 },
 }
 
 -- =========================================================
 -- Layout
 -- =========================================================
 
-local WIN_W = 875
-local WIN_H = 630
-local SIDEBAR_W = 172
-local OUTER_R = 16
+local WIN_W = 690
+local WIN_H = 500
+local SIDEBAR_W = 170
+local OUTER_R = 8
 
 local VK_RSHIFT = 0xA1
 local VK_LBUTTON = 0x01
@@ -3568,28 +3591,20 @@ local TABS = {
 }
 
 local function sidebar_tab(mx, my, clicked, x, y, index)
-    local w, h = 152, 35
+    local w, h = 150, 30
     local active = S.tab == index
     local hot = hover(mx, my, x, y, w, h)
 
     A.sidebar_tab_anim[index] =
         A.sidebar_tab_anim[index]
-        or (
-            active
-            and 1
-            or 0
-        )
+        or (active and 1 or 0)
 
-    local target =
-        active
-        and 1
-        or 0
-
+    -- Exact source tab interpolation factor.
     A.sidebar_tab_anim[index] =
         lerp(
             A.sidebar_tab_anim[index],
-            target,
-            0.18
+            active and 1 or 0,
+            0.05
         )
 
     local a =
@@ -3599,102 +3614,36 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
             1
         )
 
-    -- Active background is rendered separately as one moving pill.
-    -- Only hover tint remains local to the row.
-    if hot and not active then
+    if a > 0.002 then
         rounded_fill(
             x,
             y,
             w,
             h,
-            7,
-            alpha(
-                C.card_hover,
-                0.55
-                    * (1 - a)
-            )
+            5,
+            alpha(C.frame_active, 0.50 * a)
         )
     end
 
-    local col =
-        mix_color(
-            C.text_dim,
-            C.text,
-            a
-        )
-
-    col =
-        FALLEN_HOVER_TEXT(
-            "sidebar:" .. tostring(index),
-            hot,
-            col
-        )
-
-    -- Sidebar icons:
-    -- inactive = gray, selected = menu accent blue.
-    local ic =
-        mix_color(
-            C.text_dim,
-            C.accent,
-            a
-        )
-
-    -- Sidebar icons should stay crisp even when the Gradient shell itself is
-    -- 50% transparent. Their own alpha remains 1; only menu open/close alpha
-    -- is applied by the primitive wrappers.
-    ic[4] = 1
-
+    local ic = C.accent
     local icon = ICONS[index]
 
-    -- Raster sidebar icons use the same behavior:
-    -- gray normally, accent blue on the selected tab.
     if (index == 1 or index == 2 or index == 3 or index == 5)
         and type(DrawImage) == "function"
     then
-        ic =
-            mix_color(
-                C.text_dim,
-                C.accent,
-                a
-            )
-
-        -- Tab icons stay static on hover: no whitening and no growth.
-        local icon_hover = 0
-        ic[4] = 1
-
         local image_handle = nil
 
         if index == 1 then
-            image_handle =
-                FALLEN_AIMBOT_TAB_ICON_GET()
+            image_handle = FALLEN_AIMBOT_TAB_ICON_GET()
         elseif index == 2 then
-            image_handle =
-                FALLEN_VISUALS_TAB_ICON_GET()
+            image_handle = FALLEN_VISUALS_TAB_ICON_GET()
         elseif index == 3 then
-            image_handle =
-                FALLEN_MISC_TAB_ICON_GET()
+            image_handle = FALLEN_MISC_TAB_ICON_GET()
         elseif index == 5 then
-            image_handle =
-                FALLEN_SILENT_TAB_ICON_GET()
+            image_handle = FALLEN_SILENT_TAB_ICON_GET()
         end
 
         if image_handle then
-            -- Image icons are drawn in physical pixels, centered in the
-            -- already-scaled row. Use the selected menu size as an extra
-            -- image-size hint so 125%+ visibly grows raster icons too.
-            local requested_percent =
-                tonumber(S.menu_scale_percent)
-                or 100
-
-            local requested_icon_scale =
-                math.sqrt(
-                    clamp(
-                        requested_percent / 100,
-                        1,
-                        2
-                    )
-                )
-
             local transform_scale =
                 MENU_UI_TRANSFORM_ACTIVE
                 and (MENU_UI_SCALE or 1)
@@ -3702,22 +3651,13 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
 
             local icon_px =
                 math.floor(
-                    20
+                    17
                     * transform_scale
-                    * requested_icon_scale
-                    * 1
                     + 0.5
                 )
 
-            local icon_cx =
-                FALLEN_UI_X(
-                    x + 20
-                )
-
-            local icon_cy =
-                FALLEN_UI_Y(
-                    y + 17.5
-                )
+            local icon_cx = FALLEN_UI_X(x + 18)
+            local icon_cy = FALLEN_UI_Y(y + 15)
 
             pcall(
                 DrawImage,
@@ -3735,17 +3675,17 @@ local function sidebar_tab(mx, my, clicked, x, y, index)
         end
     elseif icon then
         icon(
-            x + 12,
-            y + 10,
+            x + 10,
+            y + 7,
             ic
         )
     end
 
     text(
-        x + 37,
-        y + 10,
+        x + 35,
+        y + 8,
         TABS[index].label,
-        col
+        C.text
     )
 
     if clicked
@@ -3783,64 +3723,26 @@ end
 -- =========================================================
 
 local function section_title(x, y, title)
-    text(x, y, string.upper(title), C.text_faint)
+    -- Source group title: normal case, white at 50% alpha.
+    text(x + 12, y, tostring(title), C.text_faint)
 end
 
 local function card(x, y, w, h, r)
-    rounded_outline(x, y, w, h, r or 11, C.border, 1, C.card)
+    -- Calls use title+25; source group_box begins at title+20.
+    rounded_outline(x, y - 5, w, h + 5, 6, C.border, 1, C.group_box_bg)
 end
 
 local function row_hover(mx, my, x, y, w, h)
-    local hot = hover(mx, my, x, y, w, h)
-    if hot then
-        rounded_fill(x + 4, y + 2, w - 8, h - 4, 7, alpha(C.card_hover, 0.65))
-    end
-    return hot
+    -- Source widgets don't paint a full-row hover slab.
+    return hover(mx, my, x, y, w, h)
 end
 
 function FALLEN_HOVER_TEXT(key, hot, base_color)
-    key = tostring(key or "text")
-
-    if type(A.text_hover_anim) ~= "table" then
-        A.text_hover_anim = {}
-    end
-
-    if type(A.text_hover_time) ~= "table" then
-        A.text_hover_time = {}
-    end
-
-    local now = tick()
-    local last = A.text_hover_time[key] or now
-    local dt = clamp(now - last, 0, 0.10)
-    A.text_hover_time[key] = now
-
-    local v = tonumber(A.text_hover_anim[key]) or 0
-
-    -- Half a second from grey -> white and half a second back.
-    local step = dt / 0.5
-
     if hot then
-        v = math.min(1, v + step)
-    else
-        v = math.max(0, v - step)
+        return C.text
     end
 
-    A.text_hover_anim[key] = v
-
-    local eased =
-        smooth01(v)
-
-    local out =
-        mix_color(
-            base_color or C.text,
-            C.white,
-            eased
-        )
-
-    -- Fifth value is consumed only by text(); normal colors stay untouched.
-    out[5] = eased
-
-    return out
+    return base_color or C.text_dim
 end
 
 FALLEN_DROPDOWN_MODAL_SPECS = {
@@ -3895,43 +3797,8 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
 
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
-
-    text(
-        x + 13,
-        y + 14,
-        label,
-        FALLEN_HOVER_TEXT("toggle:" .. tostring(key), hot, C.text)
-    )
-
-    if extra then
-        local dots_x = x + w - 79
-        local dots_y = y + 8
-        local dots_w = 27
-        local dots_h = 25
-        local dots_hot = hover(mx, my, dots_x, dots_y, dots_w, dots_h)
-
-        if dots_hot then
-            rounded_fill(
-                dots_x,
-                dots_y,
-                dots_w,
-                dots_h,
-                6,
-                { 0.105, 0.110, 0.130, 1 }
-            )
-        end
-
-        centered_text(
-            dots_x + dots_w * 0.5,
-            y + 13,
-            "...",
-            dots_hot and C.text or C.text_faint
-        )
-    end
-
     local value = S[key] == true
 
-    -- Change state first so the animation starts immediately on the click.
     if clicked and hot then
         value = not value
         S[key] = value
@@ -3951,27 +3818,81 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
         anim = target
     end
 
-    -- Smooth switch movement and color blend.
-    anim = lerp(anim, target, 0.20)
+    -- Source Checkbox(): ImLerp(..., 0.08f)
+    anim = lerp(anim, target, 0.08)
 
-    if math.abs(anim - target) < 0.002 then
+    if math.abs(anim - target) < 0.0015 then
         anim = target
     end
 
     A.toggles[key] = anim
 
-    local tx = x + w - 45
+    text(
+        x + 13,
+        y + 14,
+        label,
+        value and C.text or C.text_dim
+    )
+
+    if extra then
+        local dots_x = x + w - 76
+        local dots_y = y + 8
+        local dots_w = 27
+        local dots_h = 25
+        local dots_hot = hover(mx, my, dots_x, dots_y, dots_w, dots_h)
+
+        if dots_hot then
+            rounded_fill(
+                dots_x,
+                dots_y,
+                dots_w,
+                dots_h,
+                4,
+                C.button_hovered
+            )
+        end
+
+        centered_text(
+            dots_x + dots_w * 0.5,
+            y + 13,
+            "...",
+            dots_hot and C.text or C.text_dim
+        )
+    end
+
+    -- Exact source switch geometry: 30x17, radius 10, knob radius 7.
+    local tx = x + w - 42
     local ty = y + 12
-    local tw, th = 34, 18
+    local tw, th = 30, 17
 
-    local track_col = mix_color(C.toggle_off, C.accent_dim, anim)
-    local knob_col = mix_color(C.toggle_knob, C.white, anim)
+    rounded_fill(
+        tx,
+        ty,
+        tw,
+        th,
+        9,
+        C.frame_inactive
+    )
 
-    rounded_fill(tx, ty, tw, th, 9, track_col)
+    if anim > 0.001 then
+        rounded_fill(
+            tx,
+            ty,
+            tw,
+            th,
+            9,
+            alpha(C.frame_active, anim)
+        )
+    end
 
-    -- Knob center moves continuously instead of snapping left/right.
-    local knob_x = tx + 9 + (tw - 18) * anim
-    circle_fill(knob_x, ty + 9, 7, knob_col)
+    local knob_x = tx + 8 + 14 * anim
+
+    circle_fill(
+        knob_x,
+        ty + th * 0.5,
+        7,
+        value and C.accent or C.text_dim
+    )
 end
 
 local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv, fmt)
@@ -3987,22 +3908,17 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
         and not dropdown_modal
 
     local h = 41
-    local hot = row_hover(mx, my, x, y, w, h)
+    row_hover(mx, my, x, y, w, h)
 
-    text(
-        x + 13,
-        y + 14,
-        label,
-        FALLEN_HOVER_TEXT("slider:" .. tostring(key), hot, C.text)
-    )
+    local number_w = 38
+    local number_h = 18
+    local number_x = x + w - number_w - 10
+    local number_y = y + 11
 
-    local box_w = 52
-    local box_x = x + w - box_w - 10
-    local box_y = y + 8
-
-    local track_x = x + 150
-    local track_w = math.max(36, box_x - track_x - 12)
-    local track_y = y + 20
+    -- Source slider: 92px bar immediately left of the value box.
+    local track_w = 92
+    local track_x = number_x - 8 - track_w
+    local track_y = y + 19
 
     local current = tonumber(S[key]) or minv
     current = clamp(current, minv, maxv)
@@ -4015,13 +3931,16 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
         A.slider_visual[key] = current
     end
 
-    if A.slider_knob[key] == nil then
-        A.slider_knob[key] = 1
-    end
+    local value_hot =
+        hover(
+            mx,
+            my,
+            number_x,
+            number_y,
+            number_w,
+            number_h
+        )
 
-    local value_hot = hover(mx, my, box_x, box_y, box_w, 25)
-
-    -- Click the numeric box to type an exact value.
     if clicked and value_hot then
         A.active_slider = nil
 
@@ -4032,14 +3951,17 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
 
     local editing = A.numeric.active_key == key
 
-    local hit_x = track_x - 9
-    local hit_y = y + 5
-    local hit_w = track_w + 18
-    local hit_h = 31
+    local track_hot =
+        hover(
+            mx,
+            my,
+            track_x - 6,
+            y + 7,
+            track_w + 12,
+            27
+        )
 
-    local hot = hover(mx, my, hit_x, hit_y, hit_w, hit_h)
-
-    if clicked and hot and not value_hot then
+    if clicked and track_hot and not value_hot then
         numeric_stop(true)
         A.active_slider = key
     end
@@ -4047,18 +3969,40 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
     local active = A.active_slider == key
 
     if active and lmb then
-        local nt = clamp((mx - track_x) / track_w, 0, 1)
-        A.slider_target[key] = minv + (maxv - minv) * nt
+        local nt =
+            clamp(
+                (mx - FALLEN_UI_X(track_x))
+                / FALLEN_UI_LEN(track_w),
+                0,
+                1
+            )
+
+        A.slider_target[key] =
+            minv
+            + (maxv - minv) * nt
     end
 
-    local target = clamp(A.slider_target[key] or current, minv, maxv)
+    local target =
+        clamp(
+            A.slider_target[key] or current,
+            minv,
+            maxv
+        )
 
-    -- While typing, use the typed value directly; while dragging, smooth it.
     if editing then
-        current = clamp(tonumber(S[key]) or current, minv, maxv)
+        current =
+            clamp(
+                tonumber(S[key]) or current,
+                minv,
+                maxv
+            )
     else
-        local follow = active and 0.34 or 0.22
-        current = lerp(current, target, follow)
+        current =
+            lerp(
+                current,
+                target,
+                active and 0.34 or 0.22
+            )
 
         if math.abs(current - target) < (maxv - minv) * 0.0002 then
             current = target
@@ -4079,8 +4023,9 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
         end
     end
 
+    -- Source SliderScalar visual lerp = 0.125f.
     local visual = A.slider_visual[key]
-    visual = lerp(visual, current, active and 0.52 or 0.30)
+    visual = lerp(visual, current, 0.125)
 
     if math.abs(visual - current) < (maxv - minv) * 0.00015 then
         visual = current
@@ -4088,82 +4033,107 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
 
     A.slider_visual[key] = visual
 
-    local t = clamp((visual - minv) / (maxv - minv), 0, 1)
-
-    rounded_fill(track_x, track_y, track_w, 4, 2, C.toggle_off)
-    rounded_fill(track_x, track_y, track_w * t, 4, 2, C.accent)
-
-    local wanted_scale = active and 1.34 or (hot and 1.12 or 1.00)
-    local knob_scale = A.slider_knob[key]
-    knob_scale = lerp(knob_scale, wanted_scale, 0.23)
-
-    if math.abs(knob_scale - wanted_scale) < 0.002 then
-        knob_scale = wanted_scale
-    end
-
-    A.slider_knob[key] = knob_scale
-
-    local knob_x = track_x + track_w * t
-    local knob_y = track_y + 2
-    local knob_r = 6 * knob_scale
-
-    if active then
-        circle_fill(
-            knob_x,
-            knob_y,
-            knob_r + 2.5,
-            alpha(C.accent, 0.16)
+    local t =
+        clamp(
+            (visual - minv) / (maxv - minv),
+            0,
+            1
         )
-    end
 
-    circle_fill(knob_x, knob_y, knob_r, C.white)
+    text(
+        x + 13,
+        y + 14,
+        label,
+        C.text_dim
+    )
 
     rounded_fill(
-        box_x,
-        box_y,
-        box_w,
-        25,
+        track_x,
+        track_y,
+        track_w,
+        4,
+        4,
+        C.frame_active
+    )
+
+    rounded_fill(
+        track_x,
+        track_y,
+        track_w * t,
+        4,
+        4,
+        C.accent
+    )
+
+    circle_fill(
+        track_x + track_w * t - 2,
+        track_y + 2,
         6,
-        editing and { 0.115, 0.125, 0.165, 1 } or C.toggle_off
+        C.accent
+    )
+
+    rounded_fill(
+        number_x,
+        number_y,
+        number_w,
+        number_h,
+        4,
+        C.frame_inactive
     )
 
     if editing then
-        rounded_outline(
-            box_x,
-            box_y,
-            box_w,
-            25,
-            6,
-            alpha(C.accent, 0.55),
-            1,
-            { 0.115, 0.125, 0.165, 1 }
+        rounded_fill(
+            number_x,
+            number_y,
+            number_w,
+            number_h,
+            4,
+            alpha(C.frame_active, 0.65)
         )
     end
+
+    rounded_outline(
+        number_x,
+        number_y,
+        number_w,
+        number_h,
+        4,
+        C.border,
+        1,
+        editing
+            and alpha(C.frame_active, 0.65)
+            or C.frame_inactive
+    )
 
     local shown
 
     if editing then
         shown = A.numeric.buffer
 
-        -- Tiny caret to make it obvious that this is an input field.
         if math.floor(tick() * 2) % 2 == 0 then
             shown = shown .. "|"
         end
     elseif fmt == "int" then
-        shown = tostring(math.floor((tonumber(S[key]) or minv) + 0.5))
+        shown =
+            tostring(
+                math.floor(
+                    (tonumber(S[key]) or minv)
+                    + 0.5
+                )
+            )
     else
-        shown = string.format("%.2f", tonumber(S[key]) or minv)
+        shown =
+            string.format(
+                "%.2f",
+                tonumber(S[key]) or minv
+            )
     end
 
     centered_text(
-        box_x + box_w * 0.5,
-        y + 14,
+        number_x + number_w * 0.5,
+        number_y + 4,
         shown,
-        FALLEN_HOVER_TEXT(
-            "slider_value:" .. tostring(key),
-            value_hot or active or editing,
-            C.text
-        )
+        C.text
     )
 end
 
@@ -4656,42 +4626,24 @@ local function color_preview(x, y, w, h, override_color)
         override_color
         or fov_color()
 
-    -- One visual standard everywhere: same as Bullet Tracer.
-    -- Keep the old caller rectangle's center so existing row layout stays intact.
-    local draw_w = 18
-    local draw_h = 18
-    local draw_x = x + (w - draw_w) * 0.5
-    local draw_y = y + (h - draw_h) * 0.5
-    local radius = 4
+    local size = 18
+    local cx = x + w * 0.5
+    local cy = y + h * 0.5
 
-    -- Dark rounded base so alpha still has a visible background.
-    rounded_fill(
-        draw_x,
-        draw_y,
-        draw_w,
-        draw_h,
-        radius,
-        { 0.22, 0.23, 0.27, 1 }
+    -- Source ColorButton is an 18x18 circular preview.
+    circle_fill(
+        cx,
+        cy,
+        size * 0.5,
+        { c[1], c[2], c[3], math.max(c[4] or 1, 0.01) }
     )
 
-    rounded_fill(
-        draw_x,
-        draw_y,
-        draw_w,
-        draw_h,
-        radius,
-        { c[1], c[2], c[3], c[4] }
-    )
-
-    rounded_outline(
-        draw_x,
-        draw_y,
-        draw_w,
-        draw_h,
-        radius,
+    circle(
+        cx,
+        cy,
+        size * 0.5,
         C.border,
-        1,
-        { c[1], c[2], c[3], math.max(c[4], 0.01) }
+        1
     )
 end
 
@@ -5124,8 +5076,8 @@ local function draw_aim_settings_popup(
             chip_h,
             7,
             chip_hot
-                and { 0.115, 0.120, 0.145, 1 }
-                or { 0.092, 0.096, 0.112, 1 }
+                and C.frame_active
+                or C.frame_inactive
         )
 
         if A.aim_bind_listening then
@@ -5137,7 +5089,7 @@ local function draw_aim_settings_popup(
                 7,
                 alpha(C.accent, 0.72),
                 1,
-                { 0.092, 0.096, 0.112, 1 }
+                C.frame_inactive
             )
         end
 
@@ -7386,19 +7338,23 @@ local function world_item_color(item)
 end
 
 local function world_square_swatch(x, y, size, c)
-    -- One compact color preview everywhere.
-    local draw_w = 18
-    local draw_h = 18
-    local draw_x = x + (size - draw_w) * 0.5
-    local draw_y = y + (size - draw_h) * 0.5
+    -- Same source ColorButton everywhere.
+    local cx = x + size * 0.5
+    local cy = y + size * 0.5
 
-    rounded_fill(
-        draw_x,
-        draw_y,
-        draw_w,
-        draw_h,
-        4,
+    circle_fill(
+        cx,
+        cy,
+        9,
         c
+    )
+
+    circle(
+        cx,
+        cy,
+        9,
+        C.border,
+        1
     )
 end
 
@@ -7677,8 +7633,8 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
     local anchor_w = 18
     local anchor_h = 18
 
-    local pw = 264
-    local ph = 342
+    local pw = 230
+    local ph = 322
 
     local dims = nil
     pcall(function()
@@ -7775,8 +7731,19 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
         py,
         pw,
         ph,
-        12,
-        { 0.070, 0.073, 0.085, 1 }
+        4,
+        C.frame_inactive
+    )
+
+    rounded_outline(
+        px,
+        py,
+        pw,
+        ph,
+        4,
+        C.border,
+        1,
+        C.frame_inactive
     )
 
     text(
@@ -7790,7 +7757,7 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
     local sv_x = px + pad
     local sv_y = py + pad + 20
     local sv_w = pw - pad * 2
-    local sv_h = 188
+    local sv_h = 174
 
     local hue =
         tonumber(
@@ -7904,18 +7871,19 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
         )
         * sv_h
 
-    circle_fill(
-        cursor_x,
-        cursor_y,
-        7,
-        { 0.05, 0.05, 0.06, 1 }
+    circle(
+        cursor_x + 1,
+        cursor_y + 1,
+        5,
+        { 0, 0, 0, 0.25 },
+        1
     )
 
     circle(
         cursor_x,
         cursor_y,
-        7,
-        { 1, 1, 1, 1 },
+        5,
+        C.text,
         2
     )
 
@@ -7989,22 +7957,22 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
         )
         * sv_w
 
-    rounded_fill(
-        hue_x - 3,
-        hue_y - 3,
-        6,
-        hue_h + 6,
-        3,
-        { 1, 1, 1, 1 }
-    )
+    local hr, hg, hb =
+        hsv_to_rgb(
+            clamp(
+                tonumber(S[prefix .. "_h"]) or 0,
+                0,
+                1
+            ),
+            1,
+            1
+        )
 
-    rounded_fill(
-        hue_x - 1,
-        hue_y - 1,
-        2,
-        hue_h + 2,
-        1,
-        { 0.12, 0.12, 0.14, 1 }
+    circle_fill(
+        hue_x,
+        hue_y + hue_h * 0.5,
+        6,
+        { hr, hg, hb, 1 }
     )
 
     -- Transparency slider restored.
@@ -8094,16 +8062,16 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
     circle_fill(
         alpha_x,
         alpha_y + alpha_h * 0.5,
-        8,
-        { 0.06, 0.06, 0.075, 1 }
+        6,
+        current
     )
 
     circle(
         alpha_x,
         alpha_y + alpha_h * 0.5,
-        8,
-        { 1, 1, 1, 1 },
-        2
+        6,
+        C.text,
+        1
     )
 
     -- No percentage text field; only HEX8 below the slider.
@@ -19602,12 +19570,10 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
             local col =
                 FALLEN_ARMOR_GLOW_COLOR()
 
-            rounded_fill(
-                swatch_x,
-                swatch_y,
-                swatch_w,
-                swatch_h,
-                5,
+            circle_fill(
+                swatch_x + swatch_w * 0.5,
+                swatch_y + swatch_h * 0.5,
+                swatch_w * 0.5,
                 col
             )
 
@@ -23328,8 +23294,8 @@ function FALLEN_CONFIGS.button(
     else
         bg =
             hot
-            and { 0.115, 0.120, 0.145, 1 }
-            or { 0.092, 0.096, 0.112, 1 }
+            and C.button_hovered
+            or C.button
     end
 
     rounded_fill(
@@ -23417,7 +23383,7 @@ function FALLEN_CONFIGS.draw_popup(
     local py =
         snap(
             anchor_y
-            + 42
+            + 30
             - retract * 20
         )
 
@@ -23493,7 +23459,7 @@ function FALLEN_CONFIGS.draw_popup(
                 or (
                     input_hot
                     and { 0.100, 0.104, 0.124, 1 }
-                    or { 0.086, 0.090, 0.105, 1 }
+                    or C.button
                 )
         )
 
@@ -23734,7 +23700,7 @@ function FALLEN_CONFIGS.draw_popup(
             anchor_x,
             anchor_y,
             anchor_w,
-            34
+            25
         )
 
     if interactive
@@ -23765,20 +23731,9 @@ function FALLEN_POPUP_GLOW(
     radius,
     strength
 )
-    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
-        x,
-        y,
-        w,
-        h,
-        radius,
-        { 0, 0, 0, 1 },
-        clamp(
-            tonumber(strength) or 1,
-            0,
-            2
-        ),
-        14 / 3
-    )
+    -- The supplied source uses blur here. Custom Lua API has no blur,
+    -- so do not substitute the old Fallen glow.
+    return
 end
 
 
@@ -24293,12 +24248,12 @@ end
 
 function FALLEN_APPLY_STYLE_COLOR()
     local t =
-        tostring(S.menu_type or "glass")
+        tostring(S.menu_type or "default")
         :lower()
 
-    local cache_h = tonumber(S.menu_style_h) or 0.625
-    local cache_s = tonumber(S.menu_style_s) or 0.55
-    local cache_v = tonumber(S.menu_style_v) or 0.76
+    local cache_h = tonumber(S.menu_style_h) or 0.6214285714
+    local cache_s = tonumber(S.menu_style_s) or 0.70
+    local cache_v = tonumber(S.menu_style_v) or 1.00
     local cache_a = tonumber(S.menu_style_alpha) or 100
 
     if A.menu_style_cache_type == t
@@ -24316,18 +24271,16 @@ function FALLEN_APPLY_STYLE_COLOR()
     A.menu_style_cache_v = cache_v
     A.menu_style_cache_a = cache_a
 
-    -- Accent color is user-controlled and is intentionally independent
-    -- from the menu shell/background material. Only small UI details use it.
     local accent_r, accent_g, accent_b =
         hsv_to_rgb(
-            tonumber(S.menu_style_h) or 0.625,
-            tonumber(S.menu_style_s) or 0.55,
-            tonumber(S.menu_style_v) or 0.76
+            cache_h,
+            cache_s,
+            cache_v
         )
 
     local accent_a =
         clamp(
-            (tonumber(S.menu_style_alpha) or 100) / 100,
+            cache_a / 100,
             0,
             1
         )
@@ -24339,105 +24292,56 @@ function FALLEN_APPLY_STYLE_COLOR()
         accent_a,
     }
 
-    -- Derived accent variants keep sliders/toggles/soft highlights in the
-    -- same chosen hue instead of leaving old hard-coded blue pieces behind.
-    C.accent_dim = {
-        accent_r * 0.76,
-        accent_g * 0.76,
-        accent_b * 0.79,
-        accent_a,
-    }
+    -- These remain the source's fixed widget surfaces.
+    C.frame_inactive = { 0.023, 0.039, 0.070, 1.00 }
+    C.frame_active   = { 0.043, 0.070, 0.137, 1.00 }
 
-    C.accent_soft = {
-        accent_r * 0.62,
-        accent_g * 0.62,
-        accent_b * 0.62,
-        0.65 * accent_a,
-    }
+    C.button         = { 0.031, 0.035, 0.058, 1.00 }
+    C.button_hovered = { 0.050, 0.054, 0.078, 1.00 }
+    C.button_active  = { 0.070, 0.074, 0.098, 1.00 }
 
-    if t == "default" then
-        -- Original dark Fallen-lua default theme.
-        C.outer      = { 0.058, 0.063, 0.073, 1.00 }
-        C.sidebar    = { 0.079, 0.082, 0.094, 1.00 }
-        C.content    = { 0.052, 0.055, 0.063, 1.00 }
+    C.group_box_bg   = { 0.019, 0.035, 0.062, 1.00 }
 
-        C.card       = { 0.055, 0.058, 0.067, 1.00 }
-        C.card_hover = { 0.073, 0.076, 0.087, 1.00 }
-        C.selected   = { 0.125, 0.126, 0.137, 1.00 }
+    C.card           = C.group_box_bg
+    C.card_hover     = C.button_hovered
+    C.selected       = { 0.043, 0.070, 0.137, 0.80 }
 
-        C.border     = { 0.210, 0.220, 0.250, 0.18 }
-        C.divider    = { 0.220, 0.230, 0.260, 0.15 }
+    C.border         = { 1.000, 1.000, 1.000, 0.03 }
+    C.divider        = { 1.000, 1.000, 1.000, 0.03 }
 
-        C.text       = { 0.700, 0.710, 0.740, 1.00 }
-        C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
-        C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
+    C.text           = { 1.000, 1.000, 1.000, 1.00 }
+    C.text_dim       = { 0.510, 0.520, 0.560, 1.00 }
+    C.text_faint     = { 1.000, 1.000, 1.000, 0.50 }
 
-    elseif t == "ass" then
-        -- Ass = Default theme everywhere, Glass only on the LEFT sidebar.
-        S.menu_type = "ass"
+    C.toggle_off     = C.frame_inactive
+    C.toggle_knob    = C.text_dim
 
-        C.outer      = { 0.058, 0.063, 0.073, 1.00 }
+    -- Source accent affects only highlight details, not the dark frame surface.
+    C.accent_dim     = C.frame_active
+    C.accent_soft    = { 0.043, 0.070, 0.137, 0.65 }
 
-        -- Only this surface is translucent.
-        C.sidebar    = { 0.078, 0.082, 0.094, 0.78 }
-
-        -- Everything to the right stays exactly like Default.
-        C.content    = { 0.052, 0.055, 0.063, 1.00 }
-
-        C.card       = { 0.055, 0.058, 0.067, 1.00 }
-        C.card_hover = { 0.073, 0.076, 0.087, 1.00 }
-        C.selected   = { 0.125, 0.126, 0.137, 1.00 }
-
-        C.border     = { 0.210, 0.220, 0.250, 0.18 }
-        C.divider    = { 0.220, 0.230, 0.260, 0.15 }
-
-        C.text       = { 0.700, 0.710, 0.740, 1.00 }
-        C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
-        C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
-
-    elseif t == "gradient"
+    if t == "gradient"
         or t == "blur"
     then
-        -- Real two-color diagonal gradient.
-        -- Legacy "blur" configs migrate to Gradient.
+        -- Preserve the user's optional gradient feature, but all widgets
+        -- still keep the supplied Neverlose source styling.
         S.menu_type = "gradient"
+        C.outer   = { 0.000, 0.000, 0.000, 0.00 }
+        C.sidebar = { 0.000, 0.000, 0.000, 0.00 }
+        C.content = { 0.000, 0.000, 0.000, 0.00 }
 
-        -- The shell itself is drawn separately at fixed 50% opacity.
-        C.outer      = { 0.000, 0.000, 0.000, 0.00 }
-        C.sidebar    = { 0.000, 0.000, 0.000, 0.00 }
-        C.content    = { 0.000, 0.000, 0.000, 0.00 }
-
-        C.card       = { 0.055, 0.058, 0.067, 0.72 }
-        C.card_hover = { 0.073, 0.076, 0.087, 0.80 }
-        C.selected   = { 0.125, 0.126, 0.137, 0.86 }
-
-        C.border     = { 0.250, 0.260, 0.300, 0.16 }
-        C.divider    = { 0.260, 0.270, 0.310, 0.14 }
-
-        C.text       = { 0.760, 0.770, 0.800, 1.00 }
-        C.text_dim   = { 0.530, 0.545, 0.600, 1.00 }
-        C.text_faint = { 0.355, 0.375, 0.445, 1.00 }
+    elseif t == "glass"
+        or t == "ass"
+    then
+        C.outer   = { 0.008, 0.008, 0.008, 0.72 }
+        C.sidebar = { 0.008, 0.008, 0.008, 0.70 }
+        C.content = { 0.008, 0.008, 0.008, 0.82 }
 
     else
-        -- Glass = the Default UI colors/layout with translucent surfaces.
-        -- The material comes only from alpha layering.
-        S.menu_type = "glass"
-
-        -- More transparent glass shell.
-        C.outer      = { 0.058, 0.063, 0.073, 0.58 }
-        C.sidebar    = { 0.079, 0.082, 0.094, 0.54 }
-        C.content    = { 0.052, 0.055, 0.063, 0.49 }
-
-        C.card       = { 0.055, 0.058, 0.067, 0.67 }
-        C.card_hover = { 0.073, 0.076, 0.087, 0.73 }
-        C.selected   = { 0.125, 0.126, 0.137, 0.76 }
-
-        C.border     = { 0.210, 0.220, 0.250, 0.18 }
-        C.divider    = { 0.220, 0.230, 0.260, 0.15 }
-
-        C.text       = { 0.700, 0.710, 0.740, 1.00 }
-        C.text_dim   = { 0.485, 0.500, 0.555, 1.00 }
-        C.text_faint = { 0.320, 0.340, 0.410, 1.00 }
+        S.menu_type = "default"
+        C.outer   = { 0.008, 0.008, 0.008, 1.00 }
+        C.sidebar = { 0.008, 0.008, 0.008, 0.90 }
+        C.content = { 0.008, 0.008, 0.008, 1.00 }
     end
 end
 
@@ -25451,7 +25355,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         rounded_fill(
             box_x, box_y, box_w, box_h, 6,
             hot
-                and { 0.105, 0.110, 0.130, 1 }
+                and C.button_hovered
                 or { 0.075, 0.079, 0.093, 1 }
         )
 
@@ -25527,12 +25431,10 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             tonumber(S.menu_glow_v) or 1
         )
 
-        rounded_fill(
-            swatch_x,
-            swatch_y,
-            swatch_w,
-            swatch_h,
-            4,
+        circle_fill(
+            swatch_x + swatch_w * 0.5,
+            swatch_y + swatch_h * 0.5,
+            swatch_w * 0.5,
             {gr, gg, gb, (tonumber(S.menu_glow_alpha) or 100) / 100}
         )
 
@@ -25600,7 +25502,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             type_box_h,
             6,
             type_hot
-                and { 0.105, 0.110, 0.130, 1 }
+                and C.button_hovered
                 or { 0.075, 0.079, 0.093, 1 }
         )
 
@@ -29168,12 +29070,10 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     local swatch_x = x + card_w - 40
     local swatch_y = color_row_y + 11
 
-    rounded_fill(
-        swatch_x,
-        swatch_y,
-        swatch_w,
-        swatch_h,
-        5,
+    circle_fill(
+        swatch_x + swatch_w * 0.5,
+        swatch_y + swatch_h * 0.5,
+        swatch_w * 0.5,
         FALLEN_BT_COLOR()
     )
 
@@ -31048,6 +30948,138 @@ function FALLEN_DRAW_AVATAR_EDITOR(
 end
 
 -- =========================================================
+-- Neverlose-source top subtabs
+-- =========================================================
+
+function FALLEN_NL_DRAW_TOP_SUBTABS(
+    mx,
+    my,
+    clicked,
+    wx,
+    wy
+)
+    if S.tab ~= 2 then
+        return
+    end
+
+    A.nl_subtab_anim =
+        A.nl_subtab_anim
+        or {}
+
+    local x = wx + 300
+    local y = wy + 20
+    local w = 240
+    local h = 25
+    local seg_w = w / 3
+
+    rounded_fill(
+        x,
+        y,
+        w,
+        h,
+        4,
+        C.button
+    )
+
+    rounded_outline(
+        x,
+        y,
+        w,
+        h,
+        4,
+        C.border,
+        1,
+        C.button
+    )
+
+    for i = 1, 3 do
+        local target =
+            tonumber(S.visuals_subtab) == (i - 1)
+            and 1
+            or 0
+
+        A.nl_subtab_anim[i] =
+            lerp(
+                tonumber(A.nl_subtab_anim[i]) or target,
+                target,
+                0.05
+            )
+
+        local sx =
+            x
+            + (i - 1) * seg_w
+
+        local hot =
+            hover(
+                mx,
+                my,
+                sx,
+                y,
+                seg_w,
+                h
+            )
+
+        if (A.nl_subtab_anim[i] or 0) > 0.001 then
+            rounded_fill(
+                sx,
+                y,
+                seg_w,
+                h,
+                4,
+                alpha(
+                    C.frame_active,
+                    0.80 * (A.nl_subtab_anim[i] or 0)
+                )
+            )
+        end
+
+        local label =
+            i == 1
+            and "Players"
+            or (
+                i == 2
+                and "World"
+                or "Armor"
+            )
+
+        centered_text(
+            sx + seg_w * 0.5,
+            y + 7,
+            label,
+            target == 1
+                and C.text
+                or C.text_dim
+        )
+
+        if i < 3 then
+            line(
+                sx + seg_w,
+                y + 4,
+                sx + seg_w,
+                y + h - 4,
+                C.border,
+                1
+            )
+        end
+
+        if clicked
+            and hot
+            and tonumber(S.visuals_subtab) ~= (i - 1)
+        then
+            S.visuals_subtab = i - 1
+            S.anim = 0
+
+            A.world_settings_open = false
+            A.world_color_picker_open = false
+            A.world_color_picker_drag = nil
+            A.base_box_settings_open = false
+            FALLEN_COLOR_INPUT_STOP(true)
+            numeric_stop(true)
+        end
+    end
+end
+
+-- =========================================================
 -- Render
 -- =========================================================
 
@@ -31185,7 +31217,7 @@ hooks.on_render(function()
                 1.00,
                 math.max(
                     0.82,
-                    math.min((sw - 40) / 875, (sh - 40) / 630)
+                    math.min((sw - 40) / 690, (sh - 40) / 500)
                 )
             )
     else
@@ -31205,8 +31237,8 @@ hooks.on_render(function()
         end
     end
 
-    WIN_W = 875
-    WIN_H = 630
+    WIN_W = 690
+    WIN_H = 500
 
     if A.menu_cx == nil then
         A.menu_cx = sw * 0.5
@@ -31281,7 +31313,7 @@ hooks.on_render(function()
     wx = snap(wx)
     wy = snap(wy)
 
-    S.anim = clamp(lerp(S.anim or 0, 1, 0.16), 0, 1)
+    S.anim = clamp(lerp(S.anim or 0, 1, 0.045), 0, 1)
 
     FALLEN_APPLY_STYLE_COLOR()
 
@@ -31382,54 +31414,45 @@ hooks.on_render(function()
         -- Then the sidebar is drawn as a fully rounded panel on top.
         -- This makes the sidebar's top-right and bottom-right corners
         -- genuinely curved, with the content visible behind the curves.
-        local split_overlap =
-            OUTER_R
+        -- Source layout is a flat 170px sidebar + content split.
+        rounded_left_fill(
+            wx,
+            wy,
+            SIDEBAR_W,
+            WIN_H,
+            OUTER_R,
+            C.sidebar
+        )
 
-        if menu_texture_type == "glass"
-            or menu_texture_type == "ass"
-        then
-            -- Glass / Ass use a clean FLAT inner split.
-            -- No overlap at the center, so translucent sidebar pixels
-            -- cannot stack over the opaque content and create a dark stripe.
-            -- Only the OUTER window corners remain rounded.
-            rounded_left_fill(
-                wx,
-                wy,
-                SIDEBAR_W,
-                WIN_H,
-                OUTER_R,
-                C.sidebar
-            )
-
-            rounded_right_fill(
-                wx + SIDEBAR_W,
-                wy,
-                WIN_W - SIDEBAR_W,
-                WIN_H,
-                OUTER_R,
-                C.content
-            )
-        else
-            -- Opaque styles can keep the rounded inner transition.
-            rounded_right_fill(
-                wx + SIDEBAR_W - split_overlap,
-                wy,
-                WIN_W - SIDEBAR_W + split_overlap,
-                WIN_H,
-                OUTER_R,
-                C.content
-            )
-
-            rounded_fill(
-                wx,
-                wy,
-                SIDEBAR_W,
-                WIN_H,
-                OUTER_R,
-                C.sidebar
-            )
-        end
+        rounded_right_fill(
+            wx + SIDEBAR_W,
+            wy,
+            WIN_W - SIDEBAR_W,
+            WIN_H,
+            OUTER_R,
+            C.content
+        )
     end
+
+    -- Source header strip: 170px sidebar + 60px topbar.
+    -- Blur from the C++ source is intentionally omitted.
+    rounded_fill(
+        wx + SIDEBAR_W,
+        wy,
+        WIN_W - SIDEBAR_W,
+        60,
+        OUTER_R,
+        { 0.008, 0.008, 0.008, 0.95 }
+    )
+
+    -- Cover the lower rounded corners so the topbar meets content with a flat edge.
+    fill(
+        wx + SIDEBAR_W,
+        wy + 52,
+        WIN_W - SIDEBAR_W,
+        8,
+        { 0.008, 0.008, 0.008, 0.95 }
+    )
 
     -- Let the base become mostly visible before layered controls/cards fade in.
     -- This keeps the transparency animation, while preventing stacked
@@ -31509,6 +31532,10 @@ hooks.on_render(function()
     end
 
     -- Sidebar
+    -- World/Armor moved to the source-style top subtabs.
+    A.visuals_expanded = false
+    A.visuals_expand_anim = 0
+
     -- COMMON/Misc is physically pushed down by the Visuals child expansion.
     -- 0 => close under Visuals, 1 => below World + Armor.
     local common_layout_expand =
@@ -31524,10 +31551,10 @@ hooks.on_render(function()
         74 * common_layout_expand
 
     local common_label_y =
-        wy + 273 + common_layout_shift
+        wy + 265 + common_layout_shift
 
     local misc_tab_y =
-        wy + 293 + common_layout_shift
+        wy + 285 + common_layout_shift
 
     local sidebar_target_y
 
@@ -31542,13 +31569,13 @@ hooks.on_render(function()
             misc_tab_y
     elseif S.tab == 2 then
         sidebar_target_y =
-            wy + 219
+            wy + 195
     elseif S.tab == 5 then
         sidebar_target_y =
-            wy + 145
+            wy + 125
     else
         sidebar_target_y =
-            wy + 105
+            wy + 90
     end
 
     if A.sidebar_indicator_y == nil then
@@ -31590,17 +31617,9 @@ hooks.on_render(function()
             sidebar_target_y
     end
 
-    -- Sliding selected-tab pill.
-    rounded_fill(
-        wx + 10,
-        A.sidebar_indicator_y,
-        152,
-        35,
-        7,
-        C.selected
-    )
+    -- Source tabs animate their own selected backgrounds.
 
-    text(wx + 22, wy + 85, "AIMBOT", C.text_faint)
+    text(wx + 20, wy + 70, "Aimbot", C.text_faint)
     sidebar_tab(
         mx,
         my,
@@ -31608,7 +31627,7 @@ hooks.on_render(function()
             and not A.world_color_picker_open
             and (A.world_color_picker_anim or 0) <= 0.02,
         wx + 10,
-        wy + 105,
+        wy + 90,
         1
     )
 
@@ -31619,17 +31638,17 @@ hooks.on_render(function()
             and not A.world_color_picker_open
             and (A.world_color_picker_anim or 0) <= 0.02,
         wx + 10,
-        wy + 145,
+        wy + 125,
         5
     )
 
-    text(wx + 22, wy + 199, "VISUALS", C.text_faint)
+    text(wx + 20, wy + 175, "Visuals", C.text_faint)
 
     local visuals_parent_x =
         wx + 10
 
     local visuals_parent_y =
-        wy + 219
+        wy + 195
 
     local visuals_parent_hot =
         hover(
@@ -31637,8 +31656,8 @@ hooks.on_render(function()
             my,
             visuals_parent_x,
             visuals_parent_y,
-            152,
-            35
+            150,
+            30
         )
 
     sidebar_tab(
@@ -31663,17 +31682,7 @@ hooks.on_render(function()
         S.anim = 0
     end
 
-    -- RMB on Visuals expands/collapses World + Armor.
-    if rmb_clicked
-        and visuals_parent_hot
-        and not A.world_color_picker_open
-        and (A.world_color_picker_anim or 0) <= 0.02
-    then
-        -- RMB only expands/collapses the nested Visuals menu.
-        -- It must NOT change the currently selected main page.
-        A.visuals_expanded =
-            not A.visuals_expanded
-    end
+    -- World/Armor are selected from the source-style top subtabs.
 
     local visuals_now =
         tick()
@@ -32030,15 +32039,15 @@ hooks.on_render(function()
         74 * common_layout_expand
 
     common_label_y =
-        wy + 273 + common_layout_shift
+        wy + 265 + common_layout_shift
 
     misc_tab_y =
-        wy + 293 + common_layout_shift
+        wy + 285 + common_layout_shift
 
     text(
         wx + 22,
         common_label_y,
-        "COMMON",
+        "Miscellaneous",
         C.text_faint
     )
 
@@ -32072,12 +32081,12 @@ hooks.on_render(function()
     -- Sidebar footer: live Roblox avatar + username.
     update_profile()
 
-    line(wx + 12, wy + WIN_H - 74, wx + SIDEBAR_W - 12, wy + WIN_H - 74, C.divider, 1)
+    line(wx, wy + WIN_H - 50, wx + SIDEBAR_W, wy + WIN_H - 50, C.divider, 1)
 
-    local avatar_size = 38
+    local avatar_size = 30
 
-    local avatar_x = wx + 19
-    local avatar_y = wy + WIN_H - 56
+    local avatar_x = wx + 15
+    local avatar_y = wy + WIN_H - 40
 
     local avatar_drawn = false
 
@@ -32168,13 +32177,15 @@ hooks.on_render(function()
         username = string.sub(username, 1, 12) .. ".."
     end
 
-    text(wx + 68, wy + WIN_H - 40, username, C.text)
+    text(wx + 50, wy + WIN_H - 40, username, C.text)
+    text(wx + 50, wy + WIN_H - 25, "Till:", C.text_dim)
+    text(wx + 78, wy + WIN_H - 25, "Lifetime", C.accent)
 
     local gear_x =
-        wx + SIDEBAR_W - 24
+        wx + SIDEBAR_W - 17
 
     local gear_y =
-        wy + WIN_H - 34
+        wy + WIN_H - 18
 
     local gear_hot =
         hover(
@@ -32254,10 +32265,10 @@ hooks.on_render(function()
     local content_x = wx + SIDEBAR_W + 15
     local content_w = WIN_W - SIDEBAR_W - 30
 
-    local cfg_x = content_x
-    local cfg_y = wy + 16
-    local cfg_w = 206
-    local cfg_h = 34
+    local cfg_x = wx + 190
+    local cfg_y = wy + 20
+    local cfg_w = 100
+    local cfg_h = 25
 
     local cfg_hot =
         hover(
@@ -32274,51 +32285,32 @@ hooks.on_render(function()
         cfg_y,
         cfg_w,
         cfg_h,
-        8,
+        4,
         cfg_hot
-            and C.card_hover
-            or C.card
+            and C.button_hovered
+            or C.button
     )
 
-    text(
-        cfg_x + 14,
-        cfg_y + 12,
+    rounded_outline(
+        cfg_x,
+        cfg_y,
+        cfg_w,
+        cfg_h,
+        4,
+        C.border,
+        1,
+        cfg_hot
+            and C.button_hovered
+            or C.button
+    )
+
+    centered_text(
+        cfg_x + cfg_w * 0.5,
+        cfg_y + 7,
         "Configs",
-        FALLEN_HOVER_TEXT("configs_button", cfg_hot, C.text)
+        cfg_hot and C.text or C.text_dim
     )
 
-    if FALLEN_CONFIGS.CONFIG.loaded_name then
-        local loaded =
-            tostring(
-                FALLEN_CONFIGS.CONFIG.loaded_name
-            )
-
-        if #loaded > 12 then
-            loaded =
-                string.sub(
-                    loaded,
-                    1,
-                    10
-                )
-                .. ".."
-        end
-
-        text(
-            cfg_x + 86,
-            cfg_y + 12,
-            loaded,
-            C.text_faint
-        )
-    end
-
-    text(
-        cfg_x + 188,
-        cfg_y + 12,
-        A.config_open
-            and "^"
-            or "v",
-        C.text_dim
-    )
 
     if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
             clicked,
@@ -32351,15 +32343,25 @@ hooks.on_render(function()
         end
     end
 
-    line(content_x, wy + 61, wx + WIN_W - 16, wy + 61, C.divider, 1)
+    FALLEN_NL_DRAW_TOP_SUBTABS(
+        mx,
+        my,
+        clicked
+            and not A.world_color_picker_open
+            and (A.world_color_picker_anim or 0) <= 0.02,
+        wx,
+        wy
+    )
+
+    line(content_x, wy + 60, wx + WIN_W - 16, wy + 60, C.divider, 1)
 
     -- Page content.
     local page_x = content_x
-    local page_y = wy + 82
+    local page_y = wy + 81
     local page_w = content_w
 
-    local slide = (1 - S.anim) * 9
-    page_x = page_x + slide
+    local slide = (1 - S.anim) * 5
+    page_y = page_y - slide
 
     local config_overlay_open =
         A.config_open
@@ -32382,6 +32384,8 @@ hooks.on_render(function()
     local page_rmb_clicked =
         rmb_clicked
         and not any_overlay_open
+
+    MENU_RENDER_ALPHA = detail_alpha * S.anim
 
     if S.tab == 1 then
         draw_aimbot_page(
@@ -32662,12 +32666,10 @@ hooks.on_render(function()
         local sc_swatch_x = page_x + page_w - 40
         local sc_swatch_y = color_row_y + 11
 
-        rounded_fill(
-            sc_swatch_x,
-            sc_swatch_y,
-            sc_swatch_w,
-            sc_swatch_h,
-            4,
+        circle_fill(
+            sc_swatch_x + sc_swatch_w * 0.5,
+            sc_swatch_y + sc_swatch_h * 0.5,
+            sc_swatch_w * 0.5,
             FALLEN_SECRET_CROSSHAIR_COLOR()
         )
 
@@ -32768,6 +32770,8 @@ hooks.on_render(function()
             A.secret_crosshair_style_open = false
         end
     end
+
+    MENU_RENDER_ALPHA = detail_alpha
 
     -- Config dropdown is rendered last so it always sits above page controls.
     FALLEN_CONFIGS.draw_popup(
@@ -32917,7 +32921,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v99 | unified compact 18x18 color swatches | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v100 | Neverlose source UI port | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
