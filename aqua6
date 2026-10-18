@@ -1567,6 +1567,40 @@ local function centered_text(cx, y, s, c)
     end
 end
 
+
+local function draw_save_icon(x, y, size, fg, bg)
+    size = math.max(12, math.floor(tonumber(size) or 14))
+    fg = fg or C.text_dim
+    bg = bg or C.button
+
+    local body_r = math.max(2, math.floor(size * 0.14))
+    rounded_fill(x, y, size, size, body_r, fg)
+
+    local inner = math.max(2, math.floor(size * 0.12))
+    rounded_fill(
+        x + inner,
+        y + inner,
+        size - inner * 2,
+        size - inner * 2,
+        math.max(1, body_r - 1),
+        bg
+    )
+
+    local slot_w = math.max(4, math.floor(size * 0.50))
+    local slot_h = math.max(3, math.floor(size * 0.18))
+    local slot_x = x + math.floor(size * 0.22)
+    local slot_y = y + math.floor(size * 0.16)
+    rounded_fill(slot_x, slot_y, slot_w, slot_h, 2, fg)
+
+    local notch_w = math.max(3, math.floor(size * 0.16))
+    local notch_h = math.max(5, math.floor(size * 0.30))
+    fill(x + size - inner - notch_w, y + inner, notch_w, notch_h, fg)
+
+    local reel_r = math.max(2, math.floor(size * 0.16))
+    circle_fill(x + size * 0.50, y + size * 0.68, reel_r, fg)
+    circle_fill(x + size * 0.50, y + size * 0.68, math.max(1, reel_r * 0.38), bg)
+end
+
 local function screen_size()
     if type(ScreenSize) == "function" then
         local ok, d = pcall(ScreenSize)
@@ -31655,11 +31689,31 @@ hooks.on_render(function()
             or C.button
     )
 
-    centered_text(
-        cfg_x + cfg_w * 0.5,
+    local cfg_btn_bg =
+        cfg_hot
+            and C.button_hovered
+            or C.button
+
+    local cfg_text_col =
+        cfg_hot and C.text or C.text_dim
+
+    local save_icon_size = 14
+    local save_icon_x = cfg_x + 11
+    local save_icon_y = cfg_y + math.floor((cfg_h - save_icon_size) * 0.5)
+
+    draw_save_icon(
+        save_icon_x,
+        save_icon_y,
+        save_icon_size,
+        cfg_text_col,
+        cfg_btn_bg
+    )
+
+    text(
+        cfg_x + 33,
         cfg_y + 7,
         "Save",
-        cfg_hot and C.text or C.text_dim
+        cfg_text_col
     )
 
 
