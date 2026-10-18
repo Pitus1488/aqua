@@ -23588,15 +23588,15 @@ function FALLEN_POPUP_GLOW(
     radius,
     strength
 )
-    -- Uniform Neverlose-like popup border: no old Fallen bright halo.
-    -- Drawn BEFORE the popup surface, using only the documented Drawing API.
+    -- All slide-out settings panels and dropdown menus share the same
+    -- thin, neutral gray outline as the toggle switches (no blue glow).
+    -- Drawn before the popup surface: the caller fills the center, so
+    -- only a 1px rim remains visible along the rounded perimeter.
     if (tonumber(w) or 0) <= 0 or (tonumber(h) or 0) <= 0 then return end
     local r = math.max(1, tonumber(radius) or 7)
     local opacity = clamp(tonumber(strength) or 1, 0, 1)
-    rounded_fill(x - 2, y - 2, w + 4, h + 4, r + 2,
-        { 0, 0, 0, 0.32 * opacity })
     rounded_fill(x - 1, y - 1, w + 2, h + 2, r + 1,
-        { 0.095, 0.142, 0.242, 0.94 * opacity })
+        { 0.16, 0.16, 0.17, opacity })
 end
 
 
