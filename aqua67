@@ -3844,6 +3844,30 @@ function FALLEN_DROPDOWN_TRIGGER_ALLOWED(clicked, self_flag)
         )
 end
 
+-- Neverlose-style 1px outline around every pill switch.
+-- The border and fill are opaque to avoid layered-alpha seams.
+local function draw_switch_track(x, y, w, h, off_color, on_color, t)
+    local progress = clamp(tonumber(t) or 0, 0, 1)
+    local rounding = h * 0.5
+    local border = mix_color(
+        { 0.105, 0.145, 0.220, 1.0 },
+        { 0.145, 0.235, 0.395, 1.0 },
+        progress
+    )
+    local inside = mix_color(off_color, on_color, progress)
+    -- During the whole-menu fade avoid drawing two translucent overlapping
+    -- rounded surfaces; the outline appears once the menu is opaque.
+    if MENU_RENDER_ALPHA < 0.995 then
+        rounded_fill(x, y, w, h, rounding, inside)
+        return
+    end
+    rounded_fill(x, y, w, h, rounding, border)
+    rounded_fill(
+        x + 1, y + 1, w - 2, h - 2,
+        math.max(0, rounding - 1), inside
+    )
+end
+
 local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     clicked =
         clicked
@@ -3919,25 +3943,7 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     local ty = y + 12
     local tw, th = 30, 17
 
-    rounded_fill(
-        tx,
-        ty,
-        tw,
-        th,
-        9,
-        C.frame_inactive
-    )
-
-    if anim > 0.001 then
-        rounded_fill(
-            tx,
-            ty,
-            tw,
-            th,
-            9,
-            alpha(C.frame_active, anim)
-        )
-    end
+    draw_switch_track(tx, ty, tw, th, C.frame_inactive, C.frame_active, anim)
 
     local knob_x = tx + 8 + 14 * anim
 
@@ -5319,7 +5325,7 @@ local function draw_aim_settings_popup(
                     25
                 )
 
-    -- Remains open until RMB on the same three-dots control.
+    -- Remains open until LMB on the same three-dots control.
 
             MENU_RENDER_ALPHA = parent_menu_alpha
             return
@@ -5346,7 +5352,7 @@ local function draw_aim_settings_popup(
             25
         )
 
-    -- Remains open until RMB on the same three-dots control.
+    -- Remains open until LMB on the same three-dots control.
 
     MENU_RENDER_ALPHA = parent_menu_alpha
 end
@@ -5707,7 +5713,7 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
             25
         )
 
-    -- Remains open until RMB on the same three-dots control.
+    -- Remains open until LMB on the same three-dots control.
 
     MENU_RENDER_ALPHA = parent_menu_alpha
 end
@@ -6051,8 +6057,8 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
             25
         )
 
-    -- RMB on the three dots opens/closes; outside clicks do not dismiss.
-    -- Remains open until RMB on the same three-dots control.
+    -- LMB on the three dots opens/closes; outside clicks do not dismiss.
+    -- Remains open until LMB on the same three-dots control.
 
     MENU_RENDER_ALPHA =
         parent_menu_alpha
@@ -6695,8 +6701,8 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         true
     )
 
-    -- Only RMB on the three dots toggles this popup.
-    if rmb_clicked
+    -- LMB on the same three dots toggles this popup.
+    if clicked
         and silent_fov_dots_hot
     then
         A.silent_fov_settings_open =
@@ -6933,7 +6939,7 @@ local function draw_aimbot_page(
             41
         )
 
-    if rmb_clicked and dots_left_hot then
+    if clicked and dots_left_hot then
         A.aim_settings_open =
             not A.aim_settings_open
 
@@ -7029,7 +7035,7 @@ local function draw_aimbot_page(
             41
         )
 
-    if rmb_clicked and fov_dots_hot then
+    if clicked and fov_dots_hot then
         A.fov_settings_open =
             not A.fov_settings_open
 
@@ -7441,21 +7447,7 @@ local function resource_toggle_row(
         )
 
 
-    local bg =
-        mix_color(
-            C.toggle_off,
-            C.accent_dim,
-            A.toggles[key]
-        )
-
-    rounded_fill(
-        tx,
-        ty,
-        tw,
-        th,
-        th * 0.5,
-        bg
-    )
+    draw_switch_track(tx, ty, tw, th, C.toggle_off, C.accent_dim, A.toggles[key])
 
     local knob_x =
         lerp(
@@ -9252,7 +9244,7 @@ local function draw_world_settings_popup(
             25
         )
 
-    -- Remains open until RMB on the same three-dots control.
+    -- Remains open until LMB on the same three-dots control.
 
     MENU_RENDER_ALPHA =
         parent_alpha
@@ -9397,8 +9389,8 @@ local function draw_visuals_page(
         _G.FALLEN_GRENADE_RESET_TRACKS = true
     end
 
-    -- Aimbot-style RMB ellipsis popups. Only one World popup at a time.
-    if rmb_clicked and global_dots_hot then
+    -- Aimbot-style LMB ellipsis popups. Only one World popup at a time.
+    if clicked and global_dots_hot then
         if A.world_settings_open and A.world_settings_group == "global" then
             A.world_settings_open = false
         else
@@ -9412,7 +9404,7 @@ local function draw_visuals_page(
         FALLEN_COLOR_INPUT_STOP(true)
         if numeric_stop then numeric_stop(true) end
 
-    elseif rmb_clicked and node_dots_hot then
+    elseif clicked and node_dots_hot then
         if A.world_settings_open and A.world_settings_group == "nodes" then
             A.world_settings_open = false
         else
@@ -9426,7 +9418,7 @@ local function draw_visuals_page(
         FALLEN_COLOR_INPUT_STOP(true)
         if numeric_stop then numeric_stop(true) end
 
-    elseif rmb_clicked and plant_dots_hot then
+    elseif clicked and plant_dots_hot then
         if A.world_settings_open and A.world_settings_group == "plants" then
             A.world_settings_open = false
         else
@@ -9440,7 +9432,7 @@ local function draw_visuals_page(
         FALLEN_COLOR_INPUT_STOP(true)
         if numeric_stop then numeric_stop(true) end
 
-    elseif rmb_clicked and base_dots_hot then
+    elseif clicked and base_dots_hot then
         if A.world_settings_open and A.world_settings_group == "bases" then
             A.world_settings_open = false
         else
@@ -9454,7 +9446,7 @@ local function draw_visuals_page(
         FALLEN_COLOR_INPUT_STOP(true)
         if numeric_stop then numeric_stop(true) end
 
-    elseif rmb_clicked and drops_dots_hot then
+    elseif clicked and drops_dots_hot then
         if A.world_settings_open and A.world_settings_group == "drops" then
             A.world_settings_open = false
         else
@@ -9468,7 +9460,7 @@ local function draw_visuals_page(
         FALLEN_COLOR_INPUT_STOP(true)
         if numeric_stop then numeric_stop(true) end
 
-    elseif rmb_clicked and bodybag_dots_hot then
+    elseif clicked and bodybag_dots_hot then
         if A.world_settings_open and A.world_settings_group == "bodybag" then
             A.world_settings_open = false
         else
@@ -9482,7 +9474,7 @@ local function draw_visuals_page(
         FALLEN_COLOR_INPUT_STOP(true)
         if numeric_stop then numeric_stop(true) end
 
-    elseif rmb_clicked and grenade_dots_hot then
+    elseif clicked and grenade_dots_hot then
         if A.world_settings_open and A.world_settings_group == "grenade" then
             A.world_settings_open = false
         else
@@ -19651,7 +19643,7 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
             25
         )
 
-    -- Remains open until RMB on the same three-dots control.
+    -- Remains open until LMB on the same three-dots control.
 
     MENU_RENDER_ALPHA =
         parent_alpha
@@ -19796,7 +19788,7 @@ function FALLEN_DRAW_ARMOR_PAGE(
             41
         )
 
-    if rmb_clicked and dots_hot then
+    if clicked and dots_hot then
         A.armor_settings_open =
             not A.armor_settings_open
 
@@ -20519,18 +20511,7 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
             swatch_s
         )
 
-    rounded_fill(
-        tx,
-        ty,
-        tw,
-        th,
-        th * 0.5,
-        mix_color(
-            C.toggle_off,
-            C.accent_dim,
-            A.toggles[key]
-        )
-    )
+    draw_switch_track(tx, ty, tw, th, C.toggle_off, C.accent_dim, A.toggles[key])
 
     local knob_x =
         lerp(
@@ -25674,12 +25655,12 @@ function FALLEN_DRAW_HOTKEYS_SWITCH(
         )
 
     FALLEN_HOTKEYS_ROUNDED_FILL(
-        x,
-        y,
-        w,
-        h,
-        track_rounding,
-        track
+        x, y, w, h, track_rounding,
+        { 0.16, 0.19, 0.27, 0.94 }
+    )
+    FALLEN_HOTKEYS_ROUNDED_FILL(
+        x + 1, y + 1, w - 2, h - 2,
+        math.max(0, track_rounding - 1), track
     )
 
     local pad =
@@ -31788,7 +31769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v105 | Neverlose popups + RMB three-dots | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v107 | Neverlose popups + LMB three-dots | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
