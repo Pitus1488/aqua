@@ -1568,38 +1568,6 @@ local function centered_text(cx, y, s, c)
 end
 
 
-local function draw_save_icon(x, y, size, fg, bg)
-    size = math.max(12, math.floor(tonumber(size) or 14))
-    fg = fg or C.text_dim
-    bg = bg or C.button
-
-    local body_r = math.max(2, math.floor(size * 0.14))
-    rounded_fill(x, y, size, size, body_r, fg)
-
-    local inner = math.max(2, math.floor(size * 0.12))
-    rounded_fill(
-        x + inner,
-        y + inner,
-        size - inner * 2,
-        size - inner * 2,
-        math.max(1, body_r - 1),
-        bg
-    )
-
-    local slot_w = math.max(4, math.floor(size * 0.50))
-    local slot_h = math.max(3, math.floor(size * 0.18))
-    local slot_x = x + math.floor(size * 0.22)
-    local slot_y = y + math.floor(size * 0.16)
-    rounded_fill(slot_x, slot_y, slot_w, slot_h, 2, fg)
-
-    local notch_w = math.max(3, math.floor(size * 0.16))
-    local notch_h = math.max(5, math.floor(size * 0.30))
-    fill(x + size - inner - notch_w, y + inner, notch_w, notch_h, fg)
-
-    local reel_r = math.max(2, math.floor(size * 0.16))
-    circle_fill(x + size * 0.50, y + size * 0.68, reel_r, fg)
-    circle_fill(x + size * 0.50, y + size * 0.68, math.max(1, reel_r * 0.38), bg)
-end
 
 local function screen_size()
     if type(ScreenSize) == "function" then
@@ -3594,6 +3562,50 @@ local ICONS = {
 }
 
 -- =========================================================
+-- New Save button image, handled exactly like other external icon assets.
+-- It is queued in the loader's special preloader phase before the menu opens.
+_G.FALLEN_SAVE_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/roblox-136566823798983-420-%281%29.1hJPb"
+_G.FALLEN_SAVE_ICON_SOURCE = _G.FALLEN_SAVE_ICON_SOURCE or nil
+_G.FALLEN_SAVE_ICON_URL = _G.FALLEN_SAVE_ICON_URL or nil
+_G.FALLEN_SAVE_ICON_HANDLE = _G.FALLEN_SAVE_ICON_HANDLE or nil
+
+function FALLEN_SAVE_ICON_GET()
+    local page_url = _G.FALLEN_SAVE_ICON_PAGE_URL
+    if _G.FALLEN_SAVE_ICON_SOURCE ~= page_url then
+        _G.FALLEN_SAVE_ICON_SOURCE = page_url
+        _G.FALLEN_SAVE_ICON_URL = nil
+        _G.FALLEN_SAVE_ICON_HANDLE = nil
+    end
+
+    if not _G.FALLEN_SAVE_ICON_URL then
+        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+            return nil
+        end
+        -- The linked page is HTML; the shared resolver extracts og:image.
+        _G.FALLEN_SAVE_ICON_URL =
+            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url) or page_url
+    end
+
+    if not _G.FALLEN_SAVE_ICON_HANDLE and type(LoadImage) == "function" then
+        pcall(function()
+            _G.FALLEN_SAVE_ICON_HANDLE = LoadImage(_G.FALLEN_SAVE_ICON_URL)
+        end)
+    end
+
+    local handle = _G.FALLEN_SAVE_ICON_HANDLE
+    if not handle then return nil end
+    if type(IsImageFailed) == "function" then
+        local ok, failed = pcall(IsImageFailed, handle)
+        if ok and failed then return nil end
+    end
+    if type(IsImageReady) == "function" then
+        local ok, ready = pcall(IsImageReady, handle)
+        if not ok or ready ~= true then return nil end
+    end
+    return handle
+end
+
 -- Sidebar
 -- =========================================================
 
@@ -23516,8 +23528,6 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, px, py, pw)
         rx + rw, box_y + box_h - 46, C.divider, 1)
     text(rx + 1, box_y + box_h - 33,
         "Profiles: " .. tostring(#config.list), C.text_dim)
-    text(rx + 1, box_y + box_h - 18,
-        "Press Save above to return", C.text_faint)
     MENU_RENDER_ALPHA = old_alpha
 end
 
@@ -30754,134 +30764,6 @@ end
 -- Neverlose-source top subtabs
 -- =========================================================
 
-function FALLEN_NL_DRAW_TOP_SUBTABS(
-    mx,
-    my,
-    clicked,
-    wx,
-    wy
-)
-    if S.tab ~= 2 or A.config_open then
-        return
-    end
-
-    A.nl_subtab_anim =
-        A.nl_subtab_anim
-        or {}
-
-    local x = wx + 300
-    local y = wy + 20
-    local w = 240
-    local h = 25
-    local seg_w = w / 3
-
-    rounded_fill(
-        x,
-        y,
-        w,
-        h,
-        4,
-        C.button
-    )
-
-    rounded_outline(
-        x,
-        y,
-        w,
-        h,
-        4,
-        C.border,
-        1,
-        C.button
-    )
-
-    for i = 1, 3 do
-        local target =
-            tonumber(S.visuals_subtab) == (i - 1)
-            and 1
-            or 0
-
-        A.nl_subtab_anim[i] =
-            lerp(
-                tonumber(A.nl_subtab_anim[i]) or target,
-                target,
-                0.05
-            )
-
-        local sx =
-            x
-            + (i - 1) * seg_w
-
-        local hot =
-            hover(
-                mx,
-                my,
-                sx,
-                y,
-                seg_w,
-                h
-            )
-
-        if (A.nl_subtab_anim[i] or 0) > 0.001 then
-            rounded_fill(
-                sx,
-                y,
-                seg_w,
-                h,
-                4,
-                alpha(
-                    C.frame_active,
-                    0.80 * (A.nl_subtab_anim[i] or 0)
-                )
-            )
-        end
-
-        local label =
-            i == 1
-            and "Players"
-            or (
-                i == 2
-                and "World"
-                or "Armor"
-            )
-
-        centered_text(
-            sx + seg_w * 0.5,
-            y + 7,
-            label,
-            target == 1
-                and C.text
-                or C.text_dim
-        )
-
-        if i < 3 then
-            line(
-                sx + seg_w,
-                y + 4,
-                sx + seg_w,
-                y + h - 4,
-                C.border,
-                1
-            )
-        end
-
-        if clicked
-            and hot
-            and tonumber(S.visuals_subtab) ~= (i - 1)
-        then
-            S.visuals_subtab = i - 1
-            S.anim = 0
-
-            A.world_settings_open = false
-            A.world_color_picker_open = false
-            A.world_color_picker_drag = nil
-            A.base_box_settings_open = false
-            FALLEN_COLOR_INPUT_STOP(true)
-            numeric_stop(true)
-        end
-    end
-end
-
 -- Neverlose-source vertical navigation: original 30px animated tabs,
 -- section labels and top Save control. Individual Fallen features keep their
 -- existing Lua runtimes and state; only their navigation was remapped.
@@ -30906,6 +30788,8 @@ local function FALLEN_NL_NAV_ITEM(mx, my, clicked, x, y, key, label, selected, a
         icon_handle = FALLEN_VISUALS_TAB_ICON_GET()
     elseif key == "world" then
         icon_handle = FALLEN_WORLD_TAB_ICON_GET()
+    elseif key == "armor" then
+        icon_handle = FALLEN_ARMOR_TAB_ICON_GET()
     elseif key == "main" then
         icon_handle = FALLEN_MISC_TAB_ICON_GET()
     end
@@ -31407,8 +31291,9 @@ hooks.on_render(function()
         S.anim = 0
     end
 
-    -- Neverlose-source sidebar: section headings and 30px rows. The source
-    -- shows two Visuals entries; Armor stays available as a top subtab.
+    -- Neverlose-style sidebar is the ONLY navigation for Visuals pages.
+    -- Less vertical whitespace between Aimbot/Visuals; Armor is no longer
+    -- hidden in a redundant top tab. Scripts was a wrong alias for Configs.
     A.visuals_expanded = false
     A.visuals_expand_anim = 0
     local nav_click = clicked
@@ -31426,34 +31311,27 @@ hooks.on_render(function()
         "silent", "Silent Aim", not A.config_open and S.tab == 5,
         function() FALLEN_NL_NAV_SELECT(5) end)
 
-    text(wx + 20, wy + 175, "Visuals", C.text_faint)
-    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 195,
+    text(wx + 20, wy + 163, "Visuals", C.text_faint)
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 183,
         "players", "Players",
         not A.config_open and S.tab == 2
-            and (tonumber(S.visuals_subtab) or 0) ~= 1,
+            and (tonumber(S.visuals_subtab) or 0) == 0,
         function() FALLEN_NL_NAV_SELECT(2, 0) end)
-    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 228,
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 216,
         "world", "World",
         not A.config_open and S.tab == 2
             and (tonumber(S.visuals_subtab) or 0) == 1,
         function() FALLEN_NL_NAV_SELECT(2, 1) end)
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 249,
+        "armor", "Armor",
+        not A.config_open and S.tab == 2
+            and (tonumber(S.visuals_subtab) or 0) == 2,
+        function() FALLEN_NL_NAV_SELECT(2, 2) end)
 
-    text(wx + 20, wy + 265, "Miscellaneous", C.text_faint)
-    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 285,
+    text(wx + 20, wy + 293, "Miscellaneous", C.text_faint)
+    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 313,
         "main", "Main", not A.config_open and S.tab == 3,
         function() FALLEN_NL_NAV_SELECT(3) end)
-    FALLEN_NL_NAV_ITEM(mx, my, nav_click, nav_x, wy + 318,
-        "scripts", "Scripts", A.config_open,
-        function()
-            if not A.config_open then
-                A.config_open = true
-                A.config_anim = 0
-                numeric_stop(true)
-                aim_bind_cancel()
-                A.world_color_picker_open = false
-                A.menu_settings_open = false
-            end
-        end)
 
     -- Original hidden Fallen item remains hidden until its triple-click.
     if A.secret_unlocked and S.secret_enabled == true then
@@ -31701,13 +31579,18 @@ hooks.on_render(function()
     local save_icon_x = cfg_x + 11
     local save_icon_y = cfg_y + math.floor((cfg_h - save_icon_size) * 0.5)
 
-    draw_save_icon(
-        save_icon_x,
-        save_icon_y,
-        save_icon_size,
-        cfg_text_col,
-        cfg_btn_bg
-    )
+    local save_icon = FALLEN_SAVE_ICON_GET()
+    if save_icon and type(DrawImage) == "function" then
+        pcall(
+            DrawImage,
+            save_icon,
+            FALLEN_UI_X(save_icon_x),
+            FALLEN_UI_Y(save_icon_y),
+            FALLEN_UI_LEN(save_icon_size),
+            FALLEN_UI_LEN(save_icon_size),
+            1, 1, 1, MENU_RENDER_ALPHA, 0
+        )
+    end
 
     text(
         cfg_x + 33,
@@ -31748,16 +31631,6 @@ hooks.on_render(function()
             FALLEN_CONFIGS.input_focus(false)
         end
     end
-
-    FALLEN_NL_DRAW_TOP_SUBTABS(
-        mx,
-        my,
-        clicked
-            and not A.world_color_picker_open
-            and (A.world_color_picker_anim or 0) <= 0.02,
-        wx,
-        wy
-    )
 
     line(content_x, wy + 60, wx + WIN_W - 16, wy + 60, C.divider, 1)
 
@@ -32319,7 +32192,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v101 | Neverlose source UI rebuild | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v103 | Neverlose source UI navigation fixes | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -32555,6 +32428,7 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
     _G.FALLEN_IMAGE_PRELOAD_SPECIALS = {
         FALLEN_GRENADE_ICON_GET,
         FALLEN_BRAND_IMAGE_GET,
+        FALLEN_SAVE_ICON_GET,
         FALLEN_AIMBOT_TAB_ICON_GET,
         FALLEN_HITFX_SPARK_SHEET_GET,
         FALLEN_HITFX_SMOKERING_SHEET_GET,
