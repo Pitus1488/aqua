@@ -32769,7 +32769,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v94 | frame-budget menu image preload | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v95 | fast frame-budget menu preload | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -33041,10 +33041,10 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
         url_index = 1,
         next_url_start = 0,
         inflight = {},
-        max_inflight = 2,
-        start_interval = 0.10,
-        image_timeout = 6.0,
-        special_timeout = 3.0,
+        max_inflight = 6,
+        start_interval = 0.035,
+        image_timeout = 5.0,
+        special_timeout = 2.2,
     }
 end
 
@@ -33089,49 +33089,56 @@ function FALLEN_PRELOAD_TICK()
     end
 
     local now = tick()
+    local first_special_attempt = false
 
-    -- Special/page-resolved images: one getter at a time, never a wait loop.
-    if st.stage == "special" then
+    -- Special/page-resolved images stay one-at-a-time because their resolver
+    -- can be heavier. But while one is asynchronously waiting for readiness,
+    -- direct armor/world/item images are allowed to load in parallel below.
+    if st.special_done ~= true then
         local list = _G.FALLEN_IMAGE_PRELOAD_SPECIALS
         local getter = list and list[st.special_index]
 
         if not getter then
-            st.stage = "direct"
-            st.next_url_start = now
-            return
-        end
+            st.special_done = true
+        else
+            if st.special_started == 0 then
+                st.special_started = now
+                st.special_next_try = now
+                first_special_attempt = true
+            end
 
-        if st.special_started == 0 then
-            st.special_started = now
-            st.special_next_try = now
-        end
+            if now >= (st.special_next_try or 0) then
+                st.special_next_try = now + 0.08
 
-        if now >= (st.special_next_try or 0) then
-            st.special_next_try = now + 0.12
+                local ok, handle = pcall(getter)
+                if ok and handle then
+                    FALLEN_PRELOAD_FINISH_ONE()
+                    st.special_index = st.special_index + 1
+                    st.special_started = 0
 
-            local ok, handle = pcall(getter)
-            if ok and handle then
+                    -- Only one special transition per frame.
+                    return
+                end
+            end
+
+            if st.special_started ~= 0
+                and now - st.special_started >= (st.special_timeout or 2.2)
+            then
                 FALLEN_PRELOAD_FINISH_ONE()
                 st.special_index = st.special_index + 1
                 st.special_started = 0
                 return
             end
         end
+    end
 
-        if now - st.special_started >= (st.special_timeout or 3.0) then
-            FALLEN_PRELOAD_FINISH_ONE()
-            st.special_index = st.special_index + 1
-            st.special_started = 0
-        end
-
+    -- If this frame just kicked a new special image/resolver, don't also kick
+    -- a direct image in the same frame. This is the main anti-stutter guard.
+    if first_special_attempt then
         return
     end
 
-    if st.stage ~= "direct" then
-        return
-    end
-
-    -- Poll only the tiny bounded inflight set.
+    -- Poll only the bounded direct-image pool.
     local i = #st.inflight
     while i >= 1 do
         local item = st.inflight[i]
@@ -33150,8 +33157,10 @@ function FALLEN_PRELOAD_TICK()
         i = i - 1
     end
 
-    -- At most ONE new LoadImage this frame and max TWO direct images in flight.
-    if #st.inflight < (st.max_inflight or 2)
+    -- At most ONE new direct LoadImage per frame, but keep up to 6 async
+    -- requests in flight. This is much faster than v94's pool of 2 while
+    -- still avoiding the v93 burst/freeze.
+    if #st.inflight < (st.max_inflight or 6)
         and now >= (st.next_url_start or 0)
     then
         local url =
@@ -33159,7 +33168,7 @@ function FALLEN_PRELOAD_TICK()
 
         if url then
             st.url_index = st.url_index + 1
-            st.next_url_start = now + (st.start_interval or 0.10)
+            st.next_url_start = now + (st.start_interval or 0.035)
 
             local handle =
                 _G.FALLEN_IMAGE_PRELOAD_HANDLES[url]
@@ -33193,9 +33202,18 @@ function FALLEN_PRELOAD_TICK()
         end
     end
 
-    if not _G.FALLEN_IMAGE_PRELOAD_QUEUE[st.url_index]
+    local direct_done =
+        not _G.FALLEN_IMAGE_PRELOAD_QUEUE[st.url_index]
         and #st.inflight == 0
-    then
+
+    local special_done =
+        st.special_done == true
+        or not (
+            _G.FALLEN_IMAGE_PRELOAD_SPECIALS
+            and _G.FALLEN_IMAGE_PRELOAD_SPECIALS[st.special_index]
+        )
+
+    if direct_done and special_done then
         _G.FALLEN_IMAGE_PRELOAD_INDEX =
             _G.FALLEN_IMAGE_PRELOAD_TOTAL
         _G.FALLEN_IMAGE_PRELOAD_DONE = true
@@ -34342,7 +34360,7 @@ do
 end -- loader local-state scope
 
 
-print("[Fallen loader] ready | frame-budget menu preload | max 2 inflight | no blur")
+print("[Fallen loader] ready | fast frame-budget preload | max 6 inflight | no blur")
 
 
 -- Fallen toast renderer
