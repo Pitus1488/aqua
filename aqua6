@@ -3971,18 +3971,36 @@ local function draw_switch_track(x, y, w, h, off_color, on_color, t)
     -- Only the inside track and knob animate between off/on colors.
     local border = { 0.16, 0.16, 0.17, 1.0 }
     local inside = mix_color(off_color, on_color, progress)
-    -- During the whole-menu fade avoid drawing two translucent overlapping
-    -- rounded surfaces; the outline appears once the menu is opaque.
-    if MENU_RENDER_ALPHA < 0.995 then
-        rounded_fill(x, y, w, h, rounding, inside)
-        return
-    end
-    rounded_fill(x, y, w, h, rounding, border)
-    rounded_fill(
+    -- Render the neutral outline from the very first visible frame.
+    -- Never switch geometry when the menu fade crosses an alpha threshold.
+    -- Always use the same non-overlapping corner geometry, from the
+    -- beginning of the fade to full opacity. Avoids border morphing.
+    local radius_px = math.floor(rounding)
+    rounded_fill_alpha_safe(x, y, w, h, radius_px, border)
+    rounded_fill_alpha_safe(
         x + 1, y + 1, w - 2, h - 2,
-        math.max(0, rounding - 1), inside
+        math.max(0, radius_px - 1), inside
     )
 end
+
+local FALLEN_POPUP_CHECK_KEYS = {
+    aim_fov_glow_enabled = true,
+    aim_fov_filled = true,
+    silent_fov_glow_enabled = true,
+    silent_fov_filled = true,
+    world_show_names = true,
+    world_show_distance = true,
+    world_show_icons = true,
+    world_fade_distance = true,
+    world_icon_glow_enabled = true,
+    armor_glow_enabled = true,
+    menu_snow = true,
+    menu_rain = true,
+    menu_lightning = true,
+    menu_dark_background = true,
+    keybinds_list_enabled = true,
+    secret_enabled = true,
+}
 
 local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     clicked =
@@ -4020,6 +4038,24 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     end
 
     A.toggles[key] = anim
+
+    if FALLEN_POPUP_CHECK_KEYS[key] then
+        -- List-style checkbox used by three-dots popup settings.
+        if hot and clicked then
+            -- Value has already been updated by the toggle handler above.
+        end
+        if hot then
+            rounded_fill(x + 5, y + 4, w - 10, h - 8, 5, C.button_hovered)
+        end
+        local cx, cy = x + 17, y + h * 0.5
+        if value then
+            -- Draw a tiny tick from line segments; compatible with this API.
+            line(cx - 5, cy, cx - 1, cy + 4, C.text, 1.4)
+            line(cx - 1, cy + 4, cx + 6, cy - 4, C.text, 1.4)
+        end
+        text(x + 31, y + 14, label, value and C.text or C.text_dim)
+        return
+    end
 
     text(
         x + 13,
@@ -4798,31 +4834,33 @@ function FALLEN_COLOR_INPUT_POLL()
 end
 
 local function color_preview(x, y, w, h, override_color)
-    local c =
-        override_color
-        or fov_color()
-
-    local size = 18
-    local cx = x + w * 0.5
-    local cy = y + h * 0.5
-
-    -- Source ColorButton is an 18x18 circular preview.
-    circle_fill(
-        cx,
-        cy,
-        size * 0.5,
-        { c[1], c[2], c[3], math.max(c[4] or 1, 0.01) }
-    )
-
-    circle(
-        cx,
-        cy,
-        size * 0.5,
-        C.border,
-        1
-    )
+    local c = override_color or fov_color()
+    local size = math.min(18, w, h)
+    local bx = x + (w - size) * 0.5
+    local by = y + (h - size) * 0.5
+    rounded_outline(bx, by, size, size, 4,
+        { 0.16, 0.16, 0.17, 1 }, 1,
+        { c[1], c[2], c[3], math.max(c[4] or 1, 0.01) })
 end
 
+local function fallen_open_color_at(prefix, x, y, size)
+    FALLEN_COLOR_INPUT_STOP(true)
+    if A.world_color_picker_open and A.world_color_picker_key == prefix then
+        A.world_color_picker_open = false
+        A.world_color_picker_drag = nil
+    else
+        A.world_color_picker_key = prefix
+        A.world_color_picker_open = true
+        A.world_color_picker_drag = nil
+        A.fov_picker_open = false
+        A.fov_picker_drag = nil
+    end
+    A.world_color_picker_anchor_x = FALLEN_UI_X(x)
+    A.world_color_picker_anchor_y = FALLEN_UI_Y(y)
+    A.world_color_picker_anchor_w = FALLEN_UI_LEN(size)
+    A.world_color_picker_anchor_h = FALLEN_UI_LEN(size)
+    numeric_stop(true)
+end
 
 local function checker_strip(x, y, w, h)
     local cell = 7
@@ -4869,10 +4907,7 @@ local function aim_settings_step_anim()
         or 0
 
     -- Quick open, smooth retract.
-    local speed =
-        target > (A.aim_settings_anim or 0)
-        and 15
-        or 11
+    local speed = 14
 
     A.aim_settings_anim =
         exp_chase(
@@ -4911,10 +4946,7 @@ function FALLEN_FOV_SETTINGS_STEP_ANIM()
         and 1
         or 0
 
-    local speed =
-        target > (A.fov_settings_anim or 0)
-        and 15
-        or 11
+    local speed = 14
 
     A.fov_settings_anim =
         exp_chase(
@@ -5156,28 +5188,10 @@ local function draw_aim_settings_popup(
     -- Rebuilt motion:
     -- at 0 the popup sits close to the Aimbot row,
     -- at 1 it is fully extended below it.
-    local retract =
-        1 - anim
-
-    local px =
-        base_px
-        + retract * 14
-
-    local py =
-        base_py
-        - retract * 34
-
-    px = snap(px)
-    py = snap(py)
-
-    -- Main shell retracts upward while fading, so the closing direction
-    -- visually returns into the Aimbot row rather than drifting sideways.
-    local shell_h =
-        math.max(
-            28,
-            ph
-            - retract * 58
-        )
+    -- Popup stays anchored and full-sized; only its alpha animates.
+    local px = snap(base_px)
+    local py = snap(base_py)
+    local shell_h = ph
 
     local interactive =
         raw_anim > 0.96
@@ -5201,7 +5215,7 @@ local function draw_aim_settings_popup(
     -- Hide deeper controls progressively while retracting so they don't
     -- visually "hang" outside the shrinking shell.
     local details_visible =
-        raw_anim > 0.42
+        raw_anim > 0.001
 
     text(
         px + 13,
@@ -5497,10 +5511,7 @@ function FALLEN_SILENT_FOV_SETTINGS_STEP_ANIM()
         and 1
         or 0
 
-    local speed =
-        target > (A.silent_fov_settings_anim or 0)
-        and 15
-        or 11
+    local speed = 14
 
     A.silent_fov_settings_anim =
         exp_chase(
@@ -5570,7 +5581,7 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     end
 
     local pw = 300
-    local ph = 247
+    local ph = 206
 
     local base_px =
         dots_x
@@ -5581,26 +5592,10 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
         dots_y
         + 31
 
-    local retract =
-        1 - anim
-
-    local px =
-        base_px
-        + retract * 14
-
-    local py =
-        base_py
-        - retract * 34
-
-    px = snap(px)
-    py = snap(py)
-
-    local shell_h =
-        math.max(
-            28,
-            ph
-            - retract * 58
-        )
+    -- Popup stays anchored and full-sized; only its alpha animates.
+    local px = snap(base_px)
+    local py = snap(base_py)
+    local shell_h = ph
 
     local interactive =
         raw_anim > 0.96
@@ -5622,7 +5617,7 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     )
 
     local details_visible =
-        raw_anim > 0.42
+        raw_anim > 0.001
 
     text(
         px + 13,
@@ -5643,10 +5638,15 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     end
 
     if details_visible then
+        local glow_swatch_x = px + pw - 42
+        local glow_swatch_y = py + 46
+        local glow_swatch_s = 18
+        local glow_swatch_hot = hover(mx, my,
+            glow_swatch_x, glow_swatch_y, glow_swatch_s, glow_swatch_s)
         toggle_row(
             mx,
             my,
-            ui_clicked,
+            ui_clicked and not glow_swatch_hot,
             px + 8,
             py + 35,
             pw - 16,
@@ -5654,6 +5654,12 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
             "aim_fov_glow_enabled",
             false
         )
+        color_preview(glow_swatch_x, glow_swatch_y,
+            glow_swatch_s, glow_swatch_s, FALLEN_FOV_GLOW_COLOR())
+        if ui_clicked and glow_swatch_hot then
+            fallen_open_color_at("aim_fov_glow",
+                glow_swatch_x, glow_swatch_y, glow_swatch_s)
+        end
 
         if shell_h > 84 then
             line(
@@ -5709,88 +5715,12 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
             )
         end
 
-        if shell_h > 200 then
-            line(
-                px + 12,
-                py + 154,
-                px + pw - 12,
-                py + 154,
-                C.divider,
-                1
-            )
-        end
-
         if shell_h > 180 then
-            local row_y =
-                py + 155
-
-            local hot =
-                row_hover(
-                    mx,
-                    my,
-                    px + 8,
-                    row_y,
-                    pw - 16,
-                    41
-                )
-
-            text(
-                px + 21,
-                row_y + 14,
-                "Glow Color",
-                FALLEN_HOVER_TEXT(
-                    "aim_fov_glow_color",
-                    hot,
-                    C.text
-                )
-            )
-
-            local swatch_s = 18
-            local swatch_x =
-                px + pw - 49
-
-            local swatch_y =
-                row_y + 11
-
-            color_preview(
-                swatch_x,
-                swatch_y,
-                swatch_s,
-                swatch_s,
-                FALLEN_FOV_GLOW_COLOR()
-            )
-
-            if ui_clicked
-                and hover(mx, my, swatch_x, swatch_y, swatch_s, swatch_s)
-            then
-                FALLEN_COLOR_INPUT_STOP(true)
-
-                local prefix = "aim_fov_glow"
-
-                if A.world_color_picker_open
-                    and A.world_color_picker_key == prefix
-                then
-                    A.world_color_picker_open = false
-                    A.world_color_picker_drag = nil
-                else
-                    A.world_color_picker_key = prefix
-                    A.world_color_picker_open = true
-                    A.world_color_picker_drag = nil
-
-                    A.world_color_picker_anchor_x = FALLEN_UI_X(swatch_x)
-                    A.world_color_picker_anchor_y = FALLEN_UI_Y(swatch_y)
-                    A.world_color_picker_anchor_w = FALLEN_UI_LEN(swatch_s)
-                    A.world_color_picker_anchor_h = FALLEN_UI_LEN(swatch_s)
-                end
-            end
-        end
-
-        if shell_h > 221 then
             line(
                 px + 12,
-                py + 195,
+                py + 154,
                 px + pw - 12,
-                py + 195,
+                py + 154,
                 C.divider,
                 1
             )
@@ -5800,7 +5730,7 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
                 my,
                 ui_clicked,
                 px + 8,
-                py + 196,
+                py + 155,
                 pw - 16,
                 "Filled FOV",
                 "aim_fov_filled",
@@ -5874,7 +5804,7 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
         or ease_in_out_cubic(raw_anim)
 
     local pw = 300
-    local ph = 247
+    local ph = 206
 
     local base_px =
         dots_x
@@ -5885,27 +5815,10 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
         dots_y
         + 31
 
-    local retract =
-        1 - anim
-
-    local px =
-        snap(
-            base_px
-            + retract * 14
-        )
-
-    local py =
-        snap(
-            base_py
-            - retract * 34
-        )
-
-    local shell_h =
-        math.max(
-            28,
-            ph
-            - retract * 58
-        )
+    -- Popup stays anchored and full-sized; only its alpha animates.
+    local px = snap(base_px)
+    local py = snap(base_py)
+    local shell_h = ph
 
     local interactive =
         raw_anim > 0.96
@@ -5934,7 +5847,7 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
     )
 
     local details_visible =
-        raw_anim > 0.42
+        raw_anim > 0.001
 
     text(
         px + 13,
@@ -5955,10 +5868,15 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
     end
 
     if details_visible then
+        local glow_swatch_x = px + pw - 42
+        local glow_swatch_y = py + 46
+        local glow_swatch_s = 18
+        local glow_swatch_hot = hover(mx, my,
+            glow_swatch_x, glow_swatch_y, glow_swatch_s, glow_swatch_s)
         toggle_row(
             mx,
             my,
-            ui_clicked,
+            ui_clicked and not glow_swatch_hot,
             px + 8,
             py + 35,
             pw - 16,
@@ -5966,6 +5884,12 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
             "silent_fov_glow_enabled",
             false
         )
+        color_preview(glow_swatch_x, glow_swatch_y,
+            glow_swatch_s, glow_swatch_s, FALLEN_SILENT_FOV_GLOW_COLOR())
+        if ui_clicked and glow_swatch_hot then
+            fallen_open_color_at("silent_fov_glow",
+                glow_swatch_x, glow_swatch_y, glow_swatch_s)
+        end
 
         if shell_h > 84 then
             line(
@@ -6021,120 +5945,12 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
             )
         end
 
-        if shell_h > 200 then
-            line(
-                px + 12,
-                py + 154,
-                px + pw - 12,
-                py + 154,
-                C.divider,
-                1
-            )
-        end
-
         if shell_h > 180 then
-            local row_y =
-                py + 155
-
-            local hot =
-                row_hover(
-                    mx,
-                    my,
-                    px + 8,
-                    row_y,
-                    pw - 16,
-                    41
-                )
-
-            text(
-                px + 21,
-                row_y + 14,
-                "Glow Color",
-                FALLEN_HOVER_TEXT(
-                    "silent_fov_glow_color",
-                    hot,
-                    C.text
-                )
-            )
-
-            local swatch_s = 18
-
-            local swatch_x =
-                px + pw - 49
-
-            local swatch_y =
-                row_y + 11
-
-            color_preview(
-                swatch_x,
-                swatch_y,
-                swatch_s,
-                swatch_s,
-                FALLEN_SILENT_FOV_GLOW_COLOR()
-            )
-
-            if ui_clicked
-                and hover(
-                    mx,
-                    my,
-                    swatch_x,
-                    swatch_y,
-                    swatch_s,
-                    swatch_s
-                )
-            then
-                FALLEN_COLOR_INPUT_STOP(true)
-
-                local prefix =
-                    "silent_fov_glow"
-
-                if A.world_color_picker_open
-                    and A.world_color_picker_key == prefix
-                then
-                    A.world_color_picker_open =
-                        false
-
-                    A.world_color_picker_drag =
-                        nil
-                else
-                    A.world_color_picker_key =
-                        prefix
-
-                    A.world_color_picker_open =
-                        true
-
-                    A.world_color_picker_drag =
-                        nil
-
-                    A.world_color_picker_anchor_x =
-                        FALLEN_UI_X(
-                            swatch_x
-                        )
-
-                    A.world_color_picker_anchor_y =
-                        FALLEN_UI_Y(
-                            swatch_y
-                        )
-
-                    A.world_color_picker_anchor_w =
-                        FALLEN_UI_LEN(
-                            swatch_s
-                        )
-
-                    A.world_color_picker_anchor_h =
-                        FALLEN_UI_LEN(
-                            swatch_s
-                        )
-                end
-            end
-        end
-
-        if shell_h > 221 then
             line(
                 px + 12,
-                py + 195,
+                py + 154,
                 px + pw - 12,
-                py + 195,
+                py + 154,
                 C.divider,
                 1
             )
@@ -6144,7 +5960,7 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
                 my,
                 ui_clicked,
                 px + 8,
-                py + 196,
+                py + 155,
                 pw - 16,
                 "Filled FOV",
                 "silent_fov_filled",
@@ -6641,7 +6457,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         rx,
         cy + 25,
         right_w,
-        212,
+        171,
         11
     )
 
@@ -6803,10 +6619,17 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
 
     -- LMB only changes the checkbox.
     -- It explicitly does NOT open the settings popup.
+    local silent_swatch_x = rx + right_w - 111
+    local silent_swatch_y = cy + 125
+    local silent_swatch_s = 18
+    local silent_swatch_hot = hover(mx, my,
+        silent_swatch_x, silent_swatch_y, silent_swatch_s, silent_swatch_s)
+
     toggle_row(
         mx,
         my,
         clicked
+            and not silent_swatch_hot
             and not silent_fov_dots_hot
             and not A.silent_fov_settings_open,
         rx,
@@ -6861,51 +6684,9 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         "int"
     )
 
-    line(
-        rx + 12,
-        cy + 195,
-        rx + right_w - 12,
-        cy + 195,
-        C.divider,
-        1
-    )
-
-    local silent_swatch_s = 18
-
-    local silent_swatch_x =
-        rx + right_w - 36
-
-    local silent_swatch_y =
-        cy + 204
-
-    local silent_color_hot =
-        row_hover(
-            mx,
-            my,
-            rx,
-            cy + 196,
-            right_w,
-            41
-        )
-
-    text(
-        rx + 13,
-        cy + 210,
-        "FOV Color",
-        FALLEN_HOVER_TEXT(
-            "silent_fov_color",
-            silent_color_hot,
-            C.text
-        )
-    )
-
-    color_preview(
-        silent_swatch_x,
-        silent_swatch_y,
-        silent_swatch_s,
-        silent_swatch_s,
-        FALLEN_SILENT_FOV_COLOR()
-    )
+    -- Color preview shares the FOV Enabled row.
+    color_preview(silent_swatch_x, silent_swatch_y,
+        silent_swatch_s, silent_swatch_s, FALLEN_SILENT_FOV_COLOR())
 
     if clicked
         and not A.silent_fov_settings_open
@@ -7115,7 +6896,7 @@ local function draw_aimbot_page(
 
     -- RIGHT: shared Aim FOV.
     section_title(rx, cy, "Aim FOV")
-    card(rx, cy + 25, right_w, 139, 11)
+    card(rx, cy + 25, right_w, 98, 11)
 
     local fov_dots_x = rx + right_w - 79
     local fov_dots_y = cy + 40
@@ -7129,10 +6910,15 @@ local function draw_aimbot_page(
             25
         )
 
+    local fov_swatch_x = rx + right_w - 111
+    local fov_swatch_y = cy + 43
+    local fov_swatch_s = 18
+    local fov_swatch_hot = hover(mx, my,
+        fov_swatch_x, fov_swatch_y, fov_swatch_s, fov_swatch_s)
     toggle_row(
         mx,
         my,
-        base_clicked and not fov_dots_hot,
+        base_clicked and not fov_dots_hot and not fov_swatch_hot,
         rx,
         cy + 32,
         right_w,
@@ -7186,58 +6972,16 @@ local function draw_aimbot_page(
         "int"
     )
 
-    line(
-        rx + 12,
-        cy + 113,
-        rx + right_w - 12,
-        cy + 113,
-        C.divider,
-        1
-    )
-
-    local swatch_x =
-        rx + right_w - 36
-
-    local swatch_y =
-        cy + 123
-
-    local swatch_s = 18
-
-    local fov_color_hot =
-        row_hover(
-            mx,
-            my,
-            rx,
-            cy + 114,
-            right_w,
-            41
-        )
-
-    text(
-        rx + 13,
-        cy + 128,
-        "FOV Color",
-        FALLEN_HOVER_TEXT(
-            "aim_fov_color",
-            fov_color_hot,
-            C.text
-        )
-    )
-
-    color_preview(
-        swatch_x,
-        swatch_y,
-        swatch_s,
-        swatch_s
-    )
+    -- Color picker is attached to the SAME line as Aim FOV.
+    color_preview(fov_swatch_x, fov_swatch_y, fov_swatch_s, fov_swatch_s)
 
     if base_clicked
         and hover(
             mx,
             my,
-            swatch_x,
-            swatch_y,
-            swatch_s,
+            fov_swatch_x,
+            fov_swatch_y,
+            fov_swatch_s,
             swatch_s
         )
     then
@@ -7257,16 +7001,16 @@ local function draw_aimbot_page(
             A.world_color_picker_drag = nil
 
             A.world_color_picker_anchor_x =
-                FALLEN_UI_X(swatch_x)
+                FALLEN_UI_X(fov_swatch_x)
 
             A.world_color_picker_anchor_y =
-                FALLEN_UI_Y(swatch_y)
+                FALLEN_UI_Y(fov_swatch_y)
 
             A.world_color_picker_anchor_w =
-                FALLEN_UI_LEN(swatch_s)
+                FALLEN_UI_LEN(fov_swatch_s)
 
             A.world_color_picker_anchor_h =
-                FALLEN_UI_LEN(swatch_s)
+                FALLEN_UI_LEN(fov_swatch_s)
         end
 
         A.fov_picker_open = false
@@ -7478,26 +7222,11 @@ local function world_item_color(item)
 end
 
 local function world_square_swatch(x, y, size, c)
-    -- Same source ColorButton everywhere.
-    local cx = x + size * 0.5
-    local cy = y + size * 0.5
-
-    circle_fill(
-        cx,
-        cy,
-        9,
-        c
-    )
-
-    circle(
-        cx,
-        cy,
-        9,
-        C.border,
-        1
-    )
+    -- Matching 4px rounded-square swatches across the entire interface.
+    rounded_outline(x, y, size, size, 4,
+        { 0.16, 0.16, 0.17, 1 }, 1,
+        { c[1], c[2], c[3], math.max(c[4] or 1, 0.01) })
 end
-
 
 local function resource_toggle_row(
     mx,
@@ -7510,6 +7239,9 @@ local function resource_toggle_row(
 )
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
+    if hot then
+        rounded_fill(x + 5, y + 4, w - 10, h - 8, 5, C.button_hovered)
+    end
 
     local c =
         world_item_color(
@@ -7536,52 +7268,19 @@ local function resource_toggle_row(
     local target = S[key] and 1 or 0
     A.toggles[key] = lerp(A.toggles[key], target, 0.23)
 
-    local tw, th = 35, 19
-    local tx = x + w - tw - 12
-    local ty = y + 11
-
-    -- Square color swatch immediately before the switch.
+    -- Compact Neverlose-like checklist: check at left, color at far right.
     local swatch_s = 18
-    local swatch_x = tx - swatch_s - 12
+    local swatch_x = x + w - swatch_s - 12
     local swatch_y = y + 11
+    local swatch_hot = hover(mx, my,
+        swatch_x, swatch_y, swatch_s, swatch_s)
+    world_square_swatch(swatch_x, swatch_y, swatch_s, c)
 
-    world_square_swatch(
-        swatch_x,
-        swatch_y,
-        swatch_s,
-        c
-    )
-
-    local swatch_hot =
-        hover(
-            mx,
-            my,
-            swatch_x,
-            swatch_y,
-            swatch_s,
-            swatch_s
-        )
-
-
-    draw_switch_track(tx, ty, tw, th, C.toggle_off, C.accent_dim, A.toggles[key])
-
-    local knob_x =
-        lerp(
-            tx + 9.5,
-            tx + tw - 9.5,
-            A.toggles[key]
-        )
-
-    circle_fill(
-        knob_x,
-        ty + th * 0.5,
-        7,
-        mix_color(
-            C.toggle_knob,
-            C.white,
-            A.toggles[key]
-        )
-    )
+    if S[key] == true then
+        local cx, cy = x + 16, y + 20.5
+        line(cx - 5, cy, cx - 1, cy + 4, C.text, 1.4)
+        line(cx - 1, cy + 4, cx + 6, cy - 4, C.text, 1.4)
+    end
 
     if clicked and swatch_hot then
         local prefix =
@@ -7654,10 +7353,7 @@ local function world_settings_step_anim()
         or 0
 
     -- Slightly slower than Aimbot popup by request.
-    local speed =
-        target > (A.world_settings_anim or 0)
-        and 9.0
-        or 7.0
+    local speed = 14
 
     A.world_settings_anim =
         exp_chase(
@@ -8406,7 +8102,7 @@ local function draw_world_settings_popup(
     if is_global then
         title = "World ESP settings"
         pw = 306
-        ph = 455
+        ph = 414
     elseif is_nodes then
         title = "Node ESP settings"
         ph = 43 + 3 * 41 + 8
@@ -8455,27 +8151,10 @@ local function draw_world_settings_popup(
         dots_y
         + 31
 
-    local retract =
-        1 - anim
-
-    local px =
-        snap(
-            base_px
-            + retract * 14
-        )
-
-    local py =
-        snap(
-            base_py
-            - retract * 34
-        )
-
-    local shell_h =
-        math.max(
-            31,
-            ph
-            - retract * 72
-        )
+    -- Popup stays anchored and full-sized; only its alpha animates.
+    local px = snap(base_px)
+    local py = snap(base_py)
+    local shell_h = ph
 
     local interactive =
         raw > 0.96
@@ -8761,10 +8440,16 @@ local function draw_world_settings_popup(
                 1
             )
 
+            local glow_swatch_s = 18
+            local glow_swatch_x = px + pw - 42
+            local glow_swatch_y = py + 296
+            local glow_swatch_hot = hover(mx, my,
+                glow_swatch_x, glow_swatch_y,
+                glow_swatch_s, glow_swatch_s)
             toggle_row(
                 mx,
                 my,
-                ui_clicked,
+                ui_clicked and not glow_swatch_hot,
                 px + 8,
                 py + 285,
                 pw - 16,
@@ -8772,6 +8457,12 @@ local function draw_world_settings_popup(
                 "world_icon_glow_enabled",
                 false
             )
+            world_square_swatch(glow_swatch_x, glow_swatch_y,
+                glow_swatch_s, world_color_from_prefix("world_icon_glow"))
+            if ui_clicked and glow_swatch_hot then
+                fallen_open_color_at("world_icon_glow",
+                    glow_swatch_x, glow_swatch_y, glow_swatch_s)
+            end
         end
 
         if shell_h > 365 then
@@ -8824,129 +8515,6 @@ local function draw_world_settings_popup(
                 20,
                 "int"
             )
-        end
-
-        if shell_h > 447 then
-            line(
-                px + 12,
-                py + 407,
-                px + pw - 12,
-                py + 407,
-                C.divider,
-                1
-            )
-
-            local glow_row_x =
-                px + 8
-
-            local glow_row_y =
-                py + 408
-
-            local glow_row_w =
-                pw - 16
-
-            local glow_hot =
-                row_hover(
-                    mx,
-                    my,
-                    glow_row_x,
-                    glow_row_y,
-                    glow_row_w,
-                    41
-                )
-
-            text(
-                glow_row_x + 13,
-                glow_row_y + 14,
-                "Glow Color",
-                FALLEN_HOVER_TEXT(
-                    "world_icon_glow_color",
-                    glow_hot,
-                    C.text
-                )
-            )
-
-            local glow_prefix =
-                "world_icon_glow"
-
-            local glow_swatch_s =
-                18
-
-            local glow_swatch_x =
-                glow_row_x
-                + glow_row_w
-                - glow_swatch_s
-                - 12
-
-            local glow_swatch_y =
-                glow_row_y + 11
-
-            local glow_color =
-                world_color_from_prefix(
-                    glow_prefix
-                )
-
-            world_square_swatch(
-                glow_swatch_x,
-                glow_swatch_y,
-                glow_swatch_s,
-                glow_color
-            )
-
-            local glow_swatch_hot =
-                hover(
-                    mx,
-                    my,
-                    glow_swatch_x,
-                    glow_swatch_y,
-                    glow_swatch_s,
-                    glow_swatch_s
-                )
-
-            if ui_clicked
-                and glow_swatch_hot
-            then
-                FALLEN_COLOR_INPUT_STOP(true)
-
-                if A.world_color_picker_open
-                    and A.world_color_picker_key == glow_prefix
-                then
-                    A.world_color_picker_open = false
-                    A.world_color_picker_drag = nil
-                else
-                    A.world_color_picker_key =
-                        glow_prefix
-
-                    A.world_color_picker_open =
-                        true
-
-                    A.world_color_picker_drag =
-                        nil
-
-                    A.fov_picker_open = false
-                    A.fov_picker_drag = nil
-                end
-
-                A.world_color_picker_anchor_x =
-                    FALLEN_UI_X(
-                        glow_swatch_x
-                    )
-
-                A.world_color_picker_anchor_y =
-                    FALLEN_UI_Y(
-                        glow_swatch_y
-                    )
-
-                A.world_color_picker_anchor_w =
-                    FALLEN_UI_LEN(
-                        glow_swatch_s
-                    )
-
-                A.world_color_picker_anchor_h =
-                    FALLEN_UI_LEN(
-                        glow_swatch_s
-                    )
-            end
         end
 
     -- =========================================================
@@ -19332,10 +18900,7 @@ function FALLEN_ARMOR_SETTINGS_STEP()
         and 1
         or 0
 
-    local speed =
-        target > (A.armor_settings_anim or 0)
-        and 15
-        or 11
+    local speed = 14
 
     A.armor_settings_anim =
         exp_chase(
@@ -19485,7 +19050,7 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
         or ease_in_out_cubic(raw)
 
     local pw = 300
-    local ph = 206
+    local ph = 165
 
     local base_px =
         dots_x - pw + 28
@@ -19493,27 +19058,10 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
     local base_py =
         dots_y + 31
 
-    local retract =
-        1 - anim
-
-    local px =
-        snap(
-            base_px
-            + retract * 14
-        )
-
-    local py =
-        snap(
-            base_py
-            - retract * 34
-        )
-
-    local shell_h =
-        math.max(
-            28,
-            ph
-            - retract * 58
-        )
+    -- Popup stays anchored and full-sized; only its alpha animates.
+    local px = snap(base_px)
+    local py = snap(base_py)
+    local shell_h = ph
 
     local picker_active =
         A.world_color_picker_open
@@ -19564,11 +19112,16 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
         )
     end
 
-    if raw > 0.42 then
+    if raw > 0.001 then
+        local glow_swatch_x = px + pw - 42
+        local glow_swatch_y = py + 46
+        local glow_swatch_s = 18
+        local glow_swatch_hot = hover(mx, my,
+            glow_swatch_x, glow_swatch_y, glow_swatch_s, glow_swatch_s)
         toggle_row(
             mx,
             my,
-            ui_clicked,
+            ui_clicked and not glow_swatch_hot,
             px + 8,
             py + 35,
             pw - 16,
@@ -19576,6 +19129,12 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
             "armor_glow_enabled",
             false
         )
+        color_preview(glow_swatch_x, glow_swatch_y, glow_swatch_s,
+            glow_swatch_s, FALLEN_ARMOR_GLOW_COLOR())
+        if ui_clicked and glow_swatch_hot then
+            fallen_open_color_at("armor_glow", glow_swatch_x,
+                glow_swatch_y, glow_swatch_s)
+        end
 
         if shell_h > 83 then
             line(
@@ -19616,7 +19175,7 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
             )
         end
 
-        if shell_h > 188 then
+        if shell_h > 153 then
             slider_row(
                 mx,
                 my,
@@ -19633,110 +19192,6 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
             )
         end
 
-        if shell_h > 196 then
-            line(
-                px + 12,
-                py + 154,
-                px + pw - 12,
-                py + 154,
-                C.divider,
-                1
-            )
-        end
-
-        if shell_h > 176 then
-            local row_x =
-                px + 8
-
-            local row_y =
-                py + 155
-
-            local row_w =
-                pw - 16
-
-            local color_hot =
-                row_hover(
-                    mx,
-                    my,
-                    row_x,
-                    row_y,
-                    row_w,
-                    41
-                )
-
-            text(
-                row_x + 13,
-                row_y + 14,
-                "Glow Color",
-                FALLEN_HOVER_TEXT(
-                    "armor_glow_color",
-                    color_hot,
-                    C.text
-                )
-            )
-
-            local swatch_w = 18
-            local swatch_h = 18
-
-            local swatch_x =
-                row_x
-                + row_w
-                - 28
-
-            local swatch_y =
-                row_y + 11
-
-            local col =
-                FALLEN_ARMOR_GLOW_COLOR()
-
-            circle_fill(
-                swatch_x + swatch_w * 0.5,
-                swatch_y + swatch_h * 0.5,
-                swatch_w * 0.5,
-                col
-            )
-
-            local swatch_hot =
-                hover(
-                    mx,
-                    my,
-                    swatch_x,
-                    swatch_y,
-                    swatch_w,
-                    swatch_h
-                )
-
-            if ui_clicked
-                and swatch_hot
-            then
-                FALLEN_COLOR_INPUT_STOP(true)
-
-                if A.world_color_picker_open
-                    and A.world_color_picker_key == "armor_glow"
-                then
-                    A.world_color_picker_open = false
-                    A.world_color_picker_drag = nil
-                else
-                    A.world_color_picker_key = "armor_glow"
-                    A.world_color_picker_open = true
-                    A.world_color_picker_drag = nil
-
-                    A.world_color_picker_anchor_x =
-                        FALLEN_UI_X(swatch_x)
-
-                    A.world_color_picker_anchor_y =
-                        FALLEN_UI_Y(swatch_y)
-
-                    A.world_color_picker_anchor_w =
-                        FALLEN_UI_LEN(swatch_w)
-
-                    A.world_color_picker_anchor_h =
-                        FALLEN_UI_LEN(swatch_h)
-                end
-
-                numeric_stop(true)
-            end
-        end
     end
 
     local popup_hot =
@@ -20574,6 +20029,9 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
 
     local h = 41
     local hot = row_hover(mx, my, x, y, w, h)
+    if hot then
+        rounded_fill(x + 5, y + 4, w - 10, h - 8, 5, C.button_hovered)
+    end
     local key = "world_base_" .. tostring(cfg.id)
     local enabled = S[key] == true
     local prefix = world_base_color_prefix(cfg.id)
@@ -20601,51 +20059,19 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
         A.toggles[key] = target
     end
 
-    local tw, th = 35, 19
-    local tx = x + w - tw - 12
-    local ty = y + 11
-
-    -- Same placement as Ore / Plants.
+    -- Compact Neverlose-like checklist: check at left, color at far right.
     local swatch_s = 18
-    local swatch_x = tx - swatch_s - 12
+    local swatch_x = x + w - swatch_s - 12
     local swatch_y = y + 11
+    local swatch_hot = hover(mx, my,
+        swatch_x, swatch_y, swatch_s, swatch_s)
+    world_square_swatch(swatch_x, swatch_y, swatch_s, col)
 
-    world_square_swatch(
-        swatch_x,
-        swatch_y,
-        swatch_s,
-        col
-    )
-
-    local swatch_hot =
-        hover(
-            mx,
-            my,
-            swatch_x,
-            swatch_y,
-            swatch_s,
-            swatch_s
-        )
-
-    draw_switch_track(tx, ty, tw, th, C.toggle_off, C.accent_dim, A.toggles[key])
-
-    local knob_x =
-        lerp(
-            tx + 9.5,
-            tx + tw - 9.5,
-            A.toggles[key]
-        )
-
-    circle_fill(
-        knob_x,
-        ty + th * 0.5,
-        7,
-        mix_color(
-            C.toggle_knob,
-            C.white,
-            A.toggles[key]
-        )
-    )
+    if S[key] == true then
+        local cx, cy = x + 16, y + 20.5
+        line(cx - 5, cy, cx - 1, cy + 4, C.text, 1.4)
+        line(cx - 1, cy + 4, cx + 6, cy - 4, C.text, 1.4)
+    end
 
     if clicked and swatch_hot then
         FALLEN_COLOR_INPUT_STOP(true)
@@ -20672,22 +20098,6 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
             numeric_stop(true)
         end
 
-        return
-    end
-
-    local toggle_hot =
-        hover(
-            mx,
-            my,
-            tx,
-            ty,
-            tw,
-            th
-        )
-
-    if clicked and toggle_hot then
-        S[key] = not enabled
-        WORLD_ESP.last_scan = -100
         return
     end
 
@@ -24568,10 +23978,7 @@ function FALLEN_MENU_SETTINGS_STEP()
         and 1
         or 0
 
-    local speed =
-        target > (A.menu_settings_anim or 0)
-        and 10
-        or 8
+    local speed = 14
 
     A.menu_settings_anim =
         exp_chase(
@@ -24934,8 +24341,8 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
     local ph = 426 + (A.secret_unlocked and 41 or 0)
 
     local px = snap(anchor_x + 18)
-    local py = snap(anchor_y - ph - 18 + (1 - anim) * 20)
-    local shell_h = math.max(38, ph - (1 - anim) * 46)
+    local py = snap(anchor_y - ph - 18)
+    local shell_h = ph
 
     local interactive = raw > 0.96 and A.menu_settings_open
 
@@ -33064,28 +32471,26 @@ do
 
     function L.draw_spinner(cx, cy, alpha)
         if type(DrawLine) ~= "function" or alpha <= 0 then return end
-
-        local segments = 64
-        local rotation_speed = 17
-        local full_circle = math.pi * 2
-        local fade_length = 0.75 * full_circle
-        local rotation = L.time_sec * rotation_speed
-        local radius = 20
-        local thickness = 4
-
-        local angle0 = rotation
-        local px = cx + math.cos(angle0) * radius
-        local py = cy + math.sin(angle0) * radius
-
-        for i = 1, segments do
-            local t = i / segments
-            local angle = rotation - t * fade_length
-            local nx = cx + math.cos(angle) * radius
-            local ny = cy + math.sin(angle) * radius
-            local a = alpha * (1 - t)
-            DrawLine(px, py, nx, ny,
-                L.theme.accent[1], L.theme.accent[2], L.theme.accent[3], a, thickness)
-            px, py = nx, ny
+        -- A smooth contiguous arc; the old implementation joined the head
+        -- to the first tail point across a big gap and looked segmented.
+        local radius = 19
+        local segment_count = 112
+        local tail_angle = math.pi * 1.55
+        local rotation = L.time_sec * 5.8
+        local thickness = 3
+        for i = 0, segment_count - 1 do
+            local t0 = i / segment_count
+            local t1 = (i + 1) / segment_count
+            local angle0 = rotation - t0 * tail_angle
+            local angle1 = rotation - t1 * tail_angle
+            local x0 = cx + math.cos(angle0) * radius
+            local y0 = cy + math.sin(angle0) * radius
+            local x1 = cx + math.cos(angle1) * radius
+            local y1 = cy + math.sin(angle1) * radius
+            local opacity = alpha * (1 - (t0 + t1) * 0.5) ^ 1.4
+            DrawLine(x0, y0, x1, y1,
+                L.theme.accent[1], L.theme.accent[2], L.theme.accent[3],
+                opacity, thickness)
         end
     end
 
