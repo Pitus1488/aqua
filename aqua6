@@ -180,6 +180,7 @@ local defaults = {
     menu_style_alpha = 100,
 
     -- Source menu has no outer glow. Keep the setting available, default it off.
+    menu_glow_enabled = false,
     menu_glow_strength = 0,
 
     -- Animated menu-background weather.
@@ -2614,6 +2615,12 @@ local function cfg_load(name)
         end
     end
 
+    -- The new master flag did not exist in old profiles. Use the
+    -- previously saved strength so existing profiles keep their effect.
+    if not string.find(data, "B|menu_glow_enabled|", 1, true) then
+        S.menu_glow_enabled = (tonumber(S.menu_glow_strength) or 0) > 0
+    end
+
     cfg_add_to_index(name)
 
     CONFIG.loaded_name = name
@@ -3964,24 +3971,47 @@ end
 
 -- Neverlose-style 1px outline around every pill switch.
 -- The border and fill are opaque to avoid layered-alpha seams.
+-- v117 track geometry: real circles/filled body instead of individual
+-- 1px strips. Keep the same geometry throughout the menu fade.
 local function draw_switch_track(x, y, w, h, off_color, on_color, t)
     local progress = clamp(tonumber(t) or 0, 0, 1)
-    local rounding = h * 0.5
-    -- Keep the thin outline neutral at all toggle states.
-    -- Only the inside track and knob animate between off/on colors.
+    local rounding = math.floor(h * 0.5)
     local border = { 0.16, 0.16, 0.17, 1.0 }
     local inside = mix_color(off_color, on_color, progress)
-    -- Render the neutral outline from the very first visible frame.
-    -- Never switch geometry when the menu fade crosses an alpha threshold.
-    -- Always use the same non-overlapping corner geometry, from the
-    -- beginning of the fade to full opacity. Avoids border morphing.
-    local radius_px = math.floor(rounding)
-    rounded_fill_alpha_safe(x, y, w, h, radius_px, border)
-    rounded_fill_alpha_safe(
+    -- Do not suppress the outline while the menu animates in.
+    -- Using the v117 smooth opaque-path geometry for both layers also
+    -- avoids the jagged outline from the v119 pixel-strip version.
+    rounded_fill_opaque(x, y, w, h, rounding, border)
+    rounded_fill_opaque(
         x + 1, y + 1, w - 2, h - 2,
-        math.max(0, radius_px - 1), inside
+        math.max(0, rounding - 1), inside
     )
 end
+
+-- Reusable dependency animation for every three-dot settings panel.
+-- State and animation never go into configs; only existing settings do.
+local FALLEN_NESTED_STATE = {}
+local function fallen_nested_amount(key, enabled)
+    local now = tick()
+    local target = enabled and 1 or 0
+    local state = FALLEN_NESTED_STATE[key]
+    if not state then
+        state = { value = target, last = now }
+        FALLEN_NESTED_STATE[key] = state
+    end
+    local dt = clamp(now - state.last, 0, 0.05)
+    state.last = now
+    state.value = exp_chase(state.value, target, 14, dt)
+    if math.abs(state.value - target) < 0.001 then
+        state.value = target
+    end
+    return clamp(state.value, 0, 1)
+end
+
+local function fallen_nested_alpha(v)
+    return ease_out_cubic(clamp((v - 0.10) / 0.90, 0, 1))
+end
+
 
 local FALLEN_POPUP_CHECK_KEYS = {
     aim_fov_glow_enabled = true,
@@ -3994,6 +4024,7 @@ local FALLEN_POPUP_CHECK_KEYS = {
     world_fade_distance = true,
     world_icon_glow_enabled = true,
     armor_glow_enabled = true,
+    menu_glow_enabled = true,
     menu_snow = true,
     menu_rain = true,
     menu_lightning = true,
@@ -4014,6 +4045,16 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     if clicked and hot then
         value = not value
         S[key] = value
+
+        -- A new Menu Glow toggle needs a visible first-use preset.
+        if key == "menu_glow_enabled" and value == true then
+            if (tonumber(S.menu_glow_strength) or 0) <= 0 then
+                S.menu_glow_strength = 70
+            end
+            if (tonumber(S.menu_glow_v) or 0) <= 0.001 then
+                S.menu_glow_v = 1
+            end
+        end
 
         if type(FALLEN_SILENT_UI_VALUE_CHANGED) == "function" then
             FALLEN_SILENT_UI_VALUE_CHANGED(
@@ -5581,7 +5622,9 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     end
 
     local pw = 300
-    local ph = 206
+    local nested_glow = fallen_nested_amount(
+        "aim_fov:glow", S.aim_fov_glow_enabled == true)
+    local ph = 125 + 81 * nested_glow
 
     local base_px =
         dots_x
@@ -5638,104 +5681,55 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
     end
 
     if details_visible then
-        local glow_swatch_x = px + pw - 42
-        local glow_swatch_y = py + 46
-        local glow_swatch_s = 18
-        local glow_swatch_hot = hover(mx, my,
-            glow_swatch_x, glow_swatch_y, glow_swatch_s, glow_swatch_s)
-        toggle_row(
-            mx,
-            my,
-            ui_clicked and not glow_swatch_hot,
-            px + 8,
-            py + 35,
-            pw - 16,
-            "Glow",
-            "aim_fov_glow_enabled",
-            false
-        )
-        color_preview(glow_swatch_x, glow_swatch_y,
-            glow_swatch_s, glow_swatch_s, FALLEN_FOV_GLOW_COLOR())
-        if ui_clicked and glow_swatch_hot then
-            fallen_open_color_at("aim_fov_glow",
-                glow_swatch_x, glow_swatch_y, glow_swatch_s)
+        local row_x, row_w = px + 8, pw - 16
+        local glow_y = py + 35
+        local swatch_x = px + pw - 42
+        local swatch_y = glow_y + 11
+        local swatch_s = 18
+        local swatch_hot = hover(mx, my,
+            swatch_x, swatch_y, swatch_s, swatch_s)
+
+        -- Main toggle stays visible; its children are conditional.
+        toggle_row(mx, my, ui_clicked and not swatch_hot,
+            row_x, glow_y, row_w, "Glow", "aim_fov_glow_enabled", false)
+        color_preview(swatch_x, swatch_y, swatch_s, swatch_s,
+            FALLEN_FOV_GLOW_COLOR())
+        if ui_clicked and swatch_hot then
+            fallen_open_color_at("aim_fov_glow", swatch_x, swatch_y, swatch_s)
+        end
+        line(px + 12, glow_y + 40, px + pw - 12,
+            glow_y + 40, C.divider, 1)
+
+        local nested_row = 41 * nested_glow
+        local saved_alpha = MENU_RENDER_ALPHA
+        if nested_glow > 0.015 then
+            MENU_RENDER_ALPHA = saved_alpha * fallen_nested_alpha(nested_glow)
+            local can_edit = ui_clicked and nested_glow > 0.96
+            slider_row(mx, my, can_edit,
+                lmb and can_edit,
+                row_x + 13, py + 76, row_w - 13,
+                "Strength", "aim_fov_glow_strength", 0, 100, "int")
+            line(px + 12, py + 75 + nested_row,
+                px + pw - 12, py + 75 + nested_row, C.divider, 1)
+            slider_row(mx, my, can_edit,
+                lmb and can_edit,
+                row_x + 13, py + 76 + nested_row, row_w - 13,
+                "Spread", "aim_fov_glow_spread", 1, 12, "int")
+            MENU_RENDER_ALPHA = saved_alpha
         end
 
-        if shell_h > 84 then
-            line(
-                px + 12,
-                py + 74,
-                px + pw - 12,
-                py + 74,
-                C.divider,
-                1
-            )
-        end
+        local filled_y = py + 76 + 2 * nested_row
+        line(px + 12, filled_y - 1, px + pw - 12,
+            filled_y - 1, C.divider, 1)
+        toggle_row(mx, my, ui_clicked,
+            row_x, filled_y, row_w,
+            "Filled FOV", "aim_fov_filled", false)
 
-        if shell_h > 119 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 75,
-                pw - 16,
-                "Strength",
-                "aim_fov_glow_strength",
-                0,
-                100
-            )
-        end
-
-        if shell_h > 154 then
-            line(
-                px + 12,
-                py + 114,
-                px + pw - 12,
-                py + 114,
-                C.divider,
-                1
-            )
-        end
-
-        if shell_h > 189 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 115,
-                pw - 16,
-                "Spread",
-                "aim_fov_glow_spread",
-                1,
-                12
-            )
-        end
-
-        if shell_h > 180 then
-            line(
-                px + 12,
-                py + 154,
-                px + pw - 12,
-                py + 154,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                ui_clicked,
-                px + 8,
-                py + 155,
-                pw - 16,
-                "Filled FOV",
-                "aim_fov_filled",
-                false
-            )
+        if not S.aim_fov_glow_enabled
+            and (A.active_slider == "aim_fov_glow_strength"
+                or A.active_slider == "aim_fov_glow_spread")
+        then
+            A.active_slider = nil
         end
     end
 
@@ -5804,7 +5798,9 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
         or ease_in_out_cubic(raw_anim)
 
     local pw = 300
-    local ph = 206
+    local nested_glow = fallen_nested_amount(
+        "silent_fov:glow", S.silent_fov_glow_enabled == true)
+    local ph = 125 + 81 * nested_glow
 
     local base_px =
         dots_x
@@ -5868,104 +5864,55 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
     end
 
     if details_visible then
-        local glow_swatch_x = px + pw - 42
-        local glow_swatch_y = py + 46
-        local glow_swatch_s = 18
-        local glow_swatch_hot = hover(mx, my,
-            glow_swatch_x, glow_swatch_y, glow_swatch_s, glow_swatch_s)
-        toggle_row(
-            mx,
-            my,
-            ui_clicked and not glow_swatch_hot,
-            px + 8,
-            py + 35,
-            pw - 16,
-            "Glow",
-            "silent_fov_glow_enabled",
-            false
-        )
-        color_preview(glow_swatch_x, glow_swatch_y,
-            glow_swatch_s, glow_swatch_s, FALLEN_SILENT_FOV_GLOW_COLOR())
-        if ui_clicked and glow_swatch_hot then
-            fallen_open_color_at("silent_fov_glow",
-                glow_swatch_x, glow_swatch_y, glow_swatch_s)
+        local row_x, row_w = px + 8, pw - 16
+        local glow_y = py + 35
+        local swatch_x = px + pw - 42
+        local swatch_y = glow_y + 11
+        local swatch_s = 18
+        local swatch_hot = hover(mx, my,
+            swatch_x, swatch_y, swatch_s, swatch_s)
+
+        -- Main toggle stays visible; its children are conditional.
+        toggle_row(mx, my, ui_clicked and not swatch_hot,
+            row_x, glow_y, row_w, "Glow", "silent_fov_glow_enabled", false)
+        color_preview(swatch_x, swatch_y, swatch_s, swatch_s,
+            FALLEN_SILENT_FOV_GLOW_COLOR())
+        if ui_clicked and swatch_hot then
+            fallen_open_color_at("silent_fov_glow", swatch_x, swatch_y, swatch_s)
+        end
+        line(px + 12, glow_y + 40, px + pw - 12,
+            glow_y + 40, C.divider, 1)
+
+        local nested_row = 41 * nested_glow
+        local saved_alpha = MENU_RENDER_ALPHA
+        if nested_glow > 0.015 then
+            MENU_RENDER_ALPHA = saved_alpha * fallen_nested_alpha(nested_glow)
+            local can_edit = ui_clicked and nested_glow > 0.96
+            slider_row(mx, my, can_edit,
+                lmb and can_edit,
+                row_x + 13, py + 76, row_w - 13,
+                "Strength", "silent_fov_glow_strength", 0, 100, "int")
+            line(px + 12, py + 75 + nested_row,
+                px + pw - 12, py + 75 + nested_row, C.divider, 1)
+            slider_row(mx, my, can_edit,
+                lmb and can_edit,
+                row_x + 13, py + 76 + nested_row, row_w - 13,
+                "Spread", "silent_fov_glow_spread", 1, 12, "int")
+            MENU_RENDER_ALPHA = saved_alpha
         end
 
-        if shell_h > 84 then
-            line(
-                px + 12,
-                py + 74,
-                px + pw - 12,
-                py + 74,
-                C.divider,
-                1
-            )
-        end
+        local filled_y = py + 76 + 2 * nested_row
+        line(px + 12, filled_y - 1, px + pw - 12,
+            filled_y - 1, C.divider, 1)
+        toggle_row(mx, my, ui_clicked,
+            row_x, filled_y, row_w,
+            "Filled FOV", "silent_fov_filled", false)
 
-        if shell_h > 119 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 75,
-                pw - 16,
-                "Strength",
-                "silent_fov_glow_strength",
-                0,
-                100
-            )
-        end
-
-        if shell_h > 154 then
-            line(
-                px + 12,
-                py + 114,
-                px + pw - 12,
-                py + 114,
-                C.divider,
-                1
-            )
-        end
-
-        if shell_h > 189 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 115,
-                pw - 16,
-                "Spread",
-                "silent_fov_glow_spread",
-                1,
-                12
-            )
-        end
-
-        if shell_h > 180 then
-            line(
-                px + 12,
-                py + 154,
-                px + pw - 12,
-                py + 154,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                ui_clicked,
-                px + 8,
-                py + 155,
-                pw - 16,
-                "Filled FOV",
-                "silent_fov_filled",
-                false
-            )
+        if not S.silent_fov_glow_enabled
+            and (A.active_slider == "silent_fov_glow_strength"
+                or A.active_slider == "silent_fov_glow_spread")
+        then
+            A.active_slider = nil
         end
     end
 
@@ -18894,7 +18841,9 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
         or ease_in_out_cubic(raw)
 
     local pw = 300
-    local ph = 165
+    local nested_glow = fallen_nested_amount(
+        "armor:glow", S.armor_glow_enabled == true)
+    local ph = 84 + 81 * nested_glow
 
     local base_px =
         dots_x - pw + 28
@@ -18957,85 +18906,43 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
     end
 
     if raw > 0.001 then
-        local glow_swatch_x = px + pw - 42
-        local glow_swatch_y = py + 46
-        local glow_swatch_s = 18
-        local glow_swatch_hot = hover(mx, my,
-            glow_swatch_x, glow_swatch_y, glow_swatch_s, glow_swatch_s)
-        toggle_row(
-            mx,
-            my,
-            ui_clicked and not glow_swatch_hot,
-            px + 8,
-            py + 35,
-            pw - 16,
-            "Glow",
-            "armor_glow_enabled",
-            false
-        )
-        color_preview(glow_swatch_x, glow_swatch_y, glow_swatch_s,
-            glow_swatch_s, FALLEN_ARMOR_GLOW_COLOR())
-        if ui_clicked and glow_swatch_hot then
-            fallen_open_color_at("armor_glow", glow_swatch_x,
-                glow_swatch_y, glow_swatch_s)
+        local row_x, row_w = px + 8, pw - 16
+        local glow_y = py + 35
+        local swatch_x = px + pw - 42
+        local swatch_y = glow_y + 11
+        local swatch_s = 18
+        local swatch_hot = hover(mx, my,
+            swatch_x, swatch_y, swatch_s, swatch_s)
+        toggle_row(mx, my, ui_clicked and not swatch_hot,
+            row_x, glow_y, row_w, "Glow", "armor_glow_enabled", false)
+        color_preview(swatch_x, swatch_y, swatch_s,
+            swatch_s, FALLEN_ARMOR_GLOW_COLOR())
+        if ui_clicked and swatch_hot then
+            fallen_open_color_at("armor_glow", swatch_x, swatch_y, swatch_s)
         end
+        line(px + 12, glow_y + 40, px + pw - 12,
+            glow_y + 40, C.divider, 1)
 
-        if shell_h > 83 then
-            line(
-                px + 12,
-                py + 74,
-                px + pw - 12,
-                py + 74,
-                C.divider,
-                1
-            )
+        local nested_row = 41 * nested_glow
+        local old_alpha = MENU_RENDER_ALPHA
+        if nested_glow > 0.015 then
+            MENU_RENDER_ALPHA = old_alpha * fallen_nested_alpha(nested_glow)
+            local can_edit = ui_clicked and nested_glow > 0.96
+            slider_row(mx, my, can_edit, lmb and can_edit,
+                row_x + 13, py + 76, row_w - 13,
+                "Strength", "armor_glow_strength", 0, 200, "int")
+            line(px + 12, py + 75 + nested_row,
+                px + pw - 12, py + 75 + nested_row, C.divider, 1)
+            slider_row(mx, my, can_edit, lmb and can_edit,
+                row_x + 13, py + 76 + nested_row, row_w - 13,
+                "Spread", "armor_glow_spread", 2, 35, "int")
+            MENU_RENDER_ALPHA = old_alpha
         end
-
-        if shell_h > 118 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 75,
-                pw - 16,
-                "Strength",
-                "armor_glow_strength",
-                0,
-                200,
-                "int"
-            )
+        if not S.armor_glow_enabled
+            and (A.active_slider == "armor_glow_strength"
+                or A.active_slider == "armor_glow_spread") then
+            A.active_slider = nil
         end
-
-        if shell_h > 153 then
-            line(
-                px + 12,
-                py + 114,
-                px + pw - 12,
-                py + 114,
-                C.divider,
-                1
-            )
-        end
-
-        if shell_h > 153 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 115,
-                pw - 16,
-                "Spread",
-                "armor_glow_spread",
-                2,
-                35,
-                "int"
-            )
-        end
-
     end
 
     local popup_hot =
@@ -24181,11 +24088,15 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         or ease_in_out_cubic(raw)
 
     local pw = 278
-    -- Type row removed (41px). Weather/Hotkeys/Style rows slide up.
-    local ph = 426 + (A.secret_unlocked and 41 or 0)
+    local nested_glow = fallen_nested_amount(
+        "menu:glow", S.menu_glow_enabled == true)
+    -- Grow the popup only for the Glow Strength child row.
+    local ph = 385 + 41 * nested_glow
+        + (A.secret_unlocked and 41 or 0)
 
     local px = snap(anchor_x + 18)
-    local py = snap(anchor_y - ph - 18)
+    -- Fixed top coordinate: expanding dependent settings never moves the popup.
+    local py = snap(anchor_y - (426 + (A.secret_unlocked and 41 or 0)) - 18)
     local shell_h = ph
 
     local interactive = raw > 0.96 and A.menu_settings_open
@@ -24270,66 +24181,30 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
         end
     end
 
-    if shell_h > 158 then
+    if shell_h > 83 then
         line(px + 12, py + 80, px + pw - 12, py + 80, C.divider, 1)
 
-        slider_row(
-            mx,
-            my,
-            ui_clicked,
-            lmb,
-            px + 8,
-            py + 82,
-            pw - 16,
-            "Glow",
-            "menu_glow_strength",
-            0,
-            200,
-            "int"
-        )
-
-        line(px + 12, py + 121, px + pw - 12, py + 121, C.divider, 1)
-
-        local color_row_x = px + 8
-        local color_row_y = py + 122
-        local color_row_w = pw - 16
-
-        local glow_color_hot =
-            row_hover(mx, my, color_row_x, color_row_y, color_row_w, 41)
-
-        text(
-            color_row_x + 13,
-            color_row_y + 14,
-            "Glow Color",
-            FALLEN_HOVER_TEXT("menu_glow_color", glow_color_hot, C.text)
-        )
-
-        local swatch_x = color_row_x + color_row_w - 28
-        local swatch_y = color_row_y + 11
-        local swatch_w = 18
-        local swatch_h = 18
+        -- Main Menu Glow is a real on/off option; color lives on the same row.
+        local row_x, row_w = px + 8, pw - 16
+        local glow_y = py + 81
+        local swatch_x = row_x + row_w - 30
+        local swatch_y = glow_y + 11
+        local swatch_s = 18
+        local swatch_hot = hover(mx, my,
+            swatch_x, swatch_y, swatch_s, swatch_s)
+        toggle_row(mx, my, row_clicked and not swatch_hot,
+            row_x, glow_y, row_w, "Glow", "menu_glow_enabled", false)
 
         local gr, gg, gb = hsv_to_rgb(
             tonumber(S.menu_glow_h) or 0,
             tonumber(S.menu_glow_s) or 0,
-            tonumber(S.menu_glow_v) or 1
-        )
-
-        circle_fill(
-            swatch_x + swatch_w * 0.5,
-            swatch_y + swatch_h * 0.5,
-            swatch_w * 0.5,
-            {gr, gg, gb, (tonumber(S.menu_glow_alpha) or 100) / 100}
-        )
-
-        local swatch_hot = hover(mx, my, swatch_x, swatch_y, swatch_w, swatch_h)
-
+            tonumber(S.menu_glow_v) or 1)
+        world_square_swatch(swatch_x, swatch_y, swatch_s,
+            {gr, gg, gb, (tonumber(S.menu_glow_alpha) or 100) / 100})
         if ui_clicked and swatch_hot then
             FALLEN_COLOR_INPUT_STOP(true)
-
             if A.world_color_picker_open
-                and A.world_color_picker_key == "menu_glow"
-            then
+                and A.world_color_picker_key == "menu_glow" then
                 A.world_color_picker_open = false
                 A.world_color_picker_drag = nil
             else
@@ -24339,203 +24214,51 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
                 A.fov_picker_open = false
                 A.fov_picker_drag = nil
             end
-
             A.world_color_picker_anchor_x = FALLEN_UI_X(swatch_x)
             A.world_color_picker_anchor_y = FALLEN_UI_Y(swatch_y)
-            A.world_color_picker_anchor_w = FALLEN_UI_LEN(swatch_w)
-            A.world_color_picker_anchor_h = FALLEN_UI_LEN(swatch_h)
-
+            A.world_color_picker_anchor_w = FALLEN_UI_LEN(swatch_s)
+            A.world_color_picker_anchor_h = FALLEN_UI_LEN(swatch_s)
             if numeric_stop then numeric_stop(true) end
         end
 
-        line(px + 12, py + 162, px + pw - 12, py + 162, C.divider, 1)
-
-        -- No menu Type selector: only Default is supported.
-        -- Start the weather controls immediately under Glow Color.
-        local weather_offset = -41
-
-        -- Animated background weather.
-        local snow_y =
-            py + 204
-            + weather_offset
-
-        local rain_y =
-            py + 245
-            + weather_offset
-
-        local lightning_y =
-            py + 286
-            + weather_offset
-
-        local dark_background_y =
-            py + 327
-            + weather_offset
-
-        if shell_h > 246 + weather_offset then
-            line(
-                px + 12,
-                snow_y - 1,
-                px + pw - 12,
-                snow_y - 1,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                row_clicked,
-                px + 8,
-                snow_y,
-                pw - 16,
-                "Snow",
-                "menu_snow",
-                false
-            )
+        local child_row_h = 41 * nested_glow
+        local old_alpha = MENU_RENDER_ALPHA
+        if nested_glow > 0.015 then
+            MENU_RENDER_ALPHA = old_alpha * fallen_nested_alpha(nested_glow)
+            local can_edit = row_clicked and nested_glow > 0.96
+            line(px + 12, py + 121, px + pw - 12, py + 121, C.divider, 1)
+            slider_row(mx, my, can_edit, lmb and can_edit,
+                row_x + 13, py + 122, row_w - 13,
+                "Strength", "menu_glow_strength", 0, 200, "int")
+            MENU_RENDER_ALPHA = old_alpha
+        end
+        if not S.menu_glow_enabled
+            and A.active_slider == "menu_glow_strength" then
+            A.active_slider = nil
         end
 
-        if shell_h > 287 + weather_offset then
-            line(
-                px + 12,
-                rain_y - 1,
-                px + pw - 12,
-                rain_y - 1,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                row_clicked,
-                px + 8,
-                rain_y,
-                pw - 16,
-                "Rain",
-                "menu_rain",
-                false
-            )
+        local weather_y = py + 122 + child_row_h
+        local function separator(y)
+            line(px + 12, y, px + pw - 12, y, C.divider, 1)
+        end
+        local function menu_opt(y, label, key)
+            separator(y - 1)
+            toggle_row(mx, my, row_clicked, row_x, y, row_w,
+                label, key, false)
         end
 
-        if shell_h > 328 + weather_offset then
-            line(
-                px + 12,
-                lightning_y - 1,
-                px + pw - 12,
-                lightning_y - 1,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                row_clicked,
-                px + 8,
-                lightning_y,
-                pw - 16,
-                "Lightning",
-                "menu_lightning",
-                false
-            )
-        end
-
-        if shell_h > 369 + weather_offset then
-            line(
-                px + 12,
-                dark_background_y - 1,
-                px + pw - 12,
-                dark_background_y - 1,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                row_clicked,
-                px + 8,
-                dark_background_y,
-                pw - 16,
-                "Dark Background",
-                "menu_dark_background",
-                false
-            )
-        end
-
-        local keybinds_y =
-            py + 368
-            + weather_offset
-
-        if shell_h > 410 + weather_offset then
-            line(
-                px + 12,
-                keybinds_y - 1,
-                px + pw - 12,
-                keybinds_y - 1,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                row_clicked,
-                px + 8,
-                keybinds_y,
-                pw - 16,
-                "Hotkeys",
-                "keybinds_list_enabled",
-                false
-            )
-        end
-
-        if shell_h > 451 + weather_offset then
-            line(
-                px + 12,
-                py + 408 + weather_offset,
-                px + pw - 12,
-                py + 408 + weather_offset,
-                C.divider,
-                1
-            )
-
-            FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
-                mx,
-                my,
-                row_clicked,
-                px + 8,
-                py + 409 + weather_offset,
-                pw - 16,
-                "Menu Style Color",
-                "menu_style"
-            )
-        end
-
-        -- Secret setting is completely absent until the hidden brand gesture.
-        if A.secret_unlocked
-            and shell_h > 492 + weather_offset
-        then
-            line(
-                px + 12,
-                py + 449 + weather_offset,
-                px + pw - 12,
-                py + 449 + weather_offset,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                row_clicked,
-                px + 8,
-                py + 450 + weather_offset,
-                pw - 16,
-                "???",
-                "secret_enabled",
-                false
-            )
+        menu_opt(weather_y, "Snow", "menu_snow")
+        menu_opt(weather_y + 41, "Rain", "menu_rain")
+        menu_opt(weather_y + 82, "Lightning", "menu_lightning")
+        menu_opt(weather_y + 123, "Dark Background", "menu_dark_background")
+        menu_opt(weather_y + 164, "Hotkeys", "keybinds_list_enabled")
+        separator(weather_y + 204)
+        FALLEN_DRAW_MENU_GRADIENT_COLOR_ROW(
+            mx, my, row_clicked, row_x,
+            weather_y + 205, row_w,
+            "Menu Style Color", "menu_style")
+        if A.secret_unlocked then
+            menu_opt(weather_y + 246, "???", "secret_enabled")
         end
 
         local scale_dropdown_hot =
@@ -30345,16 +30068,12 @@ hooks.on_render(function()
             2
         )
 
-    FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
-        wx,
-        wy,
-        WIN_W,
-        WIN_H,
-        OUTER_R,
-        glow_rgb,
-        glow_strength,
-        34 / 3
-    )
+    if S.menu_glow_enabled == true then
+        FALLEN_DRAW_FOV_STYLE_ROUNDED_GLOW(
+            wx, wy, WIN_W, WIN_H, OUTER_R,
+            glow_rgb, glow_strength, 34 / 3
+        )
+    end
 
     -- Base surfaces are genuinely transparent during the transition, but
     -- sidebar/content are now two DISJOINT rounded shapes. Nothing is drawn
@@ -31458,7 +31177,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v108 | Neverlose search + LMB three-dots | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v120 | Nested Settings + v117 Toggle Style | 690x500 | source widgets/layout/animations | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
