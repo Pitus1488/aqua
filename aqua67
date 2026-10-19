@@ -5,6 +5,7 @@
 -- Loader/menu transition gate.
 _G.FallenSurvivalLoaded = false
 _G.FallenMenuReady = false
+_G.FALLEN_SELECTED_UI = "Neverlose" -- chosen in the loader before Load
 
 -- Menu boot state for loader integration.
 _G.FallenLua_Menu = _G.FallenLua_Menu or {}
@@ -4033,6 +4034,44 @@ local FALLEN_POPUP_CHECK_KEYS = {
     secret_enabled = true,
 }
 
+-- One checkmark animation for ALL settings panels (including Bases and Plants).
+-- Unlike frame-step lerps, elapsed-time interpolation has a consistent speed at
+-- any framerate and on the very first frame after a popup opens.
+local FALLEN_CHECK_ANIM = {}
+local FALLEN_CHECK_SPEED = 14
+
+local function fallen_check_progress(key, enabled)
+    local now = tick()
+    local target = enabled and 1 or 0
+    local state = FALLEN_CHECK_ANIM[key]
+    if not state then
+        state = {value = target, last = now}
+        FALLEN_CHECK_ANIM[key] = state
+    end
+    local dt = clamp(now - state.last, 0, 0.05)
+    state.last = now
+    state.value = exp_chase(state.value, target, FALLEN_CHECK_SPEED, dt)
+    if math.abs(state.value - target) < 0.002 then
+        state.value = target
+    end
+    return clamp(state.value, 0, 1)
+end
+
+local function fallen_draw_settings_check(x, y, label, key, hot)
+    local progress = fallen_check_progress(key, S[key] == true)
+    local eased = ease_out_cubic(progress)
+    local opacity = clamp((progress - 0.025) / 0.975, 0, 1)
+    local check_x, check_y = x + 17, y + 20.5
+    if opacity > 0.001 then
+        local ink = alpha(C.text, opacity)
+        line(check_x - 5, check_y, check_x - 1, check_y + 4, ink, 1.4)
+        line(check_x - 1, check_y + 4, check_x + 6, check_y - 4, ink, 1.4)
+    end
+    text(x + 13 + 18 * eased, y + 14, label,
+        hot and C.text or mix_color(C.text_dim, C.text, eased))
+    return progress
+end
+
 local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     clicked =
         clicked
@@ -4064,39 +4103,20 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
         end
     end
 
-    local target = value and 1 or 0
-    local anim = A.toggles[key]
-
-    if anim == nil then
-        anim = target
-    end
-
-    -- Source Checkbox(): ImLerp(..., 0.08f)
-    anim = lerp(anim, target, 0.08)
-
-    if math.abs(anim - target) < 0.0015 then
-        anim = target
-    end
-
-    A.toggles[key] = anim
-
     if FALLEN_POPUP_CHECK_KEYS[key] then
-        -- Unchecked: flush-left text, no reserved checkbox space.
-        -- Checked: animate the text to the right while a tick fades in.
         if hot then
             rounded_fill(x + 5, y + 4, w - 10, h - 8, 5, C.button_hovered)
         end
-        local shift = 18 * anim
-        local cx, cy = x + 17, y + h * 0.5
-        if anim > 0.015 then
-            local tick_color = alpha(C.text, anim)
-            line(cx - 5, cy, cx - 1, cy + 4, tick_color, 1.4)
-            line(cx - 1, cy + 4, cx + 6, cy - 4, tick_color, 1.4)
-        end
-        text(x + 13 + shift, y + 14, label,
-            mix_color(C.text_dim, C.text, anim))
+        fallen_draw_settings_check(x, y, label, key, hot)
         return
     end
+
+    local target = value and 1 or 0
+    local anim = A.toggles[key]
+    if anim == nil then anim = target end
+    anim = lerp(anim, target, 0.08)
+    if math.abs(anim - target) < 0.0015 then anim = target end
+    A.toggles[key] = anim
 
     text(
         x + 13,
@@ -4874,14 +4894,22 @@ function FALLEN_COLOR_INPUT_POLL()
     end
 end
 
+-- Single rounded-square Color Picker preview for every page and popup.
+local function fallen_color_swatch(x, y, w, h, c)
+    c = c or C.white
+    local sz = math.min(w, h)
+    local bx = x + (w - sz) * 0.5
+    local by = y + (h - sz) * 0.5
+    local border = {0.16, 0.16, 0.17, 1}
+    local fill_color = {
+        c[1] or 1, c[2] or 1, c[3] or 1,
+        math.max(c[4] or 1, 0.01)
+    }
+    rounded_outline(bx, by, sz, sz, 4, border, 1, fill_color)
+end
+
 local function color_preview(x, y, w, h, override_color)
-    local c = override_color or fov_color()
-    local size = math.min(18, w, h)
-    local bx = x + (w - size) * 0.5
-    local by = y + (h - size) * 0.5
-    rounded_outline(bx, by, size, size, 4,
-        { 0.16, 0.16, 0.17, 1 }, 1,
-        { c[1], c[2], c[3], math.max(c[4] or 1, 0.01) })
+    fallen_color_swatch(x, y, w, h, override_color or fov_color())
 end
 
 local function fallen_open_color_at(prefix, x, y, size)
@@ -4960,7 +4988,7 @@ local function aim_settings_step_anim()
 
     -- Do not keep an asymptotic invisible tail alive for another second.
     if target == 0
-        and (A.aim_settings_anim or 0) < 0.028
+        and (A.aim_settings_anim or 0) < 0.018
     then
         A.aim_settings_anim = 0
     elseif target == 1
@@ -4998,7 +5026,7 @@ function FALLEN_FOV_SETTINGS_STEP_ANIM()
         )
 
     if target == 0
-        and (A.fov_settings_anim or 0) < 0.028
+        and (A.fov_settings_anim or 0) < 0.018
     then
         A.fov_settings_anim = 0
     elseif target == 1
@@ -5563,7 +5591,7 @@ function FALLEN_SILENT_FOV_SETTINGS_STEP_ANIM()
         )
 
     if target == 0
-        and (A.silent_fov_settings_anim or 0) < 0.028
+        and (A.silent_fov_settings_anim or 0) < 0.018
     then
         A.silent_fov_settings_anim =
             0
@@ -7169,10 +7197,7 @@ local function world_item_color(item)
 end
 
 local function world_square_swatch(x, y, size, c)
-    -- Matching 4px rounded-square swatches across the entire interface.
-    rounded_outline(x, y, size, size, 4,
-        { 0.16, 0.16, 0.17, 1 }, 1,
-        { c[1], c[2], c[3], math.max(c[4] or 1, 0.01) })
+    fallen_color_swatch(x, y, size, size, c)
 end
 
 local function resource_toggle_row(
@@ -7197,24 +7222,8 @@ local function resource_toggle_row(
 
     local key = item.key
 
-    if A.toggles[key] == nil then
-        A.toggles[key] = S[key] and 1 or 0
-    end
-
-    local target = S[key] and 1 or 0
-    A.toggles[key] = lerp(A.toggles[key], target, 0.23)
-    local check_anim = clamp(A.toggles[key], 0, 1)
-
-    text(
-        x + 12 + 17 * check_anim,
-        y + 14,
-        item.label,
-        FALLEN_HOVER_TEXT(
-            "resource:" .. tostring(item.id),
-            hot,
-            mix_color(C.text_dim, C.text, check_anim)
-        )
-    )
+    -- Reuse exactly the Settings checkmark/text animation.
+    fallen_draw_settings_check(x, y, item.label, key, hot)
 
     -- Compact Neverlose-like checklist: check at left, color at far right.
     local swatch_s = 18
@@ -7223,13 +7232,6 @@ local function resource_toggle_row(
     local swatch_hot = hover(mx, my,
         swatch_x, swatch_y, swatch_s, swatch_s)
     world_square_swatch(swatch_x, swatch_y, swatch_s, c)
-
-    if check_anim > 0.015 then
-        local cx, cy = x + 16, y + 20.5
-        local tick_color = alpha(C.text, check_anim)
-        line(cx - 5, cy, cx - 1, cy + 4, tick_color, 1.4)
-        line(cx - 1, cy + 4, cx + 6, cy - 4, tick_color, 1.4)
-    end
 
     if clicked and swatch_hot then
         local prefix =
@@ -18702,7 +18704,7 @@ function FALLEN_ARMOR_SETTINGS_STEP()
         )
 
     if target == 0
-        and (A.armor_settings_anim or 0) < 0.02
+        and (A.armor_settings_anim or 0) < 0.018
     then
         A.armor_settings_anim = 0
     elseif target == 1
@@ -19788,27 +19790,8 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
     local prefix = world_base_color_prefix(cfg.id)
     local col = world_color_from_prefix(prefix)
 
-    text(
-        x + 29,
-        y + 14,
-        cfg.label,
-        FALLEN_HOVER_TEXT(
-            "house:" .. tostring(cfg.id),
-            hot,
-            C.text
-        )
-    )
-
-    if A.toggles[key] == nil then
-        A.toggles[key] = enabled and 1 or 0
-    end
-
-    local target = enabled and 1 or 0
-    A.toggles[key] = lerp(A.toggles[key], target, 0.23)
-
-    if math.abs(A.toggles[key] - target) < 0.002 then
-        A.toggles[key] = target
-    end
+    -- Same smooth tick and text motion as Menu settings / FOV / Resources.
+    fallen_draw_settings_check(x, y, cfg.label, key, hot)
 
     -- Compact Neverlose-like checklist: check at left, color at far right.
     local swatch_s = 18
@@ -19817,12 +19800,6 @@ function world_base_compact_row(mx, my, clicked, x, y, w, cfg)
     local swatch_hot = hover(mx, my,
         swatch_x, swatch_y, swatch_s, swatch_s)
     world_square_swatch(swatch_x, swatch_y, swatch_s, col)
-
-    if S[key] == true then
-        local cx, cy = x + 16, y + 20.5
-        line(cx - 5, cy, cx - 1, cy + 4, C.text, 1.4)
-        line(cx - 1, cy + 4, cx + 6, cy - 4, C.text, 1.4)
-    end
 
     if clicked and swatch_hot then
         FALLEN_COLOR_INPUT_STOP(true)
@@ -27550,12 +27527,8 @@ function FALLEN_DRAW_VISUALS_MAIN_PAGE(
     local swatch_x = x + card_w - 40
     local swatch_y = color_row_y + 11
 
-    circle_fill(
-        swatch_x + swatch_w * 0.5,
-        swatch_y + swatch_h * 0.5,
-        swatch_w * 0.5,
-        FALLEN_BT_COLOR()
-    )
+    fallen_color_swatch(swatch_x, swatch_y,
+        swatch_w, swatch_h, FALLEN_BT_COLOR())
 
     local swatch_hot =
         hover(
@@ -29767,6 +29740,7 @@ end
 -- =========================================================
 
 hooks.on_render(function()
+    if _G.FALLEN_SELECTED_UI == "Fatality" then return end
     -- Wait until the loader has fully faded away before showing the menu.
     if _G.FallenMenuReady ~= true then
         return
@@ -30923,12 +30897,8 @@ hooks.on_render(function()
         local sc_swatch_x = page_x + page_w - 40
         local sc_swatch_y = color_row_y + 11
 
-        circle_fill(
-            sc_swatch_x + sc_swatch_w * 0.5,
-            sc_swatch_y + sc_swatch_h * 0.5,
-            sc_swatch_w * 0.5,
-            FALLEN_SECRET_CROSSHAIR_COLOR()
-        )
+        fallen_color_swatch(sc_swatch_x, sc_swatch_y,
+            sc_swatch_w, sc_swatch_h, FALLEN_SECRET_CROSSHAIR_COLOR())
 
         local sc_swatch_hot =
             hover(
@@ -31089,6 +31059,7 @@ end)
 -- always gets priority. Particles are excluded from the menu rectangle, so
 -- visually they still remain behind the UI.
 hooks.on_render(function()
+    if _G.FALLEN_SELECTED_UI == "Fatality" then return end
     if _G.FallenMenuReady ~= true then
         return
     end
@@ -31433,6 +31404,13 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
         FALLEN_HOTKEYS_ICON_GET,
         FALLEN_WORLD_BODY_BAG_ICON,
     }
+
+    if _G.FALLEN_SELECTED_UI == "Fatality" then
+        -- Fatality port uses no remote menu art: do not preload the
+        -- Neverlose icon atlas when that UI was not selected.
+        _G.FALLEN_IMAGE_PRELOAD_QUEUE = {}
+        _G.FALLEN_IMAGE_PRELOAD_SPECIALS = {}
+    end
 
     _G.FALLEN_IMAGE_PRELOAD_STARTED = true
     _G.FALLEN_IMAGE_PRELOAD_DONE = false
@@ -32479,6 +32457,7 @@ do
             bar_y + bar_h + gap_bar_text, alpha)
     end
 
+    -- Choice panel: same easing as the existing Release popover, now selects UI.
     function L.draw_branch_popup(mx0, my0, modal_w, modal_h, alpha, mx, my, click, dt, now)
         local menu_t = L.ease_in_out_cubic(L.modal.branch_t)
         if menu_t <= 0.001 then
@@ -32488,46 +32467,45 @@ do
 
         local load_x = mx0 + modal_w - 20 - 100
         local load_y = my0 + modal_h - 20 - 30
-        local pop_w = 108
-        local pop_h = 42
-        local pop_bottom = load_y + 30 + 2
+        local pop_w, pop_h = 142, 77
         local pop_right = load_x + 100 + 2
-        local slide = (1 - menu_t) * 10
+        -- Keep the two-item popover ABOVE the arrow so row two never
+        -- overlaps the arrow hotspot and accidentally closes the list.
+        local pop_bottom = load_y - 4
         local px = pop_right - pop_w
-        local py = pop_bottom - pop_h + slide
+        local py = pop_bottom - pop_h + (1 - menu_t) * 10
         local pa = alpha * menu_t
 
         L.rounded_fill(px, py, pop_w, pop_h, 5, L.theme.card, pa)
         L.rounded_outline(px, py, pop_w, pop_h, 5, L.theme.popup_border, pa, 1)
 
-        local r0x, r0y = px + 3, py + 6
-        local r1x, r1y = px + pop_w - 3, r0y + 30
         local interactive = L.modal.branch_menu and L.modal.branch_t > 0.55
-        local hot = interactive and L.inside(mx, my, r0x, r0y, r1x - r0x, r1y - r0y)
-        local target = (interactive and hot) and 1 or 0
-        L.modal.branch_hover = L.modal.branch_hover
-            + (target - L.modal.branch_hover) * math.min(1, 14 * dt)
-
-        if L.modal.branch_hover > 0.01 then
-            L.rounded_fill(r0x, r0y, r1x - r0x, r1y - r0y, 4,
-                L.theme.text, 0.08 * L.modal.branch_hover * pa)
-        end
-
-        L.draw_git_branch_icon(r0x + 10 + 7 - 3, r0y + 15, 14,
-            L.theme.branch_icon, pa)
-        L.text(r0x + 10 + 14 + 2, r0y + 8, "Release", L.theme.branch_label, pa)
-
-        if click and hot and not L.inject.active then
-            L.modal.branch_menu = false
-        elseif click and interactive and not L.inside(mx, my, px, py, pop_w, pop_h) then
-            local bx = load_x - 8 - 30
-            local by = load_y
-            if not L.inside(mx, my, bx, by, 30, 30) then
+        local choices = {"Neverlose", "Fatality"}
+        for i, name in ipairs(choices) do
+            local ry = py + 5 + (i-1)*34
+            local hot = interactive and L.inside(mx, my, px+4, ry, pop_w-8, 31)
+            local chosen = _G.FALLEN_SELECTED_UI == name
+            if chosen or hot then
+                L.rounded_fill(px+4, ry, pop_w-8, 31, 4,
+                    chosen and L.theme.button or L.theme.text,
+                    (chosen and 0.30 or 0.065) * pa)
+            end
+            L.text(px+13, ry+8, chosen and "o" or " ",
+                chosen and L.theme.button or L.theme.dim, pa)
+            L.text(px+30, ry+8, name,
+                (hot or chosen) and L.theme.text or L.theme.dim, pa)
+            if click and hot and not L.inject.active then
+                _G.FALLEN_SELECTED_UI = name
                 L.modal.branch_menu = false
             end
         end
-
-        return L.inside(mx, my, px, py, pop_w, pop_h)
+        if click and interactive and not L.inside(mx,my,px,py,pop_w,pop_h) then
+            local bx = load_x-8-30
+            if not L.inside(mx,my,bx,load_y,30,30) then
+                L.modal.branch_menu = false
+            end
+        end
+        return L.inside(mx,my,px,py,pop_w,pop_h)
     end
 
     function L.draw_modal(x, y, global_alpha, mx, my, click, dt, now)
@@ -32562,7 +32540,7 @@ do
         local left_x = modal_x + 20
         local value_x = modal_x + 102
         local labels = {"Branch:", "Updated:", "Valid Until:", "Last Launch:"}
-        local values = {"Release", "Today", "Lifetime", L.last_launch}
+        local values = {_G.FALLEN_SELECTED_UI or "Neverlose", "Today", "Lifetime", L.last_launch}
         for i = 1, 4 do
             L.text(left_x, base_y + (i - 1) * line_sp, labels[i], L.theme.soft, body_alpha)
             L.text(value_x, base_y + (i - 1) * line_sp, values[i], L.theme.link, body_alpha)
@@ -34026,3 +34004,783 @@ hooks.on_render(function()
     )
 end)
 
+
+
+-- =============================================================
+-- Fatality UI (standalone Drawing.* port, adapted from
+-- Fatality-UI-main/src/source.luau layout and interaction model).
+-- Runtime/gameplay remains the original Fallen-lua module state S.
+-- Roblox Instance/TweenService are not available in this custom API.
+-- =============================================================
+do
+    local F = {
+        page = "RAGE", visible = true,
+        x = nil, y = nil,
+        w = 750, h = 500, fade = 0, tab_fade = 0,
+        last = tick(), prev_left = false, prev_right = false,
+        prev_shift = false,
+        drag = false, off_x = 0, off_y = 0,
+        active_slider = nil, open_dropdown = nil,
+        option = nil, option_fade = 0, option_x = 0, option_y = 0,
+        color = nil, color_fade = 0, color_x = 0, color_y = 0,
+        key_capture = nil, anim = {}, tab_anim = {},
+        scroll = {}, focus = nil, search_open = false,
+        search_text = "", config_text = "", config_selected = nil,
+        keys_prev = {},
+        definitions = {
+        {"RAGE", 1, "AIMBOT", "aim_auto_prediction", "bool", "Auto prediction", 0, 0, {}},
+        {"RAGE", 1, "AIMBOT", "aim_enabled", "bool", "Aimbot", 0, 0, {}},
+        {"RAGE", 1, "AIMBOT", "sticky_aim", "bool", "Sticky aim", 0, 0, {}},
+        {"RAGE", 1, "AIMBOT", "trigger_enabled", "bool", "Trigger enabled", 0, 0, {}},
+        {"RAGE", 2, "TARGETING", "aim_hold_key", "key", "Aim key", 0, 0, {}},
+        {"RAGE", 2, "TARGETING", "aim_max_dist", "num", "Max dist", 0, 2500, {}},
+        {"RAGE", 2, "TARGETING", "aim_target_part", "enum", "Target part", 0, 0, {"Head","Torso","Feet"}},
+        {"RAGE", 3, "SILENT AIM", "silent_enabled", "bool", "Silent aim", 0, 0, {}},
+        {"RAGE", 3, "SILENT AIM", "silent_key", "key", "Key", 0, 0, {}},
+        {"RAGE", 3, "SILENT AIM", "silent_magic_bullet", "bool", "Magic bullet", 0, 0, {}},
+        {"RAGE", 3, "SILENT AIM", "silent_max_dist", "num", "Max dist", 0, 2500, {}},
+        {"RAGE", 3, "SILENT AIM", "silent_sticky_aim", "bool", "Sticky aim", 0, 0, {}},
+        {"RAGE", 3, "SILENT AIM", "silent_target_part", "enum", "Target part", 0, 0, {"Head","Torso","Feet"}},
+        {"RAGE", 3, "SILENT AIM", "silent_team_check", "bool", "Team check", 0, 0, {}},
+        {"LEGIT", 1, "AIM FOV", "aim_fov_enabled", "bool", "Show aim FOV", 0, 0, {}},
+        {"LEGIT", 1, "AIM FOV", "aim_fov_filled", "bool", "Fov filled", 0, 0, {}},
+        {"LEGIT", 1, "AIM FOV", "aim_fov_glow_enabled", "bool", "Aim FOV glow", 0, 0, {}},
+        {"LEGIT", 1, "AIM FOV", "aim_fov_glow_spread", "num", "Fov glow spread", 0, 30, {}},
+        {"LEGIT", 1, "AIM FOV", "aim_fov_glow_strength", "num", "Fov glow strength", 0, 100, {}},
+        {"LEGIT", 1, "AIM FOV", "aim_fov_size", "num", "Fov size", 0, 500, {}},
+        {"LEGIT", 1, "AIM FOV", "aim_fov", "color", "Fov", 0, 0, {}},
+        {"LEGIT", 1, "AIM FOV", "aim_fov_glow", "color", "Fov glow", 0, 0, {}},
+        {"LEGIT", 2, "SILENT FOV", "silent_fov", "num", "Fov", 0, 600, {}},
+        {"LEGIT", 2, "SILENT FOV", "silent_fov_enabled", "bool", "Fov enabled", 0, 0, {}},
+        {"LEGIT", 2, "SILENT FOV", "silent_fov_filled", "bool", "Fov filled", 0, 0, {}},
+        {"LEGIT", 2, "SILENT FOV", "silent_fov_glow_enabled", "bool", "Silent FOV glow", 0, 0, {}},
+        {"LEGIT", 2, "SILENT FOV", "silent_fov_glow_spread", "num", "Fov glow spread", 0, 30, {}},
+        {"LEGIT", 2, "SILENT FOV", "silent_fov_glow_strength", "num", "Fov glow strength", 0, 100, {}},
+        {"LEGIT", 2, "SILENT FOV", "silent_fov", "color", "Fov", 0, 0, {}},
+        {"LEGIT", 2, "SILENT FOV", "silent_fov_glow", "color", "Fov glow", 0, 0, {}},
+        {"VISUAL", 1, "ARMOR ESP", "armor_esp_enabled", "bool", "Esp enabled", 0, 0, {}},
+        {"VISUAL", 1, "ARMOR ESP", "armor_esp_mode", "enum", "Esp mode", 0, 0, {"Normal","On Player"}},
+        {"VISUAL", 1, "ARMOR ESP", "armor_esp_range", "num", "Esp range", 0, 2500, {}},
+        {"VISUAL", 1, "ARMOR ESP", "armor_esp_size", "num", "Esp size", 0, 100, {}},
+        {"VISUAL", 1, "ARMOR ESP", "armor_esp_smooth", "num", "Esp smooth", 1, 100, {}},
+        {"VISUAL", 1, "ARMOR ESP", "armor_onplayer_background", "bool", "Onplayer background", 0, 0, {}},
+        {"VISUAL", 1, "ARMOR ESP", "armor_onplayer_glass", "bool", "Onplayer glass", 0, 0, {}},
+        {"VISUAL", 1, "ARMOR ESP", "armor_show_weapon", "bool", "Show weapon", 0, 0, {}},
+        {"VISUAL", 2, "BULLET TRACERS", "bullet_tracer_animation", "enum", "Animation", 0, 0, {"None","Sway","Wave"}},
+        {"VISUAL", 2, "BULLET TRACERS", "bullet_tracer_delay", "num", "Delay", 0, 5, {}},
+        {"VISUAL", 2, "BULLET TRACERS", "bullet_tracer_enabled", "bool", "Enabled", 0, 0, {}},
+        {"VISUAL", 2, "BULLET TRACERS", "bullet_tracer_life", "num", "Life", 0, 5, {}},
+        {"VISUAL", 2, "BULLET TRACERS", "bullet_tracer_reveal", "num", "Reveal", 0, 5, {}},
+        {"VISUAL", 2, "BULLET TRACERS", "bullet_tracer_style", "enum", "Style", 0, 0, {"Neon","Lightning","Rainbow","Water","Lava"}},
+        {"VISUAL", 2, "BULLET TRACERS", "bullet_tracer_thickness", "num", "Thickness", 0.1, 10, {}},
+        {"VISUAL", 3, "ARMOR GLOW", "armor_glow_enabled", "bool", "Glow enabled", 0, 0, {}},
+        {"VISUAL", 3, "ARMOR GLOW", "armor_glow_spread", "num", "Glow spread", 0, 30, {}},
+        {"VISUAL", 3, "ARMOR GLOW", "armor_glow_strength", "num", "Glow strength", 0, 100, {}},
+        {"VISUAL", 3, "ARMOR GLOW", "armor_glow", "color", "Glow", 0, 0, {}},
+        {"VISUAL", 3, "GENERAL", "character_enabled", "bool", "Character enabled", 0, 0, {}},
+        {"VISUAL", 3, "GENERAL", "npc_enabled", "bool", "Npc enabled", 0, 0, {}},
+        {"VISUAL", 3, "GENERAL", "teams_enabled", "bool", "Teams enabled", 0, 0, {}},
+        {"VISUAL", 3, "GENERAL", "visuals_enabled", "bool", "Visuals enabled", 0, 0, {}},
+        {"VISUAL", 3, "HIT EFFECTS", "hit_effect_enabled", "bool", "Enabled", 0, 0, {}},
+        {"VISUAL", 3, "HIT EFFECTS", "hit_effect_size", "num", "Size", 0, 100, {}},
+        {"VISUAL", 3, "HIT EFFECTS", "hit_effect_style", "enum", "Style", 0, 0, {"Spark","SmokeRing","particles.js","Idk","Cosmos","Ice","Crystal"}},
+        {"WORLD", 1, "WORLD ESP", "world_body_bag_esp_enabled", "bool", "Body bag esp enabled", 0, 0, {}},
+        {"WORLD", 1, "WORLD ESP", "world_dropped_esp_enabled", "bool", "Dropped esp enabled", 0, 0, {}},
+        {"WORLD", 1, "WORLD ESP", "world_enabled", "bool", "Enabled", 0, 0, {}},
+        {"WORLD", 1, "WORLD ESP", "world_esp_enabled", "bool", "Enable world ESP", 0, 0, {}},
+        {"WORLD", 1, "WORLD ESP", "world_max_dist", "num", "Max dist", 0, 2500, {}},
+        {"WORLD", 1, "WORLD ESP", "world_show_distance", "bool", "Show distance", 0, 0, {}},
+        {"WORLD", 1, "WORLD ESP", "world_show_names", "bool", "Show names", 0, 0, {}},
+        {"WORLD", 1, "WORLD ESP", "world_icon_border", "color", "Icon border", 0, 0, {}},
+        {"WORLD", 2, "BASE / HOUSE", "world_base_esp_enabled", "bool", "Base esp enabled", 0, 0, {}},
+        {"WORLD", 2, "NODES", "world_metal_node", "bool", "Metal node", 0, 0, {}},
+        {"WORLD", 2, "NODES", "world_node_esp_enabled", "bool", "Node esp enabled", 0, 0, {}},
+        {"WORLD", 2, "NODES", "world_phosphate_node", "bool", "Phosphate node", 0, 0, {}},
+        {"WORLD", 2, "NODES", "world_stone_node", "bool", "Stone node", 0, 0, {}},
+        {"WORLD", 2, "PLANTS", "world_blueberry_plant", "bool", "Blueberry plant", 0, 0, {}},
+        {"WORLD", 2, "PLANTS", "world_corn_plant", "bool", "Corn plant", 0, 0, {}},
+        {"WORLD", 2, "PLANTS", "world_lemon_plant", "bool", "Lemon plant", 0, 0, {}},
+        {"WORLD", 2, "PLANTS", "world_plant_esp_enabled", "bool", "Plant esp enabled", 0, 0, {}},
+        {"WORLD", 2, "PLANTS", "world_pumpkin_plant", "bool", "Pumpkin plant", 0, 0, {}},
+        {"WORLD", 2, "PLANTS", "world_raspberry_plant", "bool", "Raspberry plant", 0, 0, {}},
+        {"WORLD", 2, "PLANTS", "world_tomato_plant", "bool", "Tomato plant", 0, 0, {}},
+        {"WORLD", 2, "PLANTS", "world_wool_plant", "bool", "Wool plant", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_blueberry_plant", "color", "Color blueberry plant", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_body_bag", "color", "Color body bag", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_corn_plant", "color", "Color corn plant", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_dropped_item", "color", "Color dropped item", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_grenade", "color", "Color grenade", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_lemon_plant", "color", "Color lemon plant", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_metal_node", "color", "Color metal node", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_phosphate_node", "color", "Color phosphate node", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_pumpkin_plant", "color", "Color pumpkin plant", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_raspberry_plant", "color", "Color raspberry plant", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_stone_node", "color", "Color stone node", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_tomato_plant", "color", "Color tomato plant", 0, 0, {}},
+        {"WORLD", 3, "COLORS", "world_color_wool_plant", "color", "Color wool plant", 0, 0, {}},
+        {"WORLD", 3, "GRENADES", "world_grenade_esp_enabled", "bool", "Grenade esp enabled", 0, 0, {}},
+        {"WORLD", 3, "GRENADES", "world_grenade_trail_enabled", "bool", "Grenade trail enabled", 0, 0, {}},
+        {"WORLD", 3, "GRENADES", "world_grenade_trail_thickness", "num", "Grenade trail thickness", 0.1, 10, {}},
+        {"WORLD", 3, "ICONS", "world_fade_distance", "bool", "Fade by distance", 0, 0, {}},
+        {"WORLD", 3, "ICONS", "world_icon_glow_enabled", "bool", "Icon glow", 0, 0, {}},
+        {"WORLD", 3, "ICONS", "world_icon_glow_spread", "num", "Icon glow spread", 0, 30, {}},
+        {"WORLD", 3, "ICONS", "world_icon_glow_strength", "num", "Icon glow strength", 0, 100, {}},
+        {"WORLD", 3, "ICONS", "world_icon_size", "num", "Icon size", 0, 100, {}},
+        {"WORLD", 3, "ICONS", "world_show_icons", "bool", "Show icons", 0, 0, {}},
+        {"WORLD", 3, "ICONS", "world_icon_glow", "color", "Icon glow", 0, 0, {}},
+        {"MISC", 1, "MOBILITY", "misc_fly_enabled", "bool", "Fly enabled", 0, 0, {}},
+        {"MISC", 1, "MOBILITY", "misc_fps_enabled", "bool", "FPS fast flags", 0, 0, {}},
+        {"MISC", 1, "MOBILITY", "misc_upside_down_enabled", "bool", "Upside down enabled", 0, 0, {}},
+        {"MISC", 2, "MENU", "menu_dark_background", "bool", "Dark background", 0, 0, {}},
+        {"MISC", 2, "MENU", "menu_glow_enabled", "bool", "Menu glow", 0, 0, {}},
+        {"MISC", 2, "MENU", "menu_glow_strength", "num", "Glow strength", 0, 100, {}},
+        {"MISC", 2, "MENU", "menu_lightning", "bool", "Lightning", 0, 0, {}},
+        {"MISC", 2, "MENU", "menu_rain", "bool", "Rain", 0, 0, {}},
+        {"MISC", 2, "MENU", "menu_scale_percent", "num", "Menu scale", 0, 100, {}},
+        {"MISC", 2, "MENU", "menu_snow", "bool", "Snow", 0, 0, {}},
+        {"MISC", 2, "MENU", "menu_glow", "color", "Glow", 0, 0, {}},
+        {"MISC", 2, "MENU", "menu_style", "color", "Style", 0, 0, {}},
+        {"MISC", 3, "EXTRAS", "secret_crosshair", "bool", "Crosshair", 0, 0, {}},
+        {"MISC", 3, "EXTRAS", "secret_crosshair_rotate", "bool", "Crosshair rotate", 0, 0, {}},
+        {"MISC", 3, "EXTRAS", "secret_crosshair_size", "num", "Crosshair size", 0, 100, {}},
+        {"MISC", 3, "EXTRAS", "secret_crosshair_style", "enum", "Crosshair style", 0, 0, {"Sharp","Cross","Circle","Dot"}},
+        {"MISC", 3, "EXTRAS", "secret_desync_enabled", "bool", "Desync enabled", 0, 0, {}},
+        {"MISC", 3, "EXTRAS", "secret_enabled", "bool", "Enabled", 0, 0, {}},
+        {"MISC", 3, "EXTRAS", "secret_crosshair", "color", "Crosshair", 0, 0, {}},
+        {"MISC", 3, "GENERAL", "bullet_tracer", "color", "Bullet tracer", 0, 0, {}},
+        {"MISC", 3, "OVERLAYS", "keybinds_list_enabled", "bool", "Hotkeys list", 0, 0, {}},
+        {"MISC", 3, "PROFILE", "avatar_display_size", "num", "Avatar display size", 0, 100, {}},
+        },
+        palette = {
+            bg = {19/255,19/255,19/255,1},
+            head = {21/255,21/255,21/255,1},
+            panel = {24/255,24/255,24/255,1},
+            ctrl = {16/255,16/255,16/255,1},
+            tab = {30/255,30/255,30/255,1},
+            stroke = {29/255,29/255,29/255,1},
+            white = {0.98,0.98,0.98,1},
+            muted = {150/255,150/255,150/255,1},
+            accent = {255/255,106/255,133/255,1},
+            darkaccent = {84/255,26/255,42/255,1},
+        },
+    }
+
+    F.pages = {"RAGE", "LEGIT", "VISUAL", "WORLD", "MISC", "CONFIG"}
+    F.pageicons = {"*", "+", "o", "#", "~", "="}
+    F.childkeys = {
+        aim_fov_glow_enabled = {"aim_fov_glow_strength", "aim_fov_glow_spread", "aim_fov_glow"},
+        silent_fov_glow_enabled = {"silent_fov_glow_strength", "silent_fov_glow_spread", "silent_fov_glow"},
+        world_show_icons = {"world_icon_size", "world_fade_distance", "world_icon_border"},
+        world_icon_glow_enabled = {"world_icon_glow_strength", "world_icon_glow_spread", "world_icon_glow"},
+        armor_glow_enabled = {"armor_glow_strength", "armor_glow_spread", "armor_glow"},
+        menu_glow_enabled = {"menu_glow_strength", "menu_glow"},
+        aim_fov_enabled = {"aim_fov", "aim_fov_size", "aim_fov_filled"},
+        silent_fov_enabled = {"silent_fov", "silent_fov_filled"},
+        bullet_tracer_enabled = {"bullet_tracer_style", "bullet_tracer_animation", "bullet_tracer", "bullet_tracer_life", "bullet_tracer_thickness", "bullet_tracer_delay"},
+        secret_crosshair = {"secret_crosshair_style", "secret_crosshair_size", "secret_crosshair", "secret_crosshair_rotate"},
+        hit_effect_enabled = {"hit_effect_style", "hit_effect_size"},
+        armor_esp_enabled = {"armor_esp_mode", "armor_esp_size", "armor_esp_range", "armor_esp_smooth"},
+        world_grenade_esp_enabled = {"world_color_grenade", "world_grenade_trail_enabled", "world_grenade_trail_thickness"},
+    }
+    F.parent_of = {}
+    for parent, childs in pairs(F.childkeys) do
+        for _, key in ipairs(childs) do
+            -- Child controls render in source-style option menus, not twice.
+            if not F.parent_of[key] then F.parent_of[key] = parent end
+        end
+    end
+    F.catalog_by_key = {}
+    F.cols = {}
+    for _, page in ipairs(F.pages) do
+        F.cols[page] = {{}, {}, {}}
+    end
+    for _, e in ipairs(F.definitions) do
+        F.catalog_by_key[e[4]] = e
+    end
+    -- make sure a child that has a declared default can always be edited
+    for _, e in ipairs(F.definitions) do
+        if not F.parent_of[e[4]] then
+            local p, col = e[1], e[2]
+            if F.cols[p] then
+                table.insert(F.cols[p][col], e)
+            end
+        end
+    end
+
+    -- Base ESP component controls are created lazily in the original menu,
+    -- not in `defaults`. Populate all components, colors and per-part tuning.
+    if type(WORLD_BASE_ITEMS)=="table" then
+        for _,cfg in ipairs(WORLD_BASE_ITEMS) do
+            if type(world_base_ensure_state)=="function" then
+                pcall(world_base_ensure_state,cfg)
+            end
+            local key="world_base_"..cfg.id
+            local ckey="world_base_color_"..cfg.id
+            local children={
+                ckey,
+                key.."_sx",key.."_sy",key.."_sz",
+                key.."_ox",key.."_oy",key.."_oz",key.."_thick"
+            }
+            F.childkeys[key]=children
+            local e={"WORLD",2,"BASE / HOUSE",key,"bool",cfg.label,0,0,{}}
+            table.insert(F.definitions,e)
+            table.insert(F.cols.WORLD[2],e)
+            F.catalog_by_key[key]=e
+            for i,ck in ipairs(children) do
+                local is_color=i==1
+                local label=is_color and "Color" or
+                    (i==2 and "Size X" or i==3 and "Size Y" or i==4 and "Size Z" or
+                     i==5 and "Offset X" or i==6 and "Offset Y" or i==7 and "Offset Z" or "Thickness")
+                local ce={"WORLD",2,"BASE / HOUSE",ck,is_color and "color" or "num",label,
+                    (i>=5 and i<=7) and -20 or 0,(i==8) and 7 or 30,{}}
+                F.catalog_by_key[ck]=ce
+                table.insert(F.definitions,ce)
+                F.parent_of[ck]=key
+            end
+        end
+    end
+
+    function F.clamp(v,a,b)
+        return math.min(b,math.max(a,v))
+    end
+    function F.chase(a,b,speed,dt)
+        return a + (b-a) * (1-math.exp(-speed * F.clamp(dt,0,0.05)))
+    end
+    function F.easing(t)
+        t = F.clamp(t,0,1)
+        return 1 - (1-t)^5 -- Quint: the source's predominant easing
+    end
+    function F.col(c, a)
+        return {c[1],c[2],c[3],(c[4] or 1)*(a or 1)}
+    end
+    function F.fill(x,y,w,h,c,a)
+        if w<=0 or h<=0 then return end
+        Drawing.DrawBoxFilled(x,y,x+w,y+h,c[1],c[2],c[3],(c[4] or 1)*(a or 1)*F.fade)
+    end
+    function F.border(x,y,w,h,c,a,th)
+        if w<=0 or h<=0 then return end
+        Drawing.DrawBox(x,y,x+w,y+h,c[1],c[2],c[3],(c[4] or 1)*(a or 1)*F.fade,th or 1)
+    end
+    function F.line(x,y,x2,y2,c,a,th)
+        Drawing.DrawLine(x,y,x2,y2,c[1],c[2],c[3],(c[4] or 1)*(a or 1)*F.fade,th or 1)
+    end
+    function F.text(x,y,v,c,a)
+        Drawing.DrawText(x,y,tostring(v),c[1],c[2],c[3],(c[4] or 1)*(a or 1)*F.fade)
+    end
+    function F.center(x,y,v,c,a)
+        if type(Drawing.DrawTextWithOutline)=="function" then
+            Drawing.DrawTextWithOutline(x,y,tostring(v),c[1],c[2],c[3],(c[4] or 1)*(a or 1)*F.fade,0,0,0,0)
+        else
+            F.text(x-#tostring(v)*3.2,y,v,c,a)
+        end
+    end
+    function F.rect(x,y,w,h,r,c,a)
+        -- Draw using the established alpha-safe rounded surface renderer.
+        local old = MENU_RENDER_ALPHA
+        MENU_RENDER_ALPHA = F.fade
+        rounded_fill(x,y,w,h,r,F.col(c,a))
+        MENU_RENDER_ALPHA = old
+    end
+    function F.rrborder(x,y,w,h,r,c,a)
+        -- True 1px rounded border, same base primitive as Neverlose.
+        local old=MENU_RENDER_ALPHA
+        MENU_RENDER_ALPHA=F.fade
+        rounded_outline(x,y,w,h,r,F.col(c,a),1,{0,0,0,0})
+        MENU_RENDER_ALPHA=old
+    end
+    function F.mouse()
+        if type(mouse_pos)=="function" then
+            local ok,x,y=pcall(mouse_pos)
+            if ok and type(x)=="number" and type(y)=="number" then return x,y end
+        end
+        if Windows and Windows.GetMousePos then
+            local ok,m=pcall(Windows.GetMousePos)
+            if ok and m then return m.X,m.Y end
+        end
+        return -1,-1
+    end
+    function F.key(k)
+        return Windows and Windows.IsKeyPressed and Windows.IsKeyPressed(k) == true
+    end
+    function F.hot(mx,my,x,y,w,h)
+        return mx>=x and mx<=x+w and my>=y and my<=y+h
+    end
+    function F.set(key,value)
+        S[key]=value
+        if string.sub(key,1,7)=="silent_" and type(FALLEN_SILENT_UI_VALUE_CHANGED)=="function" then
+            pcall(FALLEN_SILENT_UI_VALUE_CHANGED,key,value)
+        end
+        if key=="misc_fly_enabled" and cheat and cheat.enable then
+            pcall(cheat.enable,"fly",value == true)
+        end
+        if key=="misc_upside_down_enabled" and cheat and cheat.enable then
+            pcall(cheat.enable,"flip",value == true)
+        end
+        if key=="silent_fov" and type(FALLEN_SILENT_SET_FOV)=="function" then
+            pcall(FALLEN_SILENT_SET_FOV,value)
+        end
+        if key=="silent_fov_enabled" and type(FALLEN_SILENT_SET_FOV_ENABLED)=="function" then
+            pcall(FALLEN_SILENT_SET_FOV_ENABLED,value)
+        end
+    end
+    function F.hsv(prefix)
+        return F.clamp(tonumber(S[prefix.."_h"]) or 0,0,1),
+               F.clamp(tonumber(S[prefix.."_s"]) or 0,0,1),
+               F.clamp(tonumber(S[prefix.."_v"]) or 1,0,1),
+               F.clamp((tonumber(S[prefix.."_alpha"]) or 100)/100,0,1)
+    end
+    function F.rgb(h,s,v)
+        local i=math.floor(h*6)
+        local f=h*6-i
+        local p=v*(1-s)
+        local q=v*(1-f*s)
+        local t=v*(1-(1-f)*s)
+        i=i%6
+        if i==0 then return v,t,p end
+        if i==1 then return q,v,p end
+        if i==2 then return p,v,t end
+        if i==3 then return p,q,v end
+        if i==4 then return t,p,v end
+        return v,p,q
+    end
+    function F.draw_row(e,x,y,w,alpha,mx,my,clicked,pressed,optional)
+        local key,kind,name,lo,hi=e[4],e[5],e[6],e[7],e[8]
+        local p=F.palette
+        local val=S[key]
+        local row_h = kind=="num" and 47 or 29
+        if kind=="enum" then row_h=43 end
+        if kind=="key" then row_h=36 end
+        if kind=="color" then row_h=34 end
+        local rh=F.hot(mx,my,x,y,w,row_h)
+        local text_color=F.col(p.white,alpha)
+        local active = not F.option or optional
+        if kind=="bool" then
+            if clicked and rh and active and not F.hot(mx,my,x+w-49,y+1,23,25) then
+                F.set(key,not (val==true))
+                val=S[key]
+            end
+            local is_on=val==true
+            F.anim[key]=F.chase(F.anim[key] or (is_on and 1 or 0),is_on and 1 or 0,14,F.dt)
+            F.text(x+4,y+8,name,text_color)
+            local t=F.anim[key]
+            F.rect(x+w-21,y+7,14,14,2,p.ctrl,alpha)
+            F.border(x+w-21,y+7,14,14,p.muted,alpha*0.22)
+            if t>0.01 then
+                F.rect(x+w-20,y+8,12,12,2,p.accent,alpha*t)
+                F.line(x+w-18,y+14,x+w-15,y+17,p.white,alpha*t,1.2)
+                F.line(x+w-15,y+17,x+w-10,y+11,p.white,alpha*t,1.2)
+            end
+            if F.childkeys[key] then
+                F.center(x+w-37,y+6,"...",p.muted,alpha)
+                if clicked and F.hot(mx,my,x+w-49,y+1,23,25) and active then
+                    F.option=F.option==key and nil or key
+                    F.option_page=1
+                    F.option_fade=0
+                    F.option_x=F.clamp(x+w-210,F.x+10,F.x+F.w-220)
+                    F.option_y=F.clamp(y-8,F.y+43,F.y+F.h-230)
+                end
+            end
+        elseif kind=="num" then
+            local amount=tonumber(val) or lo
+            local frac=F.clamp((amount-lo)/math.max(0.001,hi-lo),0,1)
+            F.text(x+4,y+1,name,p.white,alpha)
+            local show=math.abs(amount-math.floor(amount))>0.001 and string.format("%.2f",amount) or tostring(math.floor(amount+0.5))
+            F.text(x+w-48,y+1,show,p.muted,alpha)
+            local bx=x+4;local by=y+27;local bw=w-11
+            F.rect(bx,by,bw,7,2,p.ctrl,alpha)
+            F.rect(bx,by,bw*frac,7,2,p.accent,alpha)
+            F.border(bx,by,bw,7,p.stroke,alpha)
+            if clicked and F.hot(mx,my,bx,by-5,bw,18) and active then F.active_slider=key end
+            if pressed and F.active_slider==key and active then
+                local amount2=lo+F.clamp((mx-bx)/bw,0,1)*(hi-lo)
+                if hi-lo>30 then amount2=math.floor(amount2+0.5) else amount2=math.floor(amount2*100+0.5)/100 end
+                F.set(key,amount2)
+            end
+        elseif kind=="enum" then
+            F.text(x+4,y+1,name,p.white,alpha)
+            F.rect(x+4,y+18,w-8,23,2,p.ctrl,alpha)
+            F.border(x+4,y+18,w-8,23,p.stroke,alpha)
+            F.text(x+12,y+23,tostring(val),p.muted,alpha)
+            F.text(x+w-20,y+23,"v",p.muted,alpha)
+            if clicked and F.hot(mx,my,x+4,y+18,w-8,23) and active then
+                F.open_dropdown=F.open_dropdown==key and nil or key
+                F.option=F.option -- unchanged
+                F.dropdown_x=x+4;F.dropdown_y=y+42;F.dropdown_w=w-8
+            end
+        elseif kind=="key" then
+            F.text(x+4,y+5,name,p.white,alpha)
+            local bound=tonumber(val) or 0
+            local shown=F.key_capture==key and "press..." or (bound==0 and "None" or ("VK "..tostring(bound)))
+            F.rect(x+w-97,y+3,90,24,2,p.ctrl,alpha)
+            F.border(x+w-97,y+3,90,24,p.stroke,alpha)
+            F.center(x+w-52,y+8,shown,p.muted,alpha)
+            if clicked and F.hot(mx,my,x+w-97,y+3,90,24) and active then F.key_capture=key end
+        elseif kind=="color" then
+            F.text(x+4,y+7,name,p.white,alpha)
+            local h,s,v,aa=F.hsv(key)
+            local r,g,b=F.rgb(h,s,v)
+            F.rect(x+w-31,y+5,25,22,3,{r,g,b,aa},alpha)
+            F.border(x+w-31,y+5,25,22,p.stroke,alpha)
+            if clicked and F.hot(mx,my,x+w-31,y+4,26,25) and active then
+                F.color=F.color==key and nil or key
+                F.color_fade=0
+                F.color_x=F.clamp(x+w-210,F.x+8,F.x+F.w-232)
+                F.color_y=F.clamp(y+27,F.y+43,F.y+F.h-245)
+            end
+        end
+        return row_h
+    end
+    function F.draw_columns(mx,my,clicked,pressed)
+        local p=F.palette
+        local x0,y0,w0=F.x+7,F.y+52,F.w-14
+        local gap=9;local colw=(w0-gap*2)/3
+        local max_rows=11
+        for col=1,3 do
+            local cx=x0+(col-1)*(colw+gap)
+            local list=F.cols[F.page][col]
+            local scroll_key=F.page..":"..tostring(col)
+            local total=#list
+            local top_i=F.clamp(F.scroll[scroll_key] or 1,1,math.max(1,total))
+            F.scroll[scroll_key]=top_i
+            F.rect(cx,y0,colw,389,3,p.bg,1)
+            F.border(cx,y0,colw,389,p.stroke,0.7)
+            local cy=y0+8
+            local last_section=nil
+            local n=0
+            for i=top_i,total do
+                local e=list[i]
+                if e then
+                    local kind=e[5]
+                    local rh=kind=="num" and 47 or (kind=="enum" and 43 or (kind=="key" and 36 or 31))
+                    local section=e[3]
+                    local heading=section~=last_section
+                    if heading then rh=rh+29 end
+                    if cy+rh>y0+353 then break end
+                    if heading then
+                        F.fill(cx+6,cy,colw-12,22,p.panel,1)
+                        F.text(cx+14,cy+5,section,p.muted,F.tab_fade)
+                        cy=cy+27
+                        last_section=section
+                    end
+                    F.draw_row(e,cx+8,cy,colw-16,F.tab_fade,mx,my,clicked,pressed,false)
+                    cy=cy+(kind=="num" and 47 or kind=="enum" and 43 or kind=="key" and 36 or 31)+3
+                    n=n+1
+                end
+            end
+            -- Page navigation inside each source-style scrolling column.
+            F.fill(cx,y0+358,colw,1,p.stroke)
+            F.rect(cx+6,y0+363,40,20,2,p.ctrl,0.8)
+            F.text(cx+21,y0+365,"^",p.muted)
+            F.rect(cx+colw-46,y0+363,40,20,2,p.ctrl,0.8)
+            F.text(cx+colw-31,y0+365,"v",p.muted)
+            if clicked and F.hot(mx,my,cx+6,y0+363,40,20) then F.scroll[scroll_key]=math.max(1,top_i-5) end
+            if clicked and F.hot(mx,my,cx+colw-46,y0+363,40,20) then F.scroll[scroll_key]=math.min(total,top_i+5) end
+            F.center(cx+colw*0.5,y0+367,tostring(top_i).."/"..tostring(math.max(1,total)),p.muted,0.6)
+        end
+    end
+    function F.draw_option(mx,my,clicked,pressed)
+        local target=F.option and 1 or 0
+        if F.option then F.option_last=F.option end
+        F.option_fade=F.chase(F.option_fade,target,9,F.dt)
+        if F.option_fade<0.02 then F.option_last=nil; return end
+        local key=F.option or F.option_last
+        if not key then return end
+        local p=F.palette
+        local children=F.childkeys[key] or {}
+        local size=math.min(4,#children)
+        local pages=math.max(1,math.ceil(#children/4))
+        F.option_page=F.clamp(F.option_page or 1,1,pages)
+        local h=F.clamp(42+size*49+(pages>1 and 27 or 0),90,290)
+        local x,y=F.option_x,F.clamp(F.option_y,F.y+44,F.y+F.h-h-28)
+        local visible_h = h * F.easing(F.option_fade)
+        F.rect(x,y,218,visible_h,3,p.panel,0.99)
+        F.border(x,y,218,visible_h,p.muted,0.22*F.option_fade)
+        if visible_h>25 then
+            F.text(x+12,y+10,(F.catalog_by_key[key] or {})[6] or "Settings",p.white,F.option_fade)
+            F.text(x+198,y+9,"x",p.muted,F.option_fade)
+        end
+        if clicked and F.hot(mx,my,x+186,y+3,28,28) then F.option=nil end
+        local cy=y+35
+        local first=(F.option_page-1)*4+1
+        for i=first,math.min(#children,first+3) do
+            local entry=F.catalog_by_key[children[i]]
+            if entry and cy+38<y+visible_h-(pages>1 and 22 or 0) then
+                F.draw_row(entry,x+10,cy,196,F.option_fade,mx,my,clicked,pressed,true)
+                cy=cy+(entry[5]=="num" and 49 or entry[5]=="enum" and 44 or 35)
+            end
+        end
+        if pages>1 and visible_h>h-23 then
+            F.text(x+18,y+h-20,"<",p.muted)
+            F.center(x+109,y+h-20,tostring(F.option_page).."/"..tostring(pages),p.muted)
+            F.text(x+193,y+h-20,">",p.muted)
+            if clicked and F.hot(mx,my,x+10,y+h-24,28,24) then
+                F.option_page=math.max(1,F.option_page-1)
+            end
+            if clicked and F.hot(mx,my,x+185,y+h-24,28,24) then
+                F.option_page=math.min(pages,F.option_page+1)
+            end
+        end
+    end
+    function F.draw_dropdown(mx,my,clicked)
+        if not F.open_dropdown then return end
+        local e=F.catalog_by_key[F.open_dropdown]
+        if not e then F.open_dropdown=nil return end
+        local p=F.palette
+        local arr=e[9] or {}
+        local x,y,w=F.dropdown_x,F.dropdown_y,F.dropdown_w
+        F.rect(x,y,w,math.max(24,#arr*26+6),3,p.ctrl,1)
+        F.border(x,y,w,math.max(24,#arr*26+6),p.stroke,1)
+        for i,v in ipairs(arr) do
+            local ry=y+3+(i-1)*26
+            local hot=F.hot(mx,my,x+3,ry,w-6,25)
+            if hot then F.fill(x+3,ry,w-6,24,p.panel) end
+            F.text(x+10,ry+6,v,hot and p.accent or p.white)
+            if clicked and hot then F.set(e[4],v);F.open_dropdown=nil end
+        end
+    end
+    function F.draw_color(mx,my,clicked,pressed)
+        local target=F.color and 1 or 0
+        F.color_fade=F.chase(F.color_fade,target,14,F.dt)
+        if F.color_fade<0.02 or not F.color then return end
+        local p=F.palette
+        local x,y,w,h=F.color_x,F.color_y,225,234
+        F.rect(x,y,w,h,3,p.bg,F.color_fade)
+        F.border(x,y,w,h,p.muted,0.24*F.color_fade)
+        F.text(x+12,y+9,"COLOR",p.white,F.color_fade)
+        F.text(x+w-19,y+8,"x",p.muted,F.color_fade)
+        if clicked and F.hot(mx,my,x+w-25,y,24,27) then F.color=nil return end
+        local hue,sat,value,a=F.hsv(F.color)
+        local sx,sy,sw,sh=x+12,y+33,175,132
+        for i=0,16 do
+            local v=1-i/16
+            for j=0,16 do
+                local sat2=j/16
+                local rr,gg,bb=F.rgb(hue,sat2,v)
+                F.fill(sx+j*sw/17,sy+i*sh/17,sw/17+0.8,sh/17+0.8,{rr,gg,bb,1},F.color_fade)
+            end
+        end
+        F.border(sx,sy,sw,sh,p.muted,F.color_fade*0.35)
+        local bx=x+w-27
+        for i=0,40 do
+            local hh=i/40
+            local rr,gg,bb=F.rgb(hh,1,1)
+            F.fill(bx,sy+hh*sh,13,sh/40+0.6,{rr,gg,bb,1},F.color_fade)
+        end
+        if pressed and F.hot(mx,my,sx,sy,sw,sh) then
+            F.set(F.color.."_s",F.clamp((mx-sx)/sw,0,1))
+            F.set(F.color.."_v",1-F.clamp((my-sy)/sh,0,1))
+        end
+        if pressed and F.hot(mx,my,bx,sy,14,sh) then
+            F.set(F.color.."_h",F.clamp((my-sy)/sh,0,1))
+        end
+        F.text(x+12,y+179,"Opacity",p.muted,F.color_fade)
+        F.rect(x+12,y+199,w-24,9,2,p.ctrl,F.color_fade)
+        F.rect(x+12,y+199,(w-24)*a,9,2,p.accent,F.color_fade)
+        if pressed and F.hot(mx,my,x+12,y+193,w-24,22) then
+            F.set(F.color.."_alpha",math.floor(100*F.clamp((mx-x-12)/(w-24),0,1)+0.5))
+        end
+        F.text(x+14,y+216,tostring(math.floor(a*100+0.5)).."%",p.muted,F.color_fade)
+    end
+    function F.polltext()
+        if not F.focus then return end
+        local buf=F.focus=="search" and F.search_text or F.config_text
+        for code=0x30,0x5A do
+            if code<=0x39 or code>=0x41 then
+                local down=F.key(code)
+                if down and not F.keys_prev[code] then
+                    local char=string.char(code)
+                    if code>=0x41 and not F.key(0x10) then char=string.lower(char) end
+                    if #buf<56 then buf=buf..char end
+                end
+                F.keys_prev[code]=down
+            end
+        end
+        for _,key in ipairs({0x08,0x20,0x1B,0x0D}) do
+            local down=F.key(key)
+            if down and not F.keys_prev[key] then
+                if key==0x08 then buf=buf:sub(1,-2) end
+                if key==0x20 then buf=buf.." " end
+                if key==0x1B or key==0x0D then F.focus=nil end
+            end
+            F.keys_prev[key]=down
+        end
+        local down=F.key(0x56) and F.key(0x11)
+        if down and not F.keys_prev.ctrlv and get_clipboard then
+            local ok,v=pcall(get_clipboard)
+            if ok and type(v)=="string" then buf=(buf..v):sub(1,56) end
+        end
+        F.keys_prev.ctrlv=down
+        if F.search_open then F.search_text=buf else F.config_text=buf end
+    end
+    function F.draw_config(mx,my,clicked)
+        local p=F.palette
+        local left=F.x+14;local top=F.y+60
+        F.rect(left,top,355,365,3,p.panel,1)
+        F.rect(left+366,top,355,365,3,p.panel,1)
+        F.border(left,top,355,365,p.stroke)
+        F.border(left+366,top,355,365,p.stroke)
+        F.text(left+17,top+14,"CONFIGURATIONS",p.white)
+        F.text(left+382,top+14,"MANAGE",p.white)
+        local cfg=FALLEN_CONFIGS and FALLEN_CONFIGS.CONFIG
+        if not cfg then return end
+        for i,name in ipairs(cfg.list) do
+            if i<=9 then
+                local ry=top+38+(i-1)*33
+                local hot=F.hot(mx,my,left+9,ry,336,30)
+                local selected=F.config_selected==name
+                if hot or selected then F.rect(left+9,ry,336,28,2,selected and p.darkaccent or p.ctrl,1) end
+                F.text(left+18,ry+7,name,selected and p.accent or p.white)
+                if clicked and hot then F.config_selected=name;F.config_text=name;F.focus=nil end
+            end
+        end
+        F.text(left+382,top+54,"Configuration name",p.muted)
+        F.rect(left+382,top+76,320,32,3,p.ctrl)
+        F.border(left+382,top+76,320,32,p.stroke)
+        F.text(left+393,top+85,(F.config_text~="" and F.config_text or "Enter name")..(F.focus=="config" and "|" or ""),p.white)
+        if clicked and F.hot(mx,my,left+382,top+76,320,32) then F.focus="config" end
+        local actions={{"ADD / SAVE", "save"},{"LOAD", "load"},{"DELETE", "delete"},{"REFRESH", "refresh"}}
+        for i,action in ipairs(actions) do
+            local by=top+125+(i-1)*47
+            local hot=F.hot(mx,my,left+382,by,320,34)
+            F.rect(left+382,by,320,34,3,hot and p.darkaccent or p.ctrl)
+            F.border(left+382,by,320,34,p.stroke)
+            F.center(left+542,by+10,action[1],hot and p.accent or p.white)
+            if clicked and hot then
+                F.focus=nil
+                if action[2]=="save" then
+                    FALLEN_CONFIGS.save(F.config_text~="" and F.config_text or F.config_selected)
+                elseif action[2]=="load" then
+                    FALLEN_CONFIGS.load(F.config_selected or F.config_text)
+                elseif action[2]=="delete" then
+                    FALLEN_CONFIGS.delete(F.config_selected or F.config_text)
+                elseif action[2]=="refresh" and FALLEN_CONFIGS.refresh then
+                    FALLEN_CONFIGS.refresh()
+                end
+            end
+        end
+        F.text(left+382,top+334,"Same profiles as Neverlose",p.muted)
+    end
+    function F.draw_search(mx,my,clicked)
+        if not F.search_open then return end
+        local p=F.palette
+        F.rect(F.x,F.y,F.w,F.h,5,p.ctrl,0.75)
+        local x=F.x+156;local y=F.y+83;local w=438;local h=336
+        F.rect(x,y,w,h,4,p.bg,1)
+        F.border(x,y,w,h,p.stroke)
+        F.text(x+15,y+15,"SEARCH",p.accent)
+        F.text(x+w-24,y+15,"x",p.white)
+        if clicked and F.hot(mx,my,x+w-30,y,25,27) then F.search_open=false;F.focus=nil return end
+        F.rect(x+14,y+40,w-28,33,3,p.ctrl)
+        F.text(x+25,y+50,(F.search_text~="" and F.search_text or "Search...")..(F.focus=="search" and "|" or ""),p.white)
+        if clicked and F.hot(mx,my,x+14,y+40,w-28,33) then F.focus="search" end
+        local query=string.lower(F.search_text)
+        if #query>0 then
+            local row=0
+            for _,e in ipairs(F.definitions) do
+                if row>=8 then break end
+                if string.find(string.lower(e[6]),query,1,true) or string.find(string.lower(e[4]),query,1,true) then
+                    local ry=y+89+row*29
+                    local hot=F.hot(mx,my,x+12,ry,w-24,27)
+                    if hot then F.rect(x+12,ry,w-24,27,2,p.ctrl) end
+                    F.text(x+24,ry+5,e[6],hot and p.accent or p.white)
+                    F.text(x+242,ry+5,e[1],p.muted)
+                    if clicked and hot then
+                        F.page=e[1]
+                        F.tab_fade=0
+                        F.search_open=false
+                        F.focus=nil
+                    end
+                    row=row+1
+                end
+            end
+        end
+    end
+    function F.draw(mx,my,clicked,pressed)
+        local p=F.palette
+        local x,y,w,h=F.x,F.y,F.w,F.h
+        F.rect(x,y,w,h,5,p.bg)
+        F.border(x,y,w,h,p.stroke,0.75)
+        F.rect(x,y,w,40,5,p.head)
+        F.fill(x,y+38,w,2,p.stroke)
+        F.rect(x,y+h-25,w,25,4,p.head)
+        F.fill(x,y+h-26,w,1,p.stroke)
+        F.text(x+10,y+12,"FATALITY",p.white)
+        -- source horizontal menu tabs; pink accent selection and hover easing.
+        local tx=x+113
+        for i,page in ipairs(F.pages) do
+            local tw=(page=="VISUAL" and 90 or page=="CONFIG" and 83 or 75)
+            local hot=F.hot(mx,my,tx,y+6,tw,28)
+            local current=F.page==page
+            local aim=(hot or current) and 1 or 0
+            F.tab_anim[page]=F.chase(F.tab_anim[page] or (current and 1 or 0),aim,16,F.dt)
+            F.rect(tx,y+6,tw-4,28,3,p.tab,0.6+F.tab_anim[page]*0.4)
+            F.border(tx,y+6,tw-4,28,p.stroke,0.45)
+            if current then F.fill(tx+4,y+32,tw-12,2,p.accent) end
+            F.text(tx+8,y+12,F.pageicons[i],p.accent,0.65+F.tab_anim[page]*0.35)
+            F.text(tx+24,y+12,page,current and p.white or p.muted,0.75+F.tab_anim[page]*0.25)
+            if clicked and hot and not F.search_open then
+                F.page=page;F.tab_fade=0;F.open_dropdown=nil;F.option=nil
+            end
+            tx=tx+tw
+        end
+        F.text(x+w-31,y+12,"?",p.muted)
+        if clicked and F.hot(mx,my,x+w-38,y+5,32,32) and not F.search_open then
+            F.search_open=true;F.focus="search";F.search_text=""
+        end
+        if F.page=="CONFIG" then
+            F.draw_config(mx,my,clicked)
+        else
+            F.draw_columns(mx,my,clicked and not F.search_open and not F.option and not F.color,pressed)
+        end
+        F.text(x+12,y+h-18,"fatality.win   |   Fallen survival",p.muted,0.85)
+        F.text(x+w-155,y+h-18,"RIGHT SHIFT  ·  toggle",p.muted,0.7)
+        -- Pockets open after main elements: original Fatality option/dropdown/color layers.
+        if not F.search_open then
+            F.draw_option(mx,my,clicked,pressed)
+            F.draw_dropdown(mx,my,clicked)
+            F.draw_color(mx,my,clicked,pressed)
+        end
+        F.draw_search(mx,my,clicked)
+    end
+    hooks.on_render(function()
+        if _G.FALLEN_SELECTED_UI~="Fatality" or _G.FallenMenuReady~=true then return end
+        local now=tick()
+        F.dt=F.clamp(now-F.last,0,0.05)
+        F.last=now
+        local shift=F.key(VK_RSHIFT or 0xA1)
+        if shift and not F.prev_shift and not F.key_capture then S.visible=not S.visible end
+        F.prev_shift=shift
+        local target=S.visible and 1 or 0
+        F.fade=F.chase(F.fade,target,14,F.dt)
+        if F.fade<0.01 then return end
+        F.tab_fade=F.chase(F.tab_fade,1,10,F.dt)
+        local dims = (type(ScreenSize)=="function" and ScreenSize()) or {Width=1920,Height=1080}
+        local sw,sh=dims.Width or 1920,dims.Height or 1080
+        if not F.x then F.x=math.floor((sw-F.w)/2); F.y=math.floor((sh-F.h)/2) end
+        local mx,my=F.mouse()
+        local pressed=F.key(VK_LBUTTON or 0x01)
+        local clicked=pressed and not F.prev_left and F.fade>0.85
+        F.prev_left=pressed
+        if not pressed then F.active_slider=nil end
+        if clicked and F.hot(mx,my,F.x,F.y,110,40) and not F.search_open then
+            F.drag=true;F.off_x=mx-F.x;F.off_y=my-F.y
+        end
+        if pressed and F.drag then
+            F.x=F.clamp(mx-F.off_x,0,sw-F.w)
+            F.y=F.clamp(my-F.off_y,0,sh-F.h)
+        else F.drag=false end
+        if F.key_capture then
+            for code=1,165 do
+                if code~=1 and code~=2 and F.key(code) then
+                    F.set(F.key_capture,code);F.key_capture=nil;break
+                end
+            end
+        end
+        F.polltext()
+        local ok,err=pcall(F.draw,mx,my,clicked,pressed)
+        if not ok and not F.warned then
+            F.warned=true
+            if type(warn)=="function" then warn("[Fatality UI] "..tostring(err)) end
+        end
+    end)
+end
