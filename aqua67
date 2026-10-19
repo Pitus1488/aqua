@@ -4040,20 +4040,20 @@ local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     A.toggles[key] = anim
 
     if FALLEN_POPUP_CHECK_KEYS[key] then
-        -- List-style checkbox used by three-dots popup settings.
-        if hot and clicked then
-            -- Value has already been updated by the toggle handler above.
-        end
+        -- Unchecked: flush-left text, no reserved checkbox space.
+        -- Checked: animate the text to the right while a tick fades in.
         if hot then
             rounded_fill(x + 5, y + 4, w - 10, h - 8, 5, C.button_hovered)
         end
+        local shift = 18 * anim
         local cx, cy = x + 17, y + h * 0.5
-        if value then
-            -- Draw a tiny tick from line segments; compatible with this API.
-            line(cx - 5, cy, cx - 1, cy + 4, C.text, 1.4)
-            line(cx - 1, cy + 4, cx + 6, cy - 4, C.text, 1.4)
+        if anim > 0.015 then
+            local tick_color = alpha(C.text, anim)
+            line(cx - 5, cy, cx - 1, cy + 4, tick_color, 1.4)
+            line(cx - 1, cy + 4, cx + 6, cy - 4, tick_color, 1.4)
         end
-        text(x + 31, y + 14, label, value and C.text or C.text_dim)
+        text(x + 13 + shift, y + 14, label,
+            mix_color(C.text_dim, C.text, anim))
         return
     end
 
@@ -7248,17 +7248,6 @@ local function resource_toggle_row(
             item
         )
 
-    text(
-        x + 29,
-        y + 14,
-        item.label,
-        FALLEN_HOVER_TEXT(
-            "resource:" .. tostring(item.id),
-            hot,
-            C.text
-        )
-    )
-
     local key = item.key
 
     if A.toggles[key] == nil then
@@ -7267,6 +7256,18 @@ local function resource_toggle_row(
 
     local target = S[key] and 1 or 0
     A.toggles[key] = lerp(A.toggles[key], target, 0.23)
+    local check_anim = clamp(A.toggles[key], 0, 1)
+
+    text(
+        x + 12 + 17 * check_anim,
+        y + 14,
+        item.label,
+        FALLEN_HOVER_TEXT(
+            "resource:" .. tostring(item.id),
+            hot,
+            mix_color(C.text_dim, C.text, check_anim)
+        )
+    )
 
     -- Compact Neverlose-like checklist: check at left, color at far right.
     local swatch_s = 18
@@ -7276,10 +7277,11 @@ local function resource_toggle_row(
         swatch_x, swatch_y, swatch_s, swatch_s)
     world_square_swatch(swatch_x, swatch_y, swatch_s, c)
 
-    if S[key] == true then
+    if check_anim > 0.015 then
         local cx, cy = x + 16, y + 20.5
-        line(cx - 5, cy, cx - 1, cy + 4, C.text, 1.4)
-        line(cx - 1, cy + 4, cx + 6, cy - 4, C.text, 1.4)
+        local tick_color = alpha(C.text, check_anim)
+        line(cx - 5, cy, cx - 1, cy + 4, tick_color, 1.4)
+        line(cx - 1, cy + 4, cx + 6, cy - 4, tick_color, 1.4)
     end
 
     if clicked and swatch_hot then
@@ -8051,6 +8053,39 @@ local function draw_world_color_picker(mx, my, clicked, lmb)
         parent_alpha
 end
 
+-- Progressive nested settings in the World ESP three-dots panel.
+-- Uses the existing S keys, so configs and runtime remain untouched.
+-- Persist animation fractions independently from the saved config.
+local function world_global_nested_progress()
+    local now = tick()
+    local icon_target = S.world_show_icons == true and 1 or 0
+    local glow_target = (S.world_show_icons == true
+        and S.world_icon_glow_enabled == true) and 1 or 0
+
+    if A.world_nested_last_t == nil then
+        A.world_nested_last_t = now
+        A.world_nested_icons = icon_target
+        A.world_nested_glow = glow_target
+    end
+
+    local dt = clamp(now - A.world_nested_last_t, 0, 0.05)
+    A.world_nested_last_t = now
+    A.world_nested_icons = exp_chase(
+        A.world_nested_icons or 0, icon_target, 14, dt)
+    A.world_nested_glow = exp_chase(
+        A.world_nested_glow or 0, glow_target, 14, dt)
+
+    if math.abs(A.world_nested_icons - icon_target) < 0.001 then
+        A.world_nested_icons = icon_target
+    end
+    if math.abs(A.world_nested_glow - glow_target) < 0.001 then
+        A.world_nested_glow = glow_target
+    end
+
+    return clamp(A.world_nested_icons, 0, 1),
+        clamp(A.world_nested_glow, 0, 1)
+end
+
 local function draw_world_settings_popup(
     mx,
     my,
@@ -8098,11 +8133,16 @@ local function draw_world_settings_popup(
     local title = "World ESP settings"
     local pw = 328
     local ph = 174
+    local nested_icons, nested_glow = 0, 0
 
     if is_global then
+        nested_icons, nested_glow = world_global_nested_progress()
         title = "World ESP settings"
         pw = 306
-        ph = 414
+        -- 4 always-visible rows + 3 Show Icons children + 2 Glow children.
+        -- The panel stays anchored, its content grows only when enabled.
+        ph = 39 + 4 * 41 + 3 * 41 * nested_icons
+            + 2 * 41 * nested_glow + 6
     elseif is_nodes then
         title = "Node ESP settings"
         ph = 43 + 3 * 41 + 8
@@ -8206,315 +8246,119 @@ local function draw_world_settings_popup(
     -- Restores the complete old "Enable Resource ESP" settings.
     -- =========================================================
     if is_global then
-        if shell_h > 78 then
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 39,
-                pw - 16,
-                "Max Distance",
-                "world_max_dist",
-                25,
-                2000,
-                "int"
-            )
+        -- Top level: only the four basic settings are initially visible.
+        -- When Show Icons is checked its children are unfolded below;
+        -- Icon Glow has its own nested level.
+        local row_x, row_w = px + 8, pw - 16
+        local row_h = 41
+        local y0 = py + 39
+
+        local function separator(y)
+            line(px + 12, y, px + pw - 12, y, C.divider, 1)
         end
 
-        if shell_h > 119 then
-            line(
-                px + 12,
-                py + 79,
-                px + pw - 12,
-                py + 79,
-                C.divider,
-                1
-            )
+        slider_row(mx, my, ui_clicked, lmb,
+            row_x, y0, row_w, "Max Distance",
+            "world_max_dist", 25, 2000, "int")
+        separator(y0 + row_h - 1)
 
-            toggle_row(
-                mx,
-                my,
-                ui_clicked,
-                px + 8,
-                py + 80,
-                pw - 16,
-                "Show Names",
-                "world_show_names",
-                false
-            )
+        toggle_row(mx, my, ui_clicked,
+            row_x, y0 + row_h, row_w,
+            "Show Names", "world_show_names", false)
+        separator(y0 + 2 * row_h - 1)
+
+        toggle_row(mx, my, ui_clicked,
+            row_x, y0 + 2 * row_h, row_w,
+            "Show Distance", "world_show_distance", false)
+        separator(y0 + 3 * row_h - 1)
+
+        local icons_y = y0 + 3 * row_h
+        local icon_color_x = row_x + row_w - 33
+        local icon_color_y = icons_y + 11
+        local icon_color_hot = hover(mx, my,
+            icon_color_x - 4, icon_color_y - 4, 26, 26)
+        toggle_row(mx, my, ui_clicked and not icon_color_hot,
+            row_x, icons_y, row_w,
+            "Show Icons", "world_show_icons", false)
+        world_square_swatch(icon_color_x, icon_color_y, 18,
+            world_color_from_prefix("world_icon_border"))
+        if ui_clicked and icon_color_hot then
+            fallen_open_color_at("world_icon_border",
+                icon_color_x, icon_color_y, 18)
         end
 
-        if shell_h > 160 then
-            line(
-                px + 12,
-                py + 120,
-                px + pw - 12,
-                py + 120,
-                C.divider,
-                1
-            )
+        local child_y = y0 + 4 * row_h
+        local child_h = row_h * nested_icons
+        local child_alpha = ease_out_cubic(
+            clamp((nested_icons - 0.22) / 0.78, 0, 1))
+        local child_click = ui_clicked and nested_icons > 0.96
+        local saved_popup_alpha = MENU_RENDER_ALPHA
 
-            toggle_row(
-                mx,
-                my,
-                ui_clicked,
-                px + 8,
-                py + 121,
-                pw - 16,
-                "Show Distance",
-                "world_show_distance",
-                false
-            )
-        end
+        if nested_icons > 0.015 then
+            MENU_RENDER_ALPHA = saved_popup_alpha * child_alpha
+            -- Extra indent distinguishes the nested settings from the basic ones.
+            separator(child_y - 1)
+            toggle_row(mx, my, child_click,
+                row_x + 13, child_y, row_w - 13,
+                "Fade by Distance", "world_fade_distance", false)
+            separator(child_y + child_h - 1)
 
-        if shell_h > 201 then
-            line(
-                px + 12,
-                py + 161,
-                px + pw - 12,
-                py + 161,
-                C.divider,
-                1
-            )
+            slider_row(mx, my, child_click,
+                lmb and nested_icons > 0.96,
+                row_x + 13, child_y + child_h, row_w - 13,
+                "Icon Size", "world_icon_size", 10, 48, "int")
+            separator(child_y + 2 * child_h - 1)
 
-            local icons_row_x =
-                px + 8
-
-            local icons_row_y =
-                py + 162
-
-            local icons_row_w =
-                pw - 16
-
-            local border_prefix =
-                "world_icon_border"
-
-            local border_swatch_x =
-                icons_row_x
-                + icons_row_w
-                - 82
-
-            local border_swatch_y =
-                icons_row_y
-                + 11
-
-            -- Give the swatch its own padded hitbox. Clicking anywhere on/around
-            -- the color square must never fall through to the Show Icons toggle.
-            local border_hot =
-                hover(
-                    mx,
-                    my,
-                    border_swatch_x - 5,
-                    border_swatch_y - 5,
-                    28,
-                    28
-                )
-
-            -- Important: the color swatch lives inside the row, so do NOT pass
-            -- that click into toggle_row. Otherwise opening the picker also
-            -- flips Show Icons off/on.
-            toggle_row(
-                mx,
-                my,
-                ui_clicked and not border_hot,
-                icons_row_x,
-                icons_row_y,
-                icons_row_w,
-                "Show Icons",
-                "world_show_icons",
-                false
-            )
-
-            local border_color =
-                world_color_from_prefix(
-                    border_prefix
-                )
-
-            world_square_swatch(
-                border_swatch_x,
-                border_swatch_y,
-                18,
-                border_color
-            )
-
-            if ui_clicked
-                and border_hot
-            then
-                FALLEN_COLOR_INPUT_STOP(true)
-
-                if A.world_color_picker_open
-                    and A.world_color_picker_key == border_prefix
-                then
-                    A.world_color_picker_open = false
-                    A.world_color_picker_drag = nil
-                else
-                    A.world_color_picker_key =
-                        border_prefix
-
-                    A.world_color_picker_open =
-                        true
-
-                    A.world_color_picker_drag =
-                        nil
-
-                    A.fov_picker_open = false
-                    A.fov_picker_drag = nil
-                end
-
-                A.world_color_picker_anchor_x =
-                    FALLEN_UI_X(
-                        border_swatch_x
-                    )
-
-                A.world_color_picker_anchor_y =
-                    FALLEN_UI_Y(
-                        border_swatch_y
-                    )
-
-                A.world_color_picker_anchor_w =
-                    FALLEN_UI_LEN(18)
-
-                A.world_color_picker_anchor_h =
-                    FALLEN_UI_LEN(18)
-            end
-        end
-
-        if shell_h > 242 then
-            line(
-                px + 12,
-                py + 202,
-                px + pw - 12,
-                py + 202,
-                C.divider,
-                1
-            )
-
-            toggle_row(
-                mx,
-                my,
-                ui_clicked,
-                px + 8,
-                py + 203,
-                pw - 16,
-                "Fade by Distance",
-                "world_fade_distance",
-                false
-            )
-        end
-
-        if shell_h > 283 then
-            line(
-                px + 12,
-                py + 243,
-                px + pw - 12,
-                py + 243,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 244,
-                pw - 16,
-                "Icon Size",
-                "world_icon_size",
-                10,
-                48,
-                "int"
-            )
-        end
-
-        if shell_h > 324 then
-            line(
-                px + 12,
-                py + 284,
-                px + pw - 12,
-                py + 284,
-                C.divider,
-                1
-            )
-
+            local glow_y = child_y + 2 * child_h
             local glow_swatch_s = 18
-            local glow_swatch_x = px + pw - 42
-            local glow_swatch_y = py + 296
-            local glow_swatch_hot = hover(mx, my,
-                glow_swatch_x, glow_swatch_y,
-                glow_swatch_s, glow_swatch_s)
-            toggle_row(
-                mx,
-                my,
-                ui_clicked and not glow_swatch_hot,
-                px + 8,
-                py + 285,
-                pw - 16,
-                "Icon Glow",
-                "world_icon_glow_enabled",
-                false
-            )
+            local glow_swatch_x = row_x + row_w - glow_swatch_s - 12
+            local glow_swatch_y = glow_y + 11
+            local glow_color_hot = hover(mx, my,
+                glow_swatch_x - 4, glow_swatch_y - 4, 26, 26)
+            toggle_row(mx, my, child_click and not glow_color_hot,
+                row_x + 13, glow_y, row_w - 13,
+                "Icon Glow", "world_icon_glow_enabled", false)
             world_square_swatch(glow_swatch_x, glow_swatch_y,
                 glow_swatch_s, world_color_from_prefix("world_icon_glow"))
-            if ui_clicked and glow_swatch_hot then
+            if child_click and glow_color_hot then
                 fallen_open_color_at("world_icon_glow",
                     glow_swatch_x, glow_swatch_y, glow_swatch_s)
             end
         end
+        MENU_RENDER_ALPHA = saved_popup_alpha
 
-        if shell_h > 365 then
-            line(
-                px + 12,
-                py + 325,
-                px + pw - 12,
-                py + 325,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 326,
-                pw - 16,
-                "Glow Strength",
-                "world_icon_glow_strength",
-                0,
-                100,
-                "int"
-            )
+        -- Nested level 2: properties only appear when Icon Glow is enabled.
+        local glow_base_y = child_y + 3 * child_h
+        local glow_row_h = row_h * nested_glow
+        local glow_alpha = ease_out_cubic(
+            clamp((nested_glow - 0.22) / 0.78, 0, 1))
+        local glow_click = child_click and nested_glow > 0.96
+        if nested_glow > 0.015 then
+            MENU_RENDER_ALPHA = saved_popup_alpha * glow_alpha
+            separator(glow_base_y - 1)
+            slider_row(mx, my, glow_click,
+                lmb and glow_click,
+                row_x + 24, glow_base_y, row_w - 24,
+                "Glow Strength", "world_icon_glow_strength", 0, 100, "int")
+            separator(glow_base_y + glow_row_h - 1)
+            slider_row(mx, my, glow_click,
+                lmb and glow_click,
+                row_x + 24, glow_base_y + glow_row_h, row_w - 24,
+                "Glow Spread", "world_icon_glow_spread", 1, 20, "int")
         end
+        MENU_RENDER_ALPHA = saved_popup_alpha
 
-        if shell_h > 406 then
-            line(
-                px + 12,
-                py + 366,
-                px + pw - 12,
-                py + 366,
-                C.divider,
-                1
-            )
-
-            slider_row(
-                mx,
-                my,
-                ui_clicked,
-                lmb,
-                px + 8,
-                py + 367,
-                pw - 16,
-                "Glow Spread",
-                "world_icon_glow_spread",
-                1,
-                20,
-                "int"
-            )
+        -- A hidden sub-slider must not keep consuming mouse movement.
+        if not S.world_show_icons
+            and A.active_slider == "world_icon_size"
+        then
+            A.active_slider = nil
+        end
+        if not S.world_icon_glow_enabled
+            and (A.active_slider == "world_icon_glow_strength"
+                or A.active_slider == "world_icon_glow_spread")
+        then
+            A.active_slider = nil
         end
 
     -- =========================================================
