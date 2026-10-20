@@ -65,7 +65,8 @@ do
         records = {},
         downloaded = 0, reused = 0, errors = 0,
         attempt_count = 0,
-        host_errors = {}, host_blocked = {},
+        url_attempts = {}, retryable = {}, retry_after = {},
+        max_attempts = 3,
     }
     _G.FALLEN_IMAGE_DISK_CACHE = cache
 
@@ -142,29 +143,50 @@ do
         return nil
     end
 
-    -- Http.get is synchronous. These attempts happen in the loading phase,
-    -- one candidate at a time. Rendering keeps the old LoadImage fallback.
+    -- Retry transient failures in later preload passes, within ONE launch.
+    -- A failure on one Fandom/CDN URL must NEVER blacklist the entire host.
+    function cache.retry_time(urls)
+        local latest = nil
+        if type(urls) ~= "table" then return nil end
+        for _, url in ipairs(urls) do
+            if cache.retryable[url] == true
+                and (cache.url_attempts[url] or 0) < cache.max_attempts
+            then
+                local at = cache.retry_after[url] or 0
+                if not latest or at > latest then latest = at end
+            end
+        end
+        return latest
+    end
+
+    -- Http.get blocks this runtime; one request per loader tick, not all
+    -- at once in a frozen frame. The queue keeps the loader open until
+    -- every known asset has had its retries or returned a non-retryable error.
     function cache.download(source, image_url)
         if not is_static_image(source) or not remote(image_url) then return nil end
         local file = cache.lookup(source)
         if file then return file end
-        if cache.failed[image_url] then return nil end
         if type(Http) ~= "table" or type(Http.get) ~= "function"
             or type(write_file) ~= "function"
             or type(read_file) ~= "function"
         then
             cache.failed[image_url] = "missing Http.get/read_file/write_file"
+            cache.retryable[image_url] = false
             cache.errors = cache.errors + 1
             return nil
         end
 
-        local host = host_of(image_url)
-        if cache.host_blocked[host] then
-            cache.failed[image_url] = "Host is rejecting HTTP requests in this session"
-            cache.errors = cache.errors + 1
+        local attempts = cache.url_attempts[image_url] or 0
+        if attempts >= cache.max_attempts
+            or cache.retryable[image_url] == false
+            or (cache.retry_after[image_url] or 0) > tick()
+        then
             return nil
         end
-        local options = { timeout_ms = 6500 }
+        attempts = attempts + 1
+        cache.url_attempts[image_url] = attempts
+        local host = host_of(image_url)
+        local options = { timeout_ms = 8000 }
         if host == "static.wikia.nocookie.net" then
             options.headers = {
                 Accept = "image/png,image/jpeg,image/gif,image/*;q=0.7",
@@ -173,7 +195,8 @@ do
         end
         cache.attempt_count = cache.attempt_count + 1
         local ok, success, status, body, err = pcall(Http.get, image_url, options)
-        local ext = ok and success and tonumber(status) == 200 and image_ext(body)
+        local code = tonumber(status) or 0
+        local ext = ok and success and code == 200 and image_ext(body)
         if not ext then
             local why
             if not ok then
@@ -182,20 +205,23 @@ do
                 why = "HTTP error: " .. tostring(err or status)
             else
                 why = "HTTP " .. tostring(status)
-                if tonumber(status) == 200 then
+                if code == 200 then
                     why = why .. " (response is not PNG/JPG/GIF/BMP)"
                 end
             end
             cache.failed[image_url] = why
             cache.errors = cache.errors + 1
-            -- Many CDN images share a host. Repeated 403/429 errors mean
-            -- this API cannot fetch its bytes; avoid hundreds of freezes.
-            if tonumber(status) == 403 or tonumber(status) == 429
-                or tonumber(status) == 0 or not success
-                or (tonumber(status) == 200 and not ext)
-            then
-                cache.host_errors[host] = (cache.host_errors[host] or 0) + 1
-                if cache.host_errors[host] >= 4 then cache.host_blocked[host] = true end
+            -- Retry a timeout, connection loss, 429, or server error.
+            -- A 403/404 is not cured by restarting or by retrying in a loop.
+            -- A 200 response containing HTML gets one extra chance.
+            local transient = not ok or not success or code == 0
+                or code == 408 or code == 429 or code >= 500
+                or (code == 200 and attempts < 2)
+            cache.retryable[image_url] = transient
+                and attempts < cache.max_attempts
+            if cache.retryable[image_url] then
+                local delay = code == 429 and 3.0 or 0.9
+                cache.retry_after[image_url] = tick() + delay * attempts
             end
             return nil
         end
@@ -205,17 +231,21 @@ do
         local wrote, saved = pcall(write_file, file, body)
         if not wrote or saved ~= true then
             cache.failed[image_url] = "Cannot write " .. tostring(file)
+            cache.retryable[image_url] = false
             cache.errors = cache.errors + 1
             return nil
         end
         local read_ok, verified = pcall(read_file, file)
         if not read_ok or verified ~= body then
             cache.failed[image_url] = "Saved bytes could not be verified"
+            cache.retryable[image_url] = false
             cache.errors = cache.errors + 1
             return nil
         end
         cache.hits[source_key] = file
         cache.missing[source_key] = nil
+        cache.failed[image_url] = nil
+        cache.retryable[image_url] = false
         cache.downloaded = cache.downloaded + 1
         return file
     end
@@ -224,13 +254,15 @@ do
     function cache.report()
         if type(write_file) ~= "function" then return false end
         local lines = {
-            "Fallen image cache report - v135",
+            "Fallen image cache report - v136",
             "Folder: " .. cache.folder,
             "Successfully downloaded this launch: " .. tostring(cache.downloaded),
             "Reused from disk: " .. tostring(cache.reused),
             "HTTP attempts: " .. tostring(cache.attempt_count),
-            "Failed URL attempts: " .. tostring(cache.errors),
-            "Note: HTML/blocked URLs cannot be stored as images.",
+            "Failed URL attempts (includes retries): " .. tostring(cache.errors),
+            "Retry budget per image URL: " .. tostring(cache.max_attempts),
+            "Note: server errors and timeouts are retried this launch.",
+            "Note: 403/404 and HTML responses cannot be forced to download.",
             "",
         }
         local category_stats, keys = {}, {}
@@ -32725,6 +32757,7 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
         start_interval = 0.0,
         image_timeout = 5.0,
         special_timeout = 2.2,
+        max_cache_passes = 3,
         last_tick = tick(),
     }
 end
@@ -32861,19 +32894,25 @@ function FALLEN_PRELOAD_TICK()
         local entry = _G.FALLEN_IMAGE_PRELOAD_QUEUE[st.url_index]
         if not entry then break end
 
+        -- A URL might have returned 429/timeout. Give it a real delay,
+        -- instead of silently skipping the retry in this preload pass.
+        if entry.not_before and now < entry.not_before then
+            st.next_url_start = entry.not_before
+            break
+        end
+        entry.not_before = nil
         st.next_url_start = now + (st.start_interval or 0)
         local source = entry.source
         local disk_cache = _G.FALLEN_IMAGE_DISK_CACHE
         local saved = disk_cache and disk_cache.lookup(source)
 
-        -- One candidate per frame, otherwise several slow/failed HTTP
-        -- requests could freeze a single render frame for many seconds.
+        -- Try one candidate at a time. Continue through fallback URLs,
+        -- even if another asset on the same CDN failed earlier.
         if not saved and disk_cache and entry.urls[entry.try_index] then
             saved = disk_cache.download(source, entry.urls[entry.try_index])
             entry.try_index = entry.try_index + 1
             started_now = started_now + 1
             if not saved and entry.urls[entry.try_index] then
-                -- Keep this logical asset in the queue to try its fallback.
                 break
             end
         end
@@ -32882,6 +32921,25 @@ function FALLEN_PRELOAD_TICK()
         if disk_cache and st.url_index % 12 == 0 then
             disk_cache.report()
         end
+
+        -- Uncached assets with transient errors go to the END of the
+        -- queue for another pass, before the loader may show 100%.
+        if not saved and disk_cache
+            and (entry.pass or 1) < (st.max_cache_passes or 3)
+        then
+            local retry_at = disk_cache.retry_time(entry.urls)
+            if retry_at then
+                entry.pass = (entry.pass or 1) + 1
+                entry.try_index = 1
+                entry.not_before = math.max(now + 0.3, retry_at)
+                table.insert(_G.FALLEN_IMAGE_PRELOAD_QUEUE, entry)
+                _G.FALLEN_IMAGE_PRELOAD_TOTAL =
+                    _G.FALLEN_IMAGE_PRELOAD_TOTAL + 1
+            end
+        end
+
+        -- Decode the image once; retries above concern DISK caching.
+        -- A failed cache download still has the old remote-drawing fallback.
         local handle = _G.FALLEN_IMAGE_PRELOAD_HANDLES[source]
         if not handle and type(LoadImage) == "function" then
             local ok, loaded = pcall(LoadImage, saved or source)
@@ -32891,7 +32949,7 @@ function FALLEN_PRELOAD_TICK()
             end
         end
 
-        if handle then
+        if handle and (entry.pass or 1) <= 2 then
             table.insert(st.inflight, {
                 handle = handle,
                 started = now,
@@ -32924,11 +32982,15 @@ function FALLEN_PRELOAD_TICK()
         local disk_cache = _G.FALLEN_IMAGE_DISK_CACHE
         if disk_cache then disk_cache.report() end
         if disk_cache and type(print) == "function" then
-            print("[Fallen] Assets: " .. tostring(#_G.FALLEN_IMAGE_PRELOAD_QUEUE)
-                .. " known, " .. tostring(disk_cache.downloaded)
-                .. " downloaded, " .. tostring(disk_cache.reused)
-                .. " disk hits, " .. tostring(disk_cache.errors)
-                .. " URL failures")
+            local saved, total = 0, 0
+            for source in pairs(disk_cache.records) do
+                total = total + 1
+                if disk_cache.lookup(source) then saved = saved + 1 end
+            end
+            print("[Fallen] Assets: " .. tostring(saved) .. "/" .. tostring(total)
+                .. " on disk, " .. tostring(disk_cache.downloaded)
+                .. " downloaded this launch, " .. tostring(disk_cache.errors)
+                .. " HTTP failures/retries. See cache_report.txt")
         end
     end
 end
