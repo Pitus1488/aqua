@@ -54,41 +54,33 @@ local IsImageFailed = draw_fn("IsImageFailed")
 local DrawImage = draw_fn("DrawImage")
 
 
--- Persistent static-image disk cache: shared by menu, Armor, Dropped Items,
--- weapons, grenades, and World ESP. Player avatars remain uncached.
--- The cache is checked before Http.get; it persists between injections.
+-- Persistent image cache, with a status report for Armor/Dropped/World ESP.
+-- Only decoded image bytes are written. URLs still fall back to network loading.
 do
     local network_load_image = LoadImage
     local load_file = draw_fn("LoadImageFromFile") or network_load_image
     local cache = {
         folder = "C:\\blueberry\\fallen_assets\\",
-        hits = {},
-        missing = {},
-        failed = {},
-        aliases = {},
-        downloaded = 0,
-        reused = 0,
-        errors = 0,
+        hits = {}, missing = {}, failed = {}, aliases = {},
+        records = {},
+        downloaded = 0, reused = 0, errors = 0,
+        attempt_count = 0,
+        host_errors = {}, host_blocked = {},
     }
     _G.FALLEN_IMAGE_DISK_CACHE = cache
 
     local function remote(url)
         return type(url) == "string"
-            and (url:sub(1, 7) == "http://"
-                or url:sub(1, 8) == "https://")
+            and (url:sub(1, 7) == "http://" or url:sub(1, 8) == "https://")
     end
 
     local function is_static_image(url)
         if not remote(url) then return false end
         local low = string.lower(url)
-        -- Thumbnail URLs are dynamic. Fixed URLs registered by the asset
-        -- preloader can still be cached even when served via an rbxcdn host.
         if not cache.aliases[url] and (
             low:find("rbxcdn.com", 1, true)
             or low:find("thumbnails.roblox.com", 1, true)
-        ) then
-            return false
-        end
+        ) then return false end
         return true
     end
 
@@ -106,19 +98,27 @@ do
         if type(data) ~= "string" or #data < 24 then return nil end
         if data:sub(1, 8) == "\137PNG\r\n\26\n" then return ".png" end
         if data:sub(1, 3) == "\255\216\255" then return ".jpg" end
-        if data:sub(1, 3) == "GIF" then return ".gif" end
+        if data:sub(1, 6) == "GIF87a" or data:sub(1, 6) == "GIF89a" then return ".gif" end
         if data:sub(1, 2) == "BM" then return ".bmp" end
         return nil
     end
 
-    function cache.register_group(urls)
+    local function host_of(url)
+        return (type(url) == "string" and url:match("^https?://([^/]+)")) or "unknown"
+    end
+
+    function cache.register_group(urls, category, name)
         if type(urls) ~= "table" then return end
         local source = urls[1]
         if not remote(source) then return end
+        if not cache.records[source] then
+            cache.records[source] = {
+                category = tostring(category or "Other"),
+                name = tostring(name or source:match("/([^/?]+)") or "image"),
+            }
+        end
         for _, url in ipairs(urls) do
-            if remote(url) then
-                cache.aliases[url] = source
-            end
+            if remote(url) then cache.aliases[url] = source end
         end
     end
 
@@ -142,66 +142,153 @@ do
         return nil
     end
 
-    -- source identifies the asset; image_url is any candidate CDN URL.
-    -- A failed first URL must NOT prevent trying alternative URLs.
+    -- Http.get is synchronous. These attempts happen in the loading phase,
+    -- one candidate at a time. Rendering keeps the old LoadImage fallback.
     function cache.download(source, image_url)
-        if not is_static_image(source) or not remote(image_url) then
-            return nil
-        end
+        if not is_static_image(source) or not remote(image_url) then return nil end
         local file = cache.lookup(source)
         if file then return file end
         if cache.failed[image_url] then return nil end
-        if not Http or type(Http.get) ~= "function"
+        if type(Http) ~= "table" or type(Http.get) ~= "function"
             or type(write_file) ~= "function"
             or type(read_file) ~= "function"
         then
-            return nil
-        end
-        local ok, success, status, body = pcall(
-            Http.get, image_url, { timeout_ms = 1800 }
-        )
-        local ext = ok and success and status == 200 and image_ext(body)
-        if not ext then
-            cache.failed[image_url] = true
+            cache.failed[image_url] = "missing Http.get/read_file/write_file"
             cache.errors = cache.errors + 1
             return nil
         end
-        file = cache_key(cache.aliases[source] or source) .. ext
+
+        local host = host_of(image_url)
+        if cache.host_blocked[host] then
+            cache.failed[image_url] = "Host is rejecting HTTP requests in this session"
+            cache.errors = cache.errors + 1
+            return nil
+        end
+        local options = { timeout_ms = 6500 }
+        if host == "static.wikia.nocookie.net" then
+            options.headers = {
+                Accept = "image/png,image/jpeg,image/gif,image/*;q=0.7",
+                Referer = "https://fallen-survival-new.fandom.com/",
+            }
+        end
+        cache.attempt_count = cache.attempt_count + 1
+        local ok, success, status, body, err = pcall(Http.get, image_url, options)
+        local ext = ok and success and tonumber(status) == 200 and image_ext(body)
+        if not ext then
+            local why
+            if not ok then
+                why = "HTTP exception: " .. tostring(success)
+            elseif not success then
+                why = "HTTP error: " .. tostring(err or status)
+            else
+                why = "HTTP " .. tostring(status)
+                if tonumber(status) == 200 then
+                    why = why .. " (response is not PNG/JPG/GIF/BMP)"
+                end
+            end
+            cache.failed[image_url] = why
+            cache.errors = cache.errors + 1
+            -- Many CDN images share a host. Repeated 403/429 errors mean
+            -- this API cannot fetch its bytes; avoid hundreds of freezes.
+            if tonumber(status) == 403 or tonumber(status) == 429
+                or tonumber(status) == 0 or not success
+                or (tonumber(status) == 200 and not ext)
+            then
+                cache.host_errors[host] = (cache.host_errors[host] or 0) + 1
+                if cache.host_errors[host] >= 4 then cache.host_blocked[host] = true end
+            end
+            return nil
+        end
+
+        local source_key = cache.aliases[source] or source
+        file = cache_key(source_key) .. ext
         local wrote, saved = pcall(write_file, file, body)
         if not wrote or saved ~= true then
-            cache.failed[image_url] = true
+            cache.failed[image_url] = "Cannot write " .. tostring(file)
             cache.errors = cache.errors + 1
             return nil
         end
         local read_ok, verified = pcall(read_file, file)
         if not read_ok or verified ~= body then
-            cache.failed[image_url] = true
+            cache.failed[image_url] = "Saved bytes could not be verified"
             cache.errors = cache.errors + 1
             return nil
         end
-        local key = cache.aliases[source] or source
-        cache.hits[key] = file
-        cache.missing[key] = nil
+        cache.hits[source_key] = file
+        cache.missing[source_key] = nil
         cache.downloaded = cache.downloaded + 1
         return file
     end
 
+    -- Status report is human-readable and explains why a file is absent.
+    function cache.report()
+        if type(write_file) ~= "function" then return false end
+        local lines = {
+            "Fallen image cache report - v135",
+            "Folder: " .. cache.folder,
+            "Successfully downloaded this launch: " .. tostring(cache.downloaded),
+            "Reused from disk: " .. tostring(cache.reused),
+            "HTTP attempts: " .. tostring(cache.attempt_count),
+            "Failed URL attempts: " .. tostring(cache.errors),
+            "Note: HTML/blocked URLs cannot be stored as images.",
+            "",
+        }
+        local category_stats, keys = {}, {}
+        for source, item in pairs(cache.records) do
+            local name = item.category
+            local rec = category_stats[name]
+            if not rec then rec = {total=0, saved=0}; category_stats[name]=rec end
+            rec.total = rec.total + 1
+            if cache.hits[source] then rec.saved = rec.saved + 1 end
+            keys[#keys + 1] = source
+        end
+        table.sort(keys)
+        local cats = {}
+        for name in pairs(category_stats) do cats[#cats+1]=name end
+        table.sort(cats)
+        for _, category in ipairs(cats) do
+            local rec = category_stats[category]
+            lines[#lines+1] = category .. ": " .. rec.saved .. "/" .. rec.total .. " saved"
+        end
+        lines[#lines+1] = ""
+        lines[#lines+1] = "ASSET DETAILS (saved/missing):"
+        for _, source in ipairs(keys) do
+            local item = cache.records[source]
+            local file = cache.hits[source]
+            local problem = ""
+            if not file then
+                local last = cache.failed[source]
+                if last then problem = " | " .. tostring(last) end
+            end
+            lines[#lines+1] = (file and "OK" or "MISSING")
+                .. " | " .. item.category .. " | " .. item.name .. problem
+                .. " | " .. source
+        end
+        lines[#lines+1] = ""
+        lines[#lines+1] = "FAILED REQUESTS:"
+        local failed_urls = {}
+        for url in pairs(cache.failed) do failed_urls[#failed_urls+1]=url end
+        table.sort(failed_urls)
+        for _, url in ipairs(failed_urls) do
+            lines[#lines+1] = tostring(cache.failed[url]) .. " | " .. url
+        end
+        return pcall(write_file, cache.folder .. "cache_report.txt", table.concat(lines, "\n"))
+    end
+
     cache.is_remote = remote
     cache.is_static_image = is_static_image
-
     if type(network_load_image) == "function" then
         LoadImage = function(url)
-            -- The resolver may have returned a local file path; do not
-            -- accidentally pass that path through the HTTP code path.
             if not is_static_image(url) then
-                if type(url) == "string" and
-                    url:sub(1, #cache.folder) == cache.folder
-                then
-                    return load_file(url)
-                end
+                if type(url) == "string"
+                    and url:sub(1, #cache.folder) == cache.folder
+                then return load_file(url) end
                 return network_load_image(url)
             end
-            local file = cache.lookup(url) or cache.download(url, url)
+            local file = cache.lookup(url)
+            if not file and _G.FALLEN_IMAGE_PRELOAD_DONE ~= true then
+                file = cache.download(url, url)
+            end
             if file then
                 local ok, handle = pcall(load_file, file)
                 if ok and handle then return handle end
@@ -32334,7 +32421,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v133 | v132 + persistent image cache | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v135 | image cache with diagnostics | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -32505,7 +32592,7 @@ end
 -- One logical asset can have several fallback URLs. Preload one asset,
 -- trying the candidates on separate frames, instead of caching just the
 -- first URL. Each asset is saved once and can be reused by all aliases.
-function FALLEN_PRELOAD_QUEUE_GROUP(urls)
+function FALLEN_PRELOAD_QUEUE_GROUP(urls, category, name)
     if type(urls) == "string" then urls = { urls } end
     if type(urls) ~= "table" then return end
     local list, seen = {}, {}
@@ -32517,9 +32604,24 @@ function FALLEN_PRELOAD_QUEUE_GROUP(urls)
     end
     local primary = list[1]
     if not primary then return end
+    -- Direct-image entries often list one CDN variant while the renderer
+    -- already has a fallback generator; use those same alternatives in cache.
+    if #list == 1 and primary:find("wikia.nocookie.net", 1, true)
+        and type(FALLEN_WEAPON_MAKE_FANDOM_FALLBACKS) == "function"
+    then
+        local alternatives = FALLEN_WEAPON_MAKE_FANDOM_FALLBACKS(primary)
+        if type(alternatives) == "table" then
+            for _, url in ipairs(alternatives) do
+                if type(url) == "string" and url ~= "" and not seen[url] then
+                    list[#list + 1] = url
+                    seen[url] = true
+                end
+            end
+        end
+    end
     local disk_cache = _G.FALLEN_IMAGE_DISK_CACHE
     if type(disk_cache) == "table" then
-        disk_cache.register_group(list)
+        disk_cache.register_group(list, category, name)
     end
     if _G.FALLEN_IMAGE_PRELOAD_QUEUED[primary] then return end
     _G.FALLEN_IMAGE_PRELOAD_QUEUED[primary] = true
@@ -32527,13 +32629,15 @@ function FALLEN_PRELOAD_QUEUE_GROUP(urls)
         source = primary,
         urls = list,
         try_index = 1,
+        category = category or "Other",
+        name = name or "Image",
     })
 end
 
-function FALLEN_PRELOAD_QUEUE_ASSET_MAP(map)
+function FALLEN_PRELOAD_QUEUE_ASSET_MAP(map, category)
     if type(map) ~= "table" then return end
-    for _, urls in pairs(map) do
-        FALLEN_PRELOAD_QUEUE_GROUP(urls)
+    for name, urls in pairs(map) do
+        FALLEN_PRELOAD_QUEUE_GROUP(urls, category, tostring(name))
     end
 end
 
@@ -32542,17 +32646,17 @@ function FALLEN_BUILD_IMAGE_PRELOAD_QUEUE()
     _G.FALLEN_IMAGE_PRELOAD_QUEUED = {}
 
     -- Grenade URLs are alternatives for ONE icon.
-    FALLEN_PRELOAD_QUEUE_GROUP(FALLEN_GRENADE_ICON_URLS)
+    FALLEN_PRELOAD_QUEUE_GROUP(FALLEN_GRENADE_ICON_URLS, "Grenades", "Grenade")
     -- These maps contain all known Armor and Dropped Item/weapon icons.
-    FALLEN_PRELOAD_QUEUE_ASSET_MAP(FALLEN_ARMOR_ICON_URLS)
-    FALLEN_PRELOAD_QUEUE_ASSET_MAP(FALLEN_WEAPON_ICON_URLS)
-    FALLEN_PRELOAD_QUEUE_ASSET_MAP(FALLEN_WEAPON_DIRECT_ICON_URLS)
-    FALLEN_PRELOAD_QUEUE_ASSET_MAP(FALLEN_KEYCARD_ICON_URLS)
+    FALLEN_PRELOAD_QUEUE_ASSET_MAP(FALLEN_ARMOR_ICON_URLS, "Armor ESP")
+    FALLEN_PRELOAD_QUEUE_ASSET_MAP(FALLEN_WEAPON_ICON_URLS, "Dropped Items")
+    FALLEN_PRELOAD_QUEUE_ASSET_MAP(FALLEN_WEAPON_DIRECT_ICON_URLS, "Dropped Items")
+    FALLEN_PRELOAD_QUEUE_ASSET_MAP(FALLEN_KEYCARD_ICON_URLS, "Keycards")
 
     if type(WORLD_UI_ITEMS) == "table" then
         for _, cfg in ipairs(WORLD_UI_ITEMS) do
             if cfg and type(cfg.direct_urls) == "table" then
-                FALLEN_PRELOAD_QUEUE_GROUP(cfg.direct_urls)
+                FALLEN_PRELOAD_QUEUE_GROUP(cfg.direct_urls, "World ESP", tostring(cfg.name or cfg.label or "World icon"))
             end
         end
     end
@@ -32604,6 +32708,10 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
     _G.FALLEN_IMAGE_PRELOAD_TOTAL =
         #_G.FALLEN_IMAGE_PRELOAD_SPECIALS
         + #_G.FALLEN_IMAGE_PRELOAD_QUEUE
+
+    if _G.FALLEN_IMAGE_DISK_CACHE then
+        _G.FALLEN_IMAGE_DISK_CACHE.report()
+    end
 
     _G.FALLEN_IMAGE_PRELOAD_STATE = {
         stage = "special",
@@ -32771,6 +32879,9 @@ function FALLEN_PRELOAD_TICK()
         end
 
         st.url_index = st.url_index + 1
+        if disk_cache and st.url_index % 12 == 0 then
+            disk_cache.report()
+        end
         local handle = _G.FALLEN_IMAGE_PRELOAD_HANDLES[source]
         if not handle and type(LoadImage) == "function" then
             local ok, loaded = pcall(LoadImage, saved or source)
@@ -32811,6 +32922,7 @@ function FALLEN_PRELOAD_TICK()
             _G.FALLEN_IMAGE_PRELOAD_TOTAL
         _G.FALLEN_IMAGE_PRELOAD_DONE = true
         local disk_cache = _G.FALLEN_IMAGE_DISK_CACHE
+        if disk_cache then disk_cache.report() end
         if disk_cache and type(print) == "function" then
             print("[Fallen] Assets: " .. tostring(#_G.FALLEN_IMAGE_PRELOAD_QUEUE)
                 .. " known, " .. tostring(disk_cache.downloaded)
