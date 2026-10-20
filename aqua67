@@ -2387,7 +2387,8 @@ local function cfg_add_to_index(name)
     cfg_write_index()
 end
 
-local function cfg_serialize()
+local function cfg_serialize(snapshot)
+    local source = snapshot or S
     local lines = {
         "FALLEN_LUA_CONFIG|2",
     }
@@ -2396,7 +2397,7 @@ local function cfg_serialize()
         CONFIG_KEYS
     ) do
         local value =
-            S[key]
+            source[key]
 
         local kind =
             type(value)
@@ -2806,6 +2807,274 @@ local function cfg_unique_name(base)
     return nil
 end
 
+-- Versioned portable share codes for saved configs. Only deviations from
+-- defaults are encoded; every config-backed boolean/number/string can be
+-- restored, including colors and distances. No network or remote storage.
+local CFG_SHARE_ALPHABET =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_~"
+local CFG_SHARE_LOOKUP = {}
+for i = 1, #CFG_SHARE_ALPHABET do
+    CFG_SHARE_LOOKUP[CFG_SHARE_ALPHABET:sub(i,i)] = i - 1
+end
+
+local function cfg_share_b36(number)
+    number = math.floor(number)
+    local digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    local out = ""
+    repeat
+        local rem = number % 36
+        out = digits:sub(rem + 1, rem + 1) .. out
+        number = math.floor(number / 36)
+    until number == 0
+    return out
+end
+
+local function cfg_share_schema()
+    local hash = 1
+    for _, key in ipairs(CONFIG_KEYS) do
+        local datum = key .. ":" .. type(defaults[key]) .. ";"
+        for i = 1, #datum do
+            hash = (hash * 33 + datum:byte(i)) % 2147483647
+        end
+    end
+    return cfg_share_b36(hash)
+end
+
+local function cfg_share_checksum(bytes)
+    local a, b = 1, 0
+    for i = 1, #bytes do
+        a = (a + bytes:byte(i)) % 65521
+        b = (b + a) % 65521
+    end
+    return cfg_share_b36(b * 65536 + a)
+end
+
+local function cfg_share_b64_encode(bytes)
+    local pieces = {}
+    for i = 1, #bytes, 3 do
+        local a = bytes:byte(i) or 0
+        local b = bytes:byte(i+1) or 0
+        local c = bytes:byte(i+2) or 0
+        local value = a*65536 + b*256 + c
+        pieces[#pieces+1] = CFG_SHARE_ALPHABET:sub(
+            math.floor(value / 262144) % 64 + 1,
+            math.floor(value / 262144) % 64 + 1)
+        pieces[#pieces+1] = CFG_SHARE_ALPHABET:sub(
+            math.floor(value / 4096) % 64 + 1,
+            math.floor(value / 4096) % 64 + 1)
+        if i+1 <= #bytes then
+            local idx = math.floor(value / 64) % 64 + 1
+            pieces[#pieces+1] = CFG_SHARE_ALPHABET:sub(idx, idx)
+        end
+        if i+2 <= #bytes then
+            local idx = value % 64 + 1
+            pieces[#pieces+1] = CFG_SHARE_ALPHABET:sub(idx, idx)
+        end
+    end
+    return table.concat(pieces)
+end
+
+local function cfg_share_b64_decode(encoded)
+    if #encoded % 4 == 1 then return nil end
+    local output = {}
+    for i = 1, #encoded, 4 do
+        local count = math.min(4, #encoded-i+1)
+        if count < 2 then return nil end
+        local a = CFG_SHARE_LOOKUP[encoded:sub(i,i)]
+        local b = CFG_SHARE_LOOKUP[encoded:sub(i+1,i+1)]
+        local c = count >= 3 and CFG_SHARE_LOOKUP[encoded:sub(i+2,i+2)] or 0
+        local d = count >= 4 and CFG_SHARE_LOOKUP[encoded:sub(i+3,i+3)] or 0
+        if a == nil or b == nil or c == nil or d == nil then
+            return nil
+        end
+        local value = a*262144 + b*4096 + c*64 + d
+        output[#output+1] = string.char(math.floor(value/65536)%256)
+        if count >= 3 then
+            output[#output+1] = string.char(math.floor(value/256)%256)
+        end
+        if count == 4 then
+            output[#output+1] = string.char(value%256)
+        end
+    end
+    return table.concat(output)
+end
+
+local function cfg_share_saved(name)
+    name = cfg_sanitize_name(name)
+    if not name then
+        cfg_notify("Select a preset to share", "warning")
+        return false
+    end
+    if type(read_file) ~= "function" then
+        cfg_notify("read_file unavailable", "error")
+        return false
+    end
+    local ok, data = pcall(read_file, cfg_path(name))
+    if not ok or type(data) ~= "string" or
+        data:sub(1, 19) ~= "FALLEN_LUA_CONFIG|2" then
+        cfg_notify("Save the preset before sharing", "warning")
+        return false
+    end
+    local saved = {}
+    for row in data:gmatch("[^\r\n]+") do
+        local parts = cfg_split(row)
+        local key = cfg_unescape(parts[2] or "")
+        local expected = type(defaults[key])
+        if not CONFIG_EXCLUDE[key] then
+            if parts[1] == "B" and expected == "boolean" then
+                saved[key] = (parts[3] == "1" or parts[3] == "true")
+            elseif parts[1] == "N" and expected == "number" then
+                saved[key] = tonumber(parts[3])
+            elseif parts[1] == "S" and expected == "string" then
+                saved[key] = cfg_unescape(parts[3] or "")
+            end
+        end
+    end
+    local wire = cfg_share_b36(#name) .. ":" .. name
+    for index, key in ipairs(CONFIG_KEYS) do
+        local value = saved[key]
+        if value ~= nil and value ~= defaults[key] then
+            local raw
+            if type(value) == "boolean" then
+                raw = value and "1" or "0"
+            else
+                raw = tostring(value)
+            end
+            wire = wire .. cfg_share_b36(index) .. ":" ..
+                cfg_share_b36(#raw) .. ":" .. raw
+        end
+    end
+    if #wire > 180000 then
+        cfg_notify("Preset is too large to share", "warning")
+        return false
+    end
+    local encoded = cfg_share_b64_encode(wire)
+    local groups = {}
+    for i = 1, #encoded, 6 do
+        groups[#groups+1] = encoded:sub(i, i+5)
+    end
+    local code = "FL1-" .. cfg_share_schema() .. "-" ..
+        cfg_share_checksum(wire) .. "-" .. table.concat(groups, "-")
+    if type(set_clipboard) ~= "function" then
+        cfg_notify("Clipboard copy unavailable", "error")
+        return false
+    end
+    local copied, result = pcall(set_clipboard, code)
+    if not copied or result == false then
+        cfg_notify("Couldn't copy share code", "error")
+        return false
+    end
+    cfg_notify("Preset share code copied", "success")
+    return true
+end
+
+local function cfg_share_read_field(wire, from)
+    local stop = wire:find(":", from, true)
+    if not stop or stop-from > 8 then return nil end
+    local number = tonumber(wire:sub(from, stop-1), 36)
+    if not number or number < 0 or number > 180000 then return nil end
+    return number, stop+1
+end
+
+local function cfg_paste_shared()
+    if type(get_clipboard) ~= "function" then
+        cfg_notify("Clipboard paste unavailable", "error")
+        return false
+    end
+    local ok, input = pcall(get_clipboard)
+    if not ok or type(input) ~= "string" then
+        cfg_notify("Clipboard is empty", "warning")
+        return false
+    end
+    input = input:gsub("%s", "")
+    if #input > 250000 then
+        cfg_notify("Share code is too large", "warning")
+        return false
+    end
+    local signature, checksum, encoded = input:match(
+        "^FL1%-([%w]+)%-([%w]+)%-(.+)$")
+    if not signature or signature ~= cfg_share_schema() then
+        cfg_notify("Invalid code or different script version", "warning")
+        return false
+    end
+    encoded = encoded:gsub("%-", "")
+    local wire = cfg_share_b64_decode(encoded)
+    if not wire or #wire > 180000 or
+        cfg_share_checksum(wire) ~= checksum then
+        cfg_notify("Share code is damaged", "warning")
+        return false
+    end
+    local name_length, cursor = cfg_share_read_field(wire, 1)
+    if not name_length or name_length == 0 or name_length > 35 or
+        cursor+name_length-1 > #wire then
+        cfg_notify("Invalid preset name in share code", "warning")
+        return false
+    end
+    local name = cfg_sanitize_name(wire:sub(cursor, cursor+name_length-1))
+    if not name then
+        cfg_notify("Invalid preset name in share code", "warning")
+        return false
+    end
+    cursor = cursor + name_length
+    local snapshot, seen = {}, {}
+    for _, key in ipairs(CONFIG_KEYS) do
+        snapshot[key] = defaults[key]
+    end
+    while cursor <= #wire do
+        local index, following = cfg_share_read_field(wire, cursor)
+        if not index or index < 1 or index > #CONFIG_KEYS or seen[index] then
+            cfg_notify("Invalid preset data", "warning")
+            return false
+        end
+        seen[index] = true
+        local length, value_start = cfg_share_read_field(wire, following)
+        if not length or value_start+length-1 > #wire then
+            cfg_notify("Invalid preset data", "warning")
+            return false
+        end
+        local raw = wire:sub(value_start, value_start+length-1)
+        cursor = value_start+length
+        local key = CONFIG_KEYS[index]
+        local kind = type(defaults[key])
+        if kind == "boolean" then
+            if raw ~= "1" and raw ~= "0" then return false end
+            snapshot[key] = raw == "1"
+        elseif kind == "number" then
+            local value = tonumber(raw)
+            if not value or value ~= value or value == math.huge or
+                value == -math.huge then return false end
+            snapshot[key] = value
+        elseif kind == "string" then
+            snapshot[key] = raw
+        else
+            return false
+        end
+    end
+    if type(write_file) ~= "function" then
+        cfg_notify("write_file unavailable", "error")
+        return false
+    end
+    local fresh = cfg_unique_name(name)
+    if not fresh then
+        cfg_notify("Too many presets with this name", "warning")
+        return false
+    end
+    local wrote, result = pcall(write_file, cfg_path(fresh), cfg_serialize(snapshot))
+    if not wrote or result == false then
+        cfg_notify("Could not import preset", "error")
+        return false
+    end
+    cfg_add_to_index(fresh)
+    cfg_mark_created(fresh)
+    cfg_mark_recent(fresh)
+    A.config_selected = fresh
+    A.config_input_buffer = fresh
+    A.config_list_scroll = 0
+    A.config_search_query = ""
+    cfg_notify("Imported preset: " .. fresh, "success")
+    return true
+end
+
 local function cfg_delete_preset(name)
     -- No recycle bin: delete the selected preset directly.
     return cfg_delete(name)
@@ -2945,6 +3214,8 @@ return {
         return ok
     end,
     load = cfg_load,
+    share = cfg_share_saved,
+    paste = cfg_paste_shared,
     delete = cfg_delete_preset,
     rename = function(old_name, new_name)
         return cfg_copy_saved(old_name, new_name, true)
@@ -22820,6 +23091,7 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     -- Toolbar interactions are processed before measurement so creating or
     -- deleting a config immediately updates the target dropdown height.
     local toolbar = {
+        {"paste", px + pw - 147},
         {"save", px + pw - 77},
         {"add", px + pw - 51},
         {"close", px + pw - 25},
@@ -22827,13 +23099,16 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     local hovered_tool = nil
     for _, tool in ipairs(toolbar) do
         local kind, tx = tool[1], tool[2]
-        local hot = hover(mx, my, tx, py + 6, 22, 23)
+        local tool_w = kind == "paste" and 65 or 22
+        local hot = hover(mx, my, tx, py + 6, tool_w, 23)
         if hot then hovered_tool = kind end
         if ui_clicked and hot and not consumed then
             consumed = true
             A.config_row_menu = nil
             A.config_sort_open = false
-            if kind == "add" then
+            if kind == "paste" then
+                FALLEN_CONFIGS.paste()
+            elseif kind == "add" then
                 local existing = {}
                 for _, name in ipairs(FALLEN_CONFIGS.CONFIG.list) do
                     existing[name] = true
@@ -22913,11 +23188,16 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     text(px+36, py+12, "Presets", azure)
     for _, tool in ipairs(toolbar) do
         local kind, tx = tool[1], tool[2]
-        local hot = hover(mx, my, tx, py+6, 22, 23)
+        local tool_w = kind == "paste" and 65 or 22
+        local hot = hover(mx, my, tx, py+6, tool_w, 23)
         if hot then
-            rounded_fill(tx, py+6, 22, 23, 5, {0.15,0.16,0.20,1})
+            rounded_fill(tx, py+6, tool_w, 23, 5, {0.15,0.16,0.20,1})
         end
-        if kind == "add" then
+        if kind == "paste" then
+            rounded_outline(tx+5, py+11, 12, 12, 2,
+                hot and ink or muted, 1, panel)
+            text(tx+22, py+12, "Paste", hot and ink or muted)
+        elseif kind == "add" then
             centered_text(tx+11,py+10,"+",hot and ink or muted)
         elseif kind == "close" then
             line(tx+7,py+13,tx+11,py+17,hot and ink or muted,1.4)
@@ -23173,7 +23453,7 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
                 elseif word=="Delete" then
                     FALLEN_CONFIGS.delete(name)
                 elseif word=="Share" then
-                    fallen_toast("Presets are saved as local .cfg files","normal")
+                    FALLEN_CONFIGS.share(name)
                 end
                 A.config_row_menu=nil
                 consumed=true
@@ -31732,7 +32012,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v126 | v121 base + Compact Animated Configs | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v128 | v121 base + Config Share/Paste | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
