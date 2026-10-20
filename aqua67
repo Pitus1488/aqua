@@ -10,7 +10,7 @@ _G.FallenMenuReady = false
 _G.FallenLua_Menu = _G.FallenLua_Menu or {}
 if _G.FallenLua_Menu.visible == nil then
     _G.FallenLua_Menu.visible = false
-end
+
 
 -- =========================================================
 -- Fallen-lua Menu v4.5
@@ -62,7 +62,7 @@ do
     local cache = {
         folder = "C:\\blueberry\\fallen_assets\\",
         hits = {}, missing = {}, failed = {}, aliases = {},
-        records = {},
+        records = {}, legacy_sources = {}, not_found = {}, record_error = {},
         downloaded = 0, reused = 0, errors = 0,
         attempt_count = 0,
         url_attempts = {}, retryable = {}, retry_after = {},
@@ -108,6 +108,37 @@ do
         return (type(url) == "string" and url:match("^https?://([^/]+)")) or "unknown"
     end
 
+    -- Fandom exposes the SAME image through URLs with different cb/format
+    -- queries and different /revision/latest/scale-to-width-down sizes.
+    -- They must share a cache identity (including Armor vs Dropped Items).
+    -- Other providers retain the complete URL to avoid false matches.
+    local function identity(url)
+        if type(url) ~= "string" then return url end
+        if url:find("https://static.wikia.nocookie.net/", 1, true) == 1
+            or url:find("http://static.wikia.nocookie.net/", 1, true) == 1
+        then
+            local base = url:match("^(.-)/revision/")
+            if base then return base end
+            return url:match("^([^?]+)") or url
+        end
+        return url
+    end
+    cache.identity = identity
+
+    local function attach_legacy(id, url)
+        if not remote(url) then return end
+        local group = cache.legacy_sources[id]
+        if not group then
+            group = { list = {}, seen = {} }
+            cache.legacy_sources[id] = group
+        end
+        if not group.seen[url] then
+            group.seen[url] = true
+            group.list[#group.list + 1] = url
+            cache.missing[id] = nil
+        end
+    end
+
     function cache.register_group(urls, category, name)
         if type(urls) ~= "table" then return end
         local source = urls[1]
@@ -118,29 +149,58 @@ do
                 name = tostring(name or source:match("/([^/?]+)") or "image"),
             }
         end
+        local id = identity(source)
+        attach_legacy(id, source)
         for _, url in ipairs(urls) do
-            if remote(url) then cache.aliases[url] = source end
+            if remote(url) then
+                cache.aliases[url] = source
+                if identity(url) == id then
+                    attach_legacy(id, url)
+                end
+            end
         end
     end
 
+    -- Probe the new canonical filename AND older v133-v136 hashed filenames.
+    -- Do not require users to delete/re-download existing cache files.
     function cache.lookup(url)
         if not is_static_image(url) then return nil end
         local source = cache.aliases[url] or url
-        if cache.hits[source] then return cache.hits[source] end
-        if cache.missing[source] then return nil end
+        local id = identity(source)
+        if cache.hits[id] then return cache.hits[id] end
+        if cache.missing[id] then return nil end
         if type(read_file) ~= "function" then return nil end
-        local base = cache_key(source)
-        for _, ext in ipairs({ ".png", ".jpg", ".gif", ".bmp" }) do
-            local path = base .. ext
-            local ok, data = pcall(read_file, path)
-            if ok and image_ext(data) == ext then
-                cache.hits[source] = path
-                cache.reused = cache.reused + 1
-                return path
+        local probes = { id }
+        if source ~= id then probes[#probes + 1] = source end
+        if url ~= id and url ~= source then probes[#probes + 1] = url end
+        local legacy = cache.legacy_sources[id]
+        if legacy then
+            for _, old_source in ipairs(legacy.list) do
+                probes[#probes + 1] = old_source
             end
         end
-        cache.missing[source] = true
+        local seen = {}
+        for _, probe in ipairs(probes) do
+            if not seen[probe] then
+                seen[probe] = true
+                local base = cache_key(probe)
+                for _, ext in ipairs({ ".png", ".jpg", ".gif", ".bmp" }) do
+                    local path = base .. ext
+                    local ok, data = pcall(read_file, path)
+                    if ok and image_ext(data) == ext then
+                        cache.hits[id] = path
+                        cache.reused = cache.reused + 1
+                        return path
+                    end
+                end
+            end
+        end
+        cache.missing[id] = true
         return nil
+    end
+
+    function cache.is_permanent_missing(url)
+        return cache.not_found[identity(url)] == true
     end
 
     -- Retry transient failures in later preload passes, within ONE launch.
@@ -150,6 +210,7 @@ do
         if type(urls) ~= "table" then return nil end
         for _, url in ipairs(urls) do
             if cache.retryable[url] == true
+                and not cache.is_permanent_missing(url)
                 and (cache.url_attempts[url] or 0) < cache.max_attempts
             then
                 local at = cache.retry_after[url] or 0
@@ -166,6 +227,7 @@ do
         if not is_static_image(source) or not remote(image_url) then return nil end
         local file = cache.lookup(source)
         if file then return file end
+        if cache.is_permanent_missing(image_url) then return nil end
         if type(Http) ~= "table" or type(Http.get) ~= "function"
             or type(write_file) ~= "function"
             or type(read_file) ~= "function"
@@ -210,7 +272,13 @@ do
                 end
             end
             cache.failed[image_url] = why
+            cache.record_error[identity(source)] = why
             cache.errors = cache.errors + 1
+            -- A missing Fandom file will remain missing at every resized URL.
+            -- Never send 4 identical 404 requests for different dimensions.
+            if code == 404 and image_url:find("wikia.nocookie.net", 1, true) then
+                cache.not_found[identity(image_url)] = true
+            end
             -- Retry a timeout, connection loss, 429, or server error.
             -- A 403/404 is not cured by restarting or by retrying in a loop.
             -- A 200 response containing HTML gets one extra chance.
@@ -226,7 +294,7 @@ do
             return nil
         end
 
-        local source_key = cache.aliases[source] or source
+        local source_key = identity(cache.aliases[source] or source)
         file = cache_key(source_key) .. ext
         local wrote, saved = pcall(write_file, file, body)
         if not wrote or saved ~= true then
@@ -244,6 +312,7 @@ do
         end
         cache.hits[source_key] = file
         cache.missing[source_key] = nil
+        cache.record_error[source_key] = nil
         cache.failed[image_url] = nil
         cache.retryable[image_url] = false
         cache.downloaded = cache.downloaded + 1
@@ -254,7 +323,7 @@ do
     function cache.report()
         if type(write_file) ~= "function" then return false end
         local lines = {
-            "Fallen image cache report - v136",
+            "Fallen image cache report - v137",
             "Folder: " .. cache.folder,
             "Successfully downloaded this launch: " .. tostring(cache.downloaded),
             "Reused from disk: " .. tostring(cache.reused),
@@ -262,6 +331,8 @@ do
             "Failed URL attempts (includes retries): " .. tostring(cache.errors),
             "Retry budget per image URL: " .. tostring(cache.max_attempts),
             "Note: server errors and timeouts are retried this launch.",
+            "Note: duplicated Fandom URL variants share one local image.",
+            "Note: missing 404 resources are skipped after their first failure.",
             "Note: 403/404 and HTML responses cannot be forced to download.",
             "",
         }
@@ -271,7 +342,7 @@ do
             local rec = category_stats[name]
             if not rec then rec = {total=0, saved=0}; category_stats[name]=rec end
             rec.total = rec.total + 1
-            if cache.hits[source] then rec.saved = rec.saved + 1 end
+            if cache.lookup(source) then rec.saved = rec.saved + 1 end
             keys[#keys + 1] = source
         end
         table.sort(keys)
@@ -286,10 +357,10 @@ do
         lines[#lines+1] = "ASSET DETAILS (saved/missing):"
         for _, source in ipairs(keys) do
             local item = cache.records[source]
-            local file = cache.hits[source]
+            local file = cache.lookup(source)
             local problem = ""
             if not file then
-                local last = cache.failed[source]
+                local last = cache.record_error[identity(source)]
                 if last then problem = " | " .. tostring(last) end
             end
             lines[#lines+1] = (file and "OK" or "MISSING")
@@ -32908,12 +32979,20 @@ function FALLEN_PRELOAD_TICK()
 
         -- Try one candidate at a time. Continue through fallback URLs,
         -- even if another asset on the same CDN failed earlier.
-        if not saved and disk_cache and entry.urls[entry.try_index] then
-            saved = disk_cache.download(source, entry.urls[entry.try_index])
-            entry.try_index = entry.try_index + 1
-            started_now = started_now + 1
-            if not saved and entry.urls[entry.try_index] then
-                break
+        if not saved and disk_cache then
+            -- Skip alternate dimensions of a resource already confirmed 404.
+            while entry.urls[entry.try_index]
+                and disk_cache.is_permanent_missing(entry.urls[entry.try_index])
+            do
+                entry.try_index = entry.try_index + 1
+            end
+            if entry.urls[entry.try_index] then
+                saved = disk_cache.download(source, entry.urls[entry.try_index])
+                entry.try_index = entry.try_index + 1
+                started_now = started_now + 1
+                if not saved and entry.urls[entry.try_index] then
+                    break
+                end
             end
         end
 
