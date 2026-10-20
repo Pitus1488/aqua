@@ -3163,6 +3163,10 @@ end
 -- FN icon shown to the left of the FALLEN brand.
 _G.FALLEN_BRAND_FN_ICON_PAGE_URL =
     "https://fotovssylku.ru/i/%D0%9B%D0%BE%D0%B3%D0%BE%D1%82%D0%B8%D0%BF-FN-%D1%81-%D0%BD%D0%B5%D0%BE%D0%BD%D0%BE%D0%B2%D1%8B%D0%BC-%D1%81%D0%B2%D0%B5%D1%87%D0%B5%D0%BD%D0%B8%D0%B5%D0%BC.1wTRb"
+-- Verified raw PNG; unlike the sharing page it is consumable by Drawing.LoadImage.
+_G.FALLEN_BRAND_FN_ICON_DIRECT_URL =
+    "https://fs.oblakoteka.ru/d.fotovssylku.ru/2026/10/18/LOGOTIP-FN-S-NEONOVYM-SVECENIEM2c678327f787eeec.md.png"
+
 
 _G.FALLEN_BRAND_FN_ICON_SOURCE =
     _G.FALLEN_BRAND_FN_ICON_SOURCE
@@ -3192,7 +3196,8 @@ function FALLEN_BRAND_FN_ICON_GET()
         end
 
         _G.FALLEN_BRAND_FN_ICON_URL =
-            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+            _G.FALLEN_BRAND_FN_ICON_DIRECT_URL
+            or FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
             or page_url
     end
 
@@ -29843,6 +29848,54 @@ end
 -- Neverlose-source top subtabs
 -- =========================================================
 
+-- Local geometry is only a fallback while remote PNGs are missing/failed.
+-- Actual user-supplied images take priority when ready.
+local function FALLEN_NL_FALLBACK_ICON(kind, cx, cy)
+    local c = C.accent
+    if kind == "rage" then
+        circle(cx, cy, 6.3, c, 1.35)
+        circle(cx, cy, 2.3, c, 1.15)
+        line(cx - 9, cy, cx - 5.5, cy, c, 1.2)
+        line(cx + 5.5, cy, cx + 9, cy, c, 1.2)
+        line(cx, cy - 9, cx, cy - 5.5, c, 1.2)
+        line(cx, cy + 5.5, cx, cy + 9, c, 1.2)
+    elseif kind == "silent" then
+        line(cx + 1, cy - 8, cx - 4, cy + 0, c, 1.5)
+        line(cx - 4, cy + 0, cx + 1, cy + 0, c, 1.5)
+        line(cx + 1, cy + 0, cx - 1, cy + 8, c, 1.5)
+        line(cx - 1, cy + 8, cx + 6, cy - 2, c, 1.5)
+        line(cx + 6, cy - 2, cx + 1, cy - 2, c, 1.5)
+    elseif kind == "players" then
+        circle(cx - 3.5, cy - 4, 2.7, c, 1.4)
+        circle(cx + 4.0, cy - 3, 2.3, c, 1.3)
+        line(cx - 9, cy + 5, cx - 7, cy + 1, c, 1.3)
+        line(cx - 7, cy + 1, cx + 0, cy + 1, c, 1.3)
+        line(cx + 0, cy + 1, cx + 2, cy + 6, c, 1.3)
+        line(cx + 3, cy + 1, cx + 7, cy + 1, c, 1.3)
+        line(cx + 7, cy + 1, cx + 9, cy + 5, c, 1.3)
+    elseif kind == "world" then
+        circle(cx, cy, 7.6, c, 1.35)
+        line(cx - 7, cy, cx + 7, cy, c, 1.1)
+        line(cx, cy - 7, cx, cy + 7, c, 1.1)
+        circle(cx, cy, 4.2, c, 1.0)
+    elseif kind == "armor" then
+        line(cx, cy - 8, cx + 7, cy - 5, c, 1.35)
+        line(cx + 7, cy - 5, cx + 6, cy + 3, c, 1.35)
+        line(cx + 6, cy + 3, cx, cy + 8, c, 1.35)
+        line(cx, cy + 8, cx - 6, cy + 3, c, 1.35)
+        line(cx - 6, cy + 3, cx - 7, cy - 5, c, 1.35)
+        line(cx - 7, cy - 5, cx, cy - 8, c, 1.35)
+    elseif kind == "main" then
+        for j = 1, 3 do
+            local yy = cy - 5 + (j - 1) * 5
+            line(cx - 8, yy, cx + 8, yy, c, 1.1)
+            circle_fill(cx + (j == 2 and 3 or -3), yy, 2, C.text)
+        end
+    else
+        circle(cx, cy, 5, c, 1.25)
+    end
+end
+
 -- Neverlose-source vertical navigation: original 30px animated tabs,
 -- section labels and top Save control. Individual Fallen features keep their
 -- existing Lua runtimes and state; only their navigation was remapped.
@@ -29881,7 +29934,7 @@ local function FALLEN_NL_NAV_ITEM(mx, my, clicked, x, y, key, label, selected, a
             C.accent[1], C.accent[2], C.accent[3],
             MENU_RENDER_ALPHA, 0)
     else
-        circle(x + 19, y + 15, 5, C.accent, 1.1)
+        FALLEN_NL_FALLBACK_ICON(key, x + 19, y + 15)
     end
     text(x + 35, y + 8, label, C.text)
     if clicked and hot and type(action) == "function" then
@@ -30634,6 +30687,13 @@ hooks.on_render(function()
             1, 1, 1, MENU_RENDER_ALPHA,
             FALLEN_UI_LEN(7)
         )
+    else
+        -- Only a loading/error fallback; actual FN image is always preferred.
+        rounded_fill(brand_icon_x, brand_icon_y,
+            brand_icon_size, brand_icon_size, 7,
+            {0.018, 0.060, 0.14, 1})
+        centered_text(brand_icon_x + brand_icon_size * 0.5,
+            brand_icon_y + 13, "FN", C.text)
     end
 
     -- A title-case wordmark fits the compact header better than all caps.
@@ -30975,6 +31035,15 @@ hooks.on_render(function()
             FALLEN_UI_LEN(save_icon_size),
             1, 1, 1, MENU_RENDER_ALPHA, 0
         )
+    else
+        rounded_outline(save_icon_x, save_icon_y, 13, 13, 2,
+            C.text_dim, 1, cfg_btn_bg)
+        line(save_icon_x + 4, save_icon_y + 1,
+            save_icon_x + 4, save_icon_y + 6, C.text_dim, 1)
+        line(save_icon_x + 4, save_icon_y + 6,
+            save_icon_x + 9, save_icon_y + 6, C.text_dim, 1)
+        line(save_icon_x + 3, save_icon_y + 10,
+            save_icon_x + 10, save_icon_y + 10, C.text_dim, 1)
     end
 
     text(
@@ -31630,6 +31699,15 @@ function FALLEN_LOADER_RESOLVE_IMAGE_URL(url)
         return nil
     end
 
+    -- Do not repeatedly request image-sharing HTML when a direct image URL
+    -- was successfully extracted earlier in this session.
+    _G.FALLEN_RESOLVED_IMAGE_CACHE =
+        _G.FALLEN_RESOLVED_IMAGE_CACHE or {}
+    local cached = _G.FALLEN_RESOLVED_IMAGE_CACHE[url]
+    if type(cached) == "string" and cached ~= "" then
+        return cached
+    end
+
     if not Http
         or type(Http.get) ~= "function"
     then
@@ -31667,6 +31745,18 @@ function FALLEN_LOADER_RESOLVE_IMAGE_URL(url)
                 '<meta[^>]-content%s*=%s*["\']([^"\']+)["\'][^>]-name%s*=%s*["\']twitter:image["\']'
             )
 
+        -- Some hosts put extra attributes or whitespace before content;
+        -- if the metadata patterns miss them, try a raw CDN image URL.
+        if not direct then
+            direct = body:match(
+                '(https?://fs%.oblakoteka%.ru/[^"%s<>]+%.[Pp][Nn][Gg])'
+            ) or body:match(
+                '(https?://fs%.oblakoteka%.ru/[^"%s<>]+%.[Jj][Pp][Gg])'
+            ) or body:match(
+                '(https?://fs%.oblakoteka%.ru/[^"%s<>]+%.[Ww][Ee][Bb][Pp])'
+            )
+        end
+
         if type(direct) == "string"
             and direct ~= ""
         then
@@ -31687,6 +31777,9 @@ function FALLEN_LOADER_RESOLVE_IMAGE_URL(url)
         end
     end)
 
+    if resolved ~= url then
+        _G.FALLEN_RESOLVED_IMAGE_CACHE[url] = resolved
+    end
     return resolved
 end
 
