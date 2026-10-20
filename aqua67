@@ -89,6 +89,8 @@ local defaults = {
 
     -- The original pasted Aimbot uses VK 0x06 (Mouse5).
     aim_hold_key = 0x06,
+    aim_bind_mode = "Hold",
+    aim_bind_visible = true,
     aim_max_dist = 1200,
     aim_target_part = "Head",
 
@@ -346,6 +348,8 @@ local defaults = {
     silent_max_dist = 1200,
     silent_target_part = "Head",
     silent_key = 0,
+    silent_bind_mode = "Hold",
+    silent_bind_visible = true,
 
     -- Silent FOV is independent from our custom Aimbot FOV.
     silent_fov_enabled = false,
@@ -556,6 +560,19 @@ local A = {
     aim_bind_listening = false,
     aim_bind_wait_release = false,
     aim_bind_prev = {},
+
+    -- Shared RMB bind editor, with the same fade for both bindable features.
+    bind_context = nil,
+    bind_popup_x = 0,
+    bind_popup_y = 0,
+    bind_popup_anim = 0,
+    bind_popup_last_t = nil,
+    bind_submenu_open = false,
+    bind_submenu_anim = 0,
+    bind_latch_aim = false,
+    bind_latch_silent = false,
+    bind_prev_aim = false,
+    bind_prev_silent = false,
 
     -- Bullet Tracer style dropdown.
     bullet_tracer_style_open = false,
@@ -1709,11 +1726,15 @@ local function aim_bind_poll()
 
             if vk == 0x08 or vk == 0x2E then
                 S.aim_hold_key = 0
+                A.bind_latch_aim = false
+                A.bind_prev_aim = false
                 aim_bind_cancel()
                 return
             end
 
             S.aim_hold_key = vk
+            A.bind_latch_aim = false
+            A.bind_prev_aim = true
             aim_bind_cancel()
             return
         end
@@ -1802,6 +1823,8 @@ function FALLEN_SILENT_BIND_POLL()
             then
                 S.silent_key =
                     0
+                A.bind_latch_silent = false
+                A.bind_prev_silent = false
 
                 pcall(function()
                     if cheat
@@ -1818,6 +1841,8 @@ function FALLEN_SILENT_BIND_POLL()
 
             S.silent_key =
                 vk
+            A.bind_latch_silent = false
+            A.bind_prev_silent = true
 
             -- Keybind picker does exactly one live action:
             -- change the Silent Aim key in the stock cheat.
@@ -1838,6 +1863,79 @@ function FALLEN_SILENT_BIND_POLL()
             down
     end
 end
+
+
+-- One binding engine powers Aimbot and Silent Aim. Modes persist in configs.
+local function FALLEN_BIND_ACTIVE(which)
+    local aim_bind = which == "aim"
+    local vk = math.floor(tonumber(S[aim_bind and "aim_hold_key" or "silent_key"]) or 0)
+    local mode = tostring(S[aim_bind and "aim_bind_mode" or "silent_bind_mode"] or "Hold")
+    local down = vk > 0 and key_down(vk) == true
+    local previous = false
+    local latch = false
+    local listening = false
+    if aim_bind then
+        previous = A.bind_prev_aim == true
+        latch = A.bind_latch_aim == true
+        listening = A.aim_bind_listening == true
+    else
+        previous = A.bind_prev_silent == true
+        latch = A.bind_latch_silent == true
+        listening = A.silent_bind_listening == true
+    end
+
+    if mode == "Toggle" and vk > 0 then
+        if down and not previous and not listening then
+            latch = not latch
+        end
+    else
+        latch = false
+    end
+    if aim_bind then
+        A.bind_prev_aim = down
+        A.bind_latch_aim = latch
+    else
+        A.bind_prev_silent = down
+        A.bind_latch_silent = latch
+    end
+    if vk <= 0 or listening then return false end
+    if mode == "Toggle" then return latch end
+    return down
+end
+
+local function FALLEN_BIND_CONTEXT_OPEN(which, x, y)
+    if A.bind_context == which then
+        A.bind_context = nil
+        A.bind_submenu_open = false
+        return
+    end
+    A.bind_context = which
+    A.bind_last_context = which
+    A.bind_popup_x = x
+    A.bind_popup_y = y
+    A.bind_popup_anim = 0
+    A.bind_submenu_anim = 0
+    A.bind_submenu_open = false
+    A.bind_mode_anim = S[which == "aim" and "aim_bind_mode" or "silent_bind_mode"] == "Toggle" and 1 or 0
+    A.bind_popup_last_t = tick()
+    aim_bind_cancel()
+    FALLEN_SILENT_BIND_CANCEL()
+    A.aim_settings_open = false
+    A.silent_part_dropdown_open = false
+    A.fov_settings_open = false
+    A.silent_fov_settings_open = false
+    numeric_stop(true)
+end
+
+local function FALLEN_BIND_CONTEXT_CLOSE()
+    A.bind_context = nil
+    A.bind_submenu_open = false
+    aim_bind_cancel()
+    FALLEN_SILENT_BIND_CANCEL()
+end
+
+-- The source reference uses a compact first menu and a right-hand editor.
+-- No keybind chips remain inside the normal three-dot settings.
 
 
 numeric_stop = function(commit)
@@ -4517,6 +4615,141 @@ local function fallen_draw_settings_check(x, y, label, key, hot)
     return progress
 end
 
+local function FALLEN_DRAW_BIND_CONTEXT(mx, my, clicked)
+    local target = A.bind_context or A.bind_last_context
+    if not target then return end
+    local now = tick()
+    local dt = clamp(now - (A.bind_popup_last_t or now), 0, 0.06)
+    A.bind_popup_last_t = now
+    local fast = 1 - math.exp(-dt * 15)
+    local opening = A.bind_context ~= nil
+    A.bind_popup_anim = A.bind_popup_anim + ((opening and 1 or 0) - A.bind_popup_anim) * fast
+    if not opening and A.bind_popup_anim < 0.012 then
+        A.bind_popup_anim = 0
+        A.bind_submenu_anim = 0
+        A.bind_last_context = nil
+        return
+    end
+
+    local x, y = A.bind_popup_x, A.bind_popup_y
+    local w, h, subw = 168, 151, 209
+    local sx = x + w + 6
+    local suby = y - 2
+    local key_name = target == "aim" and "aim_hold_key" or "silent_key"
+    local mode_name = target == "aim" and "aim_bind_mode" or "silent_bind_mode"
+    local visible_name = target == "aim" and "aim_bind_visible" or "silent_bind_visible"
+    local listening = target == "aim" and A.aim_bind_listening or A.silent_bind_listening
+    local vk = tonumber(S[key_name]) or 0
+    local key_text = listening and "Press key..." or aim_vk_name(vk)
+    local main_hot = hover(mx, my, x, y, w, h)
+    local sub_target = opening and A.bind_submenu_open and 1 or 0
+    A.bind_submenu_anim = A.bind_submenu_anim + (sub_target - A.bind_submenu_anim) * fast
+    local submenu_visible = A.bind_submenu_anim > 0.025
+    local sub_hot = submenu_visible and hover(mx, my, sx, suby, subw, 186)
+    local old_alpha = MENU_RENDER_ALPHA
+    local main_alpha = clamp(A.bind_popup_anim, 0, 1)
+
+    MENU_RENDER_ALPHA = old_alpha * main_alpha
+    rounded_fill(x, y, w, h, 9, {0.050, 0.054, 0.067, 0.99})
+    rounded_outline(x, y, w, h, 9, {0.18, 0.19, 0.23, 0.93}, 1,
+        {0.050, 0.054, 0.067, 0.99})
+
+    local function main_row(row, label, hint)
+        local ry = y + 7 + row * 35
+        local hot = hover(mx, my, x+7, ry, w-14, 33)
+        if hot then
+            rounded_fill(x+7, ry, w-14, 33, 5, {0.120, 0.125, 0.150, 1})
+        end
+        text(x+16, ry+10, label, row == 3 and {0.90, 0.40, 0.44, 1} or C.text)
+        if hint then text(x+w-20, ry+10, ">", C.text_dim) end
+        return hot
+    end
+    local open_hot = main_row(0, vk > 0 and key_text or "Unbound", true)
+    local all_hot = main_row(1, "All Hotkeys", false)
+    local new_hot = main_row(2, "New Hotkey", false)
+    local reset_hot = main_row(3, "Reset", false)
+
+    if submenu_visible then
+        MENU_RENDER_ALPHA = old_alpha * main_alpha * clamp(A.bind_submenu_anim, 0, 1)
+        rounded_fill(sx, suby, subw, 186, 9, {0.050, 0.054, 0.067, 0.99})
+        rounded_outline(sx, suby, subw, 186, 9, {0.18, 0.19, 0.23, 0.93}, 1,
+            {0.050, 0.054, 0.067, 0.99})
+        local keyhot = hover(mx, my, sx+7, suby+7, subw-14, 35)
+        if keyhot then rounded_fill(sx+7, suby+7, subw-14, 35, 5, C.button_hovered) end
+        text(sx+14, suby+18, "Key", C.text)
+        text(sx+subw-14-math.min(#key_text*6, 87), suby+18, key_text,
+            listening and C.accent or C.text_dim)
+        line(sx+10, suby+46, sx+subw-10, suby+46, C.divider, 1)
+        text(sx+14, suby+59, "Mode", C.text)
+        local segment_x, segment_y = sx+85, suby+52
+        rounded_fill(segment_x, segment_y, 110, 29, 7, C.frame_inactive)
+        local is_toggle = S[mode_name] == "Toggle"
+        local hold_hot = hover(mx, my, segment_x+2, segment_y+2, 53, 25)
+        local toggle_hot = hover(mx, my, segment_x+55, segment_y+2, 53, 25)
+        local mode_target = is_toggle and 1 or 0
+        if A.bind_mode_anim == nil then A.bind_mode_anim = mode_target end
+        A.bind_mode_anim = A.bind_mode_anim + (mode_target - A.bind_mode_anim) * fast
+        rounded_fill(segment_x+2+53*A.bind_mode_anim, segment_y+2, 53, 25, 6,
+            {0.17, 0.24, 0.43, 1})
+        centered_text(segment_x+28, segment_y+9, "Hold", is_toggle and C.text_dim or C.text)
+        centered_text(segment_x+82, segment_y+9, "Toggle", is_toggle and C.text or C.text_dim)
+        line(sx+10, suby+89, sx+subw-10, suby+89, C.divider, 1)
+        text(sx+14, suby+105, "Active", C.text_dim)
+        local active = FALLEN_BIND_ACTIVE(target)
+        text(sx+subw-43, suby+105, active and "ON" or "OFF",
+            active and C.accent or C.text_dim)
+        text(sx+14, suby+136, "Visible", C.text)
+        local visible_hot = hover(mx, my, sx+subw-47, suby+126, 34, 25)
+        local visible = S[visible_name] ~= false
+        draw_switch_track(sx+subw-44, suby+130, 30, 17,
+            C.frame_inactive, C.frame_active, visible and 1 or 0)
+        circle_fill(sx+subw-36+(visible and 14 or 0), suby+138.5, 7,
+            visible and C.accent or C.text_dim)
+        line(sx+10, suby+159, sx+subw-10, suby+159, C.divider, 1)
+        local delete_hot = hover(mx, my, sx+6, suby+160, subw-12, 25)
+        text(sx+14, suby+168, "Delete", {0.95, 0.42, 0.46, 1})
+
+        if clicked and opening and A.bind_submenu_anim > 0.90 then
+            if keyhot then
+                if target == "aim" then aim_bind_start() else FALLEN_SILENT_BIND_START() end
+            elseif hold_hot or toggle_hot then
+                S[mode_name] = toggle_hot and "Toggle" or "Hold"
+                A[target == "aim" and "bind_latch_aim" or "bind_latch_silent"] = false
+                A[target == "aim" and "bind_prev_aim" or "bind_prev_silent"] = false
+            elseif visible_hot then
+                S[visible_name] = not visible
+            elseif delete_hot then
+                S[key_name] = 0
+                if target == "silent" then FALLEN_SILENT_SET_KEY(0) end
+                A[target == "aim" and "bind_latch_aim" or "bind_latch_silent"] = false
+                A.bind_submenu_open = false
+            end
+        end
+    end
+
+    MENU_RENDER_ALPHA = old_alpha
+    if clicked and opening and main_alpha > 0.85 then
+        if open_hot then
+            A.bind_submenu_open = not A.bind_submenu_open
+        elseif all_hot then
+            S.keybinds_list_enabled = true
+            A.bind_submenu_open = true
+        elseif new_hot then
+            A.bind_submenu_open = true
+            if target == "aim" then aim_bind_start() else FALLEN_SILENT_BIND_START() end
+        elseif reset_hot then
+            S[key_name] = target == "aim" and 0x06 or 0
+            if target == "silent" then FALLEN_SILENT_SET_KEY(0) end
+            S[mode_name] = "Hold"
+            A[target == "aim" and "bind_latch_aim" or "bind_latch_silent"] = false
+            A.bind_submenu_open = false
+        elseif not (main_hot or sub_hot) then
+            FALLEN_BIND_CONTEXT_CLOSE()
+        end
+    end
+end
+
+
 local function toggle_row(mx, my, clicked, x, y, w, label, key, extra)
     clicked =
         clicked
@@ -5694,7 +5927,7 @@ local function draw_aim_settings_popup(
     end
 
     local pw = 300
-    local ph = 171
+    local ph = 130
 
     local base_px =
         dots_x
@@ -5756,96 +5989,18 @@ local function draw_aim_settings_popup(
     end
 
     if details_visible then
-        -- Keybind row
-        text(
-            px + 13,
-            py + 52,
-            "Keybind",
-            C.text
-        )
-
-        local chip_w = 105
-        local chip_h = 29
-        local chip_x = px + pw - chip_w - 12
-        local chip_y = py + 42
-
-        local chip_hot =
-            hover(
-                mx,
-                my,
-                chip_x,
-                chip_y,
-                chip_w,
-                chip_h
-            )
-
-        rounded_fill(
-            chip_x,
-            chip_y,
-            chip_w,
-            chip_h,
-            7,
-            chip_hot
-                and C.frame_active
-                or C.frame_inactive
-        )
-
-        if A.aim_bind_listening then
-            rounded_outline(
-                chip_x,
-                chip_y,
-                chip_w,
-                chip_h,
-                7,
-                alpha(C.accent, 0.72),
-                1,
-                C.frame_inactive
-            )
-        end
-
-        local key_label =
-            A.aim_bind_listening
-            and "Press key..."
-            or aim_vk_name(S.aim_hold_key)
-
-        centered_text(
-            chip_x + chip_w * 0.5,
-            chip_y + 9,
-            key_label,
-            A.aim_bind_listening
-                and C.accent
-                or C.text
-        )
-
-        if ui_clicked
-            and chip_hot
-        then
-            aim_bind_start()
-            A.fov_picker_open = false
-            A.fov_picker_drag = nil
-            A.aim_part_dropdown_open = false
-        end
-
-        if shell_h > 84 then
-            line(
-                px + 12,
-                py + 79,
-                px + pw - 12,
-                py + 79,
-                C.divider,
-                1
-            )
-        end
+        -- Bind key and mode moved to RMB on the Aimbot function row.
 
         -- Max Distance
-        if shell_h > 119 then
+        line(px + 12, py + 39, px + pw - 12, py + 39, C.divider, 1)
+        if shell_h > 78 then
             slider_row(
                 mx,
                 my,
                 ui_clicked,
                 lmb,
                 px + 8,
-                py + 80,
+                py + 39,
                 pw - 16,
                 "Max Distance",
                 "aim_max_dist",
@@ -5856,18 +6011,18 @@ local function draw_aim_settings_popup(
 
             line(
                 px + 12,
-                py + 120,
+                py + 79,
                 px + pw - 12,
-                py + 120,
+                py + 79,
                 C.divider,
                 1
             )
         end
 
         -- Body Part row with a REAL dropdown.
-        if shell_h > 153 then
+        if shell_h > 112 then
             local row_x = px + 8
-            local row_y = py + 121
+            local row_y = py + 80
             local row_w = pw - 16
 
             row_hover(
@@ -6695,7 +6850,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         lx,
         cy + 25,
         left_w,
-        220,
+        179,
         11
     )
 
@@ -6710,6 +6865,10 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         "silent_enabled",
         false
     )
+
+    if rmb_clicked and hover(mx, my, lx, cy + 32, left_w, 41) then
+        FALLEN_BIND_CONTEXT_OPEN("silent", lx + 16, cy + 72)
+    end
 
     line(
         lx + 12,
@@ -6774,101 +6933,7 @@ function FALLEN_DRAW_SILENT_AIM_PAGE(
         false
     )
 
-    line(
-        lx + 12,
-        cy + 195,
-        lx + left_w - 12,
-        cy + 195,
-        C.divider,
-        1
-    )
-
-    -- Live Silent keybind.
-    row_hover(
-        mx,
-        my,
-        lx,
-        cy + 196,
-        left_w,
-        41
-    )
-
-    text(
-        lx + 13,
-        cy + 210,
-        "Keybind (Hold)",
-        C.text
-    )
-
-    local silent_chip_w = 112
-    local silent_chip_h = 25
-
-    local silent_chip_x =
-        lx
-        + left_w
-        - silent_chip_w
-        - 12
-
-    local silent_chip_y =
-        cy + 204
-
-    local silent_chip_hot =
-        hover(
-            mx,
-            my,
-            silent_chip_x,
-            silent_chip_y,
-            silent_chip_w,
-            silent_chip_h
-        )
-
-    rounded_fill(
-        silent_chip_x,
-        silent_chip_y,
-        silent_chip_w,
-        silent_chip_h,
-        6,
-        silent_chip_hot
-            and { 0.110, 0.115, 0.135, 1 }
-            or C.toggle_off
-    )
-
-    if A.silent_bind_listening then
-        rounded_outline(
-            silent_chip_x,
-            silent_chip_y,
-            silent_chip_w,
-            silent_chip_h,
-            6,
-            alpha(
-                C.accent,
-                0.78
-            ),
-            1,
-            C.toggle_off
-        )
-    end
-
-    centered_text(
-        silent_chip_x
-            + silent_chip_w * 0.5,
-        silent_chip_y + 7,
-        A.silent_bind_listening
-            and "Press key..."
-            or aim_vk_name(
-                S.silent_key
-                or 0
-            ),
-        A.silent_bind_listening
-            and C.accent
-            or C.text
-    )
-
-    if clicked
-        and silent_chip_hot
-    then
-        FALLEN_SILENT_BIND_START()
-    end
+    -- Silent keybind is edited via RMB on the Enabled function row.
 
     -- =====================================================
     -- SELECTION
@@ -7261,6 +7326,10 @@ local function draw_aimbot_page(
             left_w,
             41
         )
+
+    if rmb_clicked and aimbot_row_hot and not dots_left_hot then
+        FALLEN_BIND_CONTEXT_OPEN("aim", lx + 16, cy + 75)
+    end
 
     if clicked and dots_left_hot then
         A.aim_settings_open =
@@ -10374,11 +10443,7 @@ local function fap_valid_target(p)
 end
 
 local function fap_hold_down()
-    return
-        key_down(
-            tonumber(S.aim_hold_key)
-            or 0x06
-        )
+    return FALLEN_BIND_ACTIVE("aim")
 end
 
 local function fap_clear_lock()
@@ -11290,11 +11355,12 @@ end
 
 
 function FALLEN_SILENT_FORCE_HOLD()
-    -- Keep HOLD mode pinned, but only clear toggle latches here.
-    -- Active-state is written once below in FALLEN_SILENT_TICK().
-    FALLEN_SILENT_WRITE_FIELD("key_mode", 0)
+    -- Preserve the old HOLD default, but respect a selected Toggle bind.
+    -- The stock API documents 0 = Hold, 1 = Toggle.
+    local toggled_mode = S.silent_bind_mode == "Toggle"
+    FALLEN_SILENT_WRITE_FIELD("key_mode", toggled_mode and 1 or 0)
 
-    if not cheat or not cheat.keybinds then
+    if not cheat or not cheat.keybinds or toggled_mode then
         return
     end
 
@@ -12036,7 +12102,7 @@ function FALLEN_SILENT_TICK()
         return
     end
 
-    -- Fixed Raycast method + real HOLD keybind mode.
+    -- Fixed Raycast method + selected Hold/Toggle keybind mode.
     pcall(function()
         sa.method =
             2
@@ -12044,8 +12110,8 @@ function FALLEN_SILENT_TICK()
 
     FALLEN_SILENT_FORCE_HOLD()
 
-    -- HOLD means the stock keybind state must follow the physical key only.
-    -- Never leave any stale toggle/active latch behind.
+    -- Shared input engine owns the active state for both bind modes.
+    -- Keep the stock keybind mirror in sync with the selected mode.
     local bind_vk =
         math.floor(
             tonumber(S.silent_key)
@@ -12056,9 +12122,10 @@ function FALLEN_SILENT_TICK()
         false
 
     if bind_vk > 0 then
-        physically_down =
-            key_down(bind_vk)
-            == true
+        physically_down = FALLEN_BIND_ACTIVE("silent")
+    else
+        A.bind_latch_silent = false
+        A.bind_prev_silent = false
     end
 
     if cheat and cheat.keybinds then
@@ -12068,7 +12135,8 @@ function FALLEN_SILENT_TICK()
 
             for i = 1, #cache.toggled do
                 local raw = cache.toggled[i]
-                pcall(function() kb[raw] = false end)
+                local latch = S.silent_bind_mode == "Toggle" and physically_down or false
+                pcall(function() kb[raw] = latch end)
             end
 
             for i = 1, #cache.active do
@@ -12079,7 +12147,7 @@ function FALLEN_SILENT_TICK()
     end
 
     -- While our custom menu is open, our switches are authoritative.
-    -- This does NOT change HOLD active-state behavior.
+    -- This does not change the selected bind mode.
     if S.visible then
         pcall(function()
             sa.enabled =
@@ -25425,7 +25493,7 @@ end
 function FALLEN_HOTKEYS_ITEM_ROWS()
     local rows = {}
 
-    if S.aim_enabled == true then
+    if S.aim_enabled == true and S.aim_bind_visible ~= false then
         rows[#rows + 1] = {
             id = "aimbot",
             label = "Aimbot",
@@ -25440,7 +25508,7 @@ function FALLEN_HOTKEYS_ITEM_ROWS()
         }
     end
 
-    if S.silent_enabled == true then
+    if S.silent_enabled == true and S.silent_bind_visible ~= false then
         local silent_vk =
             math.floor(
                 tonumber(S.silent_key)
@@ -25453,9 +25521,7 @@ function FALLEN_HOTKEYS_ITEM_ROWS()
             icon = "silent",
             active =
                 silent_vk > 0
-                and key_down(
-                    silent_vk
-                ) == true
+                and FALLEN_BIND_ACTIVE("silent") == true
                 or false,
         }
     end
@@ -30702,6 +30768,8 @@ hooks.on_render(function()
 
 
             aim_bind_cancel()
+            FALLEN_SILENT_BIND_CANCEL()
+            FALLEN_BIND_CONTEXT_CLOSE()
         end
     end
 
@@ -31544,15 +31612,25 @@ hooks.on_render(function()
         or A.world_color_picker_open == true
         or (A.world_color_picker_anim or 0) > 0.02
 
+    local bind_context_open = A.bind_context ~= nil
+        or (A.bind_popup_anim or 0) > 0.012
+
     local page_clicked =
         clicked
         and not any_overlay_open
+        and not bind_context_open
 
     local page_rmb_clicked =
         rmb_clicked
         and not any_overlay_open
 
     MENU_RENDER_ALPHA = detail_alpha * S.anim
+
+    if A.bind_context == "aim" and S.tab ~= 1 then
+        FALLEN_BIND_CONTEXT_CLOSE()
+    elseif A.bind_context == "silent" and S.tab ~= 5 then
+        FALLEN_BIND_CONTEXT_CLOSE()
+    end
 
     if S.tab == 1 then
         draw_aimbot_page(
@@ -31958,6 +32036,11 @@ hooks.on_render(function()
         )
     end
 
+    -- RMB keybind editor is drawn above all regular settings panels.
+    if A.bind_context or (A.bind_popup_anim or 0) > 0.012 then
+        FALLEN_DRAW_BIND_CONTEXT(mx, my, clicked)
+    end
+
     -- TRUE MODAL COLOR PICKER.
     -- Rendered last so it is always above page/config/menu-settings.
     if A.world_color_picker_open
@@ -32093,7 +32176,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v129 | v121 base + Config Icon Tooltips | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v132 | v131 base + RMB Keybind Editor | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
