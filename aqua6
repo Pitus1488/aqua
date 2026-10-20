@@ -23087,21 +23087,33 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     local row_fill = {0.083, 0.086, 0.110, 1}
     local rim = {0.17, 0.18, 0.225, 1}
     local consumed = false
+    -- Collect one hover hint and draw it LAST, above the dropdown and rows.
+    local tooltip_key, tooltip_label
+    local function config_tooltip(key, label, hot)
+        if hot and active and not A.config_row_menu
+            and not A.config_sort_open then
+            tooltip_key = key
+            tooltip_label = label
+        end
+    end
 
-    -- Toolbar interactions are processed before measurement so creating or
-    -- deleting a config immediately updates the target dropdown height.
+    -- Each preset has its own Save icon. Do not duplicate Save in the toolbar.
+    -- Paste is a compact icon-only action alongside Add and Close.
     local toolbar = {
-        {"paste", px + pw - 147},
-        {"save", px + pw - 77},
+        {"paste", px + pw - 77},
         {"add", px + pw - 51},
         {"close", px + pw - 25},
     }
-    local hovered_tool = nil
+    local tool_labels = {
+        paste = "Paste",
+        add = "Create config",
+        close = "Close",
+    }
     for _, tool in ipairs(toolbar) do
         local kind, tx = tool[1], tool[2]
-        local tool_w = kind == "paste" and 65 or 22
+        local tool_w = 22
         local hot = hover(mx, my, tx, py + 6, tool_w, 23)
-        if hot then hovered_tool = kind end
+        config_tooltip("toolbar-" .. kind, tool_labels[kind], hot)
         if ui_clicked and hot and not consumed then
             consumed = true
             A.config_row_menu = nil
@@ -23124,13 +23136,6 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
                     A.config_list_scroll = 0
                     A.config_search_query = ""
                     FALLEN_CONFIGS.input_focus(true, "rename")
-                end
-            elseif kind == "save" then
-                local name = A.config_selected or FALLEN_CONFIGS.CONFIG.loaded_name
-                if name then
-                    FALLEN_CONFIGS.save(name)
-                else
-                    fallen_toast("Choose a config to save", "warning")
                 end
             elseif kind == "close" then
                 A.config_open = false
@@ -23182,30 +23187,29 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     rounded_fill(px, py, pw, ph, 8, panel)
     line(px+9, py+36, px+pw-9, py+36, C.divider, 1)
 
-    -- Small toolbar, same buttons as the original Presets popup.
+    -- Compact toolbar: Presets title, then icon-only Paste / Add / Close.
     rounded_fill(px+8, py+5, 91, 26, 6, {0.108, 0.113, 0.154, 1})
     fallen_presets_icon("cloud", px+15, py+10, azure)
     text(px+36, py+12, "Presets", azure)
     for _, tool in ipairs(toolbar) do
         local kind, tx = tool[1], tool[2]
-        local tool_w = kind == "paste" and 65 or 22
+        local tool_w = 22
         local hot = hover(mx, my, tx, py+6, tool_w, 23)
         if hot then
             rounded_fill(tx, py+6, tool_w, 23, 5, {0.15,0.16,0.20,1})
         end
         if kind == "paste" then
+            -- Square Paste glyph, no label: the hover hint supplies its name.
             rounded_outline(tx+5, py+11, 12, 12, 2,
                 hot and ink or muted, 1, panel)
-            text(tx+22, py+12, "Paste", hot and ink or muted)
+            line(tx+8,py+13,tx+12,py+13,hot and ink or muted,1)
+            line(tx+8,py+16,tx+14,py+16,hot and ink or muted,1)
+            line(tx+8,py+19,tx+13,py+19,hot and ink or muted,1)
         elseif kind == "add" then
             centered_text(tx+11,py+10,"+",hot and ink or muted)
         elseif kind == "close" then
             line(tx+7,py+13,tx+11,py+17,hot and ink or muted,1.4)
             line(tx+11,py+17,tx+15,py+13,hot and ink or muted,1.4)
-        elseif kind == "save" then
-            fallen_preset_shared_icon("save",tx+4,py+10,14,hot and ink or muted)
-        else
-            fallen_presets_icon(kind,tx+2,py+9,hot and ink or muted)
         end
     end
 
@@ -23227,6 +23231,7 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
         q == "" and muted or ink)
     local sort_x,sort_y = px+pw-33,sy
     local sort_hot = hover(mx,my,sort_x,sort_y,23,sh)
+    config_tooltip("toolbar-sort", "Sort", sort_hot)
     if sort_hot then rounded_fill(sort_x,sort_y,23,sh,5,row_fill) end
     fallen_presets_icon("sort",sort_x+2,sort_y+6,sort_hot and ink or muted)
     if ui_clicked and not consumed and search_hot then
@@ -23318,12 +23323,15 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
                     local more_hot=hover(mx,my,more_x,ry+4,22,23)
                     local load_x=rx+rw-24
                     local load_hot=hover(mx,my,load_x,ry+4,22,23)
+                    local loaded=FALLEN_CONFIGS.CONFIG.loaded_name==name
+                    config_tooltip("row-more-" .. name, "Options", more_hot)
+                    config_tooltip("row-action-" .. name,
+                        loaded and "Save" or "Load", load_hot)
                     if more_hot or load_hot then
                         rounded_fill(more_hot and more_x or load_x,
                             ry+4,22,23,5,{0.14,0.145,0.19,1})
                     end
                     centered_text(more_x+11,ry+7,"...",more_hot and ink or muted)
-                    local loaded=FALLEN_CONFIGS.CONFIG.loaded_name==name
                     if loaded then
                         fallen_preset_shared_icon("save",load_x+4,ry+8,14,
                             load_hot and azure or muted)
@@ -23475,8 +23483,31 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
             FALLEN_CONFIGS.input_focus(false)
         end
     end
-    -- No toast/tooltip outside the compact panel; it should end immediately
-    -- below the last visible preset instead of reserving blank footer space.
+    -- Small Neverlose-style icon hints, drawn above all preset controls.
+    -- No reserved layout space and no clickable, invisible tooltip regions.
+    if not active then
+        tooltip_key = nil
+    end
+    if tooltip_key ~= A.config_tooltip_key then
+        A.config_tooltip_key = tooltip_key
+        A.config_tooltip_since = now
+        A.config_tooltip_alpha = 0
+    end
+    local elapsed = now - (A.config_tooltip_since or now)
+    local show_hint = tooltip_key ~= nil and elapsed >= 0.20
+    A.config_tooltip_alpha = exp_chase(
+        A.config_tooltip_alpha or 0, show_hint and 1 or 0, 18, dt)
+    local hint_alpha = A.config_tooltip_alpha or 0
+    if tooltip_label and hint_alpha > 0.012 then
+        local tw = math.max(42, #tooltip_label * 7 + 16)
+        local th = 24
+        local tx = clamp(mx + 12, wx + 8, wx + WIN_W - tw - 8)
+        local ty = clamp(my - th - 12, wy + 8, wy + WIN_H - th - 8)
+        MENU_RENDER_ALPHA = old_alpha * fade * hint_alpha
+        rounded_outline(tx, ty, tw, th, 5,
+            {0.25, 0.26, 0.32, 1}, 1, {0.067, 0.071, 0.094, 1})
+        text(tx + 8, ty + 7, tooltip_label, ink)
+    end
     MENU_RENDER_ALPHA=old_alpha
 end
 
@@ -32012,7 +32043,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v128 | v121 base + Config Share/Paste | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v129 | v121 base + Config Icon Tooltips | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
