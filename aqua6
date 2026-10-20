@@ -653,6 +653,7 @@ local A = {
     -- Search modal: kept separate from saved user settings.
     search_open = false,
     search_anim = 0,
+    search_field_anim = 0,
     search_query = "",
     search_prev_keys = {},
     search_results_anim = 0,
@@ -23104,9 +23105,9 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     local last = A.config_preset_last or now
     local dt = clamp(now - last, 0, 0.05)
     A.config_preset_last = now
-    -- Ignore the mouse click that opened the dropdown from its anchor button.
+    -- No placeholder label when no preset is selected; keep an icon-only anchor.
     local selected_title = tostring(A.config_selected
-        or FALLEN_CONFIGS.CONFIG.loaded_name or "Select config")
+        or FALLEN_CONFIGS.CONFIG.loaded_name or "")
     if #selected_title > 35 then
         selected_title = selected_title:sub(1,35)
     end
@@ -23123,7 +23124,7 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
             selected_w=selected_w+7
         end
     end
-    local anchor_w=clamp(42+selected_w,84,390)
+    local anchor_w=clamp(38+selected_w,38,390)
     local ui_clicked = clicked and active and not
         hover(mx, my, wx+190, wy+18, anchor_w,29)
 
@@ -30519,9 +30520,17 @@ local function fallen_search_draw_icon(x, y)
     end
 end
 
+-- Collapsed search is only a magnifier. When opened, its field grows left,
+-- so the magnifier glides left while the field's right edge stays anchored.
+local function fallen_search_field_rect(wx, wy)
+    local expansion = clamp(A.search_field_anim or 0, 0, 1)
+    local width = 31 + 167 * expansion
+    return wx + WIN_W - 18 - width, wy + 18, width, 27
+end
+
 local function fallen_search_draw(wx, wy, mx, my, clicked)
     local anim = clamp(A.search_anim or 0, 0, 1)
-    local head_x, head_y, head_w, head_h = wx + WIN_W - 216, wy + 18, 198, 27
+    local head_x, head_y, head_w, head_h = fallen_search_field_rect(wx, wy)
 
     if anim > 0.005 then
         -- Darken only the menu. Match its rounded outer corners instead
@@ -30610,20 +30619,27 @@ local function fallen_search_draw(wx, wy, mx, my, clicked)
         MENU_RENDER_ALPHA = prev_alpha
     end
 
-    -- Search box stays bright and interactive above the dimmed shell.
+    -- The lens travels smoothly left as the inline input expands.
+    -- There is deliberately no placeholder text in either state.
     local hot = hover(mx, my, head_x, head_y, head_w, head_h)
-    rounded_fill(head_x, head_y, head_w, head_h, 5,
-        A.search_open and C.frame_active or (hot and C.button_hovered or C.button))
+    local field_bg = A.search_open and C.frame_active
+        or (hot and C.button_hovered or C.button)
+    rounded_fill(head_x, head_y, head_w, head_h, 5, field_bg)
     rounded_outline(head_x, head_y, head_w, head_h, 5,
-        A.search_open and C.accent_dim or C.border, 1,
-        A.search_open and C.frame_active or (hot and C.button_hovered or C.button))
-    fallen_search_draw_icon(head_x + 9, head_y + 5)
-    local q = A.search_query or ""
-    if q == "" then
-        text(head_x + 35, head_y + 7, "Search functions...", C.text_dim)
-    else
-        local cursor = A.search_open and (math.floor(tick() * 2) % 2 == 0) and "|" or ""
-        text(head_x + 35, head_y + 7, q .. cursor, C.text)
+        A.search_open and C.accent_dim or C.border, 1, field_bg)
+    fallen_search_draw_icon(head_x + 7, head_y + 5)
+    if A.search_open and head_w > 47 then
+        local q = tostring(A.search_query or "")
+        local cursor = (math.floor(tick() * 2) % 2 == 0) and "|" or ""
+        -- Only render characters which actually fit in the opening field.
+        local visible_chars = math.max(0, math.floor((head_w - 42) / 7))
+        if visible_chars > 0 then
+            local shown = (q .. cursor)
+            if #shown > visible_chars then
+                shown = shown:sub(#shown - visible_chars + 1)
+            end
+            text(head_x + 32, head_y + 7, shown, C.text)
+        end
     end
 end
 
@@ -30674,6 +30690,7 @@ hooks.on_render(function()
             FALLEN_CONFIGS.input_focus(false)
             A.search_open = false
             A.search_anim = 0
+            A.search_field_anim = 0
             A.search_prev_keys = {}
 
             A.menu_settings_open = false
@@ -30823,7 +30840,7 @@ hooks.on_render(function()
     if clicked
         and drag_hot
         and not A.search_open
-        and not hover(mx, my, wx + WIN_W - 216, wy + 18, 198, 27)
+        and not hover(mx, my, fallen_search_field_rect(wx, wy))
         and not A.world_color_picker_open
         and (A.world_color_picker_anim or 0) <= 0.02
     then
@@ -31039,13 +31056,22 @@ hooks.on_render(function()
     -- Keep the real click separately for controls inside the search modal.
     local search_input_click = clicked
     local search_field_hot = hover(mx, my,
-        wx + WIN_W - 216, wy + 18, 198, 27)
+        fallen_search_field_rect(wx, wy))
     if search_input_click and search_field_hot then
         if A.search_open then
             -- Clicking an active input keeps focus (Escape or outside click closes).
         else
             fallen_search_open()
         end
+    end
+    A.search_field_anim = exp_chase(
+        tonumber(A.search_field_anim) or 0,
+        A.search_open and 1 or 0,
+        13,
+        0.016
+    )
+    if math.abs(A.search_field_anim - (A.search_open and 1 or 0)) < 0.002 then
+        A.search_field_anim = A.search_open and 1 or 0
     end
     A.search_anim = exp_chase(
         tonumber(A.search_anim) or 0,
@@ -31379,7 +31405,7 @@ hooks.on_render(function()
     -- The header is only as wide as its selected preset name. The Lua
     -- Drawing API has no text-measure function, so use glyph-based widths.
     local cfg_name = tostring(A.config_selected
-        or FALLEN_CONFIGS.CONFIG.loaded_name or "Select config")
+        or FALLEN_CONFIGS.CONFIG.loaded_name or "")
     if #cfg_name > 35 then cfg_name = cfg_name:sub(1, 35) end
     local cfg_name_w = 0
     for i = 1, #cfg_name do
@@ -31394,7 +31420,7 @@ hooks.on_render(function()
             cfg_name_w = cfg_name_w + 7
         end
     end
-    local cfg_w = clamp(42 + cfg_name_w, 84, 390)
+    local cfg_w = clamp(38 + cfg_name_w, 38, 390)
 
     local cfg_hot =
         hover(
