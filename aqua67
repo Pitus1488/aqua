@@ -4057,40 +4057,87 @@ _G.FALLEN_SAVE_ICON_SOURCE = _G.FALLEN_SAVE_ICON_SOURCE or nil
 _G.FALLEN_SAVE_ICON_URL = _G.FALLEN_SAVE_ICON_URL or nil
 _G.FALLEN_SAVE_ICON_HANDLE = _G.FALLEN_SAVE_ICON_HANDLE or nil
 
-function FALLEN_SAVE_ICON_GET()
-    local page_url = _G.FALLEN_SAVE_ICON_PAGE_URL
-    if _G.FALLEN_SAVE_ICON_SOURCE ~= page_url then
-        _G.FALLEN_SAVE_ICON_SOURCE = page_url
-        _G.FALLEN_SAVE_ICON_URL = nil
-        _G.FALLEN_SAVE_ICON_HANDLE = nil
+-- Small images in Presets use the existing page-to-raw-image resolver.
+-- Do not pass HTML sharing pages to LoadImage. Retry if a request fails;
+-- the first attempt happens during the loader's special image preload stage.
+local function FALLEN_PRESET_REMOTE_ICON_GET(prefix, page_url)
+    local source_key = prefix .. "_SOURCE"
+    local url_key = prefix .. "_URL"
+    local handle_key = prefix .. "_HANDLE"
+    local next_key = prefix .. "_NEXT_RETRY"
+    local began_key = prefix .. "_STARTED"
+    local now = tick()
+
+    if _G[source_key] ~= page_url then
+        _G[source_key] = page_url
+        _G[url_key] = nil
+        _G[handle_key] = nil
+        _G[next_key] = 0
+        _G[began_key] = 0
     end
 
-    if not _G.FALLEN_SAVE_ICON_URL then
-        if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function" then
+    local handle = _G[handle_key]
+    if handle then
+        if type(IsImageFailed) == "function" then
+            local ok, failed = pcall(IsImageFailed, handle)
+            if ok and failed == true then
+                _G[handle_key] = nil
+                _G[next_key] = now + 5
+                handle = nil
+            end
+        end
+        if handle and type(IsImageReady) == "function" then
+            local ok, ready = pcall(IsImageReady, handle)
+            if ok and ready == true then
+                return handle
+            end
+            -- A stalled request should be eligible for another attempt.
+            if now - (_G[began_key] or now) > 8 then
+                _G[handle_key] = nil
+                _G[next_key] = now + 5
+            end
+            return nil
+        elseif handle then
+            return handle
+        end
+    end
+
+    if now < (_G[next_key] or 0) then return nil end
+    _G[next_key] = now + 5
+    if type(FALLEN_LOADER_RESOLVE_IMAGE_URL) ~= "function"
+        or type(LoadImage) ~= "function" then
+        return nil
+    end
+    local url = _G[url_key]
+    if not url then
+        local found = FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url)
+        -- An unchanged URL is a sharing page, not an image file.
+        if type(found) ~= "string" or found == page_url then
             return nil
         end
-        -- The linked page is HTML; the shared resolver extracts og:image.
-        _G.FALLEN_SAVE_ICON_URL =
-            FALLEN_LOADER_RESOLVE_IMAGE_URL(page_url) or page_url
+        url = found
+        _G[url_key] = url
     end
+    local ok, new_handle = pcall(LoadImage, url)
+    if ok and new_handle then
+        _G[handle_key] = new_handle
+        _G[began_key] = now
+    end
+    return nil
+end
 
-    if not _G.FALLEN_SAVE_ICON_HANDLE and type(LoadImage) == "function" then
-        pcall(function()
-            _G.FALLEN_SAVE_ICON_HANDLE = LoadImage(_G.FALLEN_SAVE_ICON_URL)
-        end)
-    end
+function FALLEN_SAVE_ICON_GET()
+    return FALLEN_PRESET_REMOTE_ICON_GET(
+        "FALLEN_SAVE_ICON", _G.FALLEN_SAVE_ICON_PAGE_URL)
+end
 
-    local handle = _G.FALLEN_SAVE_ICON_HANDLE
-    if not handle then return nil end
-    if type(IsImageFailed) == "function" then
-        local ok, failed = pcall(IsImageFailed, handle)
-        if ok and failed then return nil end
-    end
-    if type(IsImageReady) == "function" then
-        local ok, ready = pcall(IsImageReady, handle)
-        if not ok or ready ~= true then return nil end
-    end
-    return handle
+-- Original contour-cloud picture for the Presets header, not a vector glyph.
+_G.FALLEN_PRESETS_CLOUD_ICON_PAGE_URL =
+    "https://fotovssylku.ru/i/%D0%9C%D0%B8%D0%BD%D0%B8%D0%BC%D0%B0%D0%BB%D0%B8%D1%81%D1%82%D0%B8%D1%87%D0%BD%D1%8B%D0%B9-%D0%BA%D0%BE%D0%BD%D1%82%D1%83%D1%80-%D0%BE%D0%B1%D0%BB%D0%B0%D0%BA%D0%B0-%D0%BD%D0%B0-%D1%87%D1%91%D1%80%D0%BD%D0%BE%D0%BC-%D1%84%D0%BE%D0%BD%D0%B5-%281%29.1s6sY"
+
+function FALLEN_PRESETS_CLOUD_ICON_GET()
+    return FALLEN_PRESET_REMOTE_ICON_GET(
+        "FALLEN_PRESETS_CLOUD_ICON", _G.FALLEN_PRESETS_CLOUD_ICON_PAGE_URL)
 end
 
 -- Search magnifier: resolved and loaded by the same loader as all other UI art.
@@ -23014,7 +23061,9 @@ local function fallen_preset_shared_icon(kind, x, y, size, color)
             FALLEN_UI_X(x), FALLEN_UI_Y(y),
             FALLEN_UI_LEN(size), FALLEN_UI_LEN(size),
             1, 1, 1, MENU_RENDER_ALPHA, 0)
-    else
+    elseif kind ~= "save" then
+        -- Search has a line-drawn fallback. Save keeps its original image,
+        -- instead of temporarily displaying a different diskette symbol.
         fallen_presets_icon(kind, x, y, color)
     end
 end
@@ -23074,7 +23123,7 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
             selected_w=selected_w+7
         end
     end
-    local anchor_w=clamp(57+selected_w,100,410)
+    local anchor_w=clamp(42+selected_w,84,390)
     local ui_clicked = clicked and active and not
         hover(mx, my, wx+190, wy+18, anchor_w,29)
 
@@ -23097,17 +23146,15 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
         end
     end
 
-    -- Each preset has its own Save icon. Do not duplicate Save in the toolbar.
-    -- Paste is a compact icon-only action alongside Add and Close.
+    -- Each preset has its own Save icon. Close via the header/outside click.
+    -- The toolbar only offers Paste and Add; no redundant Close arrow.
     local toolbar = {
-        {"paste", px + pw - 77},
-        {"add", px + pw - 51},
-        {"close", px + pw - 25},
+        {"paste", px + pw - 51},
+        {"add", px + pw - 25},
     }
     local tool_labels = {
         paste = "Paste",
         add = "Create config",
-        close = "Close",
     }
     for _, tool in ipairs(toolbar) do
         local kind, tx = tool[1], tool[2]
@@ -23137,9 +23184,6 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
                     A.config_search_query = ""
                     FALLEN_CONFIGS.input_focus(true, "rename")
                 end
-            elseif kind == "close" then
-                A.config_open = false
-                FALLEN_CONFIGS.input_focus(false)
             end
         end
     end
@@ -23187,9 +23231,15 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     rounded_fill(px, py, pw, ph, 8, panel)
     line(px+9, py+36, px+pw-9, py+36, C.divider, 1)
 
-    -- Compact toolbar: Presets title, then icon-only Paste / Add / Close.
+    -- Presets header with the supplied cloud image and two compact actions.
     rounded_fill(px+8, py+5, 91, 26, 6, {0.108, 0.113, 0.154, 1})
-    fallen_presets_icon("cloud", px+15, py+10, azure)
+    local presets_cloud = FALLEN_PRESETS_CLOUD_ICON_GET()
+    if presets_cloud and type(DrawImage) == "function" then
+        pcall(DrawImage, presets_cloud,
+            FALLEN_UI_X(px+13), FALLEN_UI_Y(py+9),
+            FALLEN_UI_LEN(19), FALLEN_UI_LEN(19),
+            1, 1, 1, MENU_RENDER_ALPHA, 2)
+    end
     text(px+36, py+12, "Presets", azure)
     for _, tool in ipairs(toolbar) do
         local kind, tx = tool[1], tool[2]
@@ -23207,9 +23257,6 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
             line(tx+8,py+19,tx+13,py+19,hot and ink or muted,1)
         elseif kind == "add" then
             centered_text(tx+11,py+10,"+",hot and ink or muted)
-        elseif kind == "close" then
-            line(tx+7,py+13,tx+11,py+17,hot and ink or muted,1.4)
-            line(tx+11,py+17,tx+15,py+13,hot and ink or muted,1.4)
         end
     end
 
@@ -31347,7 +31394,7 @@ hooks.on_render(function()
             cfg_name_w = cfg_name_w + 7
         end
     end
-    local cfg_w = clamp(34 + cfg_name_w + 23, 100, 410)
+    local cfg_w = clamp(42 + cfg_name_w, 84, 390)
 
     local cfg_hot =
         hover(
@@ -31406,33 +31453,10 @@ hooks.on_render(function()
             FALLEN_UI_LEN(save_icon_size),
             1, 1, 1, MENU_RENDER_ALPHA, 0
         )
-    else
-        rounded_outline(save_icon_x, save_icon_y, 13, 13, 2,
-            C.text_dim, 1, cfg_btn_bg)
-        line(save_icon_x + 4, save_icon_y + 1,
-            save_icon_x + 4, save_icon_y + 6, C.text_dim, 1)
-        line(save_icon_x + 4, save_icon_y + 6,
-            save_icon_x + 9, save_icon_y + 6, C.text_dim, 1)
-        line(save_icon_x + 3, save_icon_y + 10,
-            save_icon_x + 10, save_icon_y + 10, C.text_dim, 1)
     end
 
-    -- Full config name, up to 35 characters; the button fits the text.
+    -- Original Save image + selected config name. No arrow or fake icon.
     text(cfg_x + 34, cfg_y + 9, cfg_name, cfg_text_col)
-    local arrow_x = cfg_x + cfg_w - 16
-    local arrow_y = cfg_y + 13
-    local arrow_color = A.config_open and C.text or C.text_dim
-    if A.config_open then
-        line(arrow_x - 4, arrow_y + 2, arrow_x, arrow_y - 2,
-            arrow_color, 1.4)
-        line(arrow_x, arrow_y - 2, arrow_x + 4, arrow_y + 2,
-            arrow_color, 1.4)
-    else
-        line(arrow_x - 4, arrow_y - 2, arrow_x, arrow_y + 2,
-            arrow_color, 1.4)
-        line(arrow_x, arrow_y + 2, arrow_x + 4, arrow_y - 2,
-            arrow_color, 1.4)
-    end
 
     if FALLEN_DROPDOWN_TRIGGER_ALLOWED(
             clicked,
@@ -32304,6 +32328,7 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
         FALLEN_GRENADE_ICON_GET,
         FALLEN_BRAND_FN_ICON_GET,
         FALLEN_SAVE_ICON_GET,
+        FALLEN_PRESETS_CLOUD_ICON_GET,
         FALLEN_SEARCH_ICON_GET,
         FALLEN_AIMBOT_TAB_ICON_GET,
         FALLEN_HITFX_SPARK_SHEET_GET,
