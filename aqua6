@@ -1,0 +1,1071 @@
+-- Neverlose-style UI rebuilt for the supplied Blueberry Lua API.
+-- Only documented API: Drawing.*, Windows.*, hooks.on_render,
+-- tick, ScreenSize, Json, read_file/write_file, rbx, VK, notify.
+-- No Roblox Instance.new, TweenService, game:GetService, or external execution.
+-- Source reference: user's Source (1).lua (layout, palette, widget API).
+
+local UI = {
+    Theme = { Custom = {
+        Background = {9/255,9/255,13/255,1},
+        Section = {0,20/255,40/255,1},
+        Element = {61/255,133/255,224/255,1},
+        Text = {1,1,1,1},
+        Glow = {14/255,191/255,1,1}
+    }},
+    Flags = {}, SettingsFlags = {}, Settings = {CloseBind = "RightControl"},
+    Targeted_Config = "", Visible = true, Showcase = false,
+    MouseOffsetX = 0, MouseOffsetY = 0,
+    _windows = {}, _notifications = {}, _configured = false
+}
+_G.Neverlose_Replica = UI
+
+local function clamp(x,a,b) return math.max(a,math.min(b,x)) end
+local function mix(a,b,t) return a+(b-a)*clamp(t,0,1) end
+local function approach(v,goal,dt,speed) return mix(v,goal,clamp(dt*speed,0,1)) end
+local function quad(t) t=clamp(t,0,1); return 1-(1-t)*(1-t) end
+local function rgb(r,g,b,a) return {r/255,g/255,b/255,a or 1} end
+local COLORS = {
+    side = rgb(7,15,25), white=rgb(255,255,255), gray=rgb(180,180,180),
+    dim=rgb(82,96,110), divider=rgb(23,50,83), field=rgb(3,5,13),
+    nav=rgb(13,98,144), line=rgb(33,71,118), notify=rgb(15,25,39),
+    red=rgb(235,65,65), green=rgb(50,240,120), dark=rgb(3,30,58)
+}
+local function tocolor(v)
+    if type(v) ~= 'table' then return {1,1,1,1} end
+    if v.r ~= nil then return {v.r or 1,v.g or 1,v.b or 1,v.a or 1} end
+    if v.R ~= nil then return {v.R or 1,v.G or 1,v.B or 1,v.A or 1} end
+    return {v[1] or 1,v[2] or 1,v[3] or 1,v[4] or 1}
+end
+local function hsv(h,s,v)
+    local i=math.floor(h*6); local f=h*6-i
+    local p=v*(1-s); local q=v*(1-f*s); local t=v*(1-(1-f)*s)
+    i=i%6
+    if i==0 then return {v,t,p,1} elseif i==1 then return {q,v,p,1}
+    elseif i==2 then return {p,v,t,1} elseif i==3 then return {p,q,v,1}
+    elseif i==4 then return {t,p,v,1} else return {v,p,q,1} end
+end
+local function tohsv(col)
+    local c=tocolor(col); local r,g,b=c[1],c[2],c[3]
+    local maxv=math.max(r,g,b); local minv=math.min(r,g,b); local d=maxv-minv
+    local h,s=0,0
+    if d>0 then
+        if maxv==r then h=((g-b)/d)%6 elseif maxv==g then h=(b-r)/d+2
+        else h=(r-g)/d+4 end
+        h=h/6
+    end
+    if maxv>0 then s=d/maxv end
+    return h,s,maxv
+end
+local function hex(col)
+    local c=tocolor(col)
+    return string.format('%02X%02X%02X', math.floor(c[1]*255+.5),math.floor(c[2]*255+.5),math.floor(c[3]*255+.5))
+end
+local function fromhex(s)
+    s=tostring(s or ''):gsub('#','')
+    if #s~=6 or not s:match('^%x+$') then return nil end
+    return {tonumber(s:sub(1,2),16)/255,tonumber(s:sub(3,4),16)/255,tonumber(s:sub(5,6),16)/255,1}
+end
+
+local function box(x,y,w,h,c,a)
+    if w<=0 or h<=0 then return end
+    c=tocolor(c); Drawing.DrawBoxFilled(x,y,x+w,y+h,c[1],c[2],c[3],(c[4] or 1)*(a or 1))
+end
+local function line(x1,y1,x2,y2,c,a,th)
+    c=tocolor(c); Drawing.DrawLine(x1,y1,x2,y2,c[1],c[2],c[3],(c[4] or 1)*(a or 1),th or 1)
+end
+local function circ(x,y,r,c,a)
+    c=tocolor(c); Drawing.DrawCircleFilled(x,y,r,c[1],c[2],c[3],(c[4] or 1)*(a or 1))
+end
+local function rounded(x,y,w,h,r,c,a)
+    if w<=0 or h<=0 then return end
+    r=math.floor(math.max(0,math.min(r,w/2,h/2)))
+    if r==0 then return box(x,y,w,h,c,a) end
+    box(x+r,y,w-r*2,h,c,a)
+    box(x,y+r,r,h-r*2,c,a)
+    box(x+w-r,y+r,r,h-r*2,c,a)
+    for t=0,r-1 do
+        local dy=r-t-.5
+        local dx=r-math.sqrt(math.max(0,r*r-dy*dy))
+        box(x+dx,y+t,w-2*dx,1,c,a)
+        box(x+dx,y+h-t-1,w-2*dx,1,c,a)
+    end
+end
+local function outline(x,y,w,h,c,a,th)
+    local t=th or 1
+    box(x,y,w,t,c,a); box(x,y+h-t,w,t,c,a); box(x,y,t,h,c,a);box(x+w-t,y,t,h,c,a)
+end
+local function text(x,y,str,c,a)
+    c=tocolor(c); Drawing.DrawText(x,y,tostring(str or ''),c[1],c[2],c[3],(c[4] or 1)*(a or 1))
+end
+local function label(x,y,str,c,a)
+    text(x+1,y+1,str,COLORS.field,(a or 1)*.8)
+    text(x,y,str,c,a)
+end
+local function triangle(x,y,dir,c,a)
+    if dir=='down' then
+        for n=0,5 do line(x-n,y+n*.6,x+n,y+n*.6,c,a,1) end
+    elseif dir=='up' then
+        for n=0,5 do line(x-n,y-n*.6,x+n,y-n*.6,c,a,1) end
+    end
+end
+local function safeCallback(fn, ...)
+    if type(fn)~='function' then return end
+    local ok,err=pcall(fn,...)
+    if not ok then notify('Neverlose callback: '..tostring(err),'error') end
+end
+
+local runtime = {
+    s=1, x=0,y=0, w=846,h=682, mx=-100,my=-100,
+    down=false, pressed=false, released=false, wasDown=false,
+    regions={}, current=nil, drag=nil, focus=nil, popup=nil,
+    alpha=0, frameTime=tick(), keysDown={},
+    keyboardRepeat={}, cursorBlink=0, notices={}, win=nil
+}
+local function vx(x) return runtime.x+x*runtime.s end
+local function vy(y) return runtime.y+y*runtime.s end
+local function vbox(x,y,w,h,col,a) box(vx(x),vy(y),w*runtime.s,h*runtime.s,col,a) end
+local function vrounded(x,y,w,h,r,c,a) rounded(vx(x),vy(y),w*runtime.s,h*runtime.s,r*runtime.s,c,a) end
+local function vline(x,y,x2,y2,c,a,th) line(vx(x),vy(y),vx(x2),vy(y2),c,a,(th or 1)*runtime.s) end
+local function vtext(x,y,str,c,a) text(vx(x),vy(y),str,c,a) end
+local function vcircle(x,y,r,c,a) circ(vx(x),vy(y),r*runtime.s,c,a) end
+local function vring(x,y,r,c,a,th)
+    local cc=tocolor(c)
+    Drawing.DrawCircle(vx(x),vy(y),r*runtime.s,cc[1],cc[2],cc[3],(cc[4] or 1)*(a or 1),(th or 1)*runtime.s)
+end
+local function inside(x,y,w,h) return runtime.mx>=x and runtime.mx<=x+w and runtime.my>=y and runtime.my<=y+h end
+local function region(x,y,w,h,callback,kind,meta)
+    runtime.regions[#runtime.regions+1]={x=x,y=y,w=w,h=h,callback=callback,kind=kind,meta=meta}
+    return inside(x,y,w,h)
+end
+local function clickableText(x,y,w,h,name,action,c)
+    local hot=region(x,y,w,h,action)
+    vtext(x,y,name,hot and UI.Theme.Custom.Glow or (c or COLORS.gray),runtime.alpha)
+    return hot
+end
+local function visibleItem(item)
+    local search=runtime.win and runtime.win.searchValue or ''
+    if item.visible==false then return false end
+    if search~='' then return tostring(item.title or ''):lower():find(search:lower(),1,true)~=nil end
+    return true
+end
+
+local function newItem(section,kind,title,cb)
+    local it={kind=kind,title=tostring(title or kind),Value=false,callback=cb,visible=true,
+        hover=0,knob=0,valueAnim=0,expand=0,hasPopup=false,section=section}
+    section.items[#section.items+1]=it
+    UI.Flags[it.title]=it
+    function it:visibility(state) self.visible=not not state end
+    function it:Set(value)
+        self.Value=value
+        safeCallback(self.callback,value)
+    end
+    return it
+end
+
+local function createSection(tab,name)
+    local section={title=tostring(name or 'Section'),items={},tab=tab,col=1,h=51}
+    tab.sections[#tab.sections+1]=section
+    local group={}
+    function group:Button(title,cb)
+        local it=newItem(section,'button',title,cb); it.Value=false;return it
+    end
+    function group:Toggle(title,cb)
+        local it=newItem(section,'toggle',title,cb);it.Value=false;return it
+    end
+    function group:Line()
+        local it=newItem(section,'line','',nil);return it
+    end
+    function group:Dropdown(title,list,cb)
+        local it=newItem(section,'dropdown',title,cb)
+        it.list=type(list)=='table' and list or {};it.Value=''
+        function it:Refresh(newList) self.list=type(newList)=='table' and newList or {} end
+        return it
+    end
+    function group:Slider(title,min,max,start,cb)
+        local it=newItem(section,'slider',title,cb)
+        it.min=tonumber(min) or 0; it.max=tonumber(max) or 100
+        if it.max<=it.min then it.max=it.min+1 end
+        it.Value=clamp(tonumber(start) or it.min,it.min,it.max)
+        it.valueAnim=(it.Value-it.min)/(it.max-it.min)
+        function it:Set(value)
+            self.Value=clamp(tonumber(value) or self.min,self.min,self.max)
+            safeCallback(self.callback,self.Value)
+        end
+        return it
+    end
+    function group:TextBox(title,cb)
+        local it=newItem(section,'textbox',title,cb); it.Value='';return it
+    end
+    function group:Colorpicker(title,preset,cb)
+        local it=newItem(section,'color',title,cb)
+        it.Value=tocolor(preset or UI.Theme.Custom.Element)
+        it.h,it.s,it.v=tohsv(it.Value)
+        function it:Set(value)
+            self.Value=tocolor(value); self.h,self.s,self.v=tohsv(self.Value)
+            safeCallback(self.callback,self.Value)
+        end
+        function it:GetRGBText(r,g,b)
+            if type(r)=='table' then return hex(r) end
+            return hex({r or 0,g or 0,b or 0,1})
+        end
+        function it:GetFromRGBText(s) return fromhex(s) end
+        return it
+    end
+    function group:Bind(title,cb,external)
+        local it=newItem(section,'bind',title,cb)
+        it.key=0;it.mode='Toggle';it.Value=false;it.capture=false
+        if type(external)=='table' and type(external[1])=='table' then
+            local e=external[1]
+            it.key=e.key or 0
+            it.mode=e.Toggled and 'Toggle' or 'Hold'
+        end
+        function it:Set(val)
+            if type(val)=='number' then self.key=val else self.Value=not not val end
+            safeCallback(self.callback,self.Value)
+        end
+        return it
+    end
+    -- Same naming as the original UI library.
+    group._section=section
+    return group
+end
+local function createTab(parent,title)
+    local tab={title=tostring(title or 'Tab'), sections={}, highlight=0,scroll=0,targetScroll=0}
+    parent.tabs[#parent.tabs+1]=tab
+    if parent.win.selected==nil then parent.win.selected=tab;tab.highlight=1 end
+    local t={}
+    function t:Section(name) return createSection(tab,name) end
+    t._tab=tab
+    return t
+end
+local function createTSection(win,title)
+    local group={title=tostring(title or 'Other'),tabs={},win=win}
+    win.groups[#win.groups+1]=group
+    local holder={}
+    function holder:Tab(name) return createTab(group,name) end
+    holder._group=group
+    return holder
+end
+
+function UI:SetCFG(name) self.Targeted_Config=tostring(name or '') end
+function UI:VisMain(v) self.Visible=not not v end
+function UI:Notify(cfg)
+    cfg=cfg or {}
+    if type(cfg)=='string' then cfg={Text=cfg} end
+    local n={ title=tostring(cfg.Title or 'Neverlose'),
+        desc=tostring(cfg.Text or ''), duration=tonumber(cfg.Time) or 2,
+        birth=tick(), closed=false }
+    runtime.notices[#runtime.notices+1]=n
+    if #runtime.notices>6 then table.remove(runtime.notices,1) end
+end
+
+local function basePath()
+    local win=runtime.win
+    local folder=win and win.folder or 'Neverlose'
+    folder=tostring(folder):gsub('[^%w_%-]','_')
+    return 'C:\\blueberry\\scripts\\NeverloseReplica\\'..folder..'\\'
+end
+local function saveJson(path,obj)
+    local data,err=Json.encode(obj,true)
+    if not data then return false,err end
+    return write_file(path,data)
+end
+local function loadJson(path)
+    local raw=read_file(path)
+    if not raw then return nil end
+    local data=Json.decode(raw)
+    if type(data)~='table' then return nil end
+    return data
+end
+local function configIndex()
+    local t=loadJson(basePath()..'index.json')
+    return type(t)=='table' and t or {}
+end
+function UI:GetConfigNames() return configIndex() end
+function UI:SaveCfg(name)
+    name=tostring(name or self.Targeted_Config or '')
+    if name=='' then self:Notify({Text='Please Select a config first!'}) return false end
+    local data={}
+    for key,item in pairs(self.Flags) do
+        if item.kind and item.kind~='button' and item.kind~='line' then
+            data[key]=item.Value
+        end
+    end
+    local ok=saveJson(basePath()..name:gsub('[^%w_%-]','_')..'.json',data)
+    if ok then
+        local list=configIndex(); local found=false
+        for _,v in ipairs(list) do if v==name then found=true break end end
+        if not found then list[#list+1]=name;saveJson(basePath()..'index.json',list) end
+        self.Targeted_Config=name
+        self:Notify({Title='Neverlose',Text='Saved to: '..name})
+    else self:Notify({Title='Neverlose',Text='Config save failed'}) end
+    return ok
+end
+function UI:CreateCfg(name) return self:SaveCfg(name) end
+function UI:LoadCfg(name)
+    name=tostring(name or self.Targeted_Config or '')
+    local data=loadJson(basePath()..name:gsub('[^%w_%-]','_')..'.json')
+    if not data then self:Notify({Text='Config not found: '..name}) return false end
+    for key,value in pairs(data) do
+        local it=self.Flags[key]
+        if it and it.Set then it:Set(value) end
+    end
+    self.Targeted_Config=name
+    self:Notify({Title='Neverlose',Text='Loaded Config: '..name})
+    return true
+end
+
+function UI:Window(cfg)
+    cfg=cfg or {}
+    local win={title=tostring(cfg.Title or 'Neverlose'),folder=tostring(cfg.CFG or 'Neverlose'),
+        groups={},selected=nil,search=false,searchAnim=0,searchValue='',
+        settings=false,settingsAnim=0,scriptPanel=false,chatPanel=false,
+        saveHovered=0,navScroll=0,theme='Original',
+        bindsView=true, opened=true,
+        keyRequired=cfg.External and cfg.External.KeySystem==true or false,
+        keyAllowed=cfg.External and cfg.External.Key or {},
+        keyAuthorized=false,keyObject={kind='keyinput',Value=''},
+        keyRemember=false,keyAllowData=true,keyStart=nil,keyDeniedAt=0}
+    win.keyAuthorized=not win.keyRequired
+    runtime.win=win
+    UI._windows[1]=win
+    if win.keyRequired then
+        local remembered=read_file(basePath()..'key.txt')
+        if remembered and remembered~='' then
+            for _,key in ipairs(win.keyAllowed) do
+                if remembered==key then
+                    win.keyObject.Value=remembered
+                    win.keyRemember=true
+                    win.keyAuthorized=true
+                    break
+                end
+            end
+        end
+    end
+    UI.SettingsFlags['Key Holder']=win.keyObject
+    function win.keyObject:Set(value) self.Value=tostring(value or '') end
+    UI.SettingsFlags['Remember My Key']={Value=win.keyRemember,Set=function(self,v)
+        self.Value=not not v;win.keyRemember=self.Value
+    end}
+    UI.SettingsFlags['Allow Player Data']={Value=true,Set=function(self,v)
+        self.Value=not not v;win.keyAllowData=self.Value
+    end}
+    -- Original user profile picture: retrieve on the image loader's background
+    -- thread; failure simply falls back to the drawn profile icon.
+    local pl=rbx.local_player()
+    if pl then
+        local uid=pl:user_id()
+        if uid then
+            local address='https://www.roblox.com/headshot-thumbnail/image?userId='..tostring(uid)..'&width=150&height=150&format=png'
+            UI._avatar=Drawing.LoadImage(address)
+        end
+    end
+    local tabs={}
+    function tabs:TSection(name) return createTSection(win,name) end
+    tabs._window=win
+    -- The original generates this group itself. We provide it on launch too.
+    local lua=tabs:TSection('Lua')
+    local configTab=lua:Tab('Configs')
+    local load=configTab:Section('Load Config')
+    local creation=configTab:Section('Create Config')
+    local theme=configTab:Section('UI Color')
+    local key=configTab:Section('Keys')
+    local cfgName='NewConfig'
+    creation:TextBox('Config Name',function(v) cfgName=v end):Set('NewConfig')
+    creation:Button('Create Config',function() UI:CreateCfg(cfgName) end)
+    local picker=load:Dropdown('Select Config',UI:GetConfigNames(),function(v) UI:SetCFG(v) end)
+    load:Button('Refresh Configs',function() picker:Refresh(UI:GetConfigNames()) end)
+    load:Line()
+    load:Button('Load Selected Config',function() UI:LoadCfg(UI.Targeted_Config) end)
+    for _,desc in ipairs({'Background','Section','Element','Text','Glow'}) do
+        theme:Colorpicker(desc,UI.Theme.Custom[desc],function(v) UI.Theme.Custom[desc]=tocolor(v) end)
+    end
+    local menuBind=key:Bind('Toggle Menu',function(state) UI.Visible=state end,{{key=cfg.Key or VK.CTRL,Toggled=true}})
+    menuBind:Set(true)
+    key:Toggle('Open Menu On Launch',function(v) win.opened=v end):Set(true)
+    self:Notify({Title='Welcome',Text='Menu Key | LeftControl',Time=2})
+    return tabs
+end
+
+local function mousePosition()
+    local mp=Windows.GetMousePos()
+    if not mp then return -10000,-10000 end
+    local px,py=mp.X,mp.Y
+    local hwnd=Windows.GetRobloxWindow()
+    if hwnd then
+        local wr=Windows.GetWindowRect(hwnd)
+        local sz=Windows.GetRobloxClientSize()
+        if wr and sz then
+            local left=(wr.Width-(sz.Width or wr.Width))/2
+            local top=(wr.Height-(sz.Height or wr.Height))-left
+            px=px-wr.Left-math.max(0,left)
+            py=py-wr.Top-math.max(0,top)
+        end
+    end
+    return px-UI.MouseOffsetX,py-UI.MouseOffsetY
+end
+local function keyString(k)
+    if not k or k==0 then return 'None' end
+    for _,nm in ipairs({'CTRL','SHIFT','ALT','SPACE','TAB','ENTER','ESC'}) do
+        if VK[nm]==k then return nm end
+    end
+    for n=1,12 do if VK['F'..n]==k then return 'F'..n end end
+    for n=0,9 do if VK['NUM'..n]==k then return tostring(n) end end
+    for ch=65,90 do if VK[string.char(ch)]==k then return string.char(ch) end end
+    return tostring(k)
+end
+local KEY_INPUT={}
+for j=65,90 do KEY_INPUT[#KEY_INPUT+1]={vk=j,char=string.char(j)} end
+for j=48,57 do KEY_INPUT[#KEY_INPUT+1]={vk=j,char=string.char(j)} end
+KEY_INPUT[#KEY_INPUT+1]={vk=VK.SPACE,char=' '}
+KEY_INPUT[#KEY_INPUT+1]={vk=0xBD,char='-'}
+KEY_INPUT[#KEY_INPUT+1]={vk=0xBE,char='.'}
+KEY_INPUT[#KEY_INPUT+1]={vk=0xBF,char='/'}
+KEY_INPUT[#KEY_INPUT+1]={vk=0xBB,char='='}
+KEY_INPUT[#KEY_INPUT+1]={vk=0xBC,char=','}
+KEY_INPUT[#KEY_INPUT+1]={vk=VK.BACKSPACE,char='\b'}
+KEY_INPUT[#KEY_INPUT+1]={vk=VK.ENTER,char='\n'}
+local captureVK={VK.CTRL,VK.SHIFT,VK.ALT,VK.SPACE,VK.TAB,VK.ENTER,VK.ESC}
+for j=65,90 do captureVK[#captureVK+1]=j end
+for j=48,57 do captureVK[#captureVK+1]=j end
+for j=112,123 do captureVK[#captureVK+1]=j end
+local function isDown(vk) return vk and vk~=0 and Windows.IsKeyPressed(vk) end
+local function edge(vk)
+    local d=isDown(vk)
+    local prev=runtime.keysDown[vk]
+    runtime.keysDown[vk]=d
+    return d and not prev
+end
+local function inputUpdate(dt)
+    local win=runtime.win
+    if not win then return end
+    if runtime.focus then
+        local target=runtime.focus
+        for _,k in ipairs(KEY_INPUT) do
+            local down=isDown(k.vk)
+            local rec=runtime.keyboardRepeat[k.vk]
+            if down and (not rec or tick()-rec>.32) then
+                runtime.keyboardRepeat[k.vk]=tick()-(rec and .26 or 0)
+                if k.char=='\n' then
+                    runtime.focus=nil
+                    if target.kind=='textbox' then
+                        safeCallback(target.callback,target.Value)
+                    elseif target.kind=='slidertext' then
+                        target.item:Set(tonumber(target.Value) or target.item.Value)
+                    elseif target.kind=='hex' then
+                        local col=fromhex(target.Value)
+                        if col then target.item:Set(col) end
+                    end
+                elseif k.char=='\b' then
+                    target.Value=tostring(target.Value):sub(1,-2)
+                else
+                    local char=k.char
+                    if k.vk>=65 and k.vk<=90 and not isDown(VK.SHIFT) then char=char:lower() end
+                    target.Value=tostring(target.Value)..char
+                end
+            elseif not down then runtime.keyboardRepeat[k.vk]=nil end
+        end
+        if edge(VK.ESC) then runtime.focus=nil end
+    else
+        -- The configured Toggle Menu binding is handled by the Bind engine below.
+        -- Avoid also toggling it here; that would fire twice on the same press.
+    end
+    -- Bind modes and capture keys; all keys are documented Win32 virtual keys.
+    local popup=runtime.popup
+    if popup and popup.kind=='bindcapture' then
+        for _,v in ipairs(captureVK) do
+            if edge(v) then
+                if v~=VK.ESC then popup.item.key=v else popup.item.key=0 end
+                runtime.popup=nil
+                break
+            end
+        end
+    end
+    for _,group in ipairs(win.groups) do
+        for _,tab in ipairs(group.tabs) do
+            for _,sec in ipairs(tab.sections) do
+                for _,it in ipairs(sec.items) do
+                    if it.kind=='bind' and it.key and it.key~=0 and runtime.focus==nil and not (runtime.popup and runtime.popup.kind=='bindcapture') then
+                        local current=isDown(it.key)
+                        if it.mode=='Hold' then
+                            if current~=it.Value then it:Set(current) end
+                        elseif it.mode=='Always' then
+                            if not it.Value then it:Set(true) end
+                        elseif it.mode=='None' then
+                            if it.Value then it:Set(false) end
+                        elseif current and not it.wasKey then
+                            it:Set(not it.Value)
+                        end
+                        it.wasKey=current
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function placeSections(tab)
+    local heights={0,0}
+    for _,sec in ipairs(tab.sections) do
+        local count=0
+        for _,it in ipairs(sec.items) do
+            if visibleItem(it) then
+                if it.kind=='line' then count=count+10 else count=count+34 end
+            end
+        end
+        sec.h=51+count+8
+        local col=heights[1]<=heights[2] and 1 or 2
+        sec.col=col;sec.px=(col==1) and 218 or 516
+        sec.py=95+heights[col]
+        heights[col]=heights[col]+sec.h+13
+    end
+    tab.fullHeight=math.max(heights[1],heights[2])+95
+end
+local function drawGrid(tab,dt)
+    local scroll=tab.scroll or 0
+    for _,sec in ipairs(tab.sections) do
+        local sx,sy=sec.px,sec.py-scroll
+        if sy+sec.h>79 and sy<663 then
+            vrounded(sx,sy,285,sec.h,8,UI.Theme.Custom.Section,runtime.alpha)
+            vtext(sx+12,sy+13,sec.title,UI.Theme.Custom.Text,runtime.alpha)
+            vbox(sx+8,sy+38,270,1,COLORS.divider,runtime.alpha*.58)
+            local cursor=sy+48
+            for _,it in ipairs(sec.items) do
+                if visibleItem(it) then
+                    local iy=cursor
+                    cursor=cursor+(it.kind=='line' and 10 or 34)
+                    if iy>=86 and iy+26<=656 then
+                        if it.kind=='line' then
+                            vbox(sx+9,iy+4,267,1,COLORS.line,runtime.alpha*.55)
+                        else
+                            local rx=sx+6;local hot=inside(rx,iy,273,26)
+                            it.hover=approach(it.hover,hot and 1 or 0,dt,9)
+                            if it.kind=='button' then
+                                vrounded(rx,iy,273,26,4,UI.Theme.Custom.Element,(it.hover*.30+.08)*runtime.alpha)
+                                outline(vx(rx),vy(iy),273*runtime.s,26*runtime.s,UI.Theme.Custom.Element,(it.hover*.75+.2)*runtime.alpha)
+                                vtext(rx+10,iy+7,it.title,UI.Theme.Custom.Text,runtime.alpha)
+                                region(rx,iy,273,26,function()
+                                    safeCallback(it.callback)
+                                end)
+                            elseif it.kind=='toggle' then
+                                vtext(rx+10,iy+7,it.title,UI.Theme.Custom.Text,runtime.alpha)
+                                it.knob=approach(it.knob,it.Value and 1 or 0,dt,8)
+                                vrounded(rx+232,iy+6,38,15,7,COLORS.field,runtime.alpha)
+                                vrounded(rx+232+22*it.knob,iy+5,17,17,8,
+                                    {mix(.29,UI.Theme.Custom.Element[1],it.knob),mix(.34,UI.Theme.Custom.Element[2],it.knob),mix(.38,UI.Theme.Custom.Element[3],it.knob),1},runtime.alpha)
+                                region(rx,iy,273,26,function() it:Set(not it.Value) end)
+                            elseif it.kind=='dropdown' then
+                                vtext(rx+10,iy+7,it.title,UI.Theme.Custom.Text,runtime.alpha)
+                                vrounded(rx+174,iy+6,100,16,3,COLORS.field,runtime.alpha)
+                                vtext(rx+180,iy+7,tostring(it.Value):sub(1,10),UI.Theme.Custom.Text,runtime.alpha)
+                                triangle(rx+263,iy+13,'down',COLORS.gray,runtime.alpha)
+                                region(rx,iy,273,26,function()
+                                    if runtime.popup and runtime.popup.item==it then runtime.popup=nil
+                                    else runtime.popup={kind='dropdown',item=it,x=rx+125,y=iy+27} end
+                                end)
+                            elseif it.kind=='slider' then
+                                vtext(rx+10,iy+7,it.title,UI.Theme.Custom.Text,runtime.alpha)
+                                local frac=clamp((it.Value-it.min)/(it.max-it.min),0,1)
+                                it.valueAnim=approach(it.valueAnim,frac,dt,11)
+                                vbox(rx+139,iy+13,97,2,COLORS.dark,runtime.alpha)
+                                vbox(rx+139,iy+13,97*it.valueAnim,2,UI.Theme.Custom.Element,runtime.alpha)
+                                vcircle(rx+139+97*it.valueAnim,iy+14,7.5,UI.Theme.Custom.Element,runtime.alpha)
+                                vrounded(rx+249,iy+6,27,16,3,COLORS.field,runtime.alpha)
+                                local formatted=math.abs(it.Value-math.floor(it.Value))<.05 and tostring(math.floor(it.Value+.5)) or string.format('%.1f',it.Value)
+                                local edit=runtime.focus and runtime.focus.kind=='slidertext' and runtime.focus.item==it
+                                vtext(rx+252,iy+7,edit and runtime.focus.Value:sub(-5) or formatted,UI.Theme.Custom.Text,runtime.alpha)
+                                region(rx+132,iy+2,112,23,function()
+                                    runtime.drag={kind='slider',item=it,x=rx+139,w=97}
+                                    it:Set(clamp(it.min+(runtime.mx-(rx+139))/97*(it.max-it.min),it.min,it.max))
+                                end)
+                                region(rx+248,iy+5,30,20,function()
+                                    runtime.focus={kind='slidertext',Value='',item=it}
+                                end)
+                            elseif it.kind=='textbox' then
+                                vtext(rx+10,iy+7,it.title,UI.Theme.Custom.Text,runtime.alpha)
+                                vrounded(rx+150,iy+4,125,20,3,COLORS.field,runtime.alpha)
+                                local name=tostring(it.Value or '')
+                                local active=runtime.focus==it
+                                vtext(rx+158,iy+7,name:sub(-17)..(active and math.floor(tick()*2)%2==0 and '|' or ''),UI.Theme.Custom.Text,runtime.alpha)
+                                region(rx,iy,273,26,function() runtime.focus=it end)
+                            elseif it.kind=='color' then
+                                vtext(rx+10,iy+7,it.title,UI.Theme.Custom.Text,runtime.alpha)
+                                vrounded(rx+232,iy+5,39,19,3,it.Value,runtime.alpha)
+                                outline(vx(rx+232),vy(iy+5),39*runtime.s,19*runtime.s,COLORS.gray,runtime.alpha*.7)
+                                region(rx,iy,273,26,function()
+                                    if runtime.popup and runtime.popup.item==it then runtime.popup=nil
+                                    else runtime.popup={kind='color',item=it,x=math.min(rx+40,602),y=math.min(iy+29,410)} end
+                                end)
+                            elseif it.kind=='bind' then
+                                vtext(rx+10,iy+7,it.title,UI.Theme.Custom.Text,runtime.alpha)
+                                vrounded(rx+170,iy+4,99,19,4,COLORS.field,runtime.alpha)
+                                vtext(rx+179,iy+7,keyString(it.key),COLORS.gray,runtime.alpha)
+                                region(rx,iy,273,26,function()
+                                    runtime.popup={kind='bindmenu',item=it,x=rx+108,y=iy+27}
+                                end)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function actionRow(x,y,w,title,cb)
+    local hot=inside(x,y,w,27)
+    vrounded(x,y,w,27,4,hot and UI.Theme.Custom.Element or COLORS.dark,runtime.alpha*(hot and .5 or .72))
+    vtext(x+10,y+7,title,UI.Theme.Custom.Text,runtime.alpha)
+    region(x,y,w,27,cb)
+end
+local function drawNav(win,dt)
+    -- Faint cyan edge glow from the original's image layer, drawn as strokes.
+    for i=9,1,-2 do
+        outline(vx(-i),vy(-i), (846+2*i)*runtime.s,(682+2*i)*runtime.s,
+            UI.Theme.Custom.Glow,runtime.alpha*(.016+(10-i)*.006),1)
+    end
+    vrounded(0,0,846,682,5,UI.Theme.Custom.Background,runtime.alpha)
+    vbox(0,0,203,682,COLORS.side,runtime.alpha*.91)
+    vbox(0,612,203,1,COLORS.divider,runtime.alpha*.65)
+    vtext(20,23,win.title,UI.Theme.Custom.Text,runtime.alpha)
+    vtext(21,44,'NEVERLOSE / LUA',UI.Theme.Custom.Glow,runtime.alpha*.85)
+    vbox(5,76,836,1,COLORS.gray,runtime.alpha*.25)
+    local y=86-win.navScroll
+    for _,group in ipairs(win.groups) do
+        vtext(17,y+4,group.title:upper(),COLORS.dim,runtime.alpha)
+        y=y+28
+        for _,tab in ipairs(group.tabs) do
+            local selected=win.selected==tab
+            tab.highlight=approach(tab.highlight,selected and 1 or 0,dt,9)
+            vrounded(15,y,172,27,4,COLORS.nav,.5*tab.highlight*runtime.alpha)
+            vbox(15,y+4,2,19,UI.Theme.Custom.Glow,tab.highlight*runtime.alpha)
+            vtext(30,y+7,tab.title,{mix(.7,1,tab.highlight),mix(.7,1,tab.highlight),mix(.7,1,tab.highlight),1},runtime.alpha)
+            region(14,y,176,28,function() win.selected=tab;runtime.popup=nil;runtime.focus=nil end)
+            y=y+31
+        end
+        y=y+14
+    end
+    local pl=rbx.local_player()
+    local pname=pl and pl:get_name() or 'Player'
+    local uid=pl and pl:user_id() or nil
+    vrounded(12,624,44,44,22,COLORS.dark,runtime.alpha)
+    if UI._avatar and Drawing.IsImageReady(UI._avatar) then
+        Drawing.DrawImage(UI._avatar,vx(12),vy(624),44*runtime.s,44*runtime.s,1,1,1,runtime.alpha,22*runtime.s)
+    else
+        vtext(28,638,'P',UI.Theme.Custom.Glow,runtime.alpha)
+    end
+    vtext(67,629,tostring(pname):sub(1,16),UI.Theme.Custom.Text,runtime.alpha)
+    vtext(67,651,'User ID: '..tostring(uid or 'OFF'),UI.Theme.Custom.Glow,runtime.alpha)
+end
+local function drawHeader(win,dt)
+    win.searchAnim=approach(win.searchAnim,win.search and 1 or 0,dt,4.5)
+    local sa=quad(win.searchAnim)
+    if sa>.01 then
+        vrounded(229,20,405*sa,33,4,COLORS.dark,runtime.alpha)
+        if win.search then
+            local search={kind='search',Value=win.searchValue}
+            local cur=runtime.focus==win.searchObject
+            vtext(240,29,'Search: '..win.searchValue..(cur and math.floor(tick()*2)%2==0 and '|' or ''),UI.Theme.Custom.Text,runtime.alpha)
+        end
+        region(229,20,405*sa,33,function()
+            if not win.searchObject then win.searchObject={kind='search',Value=win.searchValue} end
+            runtime.focus=win.searchObject
+        end)
+    end
+    local savex=mix(230,655,sa)
+    local savHot=inside(savex,17,104,36)
+    win.saveHovered=approach(win.saveHovered,savHot and 1 or 0,dt,8)
+    vrounded(savex,17,104,36,4,COLORS.field,runtime.alpha*.5)
+    outline(vx(savex),vy(17),104*runtime.s,36*runtime.s,UI.Theme.Custom.Glow,runtime.alpha*(win.saveHovered*.8+.2))
+    vtext(savex+29,29,'Save',UI.Theme.Custom.Text,runtime.alpha)
+    region(savex,17,104,36,function() UI:SaveCfg(UI.Targeted_Config) end)
+    local cset=win.settings and UI.Theme.Custom.Glow or UI.Theme.Custom.Text
+    local csearch=win.search and UI.Theme.Custom.Glow or UI.Theme.Custom.Text
+    vring(785,35,8,cset,runtime.alpha,2.5)
+    vring(785,35,3.2,cset,runtime.alpha,1.4)
+    for j=0,7 do
+        local a=j*math.pi/4
+        vline(785+math.cos(a)*10,35+math.sin(a)*10,785+math.cos(a)*12,35+math.sin(a)*12,cset,runtime.alpha,2)
+    end
+    vring(816,33,6.8,csearch,runtime.alpha,2.1)
+    vline(821,38,827,44,csearch,runtime.alpha,2.4)
+    region(769,19,34,34,function() win.settings=not win.settings end)
+    region(805,19,34,34,function() win.search=not win.search; if not win.search then runtime.focus=nil end end)
+    vbox(206,76,637,1,COLORS.gray,runtime.alpha*.30)
+    if win.selected then
+        local tab=win.selected
+        placeSections(tab)
+        tab.scroll=approach(tab.scroll,tab.targetScroll,dt,12)
+        drawGrid(tab,dt)
+        local maximum=math.max(0,(tab.fullHeight or 0)-652)
+        if maximum>0 then
+            vrounded(831,92,8,550,4,COLORS.dark,runtime.alpha)
+            local bar=math.max(32,550*550/(550+maximum))
+            vrounded(832,95+tab.scroll/maximum*(545-bar),6,bar,3,UI.Theme.Custom.Element,runtime.alpha)
+            clickableText(798,648,20,21,'^',function() tab.targetScroll=clamp(tab.targetScroll-85,0,maximum) end)
+            clickableText(822,648,20,21,'v',function() tab.targetScroll=clamp(tab.targetScroll+85,0,maximum) end)
+            -- Keyboard UP / DOWN while open scrolls a long tab.
+            if runtime.focus==nil and inside(206,80,639,570) then
+                if isDown(VK.UP) then tab.targetScroll=clamp(tab.targetScroll-dt*330,0,maximum) end
+                if isDown(VK.DOWN) then tab.targetScroll=clamp(tab.targetScroll+dt*330,0,maximum) end
+            end
+        end
+    end
+end
+
+local function drawSettings(win,dt)
+    win.settingsAnim=approach(win.settingsAnim,win.settings and 1 or 0,dt,8)
+    if win.settingsAnim<.015 then return end
+    local a=runtime.alpha*quad(win.settingsAnim)
+    local x=334; local y=168+(1-win.settingsAnim)*18
+    vrounded(x,y,420,346,7,COLORS.notify,a)
+    outline(vx(x),vy(y),420*runtime.s,346*runtime.s,UI.Theme.Custom.Glow,a*.65)
+    vtext(x+20,y+20,'Settings',UI.Theme.Custom.Text,a)
+    vtext(x+389,y+19,'X',COLORS.gray,a)
+    vbox(x+16,y+49,388,1,COLORS.divider,a)
+    region(x+378,y+11,34,34,function()win.settings=false end)
+    vtext(x+20,y+71,'Version',UI.Theme.Custom.Glow,a)
+    vtext(x+20,y+94,'Neverlose / Lua UI Replica',UI.Theme.Custom.Text,a)
+    vtext(x+20,y+119,'Mode: Blueberry Drawing renderer',COLORS.gray,a)
+    vbox(x+20,y+149,380,1,COLORS.divider,a)
+    vtext(x+20,y+169,'Style',UI.Theme.Custom.Text,a)
+    for i,name in ipairs({'Original','White','Black'}) do
+        local bx=x+21+(i-1)*128
+        local active=win.theme==name
+        vrounded(bx,y+199,117,34,4,active and COLORS.nav or COLORS.dark,a)
+        vtext(bx+24,y+209,name,active and UI.Theme.Custom.Text or COLORS.gray,a)
+        region(bx,y+199,117,34,function()
+            win.theme=name
+            if name=='White' then
+                UI.Theme.Custom.Background=rgb(225,232,241)
+                UI.Theme.Custom.Section=rgb(33,56,84)
+                UI.Theme.Custom.Text=rgb(255,255,255)
+            elseif name=='Black' then
+                UI.Theme.Custom.Background=rgb(0,0,0)
+                UI.Theme.Custom.Section=rgb(8,12,19)
+                UI.Theme.Custom.Text=rgb(255,255,255)
+            else
+                UI.Theme.Custom.Background=rgb(9,9,13)
+                UI.Theme.Custom.Section=rgb(0,20,40)
+                UI.Theme.Custom.Text=rgb(255,255,255)
+            end
+        end)
+    end
+    vtext(x+20,y+253,'Key Binds',UI.Theme.Custom.Text,a)
+    actionRow(x+230,y+250,79,'ON',function()win.bindsView=true end)
+    actionRow(x+318,y+250,79,'OFF',function()win.bindsView=false end)
+    actionRow(x+20,y+294,180,'Script Manager',function()win.settings=false;win.scriptPanel=true end)
+    actionRow(x+218,y+294,180,'Community Chat',function()win.settings=false;win.chatPanel=true end)
+end
+
+local function drawKeySystem(win,dt)
+    local x=90;local y=108
+    local entering=runtime.focus==win.keyObject
+    vrounded(x,y,661,431,5,UI.Theme.Custom.Background,runtime.alpha)
+    outline(vx(x),vy(y),661*runtime.s,431*runtime.s,UI.Theme.Custom.Glow,runtime.alpha*.28)
+    vtext(x+244,y+25,'KEY SYSTEM',UI.Theme.Custom.Text,runtime.alpha)
+    vbox(x+2,y+70,657,1,COLORS.divider,runtime.alpha)
+    vbox(x+2,y+409,657,1,COLORS.divider,runtime.alpha)
+    vtext(x+65,y+113,'Enter your access key',COLORS.gray,runtime.alpha)
+    vrounded(x+78,y+190,309,50,4,COLORS.dark,runtime.alpha)
+    vtext(x+96,y+207,
+        (win.keyObject.Value=='' and 'Paste Key' or win.keyObject.Value:sub(-28))
+        ..(entering and math.floor(tick()*2)%2==0 and '|' or ''),
+        win.keyObject.Value=='' and COLORS.gray or UI.Theme.Custom.Text,runtime.alpha)
+    region(x+78,y+190,309,50,function()runtime.focus=win.keyObject end)
+    local xx=x+468;local yy=y+99
+    vtext(xx,yy-17,'Setup',UI.Theme.Custom.Glow,runtime.alpha)
+    for i,info in ipairs({{'Remember My Key','keyRemember'}, {'Allow Player Data','keyAllowData'}}) do
+        local ay=yy+i*43
+        vtext(xx-15,ay,info[1],UI.Theme.Custom.Text,runtime.alpha)
+        vrounded(xx+115,ay-1,38,15,7,COLORS.field,runtime.alpha)
+        local enabled=win[info[2]]
+        vrounded(xx+115+(enabled and 21 or 0),ay-2,17,17,8,enabled and UI.Theme.Custom.Element or COLORS.dim,runtime.alpha)
+        region(xx-16,ay-5,171,28,function()
+            win[info[2]]=not win[info[2]]
+            if info[2]=='keyRemember' then UI.SettingsFlags['Remember My Key'].Value=win.keyRemember
+            else UI.SettingsFlags['Allow Player Data'].Value=win.keyAllowData end
+        end)
+    end
+    local denied=win.keyDeniedAt>0 and tick()-win.keyDeniedAt<.6
+    local playing=win.keyStart~=nil
+    local bcol=denied and COLORS.red or COLORS.dark
+    vrounded(x+270,y+289,135,43,4,bcol,runtime.alpha)
+    vtext(x+315,y+305,playing and '...' or 'LOAD',UI.Theme.Custom.Text,runtime.alpha)
+    if not playing then
+        region(x+270,y+289,135,43,function()
+            local typed=win.keyObject.Value
+            local valid=false
+            for _,key in ipairs(win.keyAllowed) do if key==typed then valid=true;break end end
+            if valid then
+                win.keyStart=tick()
+                if win.keyRemember then write_file(basePath()..'key.txt',typed)
+                else write_file(basePath()..'key.txt','') end
+            else win.keyDeniedAt=tick() end
+        end)
+    end
+    vrounded(x+46,y+367,568,26,4,COLORS.field,runtime.alpha)
+    if playing then
+        local age=tick()-win.keyStart
+        local progress=clamp((age-.5)/5.7,0,1)
+        vrounded(x+46,y+367,568*quad(progress),26,4,COLORS.nav,runtime.alpha)
+        vtext(x+265,y+373,progress>=1 and 'Ready To Launch' or 'Loading...',UI.Theme.Custom.Text,runtime.alpha)
+        if progress>=1 then
+            win.keyAuthorized=true
+            win.keyRequired=false
+            runtime.focus=nil
+            UI:Notify({Title='Neverlose',Text='Key accepted',Time=2})
+        end
+    end
+end
+
+local function drawTools(win)
+    if not win.scriptPanel and not win.chatPanel then return end
+    local x=296;local y=157
+    vrounded(x,y,490,368,7,COLORS.notify,runtime.alpha)
+    outline(vx(x),vy(y),490*runtime.s,368*runtime.s,UI.Theme.Custom.Glow,runtime.alpha*.65)
+    vtext(x+18,y+18,win.scriptPanel and 'Lua Scripts' or 'Community Chat',UI.Theme.Custom.Text,runtime.alpha)
+    vtext(x+460,y+18,'X',COLORS.gray,runtime.alpha)
+    region(x+450,y+10,33,33,function()win.scriptPanel=false;win.chatPanel=false end)
+    vbox(x+18,y+51,453,1,COLORS.divider,runtime.alpha)
+    if win.scriptPanel then
+        vtext(x+24,y+74,'Local scripts',UI.Theme.Custom.Glow,runtime.alpha)
+        vtext(x+24,y+102,'Source UI has its own script editor.',COLORS.gray,runtime.alpha)
+        vtext(x+24,y+126,'Use read_file / write_file for local scripts.',COLORS.gray,runtime.alpha)
+        vtext(x+24,y+150,'External code execution is not performed.',COLORS.gray,runtime.alpha)
+    else
+        vtext(x+24,y+76,'Chat requires a network send / socket API.',COLORS.gray,runtime.alpha)
+        vtext(x+24,y+102,'This API documents HTTP GET only.',COLORS.gray,runtime.alpha)
+        vtext(x+24,y+126,'The panel is visual; messaging is unavailable.',COLORS.gray,runtime.alpha)
+    end
+end
+
+local function updateColor(item)
+    item.Value=hsv(item.h,item.s,item.v)
+    safeCallback(item.callback,item.Value)
+end
+local function drawPopup(dt)
+    local p=runtime.popup
+    if not p then return end
+    local item=p.item
+    p.openedAt=p.openedAt or tick()
+    local opening=quad((tick()-p.openedAt)/.30)
+    local a=runtime.alpha*opening
+    if p.kind=='dropdown' then
+        local options=item.list or {}
+        local height=math.min(194,#options*23+15) * opening
+        local x=clamp(p.x,211,846-190);local y=clamp(p.y,82,682-height-10)
+        vrounded(x,y,180,height,4,COLORS.notify,a)
+        outline(vx(x),vy(y),180*runtime.s,height*runtime.s,UI.Theme.Custom.Glow,a*.35)
+        for i,opt in ipairs(options) do
+            if i>8 or i*23+10>height then break end
+            local iy=y+7+(i-1)*23
+            local hot=inside(x+5,iy,170,21)
+            if hot then vrounded(x+6,iy,169,21,3,UI.Theme.Custom.Element,a*.4) end
+            vtext(x+12,iy+4,'- '..tostring(opt),UI.Theme.Custom.Text,a)
+            region(x+5,iy,170,21,function() item:Set(tostring(opt));runtime.popup=nil end)
+        end
+        return
+    end
+    if p.kind=='bindcapture' then
+        local x=clamp(p.x,220,600);local y=clamp(p.y,100,560)
+        vrounded(x,y,220,53,4,COLORS.notify,a)
+        outline(vx(x),vy(y),220*runtime.s,53*runtime.s,UI.Theme.Custom.Glow,a*.7)
+        vtext(x+12,y+17,'Press any key (ESC = clear)',UI.Theme.Custom.Text,a)
+        return
+    end
+    if p.kind=='bindmenu' then
+        local x=clamp(p.x,220,620);local y=clamp(p.y,90,530)
+        vrounded(x,y,200,145,5,COLORS.notify,a)
+        outline(vx(x),vy(y),200*runtime.s,145*runtime.s,UI.Theme.Custom.Glow,a*.4)
+        vtext(x+12,y+12,'Key: '..keyString(item.key),UI.Theme.Custom.Text,a)
+        region(x+8,y+34,184,27,function()runtime.popup={kind='bindcapture',item=item,x=x,y=y} end)
+        vrounded(x+8,y+34,184,27,3,COLORS.dark,a)
+        vtext(x+17,y+42,'Change key...',UI.Theme.Custom.Text,a)
+        for i,mode in ipairs({'None','Hold','Toggle','Always'}) do
+            local xx=x+8+((i-1)%2)*95;local yy=y+67+math.floor((i-1)/2)*32
+            vrounded(xx,yy,90,27,3,item.mode==mode and COLORS.nav or COLORS.field,a)
+            vtext(xx+13,yy+8,mode,UI.Theme.Custom.Text,a)
+            region(xx,yy,90,27,function()item.mode=mode;runtime.popup=nil end)
+        end
+        return
+    end
+    if p.kind=='color' then
+        local x=clamp(p.x,218,620);local y=clamp(p.y,88,420)
+        local w,h=204,246
+        vrounded(x,y,w,h,6,COLORS.notify,a)
+        outline(vx(x),vy(y),w*runtime.s,h*runtime.s,UI.Theme.Custom.Glow,a*.55)
+        vtext(x+12,y+12,item.title,UI.Theme.Custom.Text,a)
+        vtext(x+184,y+11,'X',COLORS.gray,a)
+        region(x+178,y+4,23,23,function()runtime.popup=nil end)
+        local sx=x+12;local sy=y+36;local sw=154;local sh=153
+        -- HSV area with per-cell luminance and saturation interpolation.
+        for iy=0,16 do
+            for ix=0,16 do
+                local sat=(ix+.5)/17;local value=1-(iy+.5)/17
+                local cc=hsv(item.h,sat,value)
+                vbox(sx+ix*sw/17,sy+iy*sh/17,sw/17+1,sh/17+1,cc,a)
+            end
+        end
+        local hx=sx+item.s*sw;local hy=sy+(1-item.v)*sh
+        vcircle(hx,hy,5.5,COLORS.white,a)
+        local hX=x+176
+        for iy=0,54 do
+            local hcol=hsv(1-iy/54,1,1)
+            vbox(hX,sy+iy*sh/55,13,sh/55+1,hcol,a)
+        end
+        vbox(hX-3,sy+(1-item.h)*sh-1,19,3,COLORS.white,a)
+        region(sx,sy,sw,sh,function()
+            runtime.drag={kind='sv',item=item,x=sx,y=sy,w=sw,h=sh}
+            item.s=clamp((runtime.mx-sx)/sw,0,1)
+            item.v=1-clamp((runtime.my-sy)/sh,0,1)
+            updateColor(item)
+        end)
+        region(hX,sy,13,sh,function()
+            runtime.drag={kind='hue',item=item,x=hX,y=sy,h=sh}
+            item.h=1-clamp((runtime.my-sy)/sh,0,1)
+            updateColor(item)
+        end)
+        vrounded(x+13,y+203,46,25,3,item.Value,a)
+        vrounded(x+67,y+203,120,25,3,COLORS.field,a)
+        local entering=runtime.focus and runtime.focus.kind=='hex' and runtime.focus.item==item
+        vtext(x+77,y+209,'#'..(entering and runtime.focus.Value or hex(item.Value)),UI.Theme.Custom.Text,a)
+        region(x+64,y+202,125,27,function()
+            runtime.focus={kind='hex',Value=hex(item.Value),item=item}
+        end)
+    end
+end
+
+local function drawNotices(now)
+    for i=#runtime.notices,1,-1 do
+        local n=runtime.notices[i]
+        local age=now-n.birth;local ending=n.duration+.8
+        if age>ending then table.remove(runtime.notices,i)
+        else
+            local p=age<.4 and quad(age/.4) or (age>n.duration+.4 and 1-quad((age-n.duration-.4)/.4) or 1)
+            local w=262*p
+            local x=(runtime.w-14-w);local y=17+(i-1)*77
+            rounded(x,y,w,67,5,COLORS.notify,1)
+            if p>.30 then
+                rounded(x+9,y+12,43,42,6,COLORS.dark,p)
+                text(x+23,y+27,'N',UI.Theme.Custom.Glow,p)
+                text(x+61,y+10,n.title,UI.Theme.Custom.Text,p)
+                text(x+61,y+37,n.desc:sub(1,30),COLORS.gray,p)
+            end
+            local rem=clamp(1-math.max(0,age-.4)/n.duration,0,1)
+            box(x,y+62,w*rem,5,UI.Theme.Custom.Glow,p)
+        end
+    end
+end
+
+local function processMouse(dt)
+    if not runtime.down then runtime.drag=nil end
+    local d=runtime.drag
+    if d and runtime.down then
+        if d.kind=='window' then
+            local tx=d.x+runtime.curPixelX-d.startX
+            local ty=d.y+runtime.curPixelY-d.startY
+            runtime.x=approach(runtime.x,clamp(tx,-190*runtime.s,runtime.w-180*runtime.s),dt,13)
+            runtime.y=approach(runtime.y,clamp(ty,0,runtime.h-65*runtime.s),dt,13)
+        elseif d.kind=='slider' then
+            local it=d.item
+            it:Set(clamp(it.min+(runtime.mx-d.x)/d.w*(it.max-it.min),it.min,it.max))
+        elseif d.kind=='sv' then
+            d.item.s=clamp((runtime.mx-d.x)/d.w,0,1)
+            d.item.v=1-clamp((runtime.my-d.y)/d.h,0,1)
+            updateColor(d.item)
+        elseif d.kind=='hue' then
+            d.item.h=1-clamp((runtime.my-d.y)/d.h,0,1)
+            updateColor(d.item)
+        end
+    end
+end
+
+local function render()
+    local win=runtime.win
+    if not win then return end
+    local now=tick();local dt=clamp(now-runtime.frameTime,0,.075);runtime.frameTime=now
+    local ss=ScreenSize() or {Width=1920,Height=1080}
+    runtime.w=ss.Width or 1920;runtime.h=ss.Height or 1080
+    runtime.s=math.min(1,(runtime.w-20)/846,(runtime.h-20)/682)
+    if not win.positioned then
+        runtime.x=(runtime.w-846*runtime.s)/2
+        runtime.y=(runtime.h-682*runtime.s)/2
+        win.positioned=true
+    end
+    local mx,my=mousePosition()
+    runtime.curPixelX=mx;runtime.curPixelY=my
+    runtime.mx=(mx-runtime.x)/runtime.s
+    runtime.my=(my-runtime.y)/runtime.s
+    runtime.down=Windows.IsKeyPressed(0x01)
+    runtime.pressed=runtime.down and not runtime.wasDown
+    runtime.released=not runtime.down and runtime.wasDown
+    inputUpdate(dt)
+    if win.searchObject then win.searchValue=win.searchObject.Value end
+    runtime.alpha=approach(runtime.alpha,UI.Visible and 1 or 0,dt,12)
+    runtime.regions={}
+    if runtime.alpha>.01 then
+        if not win.keyAuthorized then
+            drawKeySystem(win,dt)
+        else
+            drawNav(win,dt)
+            drawHeader(win,dt)
+            -- Top heading is the drag handle; 0.2s-style smoothing.
+            region(350,0,405,70,function()
+                runtime.drag={kind='window',startX=runtime.curPixelX,startY=runtime.curPixelY,x=runtime.x,y=runtime.y}
+            end)
+            drawSettings(win,dt)
+            drawTools(win)
+            drawPopup(dt)
+        end
+    end
+    if runtime.pressed then
+        local selected=nil
+        for i=#runtime.regions,1,-1 do
+            local r=runtime.regions[i]
+            if inside(r.x,r.y,r.w,r.h) then selected=r;break end
+        end
+        if selected then
+            local ok,err=pcall(selected.callback)
+            if not ok then notify('UI action failed: '..tostring(err),'error') end
+        else
+            if runtime.popup and runtime.popup.kind~='bindcapture' then runtime.popup=nil end
+            runtime.focus=nil
+        end
+    end
+    processMouse(dt)
+    runtime.wasDown=runtime.down
+    drawNotices(now)
+end
+
+hooks.on_render(render)
+
+-- Standalone startup: an accurate baseline library-style layout with the
+-- source's built-in Lua/Configs/UI Color/Keys pages already populated.
+-- Build more pages through: _G.Neverlose_Replica.Root:TSection(...).
+-- Window() is already called here and should not be called a second time.
+local main=UI:Window({Title='Neverlose',CFG='Neverlose',Key=VK.CTRL,External={}})
+UI.Root=main
+
+-- Optional showcase. The original library does not add demonstration tabs.
+-- Set UI.Showcase = true above to enable the element gallery below.
+if UI.Showcase then
+local examples=main:TSection('Examples')
+local control=examples:Tab('Elements')
+local left=control:Section('Controls')
+local right=control:Section('Advanced')
+left:Button('Button',function() UI:Notify({Title='Neverlose',Text='Button pressed'}) end)
+left:Toggle('Toggle',function(v) UI:Notify({Text='Toggle: '..tostring(v)}) end)
+left:Dropdown('Dropdown',{'First','Second','Third','Fourth'},function(v) UI:Notify({Text=v}) end)
+left:Slider('Slider',0,100,35,function(v) end)
+left:TextBox('TextBox',function(v) UI:Notify({Text='Text: '..v}) end)
+left:Line()
+right:Colorpicker('Colorpicker',UI.Theme.Custom.Element,function(v) end)
+right:Bind('Key Bind',function(v) end,{{key=VK.F6,Toggled=true}})
+right:Toggle('Extra Toggle',function(v) end)
+right:Button('Show Notification',function()
+    UI:Notify({Title='Neverlose',Text='Animated notification',Time=3})
+end)
+end
+
+return UI
