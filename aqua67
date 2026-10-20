@@ -125,6 +125,47 @@ do
     end
     cache.identity = identity
 
+    -- Known unavailable image sources from the user's v137 cache report.
+    -- Match Fandom by image identity, not query/resize URL; preserve any
+    -- already cached image and keep the ESP item itself in the data tables.
+    cache.blocked = {
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/0/06/Tape.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/0/09/Power_Cell.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/0/0e/Thread.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/1/16/Metal_Scraps.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/2/28/Chocolate_Bar.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/2/2d/Semi_Receiver.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/4/49/Pistol_Receiver.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/4/4d/Milk.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/4/4d/Tarp.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/5/5c/Metal_Plating.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/6/6d/Body_Bag.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/6/6e/Blade.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/6/6e/Pipe.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/7/7e/Fish_Can.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/8/80/Rifle_Receiver1.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/9/94/SMG_Receiver.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/9/9f/Circuit_Boards.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/b/b2/Rope.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/c/c4/Copper_Cogs.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/c/cf/Spring.png"] = true,
+        ["https://static.wikia.nocookie.net/fallen-survival-new/images/e/e7/Glue.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-box-wooden-300x300.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-box-wooden-large-300x300.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-coffin-storage-300x300.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-electric-battery-rechargable-large-300x300.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-electric-battery-rechargable-medium-300x300.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-transport-minicopter-300x300.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2021/06/rust-trap-bear-300x300.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2022/04/rust-trap-landmine-homemade-300x300.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2024/01/rust-largebackpack-300x300.png"] = true,
+        ["https://www.corrosionhour.com/wp-content/uploads/2024/01/rust-smallbackpack-300x300.png"] = true,
+    }
+
+    function cache.is_blocked(url)
+        return cache.blocked[identity(url)] == true
+    end
+
     local function attach_legacy(id, url)
         if not remote(url) then return end
         local group = cache.legacy_sources[id]
@@ -200,7 +241,8 @@ do
     end
 
     function cache.is_permanent_missing(url)
-        return cache.not_found[identity(url)] == true
+        return cache.is_blocked(url)
+            or cache.not_found[identity(url)] == true
     end
 
     -- Retry transient failures in later preload passes, within ONE launch.
@@ -319,65 +361,6 @@ do
         return file
     end
 
-    -- Status report is human-readable and explains why a file is absent.
-    function cache.report()
-        if type(write_file) ~= "function" then return false end
-        local lines = {
-            "Fallen image cache report - v137",
-            "Folder: " .. cache.folder,
-            "Successfully downloaded this launch: " .. tostring(cache.downloaded),
-            "Reused from disk: " .. tostring(cache.reused),
-            "HTTP attempts: " .. tostring(cache.attempt_count),
-            "Failed URL attempts (includes retries): " .. tostring(cache.errors),
-            "Retry budget per image URL: " .. tostring(cache.max_attempts),
-            "Note: server errors and timeouts are retried this launch.",
-            "Note: duplicated Fandom URL variants share one local image.",
-            "Note: missing 404 resources are skipped after their first failure.",
-            "Note: 403/404 and HTML responses cannot be forced to download.",
-            "",
-        }
-        local category_stats, keys = {}, {}
-        for source, item in pairs(cache.records) do
-            local name = item.category
-            local rec = category_stats[name]
-            if not rec then rec = {total=0, saved=0}; category_stats[name]=rec end
-            rec.total = rec.total + 1
-            if cache.lookup(source) then rec.saved = rec.saved + 1 end
-            keys[#keys + 1] = source
-        end
-        table.sort(keys)
-        local cats = {}
-        for name in pairs(category_stats) do cats[#cats+1]=name end
-        table.sort(cats)
-        for _, category in ipairs(cats) do
-            local rec = category_stats[category]
-            lines[#lines+1] = category .. ": " .. rec.saved .. "/" .. rec.total .. " saved"
-        end
-        lines[#lines+1] = ""
-        lines[#lines+1] = "ASSET DETAILS (saved/missing):"
-        for _, source in ipairs(keys) do
-            local item = cache.records[source]
-            local file = cache.lookup(source)
-            local problem = ""
-            if not file then
-                local last = cache.record_error[identity(source)]
-                if last then problem = " | " .. tostring(last) end
-            end
-            lines[#lines+1] = (file and "OK" or "MISSING")
-                .. " | " .. item.category .. " | " .. item.name .. problem
-                .. " | " .. source
-        end
-        lines[#lines+1] = ""
-        lines[#lines+1] = "FAILED REQUESTS:"
-        local failed_urls = {}
-        for url in pairs(cache.failed) do failed_urls[#failed_urls+1]=url end
-        table.sort(failed_urls)
-        for _, url in ipairs(failed_urls) do
-            lines[#lines+1] = tostring(cache.failed[url]) .. " | " .. url
-        end
-        return pcall(write_file, cache.folder .. "cache_report.txt", table.concat(lines, "\n"))
-    end
-
     cache.is_remote = remote
     cache.is_static_image = is_static_image
     if type(network_load_image) == "function" then
@@ -389,6 +372,13 @@ do
                 return network_load_image(url)
             end
             local file = cache.lookup(url)
+            if file then
+                local ok, handle = pcall(load_file, file)
+                if ok and handle then return handle end
+            end
+            -- Never contact an endpoint known to return 403/404/HTML.
+            -- Previously cached images remain usable even if blacklisted.
+            if cache.is_blocked(url) then return nil end
             if not file and _G.FALLEN_IMAGE_PRELOAD_DONE ~= true then
                 file = cache.download(url, url)
             end
@@ -1145,6 +1135,10 @@ local PROFILE = {
     last_scan = -100,
 }
 
+-- Keep selection persistence outside the avatar image-only folder.
+local FALLEN_AVATAR_STATE_FILE =
+    "C:\\blueberry\\scripts\\fallen_avatar_source.cfg"
+
 _G.FALLEN_CUSTOM_AVATAR =
     _G.FALLEN_CUSTOM_AVATAR
     or {
@@ -1155,41 +1149,15 @@ _G.FALLEN_CUSTOM_AVATAR =
     }
 
 function FALLEN_CUSTOM_AVATAR_ENSURE_FOLDER()
-    if _G.FALLEN_CUSTOM_AVATAR.folder_ready then
-        return
-    end
-
+    if _G.FALLEN_CUSTOM_AVATAR.folder_ready then return end
     _G.FALLEN_CUSTOM_AVATAR.folder_ready = true
-
-    -- write_file creates missing parent folders, so this also creates:
-    -- C:\blueberry\scripts\avatar\
-    if type(write_file) == "function" then
-        local marker =
-            "C:\\blueberry\\scripts\\avatar\\PUT_AVATAR_HERE.txt"
-
-        local should_write = true
-
-        if type(exists_file) == "function" then
-            local ok, exists =
-                pcall(
-                    exists_file,
-                    marker
-                )
-
-            if ok and exists then
-                should_write = false
-            end
-        end
-
-        if should_write then
-            pcall(
-                write_file,
-                marker,
-                "Put any image in this folder. Filename does NOT matter.\n"
-                .. "Supported: PNG, JPG/JPEG, BMP, GIF, TGA.\n"
-                .. "Use Reload Image in the avatar editor.\n"
-            )
-        end
+    -- Do not create PUT_AVATAR_HERE.txt (or any other marker file).
+    -- On builds allowing os.execute, create an empty directory directly.
+    if os and type(os.execute) == "function" then
+        pcall(
+            os.execute,
+            'cmd.exe /c if not exist "C:\\blueberry\\scripts\\avatar" mkdir "C:\\blueberry\\scripts\\avatar"'
+        )
     end
 end
 
@@ -1208,10 +1176,13 @@ function FALLEN_CUSTOM_AVATAR_FIND_PATH()
     -- are intentionally ignored here.
 
     -- A path chosen from the in-menu avatar editor has priority.
-    local selected_path_file =
-        base .. "SELECTED_PATH.txt"
+    local selected_path_files = {
+        FALLEN_AVATAR_STATE_FILE,
+        base .. "SELECTED_PATH.txt", -- v137 migration, read-only
+    }
 
     if type(read_file) == "function" then
+        for _, selected_path_file in ipairs(selected_path_files) do
         local ok_saved, saved_path =
             pcall(
                 read_file,
@@ -1258,9 +1229,15 @@ function FALLEN_CUSTOM_AVATAR_FIND_PATH()
                 end
 
                 if path_ok then
+                    if selected_path_file ~= FALLEN_AVATAR_STATE_FILE
+                        and type(write_file) == "function"
+                    then
+                        pcall(write_file, FALLEN_AVATAR_STATE_FILE, saved_path)
+                    end
                     return saved_path
                 end
             end
+        end
         end
     end
 
@@ -29509,13 +29486,12 @@ function FALLEN_AVATAR_EDITOR_FIND_FOLDER_IMAGE()
         and os
         and type(os.execute) == "function"
     then
+        -- Enumeration temporary files live outside the avatar folder.
         local list_path =
-            base
-            .. "avatar_file_list.txt"
+            "C:\\blueberry\\scripts\\fallen_avatar_list.tmp"
 
         local cmd_path =
-            base
-            .. "avatar_file_list.cmd"
+            "C:\\blueberry\\scripts\\fallen_avatar_scan.cmd"
 
         local command =
             "@echo off\r\n"
@@ -29572,8 +29548,7 @@ function FALLEN_AVATAR_EDITOR_FIND_FOLDER_IMAGE()
         local ok_saved, saved =
             pcall(
                 read_file,
-                base
-                .. "SELECTED_PATH.txt"
+                FALLEN_AVATAR_STATE_FILE
             )
 
         if ok_saved
@@ -29992,10 +29967,14 @@ function FALLEN_AVATAR_EDITOR_SOURCE_PATH()
         FALLEN_AVATAR_EDITOR_FOLDER()
 
     if type(read_file) == "function" then
+        for _, selection_file in ipairs({
+            FALLEN_AVATAR_STATE_FILE,
+            base .. "SELECTED_SOURCE.txt", -- legacy read-only
+        }) do
         local ok, raw =
             pcall(
                 read_file,
-                base .. "SELECTED_SOURCE.txt"
+                selection_file
             )
 
         if ok
@@ -30022,9 +30001,15 @@ function FALLEN_AVATAR_EDITOR_SOURCE_PATH()
                 if ok_exists
                     and exists == true
                 then
+                    if selection_file ~= FALLEN_AVATAR_STATE_FILE
+                        and type(write_file) == "function"
+                    then
+                        pcall(write_file, FALLEN_AVATAR_STATE_FILE, path)
+                    end
                     return path
                 end
             end
+        end
         end
     end
 
@@ -30158,21 +30143,9 @@ function FALLEN_AVATAR_EDITOR_SAVE()
     PROFILE.avatar_failed = false
     PROFILE.avatar_started = true
 
-    -- Persist the ORIGINAL source. Zoom / pan live in the normal config.
+    -- Persist the source outside avatar; zoom/pan use the normal config.
     if type(write_file) == "function" then
-        pcall(
-            write_file,
-            FALLEN_AVATAR_EDITOR_FOLDER()
-                .. "SELECTED_SOURCE.txt",
-            source
-        )
-
-        pcall(
-            write_file,
-            FALLEN_AVATAR_EDITOR_FOLDER()
-                .. "SELECTED_PATH.txt",
-            source
-        )
+        pcall(write_file, FALLEN_AVATAR_STATE_FILE, source)
     end
 
     A.avatar_editor_dragging = false
@@ -32524,7 +32497,7 @@ hooks.on_render(function()
 end)
 
 
-print(SYS .. "loaded | v135 | image cache with diagnostics | toggle=RIGHT SHIFT (0xA1)")
+print(SYS .. "loaded | v138 | lean image cache | toggle=RIGHT SHIFT (0xA1)")
 
 
 -- =========================================================
@@ -32725,6 +32698,16 @@ function FALLEN_PRELOAD_QUEUE_GROUP(urls, category, name)
     local disk_cache = _G.FALLEN_IMAGE_DISK_CACHE
     if type(disk_cache) == "table" then
         disk_cache.register_group(list, category, name)
+        if not disk_cache.lookup(primary) then
+            local all_blocked = true
+            for _, candidate in ipairs(list) do
+                if not disk_cache.is_blocked(candidate) then
+                    all_blocked = false
+                    break
+                end
+            end
+            if all_blocked then return end
+        end
     end
     if _G.FALLEN_IMAGE_PRELOAD_QUEUED[primary] then return end
     _G.FALLEN_IMAGE_PRELOAD_QUEUED[primary] = true
@@ -32811,10 +32794,6 @@ function FALLEN_BEGIN_IMAGE_PRELOAD()
     _G.FALLEN_IMAGE_PRELOAD_TOTAL =
         #_G.FALLEN_IMAGE_PRELOAD_SPECIALS
         + #_G.FALLEN_IMAGE_PRELOAD_QUEUE
-
-    if _G.FALLEN_IMAGE_DISK_CACHE then
-        _G.FALLEN_IMAGE_DISK_CACHE.report()
-    end
 
     _G.FALLEN_IMAGE_PRELOAD_STATE = {
         stage = "special",
@@ -32997,10 +32976,6 @@ function FALLEN_PRELOAD_TICK()
         end
 
         st.url_index = st.url_index + 1
-        if disk_cache and st.url_index % 12 == 0 then
-            disk_cache.report()
-        end
-
         -- Uncached assets with transient errors go to the END of the
         -- queue for another pass, before the loader may show 100%.
         if not saved and disk_cache
@@ -33059,7 +33034,6 @@ function FALLEN_PRELOAD_TICK()
             _G.FALLEN_IMAGE_PRELOAD_TOTAL
         _G.FALLEN_IMAGE_PRELOAD_DONE = true
         local disk_cache = _G.FALLEN_IMAGE_DISK_CACHE
-        if disk_cache then disk_cache.report() end
         if disk_cache and type(print) == "function" then
             local saved, total = 0, 0
             for source in pairs(disk_cache.records) do
@@ -33069,7 +33043,7 @@ function FALLEN_PRELOAD_TICK()
             print("[Fallen] Assets: " .. tostring(saved) .. "/" .. tostring(total)
                 .. " on disk, " .. tostring(disk_cache.downloaded)
                 .. " downloaded this launch, " .. tostring(disk_cache.errors)
-                .. " HTTP failures/retries. See cache_report.txt")
+                .. " HTTP failures/retries.")
         end
     end
 end
