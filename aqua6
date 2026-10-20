@@ -33174,7 +33174,9 @@ do
             progress = 0,
         },
 
-        last_launch = "Never",
+        -- Kept across injections; the stamp is only changed on a successful Load.
+        last_launch_at = nil,
+        last_launch_file = "C:\\blueberry\\scripts\\fallen_last_launch.cfg",
 
         -- Exact colors from Theme.h.
         theme = {
@@ -33197,6 +33199,73 @@ do
             popup_border = {0.040, 0.050, 0.070},
         },
     }
+
+    -- Calendar time is persistent across Lua injections; tick() is only
+    -- monotonic process time and must not be saved as a wall-clock stamp.
+    function L.clock_now()
+        if type(os) ~= "table" or type(os.time) ~= "function" then
+            return nil
+        end
+        local ok, stamp = pcall(os.time)
+        if ok and type(stamp) == "number" and stamp >= 1000000000 then
+            return math.floor(stamp)
+        end
+        return nil
+    end
+
+    function L.restore_last_launch()
+        if type(read_file) ~= "function" then return end
+        local ok, stored = pcall(read_file, L.last_launch_file)
+        if not ok or type(stored) ~= "string" then return end
+        -- Reject nonnumeric data and impossible timestamps.
+        local digits = stored:match("^%s*(%d+)%s*$")
+        if not digits then return end
+        local stamp = tonumber(digits)
+        local now = L.clock_now()
+        if stamp and now and stamp >= 1000000000
+            and stamp <= now + 120 then
+            L.last_launch_at = stamp
+        end
+    end
+
+    function L.save_last_launch()
+        local now = L.clock_now()
+        if not now then return end
+        L.last_launch_at = now
+        if type(write_file) == "function" then
+            pcall(write_file, L.last_launch_file, tostring(now))
+        end
+    end
+
+    function L.last_launch_label()
+        local stamp = L.last_launch_at
+        if not stamp then return "Never" end
+        local now = L.clock_now()
+        if not now then return "Unknown" end
+        local elapsed = math.max(0, now - stamp)
+        if elapsed < 5 then return "Just now" end
+        if elapsed < 60 then
+            return tostring(elapsed) .. " seconds ago"
+        end
+        local count, unit
+        if elapsed < 3600 then
+            count, unit = math.floor(elapsed / 60), "minute"
+        elseif elapsed < 86400 then
+            count, unit = math.floor(elapsed / 3600), "hour"
+        elseif elapsed < 604800 then
+            count, unit = math.floor(elapsed / 86400), "day"
+        elseif elapsed < 2592000 then
+            count, unit = math.floor(elapsed / 604800), "week"
+        elseif elapsed < 31536000 then
+            count, unit = math.floor(elapsed / 2592000), "month"
+        else
+            count, unit = math.floor(elapsed / 31536000), "year"
+        end
+        return tostring(count) .. " " .. unit
+            .. (count == 1 and " ago" or "s ago")
+    end
+
+    L.restore_last_launch()
 
     function L.clamp01(t)
         if t < 0 then return 0 end
@@ -33608,6 +33677,7 @@ do
             L.inject.show_content = true
             L.inject.logo_alpha = 1
             _G.FallenSurvivalLoaded = true
+            L.save_last_launch()
             L.begin_exit(true)
         end
     end
@@ -33959,7 +34029,7 @@ do
         local left_x = modal_x + 20
         local value_x = modal_x + 102
         local labels = {"Branch:", "Updated:", "Valid Until:", "Last Launch:"}
-        local values = {"Release", "Today", "Lifetime", L.last_launch}
+        local values = {"Release", "Today", "Lifetime", L.last_launch_label()}
         for i = 1, 4 do
             L.text(left_x, base_y + (i - 1) * line_sp, labels[i], L.theme.soft, body_alpha)
             L.text(value_x, base_y + (i - 1) * line_sp, values[i], L.theme.link, body_alpha)
@@ -34022,7 +34092,6 @@ do
             L.inject.logo_alpha = 0
             L.inject.progress = 0
             L.inject.show_content = false
-            L.last_launch = "Just now"
         end
 
         L.draw_footer_links(modal_x, modal_y, load_y, body_alpha, mx, my, click, dt)
