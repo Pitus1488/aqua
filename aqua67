@@ -1,4 +1,4 @@
- в-- FALLEN UI BASE SAFE MODE
+-- FALLEN UI BASE SAFE MODE
 -- v101: Neverlose-source navigation + source-styled Configs page.
 -- Feature modules can be disabled later without deleting UI code.
 
@@ -26945,7 +26945,7 @@ function FALLEN_DRAW_MENU_WEATHER(
             )
 
         -- Long strikes remain visible, but smoothly fade instead of staying
-        -- at full brightness for the whole 0.5–3 second lifetime.
+        -- at full brightness for the whole 0.5-3 second lifetime.
         local a =
             smooth01(life_t)
             * (A.weather_lightning_alpha or 0)
