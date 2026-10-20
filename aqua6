@@ -2174,12 +2174,12 @@ local function cfg_sanitize_name(name)
         return nil
     end
 
-    if #name > 32 then
+    if #name > 35 then
         name =
             string.sub(
                 name,
                 1,
-                32
+                35
             )
     end
 
@@ -2710,11 +2710,9 @@ cfg_read_index()
 
 -- Presets popup operations: preserve the saved snapshot instead of loading
 -- a profile into live settings just to rename/duplicate it.
-local CFG_TRASH_INDEX = "C:\\blueberry\\scripts\\fallen_lua_deleted_index.txt"
-local CFG_TRASH_PREFIX = "C:\\blueberry\\scripts\\fallen_lua_deleted_"
 local CFG_RECENT_INDEX = "C:\\blueberry\\scripts\\fallen_lua_recent_index.txt"
 local CFG_CREATED_INDEX = "C:\\blueberry\\scripts\\fallen_lua_created_index.txt"
-local TRASH_NAMES, RECENT_NAMES, CREATED_NAMES = {}, {}, {}
+local RECENT_NAMES, CREATED_NAMES = {}, {}
 
 local function cfg_read_names(path)
     if type(read_file) ~= "function" then return {} end
@@ -2802,60 +2800,17 @@ local function cfg_unique_name(base)
     if not taken[base] then return base end
     for i = 2, 999 do
         local suffix = "_" .. tostring(i)
-        local candidate = base:sub(1, 32 - #suffix) .. suffix
+        local candidate = base:sub(1, 35 - #suffix) .. suffix
         if not taken[candidate] then return candidate end
     end
     return nil
 end
 
 local function cfg_delete_preset(name)
-    name = cfg_sanitize_name(name)
-    if not name then return false end
-    if type(read_file) == "function" and type(write_file) == "function" then
-        local ok, raw = pcall(read_file, cfg_path(name))
-        if ok and type(raw) == "string" and raw ~= "" then
-            local wrote, result = pcall(write_file,
-                CFG_TRASH_PREFIX .. name .. ".cfg", raw)
-            if wrote and result ~= false then
-                local fresh = {name}
-                for _, old in ipairs(TRASH_NAMES) do
-                    if old ~= name then fresh[#fresh+1] = old end
-                end
-                TRASH_NAMES = fresh
-                cfg_write_names(CFG_TRASH_INDEX, TRASH_NAMES)
-            end
-        end
-    end
+    -- No recycle bin: delete the selected preset directly.
     return cfg_delete(name)
 end
 
-local function cfg_restore_preset(name)
-    name = cfg_sanitize_name(name)
-    if not name then return false end
-    if type(read_file) ~= "function" or type(write_file) ~= "function" then return false end
-    local ok, data = pcall(read_file, CFG_TRASH_PREFIX .. name .. ".cfg")
-    if not ok or type(data) ~= "string" or data == "" then return false end
-    local newname = cfg_unique_name(name)
-    if not newname then return false end
-    local wrote, result = pcall(write_file, cfg_path(newname), data)
-    if not wrote or result == false then return false end
-    cfg_add_to_index(newname)
-    cfg_mark_recent(newname)
-    cfg_mark_created(newname)
-    local fresh = {}
-    for _, old in ipairs(TRASH_NAMES) do
-        if old ~= name then fresh[#fresh+1] = old end
-    end
-    TRASH_NAMES = fresh
-    cfg_write_names(CFG_TRASH_INDEX, TRASH_NAMES)
-    pcall(write_file, CFG_TRASH_PREFIX .. name .. ".cfg", "")
-    A.config_selected = newname
-    A.config_input_buffer = newname
-    cfg_notify("Preset " .. newname .. " restored", "success")
-    return true
-end
-
-TRASH_NAMES = cfg_read_names(CFG_TRASH_INDEX)
 RECENT_NAMES = cfg_read_names(CFG_RECENT_INDEX)
 CREATED_NAMES = cfg_read_names(CFG_CREATED_INDEX)
 
@@ -2914,7 +2869,7 @@ local function config_input_poll()
         return
     end
 
-    if #(A[field] or "") >= (mode == "search" and 26 or 32) then
+    if #(A[field] or "") >= (mode == "search" and 26 or 35) then
         return
     end
 
@@ -2999,8 +2954,6 @@ return {
         if fresh then return cfg_copy_saved(name, fresh, false) end
         return false
     end,
-    restore = cfg_restore_preset,
-    trash = function() return TRASH_NAMES end,
     recent = function() return RECENT_NAMES end,
     created = function() return CREATED_NAMES end,
     refresh = cfg_read_index,
@@ -22762,12 +22715,6 @@ local function fallen_presets_icon(kind, x, y, color)
         line(x + 3, y + 12, x + 3, y + 15, c, 1.2)
         line(x + 3, y + 15, x + 13, y + 15, c, 1.2)
         line(x + 13, y + 15, x + 13, y + 12, c, 1.2)
-    elseif kind == "trash" then
-        line(x + 4, y + 5, x + 13, y + 5, c, 1.3)
-        line(x + 5, y + 7, x + 6, y + 14, c, 1.3)
-        line(x + 12, y + 7, x + 11, y + 14, c, 1.3)
-        line(x + 6, y + 14, x + 11, y + 14, c, 1.3)
-        line(x + 7, y + 3, x + 10, y + 3, c, 1.3)
     elseif kind == "sort" then
         line(x + 3, y + 5, x + 10, y + 5, c, 1)
         line(x + 3, y + 8, x + 8, y + 8, c, 1)
@@ -22838,8 +22785,27 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     local dt = clamp(now - last, 0, 0.05)
     A.config_preset_last = now
     -- Ignore the mouse click that opened the dropdown from its anchor button.
+    local selected_title = tostring(A.config_selected
+        or FALLEN_CONFIGS.CONFIG.loaded_name or "Select config")
+    if #selected_title > 35 then
+        selected_title = selected_title:sub(1,35)
+    end
+    local selected_w = 0
+    for i=1,#selected_title do
+        local ch = selected_title:sub(i,i)
+        if ch=="i" or ch=="l" or ch=="I" or ch=="1" then
+            selected_w=selected_w+4
+        elseif ch=="W" or ch=="M" or ch=="w" or ch=="m" then
+            selected_w=selected_w+9
+        elseif ch==" " or ch=="." or ch=="_" then
+            selected_w=selected_w+5
+        else
+            selected_w=selected_w+7
+        end
+    end
+    local anchor_w=clamp(57+selected_w,100,410)
     local ui_clicked = clicked and active and not
-        hover(mx, my, wx + 190, wy + 18, 226, 29)
+        hover(mx, my, wx+190, wy+18, anchor_w,29)
 
     local px, py, pw = wx + 190, wy + 52, 249
     local ink = {0.93, 0.94, 0.97, 1}
@@ -22854,8 +22820,7 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     -- Toolbar interactions are processed before measurement so creating or
     -- deleting a config immediately updates the target dropdown height.
     local toolbar = {
-        {"save", px + pw - 103},
-        {"trash", px + pw - 77},
+        {"save", px + pw - 77},
         {"add", px + pw - 51},
         {"close", px + pw - 25},
     }
@@ -22883,7 +22848,6 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
                     A.config_input_buffer = name
                     A.config_list_scroll = 0
                     A.config_search_query = ""
-                    A.config_trash_open = false
                     FALLEN_CONFIGS.input_focus(true, "rename")
                 end
             elseif kind == "save" then
@@ -22893,11 +22857,6 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
                 else
                     fallen_toast("Choose a config to save", "warning")
                 end
-            elseif kind == "trash" then
-                A.config_trash_open = not A.config_trash_open
-                A.config_search_query = ""
-                A.config_list_scroll = 0
-                FALLEN_CONFIGS.input_focus(false)
             elseif kind == "close" then
                 A.config_open = false
                 FALLEN_CONFIGS.input_focus(false)
@@ -22915,17 +22874,25 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
         A.config_edit_name = nil
     end
 
-    local items = A.config_trash_open and FALLEN_CONFIGS.trash()
-        or fallen_presets_sorted()
+    local items = fallen_presets_sorted()
     local row_h, row_origin = 34, 78
     -- Nine visible rows fit inside the original 500px menu; additional
     -- entries are scrolled, never split into pages or a Profiles footer.
     local max_rows = 9
     local visible_count = math.min(#items, max_rows)
     local target_h = row_origin + visible_count * row_h + 11
-    if #items == 0 and (A.config_trash_open
-        or (A.config_search_query or "") ~= "") then
+    if #items == 0 and (A.config_search_query or "") ~= "" then
         target_h = 113
+    end
+    local popup_h = 131
+    if A.config_row_menu or (A.config_row_menu_anim or 0) > 0.01 then
+        local popup_y = clamp(
+            (A.config_row_menu_y or (py+row_origin)) + 25,
+            py+72, py+WIN_H-(py-wy)-popup_h-17)
+        target_h = math.max(target_h, popup_y-py+popup_h+15)
+    end
+    if A.config_sort_open or (A.config_sort_anim or 0) > 0.01 then
+        target_h = math.max(target_h, 71+79+15)
     end
     if A.config_preset_height == nil or fade < 0.09 then
         A.config_preset_height = target_h
@@ -23042,7 +23009,6 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
             local row_alpha = row_fade*room
             if row_alpha > 0.002 then
                 local is_selected = A.config_selected==name
-                    and not A.config_trash_open
                 local hot = hover(mx,my,rx,ry,rw,row_h-3) and room > 0.85
                 local hov = fallen_presets_hover("preset-"..name,hot,dt)
                 local save_alpha=MENU_RENDER_ALPHA
@@ -23068,15 +23034,6 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
                 end
                 text(rx+10,ry+10,display_name,
                     is_selected and ink or muted)
-                if A.config_trash_open then
-                    text(rx+rw-51,ry+10,"Restore",azure)
-                    if ui_clicked and not consumed and hot then
-                        FALLEN_CONFIGS.restore(name)
-                        A.config_trash_open=false
-                        A.config_list_scroll=0
-                        consumed=true
-                    end
-                else
                     local more_x=rx+rw-47
                     local more_hot=hover(mx,my,more_x,ry+4,22,23)
                     local load_x=rx+rw-24
@@ -23125,7 +23082,6 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
                             consumed=true
                         end
                     end
-                end
                 MENU_RENDER_ALPHA=save_alpha
             end
         end
@@ -23134,9 +23090,7 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
         local save_alpha=MENU_RENDER_ALPHA
         local room=clamp((ph-99)/10,0,1)
         MENU_RENDER_ALPHA=save_alpha*room
-        centered_text(px+pw/2,py+89,
-            A.config_trash_open and "Recently Deleted is empty"
-                or "No matching presets",muted)
+        centered_text(px+pw/2,py+89,"No matching presets",muted)
         MENU_RENDER_ALPHA=save_alpha
     end
 
@@ -23159,8 +23113,11 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
     -- Keep both popup menus consistent with the main dropdown fade.
     if A.config_sort_open or (A.config_sort_anim or 0)>0.01 then
         local saved_alpha=MENU_RENDER_ALPHA
-        MENU_RENDER_ALPHA=saved_alpha*(A.config_sort_anim or 0)
         local dx,dy,dw,dh=sort_x-103,sort_y+29,126,79
+        local sort_room=clamp((ph-((dy-py)+dh+2))/10,0,1)
+        local sort_alpha=(A.config_sort_anim or 0)*sort_room
+        MENU_RENDER_ALPHA=saved_alpha*sort_alpha
+        if sort_alpha > 0.008 then
         rounded_outline(dx,dy,dw,dh,6,rim,1,panel)
         local options={
             {"Newest First","recent"},
@@ -23172,25 +23129,29 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
             local hot=hover(mx,my,dx+4,oy,dw-8,23)
             if hot then rounded_fill(dx+4,oy,dw-8,23,4,row_fill) end
             text(dx+9,oy+7,opt[1],hot and ink or muted)
-            if ui_clicked and A.config_sort_open and hot then
+            if ui_clicked and A.config_sort_open
+                and sort_alpha > 0.95 and hot then
                 A.config_sort_mode=opt[2]
                 A.config_sort_open=false
                 A.config_list_scroll=0
                 consumed=true
             end
         end
+        end -- sort visible
         MENU_RENDER_ALPHA=saved_alpha
     end
-    if (A.config_row_menu or (A.config_row_menu_anim or 0)>0.01)
-        and not A.config_trash_open then
+    if A.config_row_menu or (A.config_row_menu_anim or 0)>0.01 then
         local saved_alpha=MENU_RENDER_ALPHA
-        MENU_RENDER_ALPHA=saved_alpha*(A.config_row_menu_anim or 0)
         local name=A.config_row_menu or A.config_row_menu_last_name
         local mx0=px+pw-135
         local yy=A.config_row_menu_y or (py+row_origin)
         local mh=131
         local my0=clamp(yy+25,py+72,
-            math.max(py+72,py+ph-mh-5))
+            py+WIN_H-(py-wy)-mh-17)
+        local menu_room=clamp((ph-((my0-py)+mh+2))/10,0,1)
+        local menu_alpha=(A.config_row_menu_anim or 0)*menu_room
+        MENU_RENDER_ALPHA=saved_alpha*menu_alpha
+        if menu_alpha>0.008 then
         rounded_outline(mx0,my0,126,mh,6,rim,1,panel)
         local menuopts={"Rename","Reload","Duplicate","Delete","Share"}
         for i,word in ipairs(menuopts) do
@@ -23199,7 +23160,8 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
             if hot then rounded_fill(mx0+4,ay,118,24,4,row_fill) end
             text(mx0+11,ay+7,word,
                 word=="Delete" and {0.97,0.55,0.58,1} or (hot and ink or muted))
-            if ui_clicked and A.config_row_menu and hot then
+            if ui_clicked and A.config_row_menu
+                and menu_alpha > 0.95 and hot then
                 if word=="Rename" then
                     A.config_edit_name=name
                     A.config_input_buffer=name
@@ -23217,6 +23179,7 @@ function FALLEN_CONFIGS.draw_page(mx, my, clicked, lmb, wx, wy)
                 consumed=true
             end
         end
+        end -- context menu visible
         MENU_RENDER_ALPHA=saved_alpha
     end
     if ui_clicked and not consumed then
@@ -31054,8 +31017,26 @@ hooks.on_render(function()
 
     local cfg_x = wx + 190
     local cfg_y = wy + 18
-    local cfg_w = 226
     local cfg_h = 29
+    -- The header is only as wide as its selected preset name. The Lua
+    -- Drawing API has no text-measure function, so use glyph-based widths.
+    local cfg_name = tostring(A.config_selected
+        or FALLEN_CONFIGS.CONFIG.loaded_name or "Select config")
+    if #cfg_name > 35 then cfg_name = cfg_name:sub(1, 35) end
+    local cfg_name_w = 0
+    for i = 1, #cfg_name do
+        local ch = cfg_name:sub(i, i)
+        if ch == "i" or ch == "l" or ch == "I" or ch == "1" then
+            cfg_name_w = cfg_name_w + 4
+        elseif ch == "W" or ch == "M" or ch == "w" or ch == "m" then
+            cfg_name_w = cfg_name_w + 9
+        elseif ch == " " or ch == "." or ch == "_" then
+            cfg_name_w = cfg_name_w + 5
+        else
+            cfg_name_w = cfg_name_w + 7
+        end
+    end
+    local cfg_w = clamp(34 + cfg_name_w + 23, 100, 410)
 
     local cfg_hot =
         hover(
@@ -31125,15 +31106,7 @@ hooks.on_render(function()
             save_icon_x + 10, save_icon_y + 10, C.text_dim, 1)
     end
 
-    -- Active config name in the header, like the reference screenshot.
-    -- The chevron on the right opens the compact Presets dropdown.
-    local cfg_name = A.config_selected
-        or FALLEN_CONFIGS.CONFIG.loaded_name
-        or "Select config"
-    cfg_name = tostring(cfg_name)
-    if #cfg_name > 22 then
-        cfg_name = cfg_name:sub(1, 20) .. ".."
-    end
+    -- Full config name, up to 35 characters; the button fits the text.
     text(cfg_x + 34, cfg_y + 9, cfg_name, cfg_text_col)
     local arrow_x = cfg_x + cfg_w - 16
     local arrow_y = cfg_y + 13
