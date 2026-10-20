@@ -10,7 +10,7 @@ _G.FallenMenuReady = false
 _G.FallenLua_Menu = _G.FallenLua_Menu or {}
 if _G.FallenLua_Menu.visible == nil then
     _G.FallenLua_Menu.visible = false
-
+end
 
 -- =========================================================
 -- Fallen-lua Menu v4.5
