@@ -9867,228 +9867,219 @@ local function draw_visuals_page(
 end
 
 -- =========================================================
--- Camera No Recoil (LMB): recoil lock that retains manual mouse look.
--- Uses only the documented Windows and aim camera APIs.
--- Camera rotation - measured cursor input = estimated weapon kick.
--- Nothing in the weapon or Lua GC is patched.
+-- Stable No Recoil: same direct look_at_matrix / set_camera_rotation
+-- path used by our own Aimbot. No getgc, no weapon parameter changes.
+-- Keep a stable world-facing direction while LMB is held; NEVER add
+-- a correction to a correction (the source of v141 oscillation).
 -- =========================================================
 
+-- Older copies of this new handler become inert after a reinject.
+-- IMPORTANT: v141 did not have this guard; a clean process restart is
+-- needed once when upgrading from v141 if that script is still active.
+_G.FALLEN_NO_RECOIL_GENERATION =
+    (tonumber(_G.FALLEN_NO_RECOIL_GENERATION) or 0) + 1
+local FNR_GENERATION = _G.FALLEN_NO_RECOIL_GENERATION
+
 local FNR = {
-    pitch = nil, yaw = nil,
-    cursor_x = nil, cursor_y = nil,
-    mouse_dx = 0, mouse_dy = 0,
-    sens_x = 0.10, sens_y = -0.08,
-    cal_dx = 0, cal_dy = 0,
-    cal_yaw = 0, cal_pitch = 0,
-    cal_time = nil,
-    last_cursor_motion = -100,
-    firing = false,
+    active = false,
+    pitch = nil,
+    yaw = nil,
+    prev_pitch = nil,
+    prev_yaw = nil,
+    cursor_x = nil,
+    cursor_y = nil,
+    sens_x = nil,
+    sens_y = nil,
     last_frame = nil,
 }
 
 local function fnr_reset()
+    FNR.active = false
     FNR.pitch, FNR.yaw = nil, nil
-    FNR.firing = false
-    FNR.mouse_dx, FNR.mouse_dy = 0, 0
-    FNR.cal_dx, FNR.cal_dy = 0, 0
-    FNR.cal_yaw, FNR.cal_pitch = 0, 0
-    FNR.cal_time = nil
+    FNR.prev_pitch, FNR.prev_yaw = nil, nil
+    FNR.cursor_x, FNR.cursor_y = nil, nil
     FNR.last_frame = nil
 end
 
--- Undo residual changes from v140 when reinjecting in the same process.
 if type(_G.FALLEN_NO_RECOIL_RESTORE) == "function" then
     pcall(_G.FALLEN_NO_RECOIL_RESTORE)
 end
 _G.FALLEN_NO_RECOIL_RESTORE = fnr_reset
 
-local function fnr_wrap(angle)
-    if angle > 180 then angle = angle - 360 end
-    if angle < -180 then angle = angle + 360 end
-    return angle
+local function fnr_angle_diff(a, b)
+    return (a - b + 180) % 360 - 180
 end
 
-local function fnr_angles()
+local function fnr_read_direction()
     if type(aim) ~= "table"
         or type(aim.get_camera_rotation) ~= "function"
     then return nil end
     local ok, rot = pcall(aim.get_camera_rotation)
     if not ok or type(rot) ~= "table" then return nil end
+
+    -- Documented Roblox matrix convention: row 3 is -forward.
     local x = -(tonumber(rot[7]) or 0)
     local y = -(tonumber(rot[8]) or 0)
     local z = -(tonumber(rot[9]) or 0)
-    local length = math.sqrt(x*x + y*y + z*z)
-    if length < 0.1 then return nil end
-    x, y, z = x/length, y/length, z/length
-    local pitch = math.deg(math.asin(math.max(-1, math.min(1, y))))
-    local yaw = math.deg(math.atan(x, -z))
-    return pitch, yaw
+    local len = math.sqrt(x*x + y*y + z*z)
+    if len < 0.5 then return nil end
+    x, y, z = x/len, y/len, z/len
+
+    return math.deg(math.asin(math.max(-1, math.min(1, y)))),
+        math.deg(math.atan(x, -z))
 end
 
-local function fnr_set_angles(pitch, yaw)
+local function fnr_cursor_delta()
+    if type(Windows) ~= "table"
+        or type(Windows.GetMousePos) ~= "function"
+    then return 0, 0 end
+    local ok, m = pcall(Windows.GetMousePos)
+    if not ok or type(m) ~= "table" then return 0, 0 end
+    local x, y = tonumber(m.X), tonumber(m.Y)
+    if not x or not y then return 0, 0 end
+    local dx, dy = 0, 0
+    if FNR.cursor_x and FNR.cursor_y then
+        dx = x - FNR.cursor_x
+        dy = y - FNR.cursor_y
+        -- Ignore cursor recenter / alt-tab jumps.
+        if math.abs(dx) > 150 or math.abs(dy) > 150 then
+            dx, dy = 0, 0
+        end
+    end
+    FNR.cursor_x, FNR.cursor_y = x, y
+    return dx, dy
+end
+
+local function fnr_learn_sensitivity(dx, dy, pitch, yaw)
+    -- Calibrate ONLY when not shooting; recoil must not contaminate it.
+    if FNR.prev_pitch == nil then return end
+    if math.abs(dx) >= 2 and math.abs(dx) <= 75 then
+        local k = fnr_angle_diff(yaw, FNR.prev_yaw) / dx
+        if math.abs(k) >= 0.005 and math.abs(k) < 1.5 then
+            FNR.sens_x = FNR.sens_x
+                and (FNR.sens_x * 0.8 + k * 0.2) or k
+        end
+    end
+    if math.abs(dy) >= 2 and math.abs(dy) <= 75 then
+        local k = (pitch - FNR.prev_pitch) / dy
+        if math.abs(k) >= 0.005 and math.abs(k) < 1.5 then
+            FNR.sens_y = FNR.sens_y
+                and (FNR.sens_y * 0.8 + k * 0.2) or k
+        end
+    end
+end
+
+local function fnr_set_locked_view()
+    -- Exactly the same camera write method as FALLEN_CUSTOM_AIMBOT_TICK.
     if type(aim) ~= "table"
         or type(aim.get_camera_position) ~= "function"
         or type(aim.look_at_matrix) ~= "function"
         or type(aim.set_camera_rotation) ~= "function"
     then return false end
-    local ok, position = pcall(aim.get_camera_position)
-    if not ok or position == nil then return false end
-    local x = tonumber(position.X)
-    local y = tonumber(position.Y)
-    local z = tonumber(position.Z)
-    if not x or not y or not z then return false end
-    local rp, ry = math.rad(math.max(-89, math.min(89, pitch))), math.rad(yaw)
-    local dx = math.cos(rp) * math.sin(ry)
-    local dy = math.sin(rp)
-    local dz = -math.cos(rp) * math.cos(ry)
-    local goal = { X = x + dx*100, Y = y + dy*100, Z = z + dz*100 }
-    local success, matrix = pcall(aim.look_at_matrix, position, goal)
-    if not success or not matrix then return false end
+    local ok, cam = pcall(aim.get_camera_position)
+    if not ok or cam == nil then return false end
+    -- API Vector3 may be a userdata rather than an ordinary Lua table.
+    local valid, x, y, z = pcall(function()
+        return tonumber(cam.X), tonumber(cam.Y), tonumber(cam.Z)
+    end)
+    if not valid or not x or not y or not z then return false end
+    local rp = math.rad(math.max(-89, math.min(89, FNR.pitch)))
+    local ry = math.rad(FNR.yaw)
+    local dist = 1000
+    local goal = {
+        X = x + math.cos(rp) * math.sin(ry) * dist,
+        Y = y + math.sin(rp) * dist,
+        Z = z - math.cos(rp) * math.cos(ry) * dist,
+    }
+    local good, matrix = pcall(aim.look_at_matrix, cam, goal)
+    if not good or matrix == nil then return false end
     return pcall(aim.set_camera_rotation, matrix)
 end
 
-local function fnr_track_cursor(now)
-    if type(Windows) ~= "table"
-        or type(Windows.GetMousePos) ~= "function" then
-        FNR.cursor_x, FNR.cursor_y = nil, nil
-        return
-    end
-    local ok, cursor = pcall(Windows.GetMousePos)
-    if not ok or type(cursor) ~= "table" then return end
-    local x = tonumber(cursor.X)
-    local y = tonumber(cursor.Y)
-    if not x or not y then return end
-    if FNR.cursor_x then
-        local dx, dy = x-FNR.cursor_x, y-FNR.cursor_y
-        -- Ignore cursor recentering, focusing and alt-tab jumps.
-        if math.abs(dx) <= 200 and math.abs(dy) <= 200 then
-            FNR.mouse_dx = FNR.mouse_dx + dx
-            FNR.mouse_dy = FNR.mouse_dy + dy
-            if math.abs(dx) + math.abs(dy) >= 0.5 then
-                FNR.last_cursor_motion = now
-            end
-        end
-    end
-    FNR.cursor_x, FNR.cursor_y = x, y
-end
-
-local function fnr_calibrate(now, dp, dy)
-    -- Learn degrees/pixel while not firing; never mistake recoil for input.
-    if not FNR.cal_time then FNR.cal_time = now end
-    FNR.cal_dx = FNR.cal_dx + FNR.mouse_dx
-    FNR.cal_dy = FNR.cal_dy + FNR.mouse_dy
-    FNR.cal_yaw = FNR.cal_yaw + dy
-    FNR.cal_pitch = FNR.cal_pitch + dp
-    FNR.mouse_dx, FNR.mouse_dy = 0, 0
-    if now - FNR.cal_time < 0.15 then return end
-    if math.abs(FNR.cal_dx) >= 15 then
-        local val = FNR.cal_yaw / FNR.cal_dx
-        if val > 0.005 and val < 1 then
-            FNR.sens_x = FNR.sens_x * 0.75 + val * 0.25
-        end
-    end
-    if math.abs(FNR.cal_dy) >= 15 then
-        local val = FNR.cal_pitch / FNR.cal_dy
-        if val < -0.005 and val > -1 then
-            FNR.sens_y = FNR.sens_y * 0.75 + val * 0.25
-        end
-    end
-    FNR.cal_dx, FNR.cal_dy = 0, 0
-    FNR.cal_yaw, FNR.cal_pitch = 0, 0
-    FNR.cal_time = now
-end
-
 local function FALLEN_NO_RECOIL_TICK()
+    if _G.FALLEN_NO_RECOIL_GENERATION ~= FNR_GENERATION then return end
     if S.no_recoil_enabled ~= true
         or _G.FallenMenuReady ~= true
         or S.visible == true
-    then
-        fnr_reset()
-        return
-    end
+    then fnr_reset(); return end
     if type(Windows) ~= "table"
         or type(Windows.IsKeyPressed) ~= "function"
     then fnr_reset(); return end
     if type(Windows.IsRobloxForeground) == "function"
-        and not Windows.IsRobloxForeground() then
-        fnr_reset(); return
-    end
-    -- Aimbot already writes an aim rotation, do not fight that rotation.
+        and not Windows.IsRobloxForeground()
+    then fnr_reset(); return end
+
+    -- Never let Aimbot and No Recoil fight for the camera.
     if S.aim_enabled == true and FALLEN_BIND_ACTIVE("aim") then
-        fnr_reset(); return
+        fnr_reset()
+        return
     end
+
     local now = tick()
+    local pitch, yaw = fnr_read_direction()
+    if pitch == nil then fnr_reset(); return end
+    local dx, dy = fnr_cursor_delta()
     local pressed = Windows.IsKeyPressed(0x01) == true
-    local pitch, yaw = fnr_angles()
-    if not pitch then fnr_reset(); return end
-    fnr_track_cursor(now)
-    if FNR.pitch == nil or FNR.last_frame == nil
-        or now - FNR.last_frame > 0.25 then
-        FNR.pitch, FNR.yaw = pitch, yaw
-        FNR.mouse_dx, FNR.mouse_dy = 0, 0
-        FNR.last_frame = now
-        FNR.firing = pressed
-        return
+
+    if FNR.last_frame and now - FNR.last_frame > 0.25 then
+        -- Menu stall/alt-tab: reinitialize, never use a stale lock.
+        FNR.active = false
+        FNR.prev_pitch, FNR.prev_yaw = nil, nil
     end
-    local dp = pitch - FNR.pitch
-    local dy = fnr_wrap(yaw - FNR.yaw)
     FNR.last_frame = now
+
     if not pressed then
-        FNR.firing = false
-        fnr_calibrate(now, dp, dy)
+        fnr_learn_sensitivity(dx, dy, pitch, yaw)
+        FNR.active = false
+        FNR.pitch, FNR.yaw = nil, nil
+        FNR.prev_pitch, FNR.prev_yaw = pitch, yaw
+        return
+    end
+
+    if not FNR.active then
+        -- Hold the direction at LMB-down, without selecting a target.
+        FNR.active = true
         FNR.pitch, FNR.yaw = pitch, yaw
+        FNR.prev_pitch, FNR.prev_yaw = pitch, yaw
         return
     end
-    if not FNR.firing then
-        -- Lock to the view at the instant LMB is pressed. No snap to a player.
-        FNR.firing = true
-        FNR.pitch, FNR.yaw = pitch, yaw
-        FNR.mouse_dx, FNR.mouse_dy = 0, 0
-        return
-    end
-    if math.abs(dp) < 0.0001 and math.abs(dy) < 0.0001 then
-        -- Camera update can arrive later than the cursor update.
-        return
-    end
-    local mouse_x, mouse_y = FNR.mouse_dx, FNR.mouse_dy
-    FNR.mouse_dx, FNR.mouse_dy = 0, 0
-    local cursor_visible = now - FNR.last_cursor_motion < 0.30
-    local correction_p, correction_y = 0, 0
-    if math.abs(dp) > 12 or math.abs(dy) > 12 then
-        -- A fast flick/teleport must not be reversed by recoil correction.
-        FNR.pitch, FNR.yaw = pitch, yaw
-        return
-    end
-    if cursor_visible then
-        -- Camera movement minus the user's cursor delta is estimated recoil.
-        local recoil_p = dp - mouse_y * FNR.sens_y
-        local recoil_y = dy - mouse_x * FNR.sens_x
-        if recoil_p > 0 and recoil_p < 7 then
-            correction_p = -recoil_p
+
+    if dx ~= 0 or dy ~= 0 then
+        -- On games with a moving OS cursor, preserve intentional aiming.
+        -- Use non-shooting calibration rather than recoil-contaminated deltas.
+        if FNR.sens_x and dx ~= 0 then
+            FNR.yaw = FNR.yaw + FNR.sens_x * dx
+        elseif dx ~= 0 then
+            FNR.yaw = yaw
         end
-        if math.abs(recoil_y) < 3 then
-            correction_y = -recoil_y
+        if FNR.sens_y and dy ~= 0 then
+            FNR.pitch = FNR.pitch + FNR.sens_y * dy
+        elseif dy ~= 0 then
+            FNR.pitch = pitch
         end
     else
-        -- Some FPS games pin the OS cursor to the screen center. Raw mouse
-        -- deltas are not exposed in this API. Only cancel small upward kicks
-        -- and leave horizontal turns and large vertical flicks untouched.
-        if dp > 0.005 and dp <= 1.65 and math.abs(dy) < 1.0 then
-            correction_p = -dp
+        -- FPS mouse-lock may freeze the OS cursor. This API doesn't expose
+        -- raw mouse movement, so keep small vertical weapon kicks locked,
+        -- allow normal left/right movement, and accept deliberate big flicks.
+        FNR.yaw = yaw
+        if math.abs(pitch - FNR.pitch) > 2.75 then
+            FNR.pitch = pitch
         end
     end
-    if math.abs(correction_p) + math.abs(correction_y) > 0.002
-        and fnr_set_angles(pitch + correction_p, yaw + correction_y) then
-        FNR.pitch, FNR.yaw = fnr_angles()
-        if not FNR.pitch then
-            FNR.pitch, FNR.yaw = pitch + correction_p, yaw + correction_y
-        end
-    else
-        FNR.pitch, FNR.yaw = pitch, yaw
+    FNR.pitch = math.max(-89, math.min(89, FNR.pitch))
+    FNR.yaw = fnr_angle_diff(FNR.yaw, 0)
+
+    -- A single absolute Aimbot-style matrix; NO incremental kick feedback.
+    if math.abs(pitch - FNR.pitch) > 0.025
+        or math.abs(fnr_angle_diff(yaw, FNR.yaw)) > 0.025
+    then
+        fnr_set_locked_view()
     end
+    FNR.prev_pitch, FNR.prev_yaw = pitch, yaw
 end
 
 hooks.on_render(function()
+    if _G.FALLEN_NO_RECOIL_GENERATION ~= FNR_GENERATION then return end
     local ok = pcall(FALLEN_NO_RECOIL_TICK)
     if not ok then fnr_reset() end
 end)
