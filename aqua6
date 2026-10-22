@@ -1,5 +1,5 @@
 -- FALLEN UI BASE SAFE MODE
--- v101: Neverlose-source navigation + source-styled Configs page.
+-- v144: Recoil Control with Infernal-style mouse/camera separation.
 -- Feature modules can be disabled later without deleting UI code.
 
 -- Loader/menu transition gate.
@@ -414,6 +414,16 @@ end
 _G.FallenLua_Menu = _G.FallenLua_Menu or {}
 local S = _G.FallenLua_Menu
 
+-- Retire legacy v140-v142 No Recoil render callbacks after reinjection.
+-- Preserve all other persistent menu settings and gameplay features.
+_G.FALLEN_NO_RECOIL_GENERATION =
+    (tonumber(_G.FALLEN_NO_RECOIL_GENERATION) or 0) + 1
+if type(_G.FALLEN_NO_RECOIL_RESTORE) == "function" then
+    pcall(_G.FALLEN_NO_RECOIL_RESTORE)
+end
+_G.FALLEN_NO_RECOIL_RESTORE = nil
+S.no_recoil_enabled = nil
+
 local defaults = {
     visible = true,
     tab = 1,
@@ -424,7 +434,11 @@ local defaults = {
     aim_enabled = false,
     aim_auto_prediction = false,
     sticky_aim = false,
-    no_recoil_enabled = false,
+    -- Recoil Control (ported from Infernal logic, adapted to Blueberry Drawing API).
+    rcs_enabled = false,
+    rcs_strength = 100,
+    rcs_sideways = true,
+    rcs_humanize = 0,
 
     -- The original pasted Aimbot uses VK 0x06 (Mouse5).
     aim_hold_key = 0x06,
@@ -7617,7 +7631,7 @@ local function draw_aimbot_page(
 
     -- LEFT: normal Aimbot block.
     section_title(lx, cy, "Aimbot")
-    card(lx, cy + 25, left_w, 196, 11)
+    card(lx, cy + 25, left_w, 155, 11)
 
     local dots_x = lx + left_w - 79
     local dots_y = cy + 40
@@ -7712,27 +7726,6 @@ local function draw_aimbot_page(
         left_w,
         "Sticky Aim",
         "sticky_aim",
-        false
-    )
-
-    line(
-        lx + 12,
-        cy + 154,
-        lx + left_w - 12,
-        cy + 154,
-        C.divider,
-        1
-    )
-
-    toggle_row(
-        mx,
-        my,
-        base_clicked,
-        lx,
-        cy + 155,
-        left_w,
-        "No Recoil",
-        "no_recoil_enabled",
         false
     )
 
@@ -7859,6 +7852,22 @@ local function draw_aimbot_page(
         A.fov_picker_drag = nil
         numeric_stop(true)
     end
+
+    -- Recoil Control: same toggle/slider primitives as the rest of Fallen.
+    -- Independent of Aimbot and uses camera-only correction while firing.
+    section_title(rx, cy + 145, "Recoil Control")
+    card(rx, cy + 170, right_w, 166, 11)
+    toggle_row(mx, my, base_clicked,
+        rx, cy + 176, right_w, "Recoil Control", "rcs_enabled", false)
+    line(rx + 12, cy + 216, rx + right_w - 12, cy + 216, C.divider, 1)
+    slider_row(mx, my, base_clicked, lmb,
+        rx, cy + 217, right_w, "Strength %", "rcs_strength", 0, 100, "int")
+    line(rx + 12, cy + 257, rx + right_w - 12, cy + 257, C.divider, 1)
+    toggle_row(mx, my, base_clicked,
+        rx, cy + 258, right_w, "Sideways Control", "rcs_sideways", false)
+    line(rx + 12, cy + 298, rx + right_w - 12, cy + 298, C.divider, 1)
+    slider_row(mx, my, base_clicked, lmb,
+        rx, cy + 299, right_w, "Humanize %", "rcs_humanize", 0, 100, "int")
 
     draw_aim_settings_popup(
         mx,
@@ -9867,224 +9876,6 @@ local function draw_visuals_page(
 end
 
 -- =========================================================
--- Stable No Recoil: same direct look_at_matrix / set_camera_rotation
--- path used by our own Aimbot. No getgc, no weapon parameter changes.
--- Keep a stable world-facing direction while LMB is held; NEVER add
--- a correction to a correction (the source of v141 oscillation).
--- =========================================================
-
--- Older copies of this new handler become inert after a reinject.
--- IMPORTANT: v141 did not have this guard; a clean process restart is
--- needed once when upgrading from v141 if that script is still active.
-_G.FALLEN_NO_RECOIL_GENERATION =
-    (tonumber(_G.FALLEN_NO_RECOIL_GENERATION) or 0) + 1
-local FNR_GENERATION = _G.FALLEN_NO_RECOIL_GENERATION
-
-local FNR = {
-    active = false,
-    pitch = nil,
-    yaw = nil,
-    prev_pitch = nil,
-    prev_yaw = nil,
-    cursor_x = nil,
-    cursor_y = nil,
-    sens_x = nil,
-    sens_y = nil,
-    last_frame = nil,
-}
-
-local function fnr_reset()
-    FNR.active = false
-    FNR.pitch, FNR.yaw = nil, nil
-    FNR.prev_pitch, FNR.prev_yaw = nil, nil
-    FNR.cursor_x, FNR.cursor_y = nil, nil
-    FNR.last_frame = nil
-end
-
-if type(_G.FALLEN_NO_RECOIL_RESTORE) == "function" then
-    pcall(_G.FALLEN_NO_RECOIL_RESTORE)
-end
-_G.FALLEN_NO_RECOIL_RESTORE = fnr_reset
-
-local function fnr_angle_diff(a, b)
-    return (a - b + 180) % 360 - 180
-end
-
-local function fnr_read_direction()
-    if type(aim) ~= "table"
-        or type(aim.get_camera_rotation) ~= "function"
-    then return nil end
-    local ok, rot = pcall(aim.get_camera_rotation)
-    if not ok or type(rot) ~= "table" then return nil end
-
-    -- Documented Roblox matrix convention: row 3 is -forward.
-    local x = -(tonumber(rot[7]) or 0)
-    local y = -(tonumber(rot[8]) or 0)
-    local z = -(tonumber(rot[9]) or 0)
-    local len = math.sqrt(x*x + y*y + z*z)
-    if len < 0.5 then return nil end
-    x, y, z = x/len, y/len, z/len
-
-    return math.deg(math.asin(math.max(-1, math.min(1, y)))),
-        math.deg(math.atan(x, -z))
-end
-
-local function fnr_cursor_delta()
-    if type(Windows) ~= "table"
-        or type(Windows.GetMousePos) ~= "function"
-    then return 0, 0 end
-    local ok, m = pcall(Windows.GetMousePos)
-    if not ok or type(m) ~= "table" then return 0, 0 end
-    local x, y = tonumber(m.X), tonumber(m.Y)
-    if not x or not y then return 0, 0 end
-    local dx, dy = 0, 0
-    if FNR.cursor_x and FNR.cursor_y then
-        dx = x - FNR.cursor_x
-        dy = y - FNR.cursor_y
-        -- Ignore cursor recenter / alt-tab jumps.
-        if math.abs(dx) > 150 or math.abs(dy) > 150 then
-            dx, dy = 0, 0
-        end
-    end
-    FNR.cursor_x, FNR.cursor_y = x, y
-    return dx, dy
-end
-
-local function fnr_learn_sensitivity(dx, dy, pitch, yaw)
-    -- Calibrate ONLY when not shooting; recoil must not contaminate it.
-    if FNR.prev_pitch == nil then return end
-    if math.abs(dx) >= 2 and math.abs(dx) <= 75 then
-        local k = fnr_angle_diff(yaw, FNR.prev_yaw) / dx
-        if math.abs(k) >= 0.005 and math.abs(k) < 1.5 then
-            FNR.sens_x = FNR.sens_x
-                and (FNR.sens_x * 0.8 + k * 0.2) or k
-        end
-    end
-    if math.abs(dy) >= 2 and math.abs(dy) <= 75 then
-        local k = (pitch - FNR.prev_pitch) / dy
-        if math.abs(k) >= 0.005 and math.abs(k) < 1.5 then
-            FNR.sens_y = FNR.sens_y
-                and (FNR.sens_y * 0.8 + k * 0.2) or k
-        end
-    end
-end
-
-local function fnr_set_locked_view()
-    -- Exactly the same camera write method as FALLEN_CUSTOM_AIMBOT_TICK.
-    if type(aim) ~= "table"
-        or type(aim.get_camera_position) ~= "function"
-        or type(aim.look_at_matrix) ~= "function"
-        or type(aim.set_camera_rotation) ~= "function"
-    then return false end
-    local ok, cam = pcall(aim.get_camera_position)
-    if not ok or cam == nil then return false end
-    -- API Vector3 may be a userdata rather than an ordinary Lua table.
-    local valid, x, y, z = pcall(function()
-        return tonumber(cam.X), tonumber(cam.Y), tonumber(cam.Z)
-    end)
-    if not valid or not x or not y or not z then return false end
-    local rp = math.rad(math.max(-89, math.min(89, FNR.pitch)))
-    local ry = math.rad(FNR.yaw)
-    local dist = 1000
-    local goal = {
-        X = x + math.cos(rp) * math.sin(ry) * dist,
-        Y = y + math.sin(rp) * dist,
-        Z = z - math.cos(rp) * math.cos(ry) * dist,
-    }
-    local good, matrix = pcall(aim.look_at_matrix, cam, goal)
-    if not good or matrix == nil then return false end
-    return pcall(aim.set_camera_rotation, matrix)
-end
-
-local function FALLEN_NO_RECOIL_TICK()
-    if _G.FALLEN_NO_RECOIL_GENERATION ~= FNR_GENERATION then return end
-    if S.no_recoil_enabled ~= true
-        or _G.FallenMenuReady ~= true
-        or S.visible == true
-    then fnr_reset(); return end
-    if type(Windows) ~= "table"
-        or type(Windows.IsKeyPressed) ~= "function"
-    then fnr_reset(); return end
-    if type(Windows.IsRobloxForeground) == "function"
-        and not Windows.IsRobloxForeground()
-    then fnr_reset(); return end
-
-    -- Never let Aimbot and No Recoil fight for the camera.
-    if S.aim_enabled == true and FALLEN_BIND_ACTIVE("aim") then
-        fnr_reset()
-        return
-    end
-
-    local now = tick()
-    local pitch, yaw = fnr_read_direction()
-    if pitch == nil then fnr_reset(); return end
-    local dx, dy = fnr_cursor_delta()
-    local pressed = Windows.IsKeyPressed(0x01) == true
-
-    if FNR.last_frame and now - FNR.last_frame > 0.25 then
-        -- Menu stall/alt-tab: reinitialize, never use a stale lock.
-        FNR.active = false
-        FNR.prev_pitch, FNR.prev_yaw = nil, nil
-    end
-    FNR.last_frame = now
-
-    if not pressed then
-        fnr_learn_sensitivity(dx, dy, pitch, yaw)
-        FNR.active = false
-        FNR.pitch, FNR.yaw = nil, nil
-        FNR.prev_pitch, FNR.prev_yaw = pitch, yaw
-        return
-    end
-
-    if not FNR.active then
-        -- Hold the direction at LMB-down, without selecting a target.
-        FNR.active = true
-        FNR.pitch, FNR.yaw = pitch, yaw
-        FNR.prev_pitch, FNR.prev_yaw = pitch, yaw
-        return
-    end
-
-    if dx ~= 0 or dy ~= 0 then
-        -- On games with a moving OS cursor, preserve intentional aiming.
-        -- Use non-shooting calibration rather than recoil-contaminated deltas.
-        if FNR.sens_x and dx ~= 0 then
-            FNR.yaw = FNR.yaw + FNR.sens_x * dx
-        elseif dx ~= 0 then
-            FNR.yaw = yaw
-        end
-        if FNR.sens_y and dy ~= 0 then
-            FNR.pitch = FNR.pitch + FNR.sens_y * dy
-        elseif dy ~= 0 then
-            FNR.pitch = pitch
-        end
-    else
-        -- FPS mouse-lock may freeze the OS cursor. This API doesn't expose
-        -- raw mouse movement, so keep small vertical weapon kicks locked,
-        -- allow normal left/right movement, and accept deliberate big flicks.
-        FNR.yaw = yaw
-        if math.abs(pitch - FNR.pitch) > 2.75 then
-            FNR.pitch = pitch
-        end
-    end
-    FNR.pitch = math.max(-89, math.min(89, FNR.pitch))
-    FNR.yaw = fnr_angle_diff(FNR.yaw, 0)
-
-    -- A single absolute Aimbot-style matrix; NO incremental kick feedback.
-    if math.abs(pitch - FNR.pitch) > 0.025
-        or math.abs(fnr_angle_diff(yaw, FNR.yaw)) > 0.025
-    then
-        fnr_set_locked_view()
-    end
-    FNR.prev_pitch, FNR.prev_yaw = pitch, yaw
-end
-
-hooks.on_render(function()
-    if _G.FALLEN_NO_RECOIL_GENERATION ~= FNR_GENERATION then return end
-    local ok = pcall(FALLEN_NO_RECOIL_TICK)
-    if not ok then fnr_reset() end
-end)
-
--- =========================================================
 -- Aimbot runtime
 -- Ported from the user's supplied custom-API script.
 -- UIManager reads were replaced with our own S state.
@@ -11138,6 +10929,285 @@ local function fap_find_target(cross, cam)
 end
 
 
+
+-- =========================================================
+-- Recoil Control (Infernal-style camera/mouse separation)
+-- Does not edit weapon internals or force a fixed aim direction.
+-- Uses only Blueberry aim.get/set_camera_rotation and cursor input.
+-- =========================================================
+local FALLEN_RCS_VERSION =
+    (tonumber(_G.FALLEN_RCS_VERSION) or 0) + 1
+_G.FALLEN_RCS_VERSION = FALLEN_RCS_VERSION
+
+local FALLEN_RCS = (function()
+    local M = {}
+    local st = {
+        prev_p = nil, prev_y = nil,
+        mx = nil, my = nil, ux = 0, uy = 0,
+        blind_x = false, blind_y = false,
+        sens_x = 0.10, sens_y = -0.08,
+        cal_t = 0, cal_px = 0, cal_py = 0,
+        cal_dx = 0, cal_dy = 0, cal_dirty = false,
+        debt_p = 0, debt_y = 0,
+        fire_end = 0, shooting = false,
+        last_roll = 0, human_roll = 0.2,
+    }
+    local SMOOTH, AFTER_FIRE_MS = 0.70, 150
+    local MAX_DEG, CURSOR_JUMP = 20, 200
+    local function bound(x, a, b)
+        return math.max(a, math.min(b, x))
+    end
+    local function wrap(x)
+        while x > 180 do x = x - 360 end
+        while x < -180 do x = x + 360 end
+        return x
+    end
+    local function now_ms()
+        local ok, t = pcall(tick)
+        if ok and type(t) == "number" then return t * 1000 end
+        return os.clock() * 1000
+    end
+    local function is_shooting()
+        if Windows and type(Windows.IsKeyPressed) == "function" then
+            local ok, yes = pcall(Windows.IsKeyPressed, 0x01)
+            if ok then return yes == true end
+        end
+        if input then
+            local fn = input.is_key_down or input.IsKeyDown
+            if type(fn) == "function" then
+                local ok, yes = pcall(fn, 0x01)
+                if ok then return yes == true end
+            end
+        end
+        return false
+    end
+    local function cursor()
+        local fn = utility and (utility.get_mouse_pos or utility.GetMousePos)
+        if type(fn) ~= "function" then
+            fn = input and (input.get_mouse_pos or input.get_mouse_position
+                or input.GetMousePosition)
+        end
+        if type(fn) ~= "function" then return nil end
+        local ok, x, y = pcall(fn)
+        if not ok then return nil end
+        if type(x) == "table" then
+            local pos = x
+            x, y = pos.X or pos.x or pos[1], pos.Y or pos.y or pos[2]
+        end
+        x, y = tonumber(x), tonumber(y)
+        if not x or not y then return nil end
+        return x, y
+    end
+    local function get_angles_from_matrix(mat)
+        if not mat then return nil end
+        local ok, f7, f8, f9 = pcall(function()
+            return tonumber(mat[7]), tonumber(mat[8]), tonumber(mat[9])
+        end)
+        if not ok or not f7 or not f8 or not f9 then return nil end
+        local fx, fy, fz = -f7, -f8, -f9
+        local len = math.sqrt(fx * fx + fy * fy + fz * fz)
+        if len < 0.001 then return nil end
+        local pitch = math.deg(math.asin(bound(fy / len, -1, 1)))
+        -- math.atan(y, x) is Lua 5.3 atan2; accept builds exposing math.atan2.
+        local yaw = math.deg((math.atan2 or math.atan)(fx, -fz))
+        return pitch, yaw
+    end
+    local function camera_angles()
+        if not aim or type(aim.get_camera_rotation) ~= "function" then
+            return nil
+        end
+        local ok, mat = pcall(aim.get_camera_rotation)
+        if not ok then return nil end
+        return get_angles_from_matrix(mat)
+    end
+    local function turn_to(p, y)
+        if not aim or type(aim.get_camera_position) ~= "function"
+            or type(aim.look_at_matrix) ~= "function"
+            or type(aim.set_camera_rotation) ~= "function"
+            or type(Vector3) ~= "function" then
+            return false
+        end
+        local ok, pos = pcall(aim.get_camera_position)
+        if not ok or not pos then return false end
+        local x, py, z = pos.X or pos.x, pos.Y or pos.y, pos.Z or pos.z
+        if not tonumber(x) or not tonumber(py) or not tonumber(z) then
+            return false
+        end
+        local rp, ry = math.rad(bound(p, -89, 89)), math.rad(y)
+        local fx = math.cos(rp) * math.sin(ry)
+        local fy = math.sin(rp)
+        local fz = -math.cos(rp) * math.cos(ry)
+        local good, mat = pcall(aim.look_at_matrix, pos,
+            Vector3(x + fx * 100, py + fy * 100, z + fz * 100))
+        if not good or not mat then return false end
+        local done = pcall(aim.set_camera_rotation, mat)
+        return done == true
+    end
+    local function clear()
+        st.prev_p, st.prev_y = nil, nil
+        st.mx, st.my, st.ux, st.uy = nil, nil, 0, 0
+        st.debt_p, st.debt_y = 0, 0
+        st.cal_px, st.cal_py, st.cal_dx, st.cal_dy = 0, 0, 0, 0
+        st.shooting, st.fire_end = false, 0
+    end
+    function M.reset() clear() end
+    -- Aimbot explicitly supplies the requested matrix, so its camera motion
+    -- isn't counted as recoil or used to calibrate mouse sensitivity.
+    function M.aim_turn(matrix)
+        local p, y = get_angles_from_matrix(matrix)
+        if p then
+            st.prev_p, st.prev_y = p, y
+            st.cal_dirty = true
+            st.debt_p, st.debt_y = 0, 0
+        end
+    end
+    local function sample_cursor()
+        local x, y = cursor()
+        if not x then
+            st.mx, st.my = nil, nil
+            st.blind_x, st.blind_y = true, true
+            return
+        end
+        if st.mx then
+            local dx, dy = x - st.mx, y - st.my
+            if math.abs(dx) < CURSOR_JUMP and math.abs(dy) < CURSOR_JUMP then
+                st.ux, st.uy = st.ux + dx, st.uy + dy
+            end
+        end
+        st.mx, st.my = x, y
+        -- Cursor at screen edge is not a reliable source of mouse movement.
+        local w, h = FALLEN_CUSTOM_FOV_CENTER()
+        w, h = tonumber(w), tonumber(h)
+        if w and h then
+            st.blind_x = x <= 2 or x >= (w * 2 - 3)
+            st.blind_y = y <= 2 or y >= (h * 2 - 3)
+        else
+            st.blind_x, st.blind_y = false, false
+        end
+    end
+    local function calibrate(now, dp, dy)
+        st.cal_px, st.cal_py = st.cal_px + st.ux, st.cal_py + st.uy
+        st.cal_dx, st.cal_dy = st.cal_dx + dy, st.cal_dy + dp
+        if now - st.cal_t < 120 then return end
+        if not st.cal_dirty and not st.blind_x and math.abs(st.cal_px) >= 15 then
+            local r = st.cal_dx / st.cal_px
+            if r > 0.005 and r < 1 then
+                st.sens_x = st.sens_x * 0.8 + r * 0.2
+            end
+        end
+        if not st.cal_dirty and not st.blind_y and math.abs(st.cal_py) >= 15 then
+            local r = st.cal_dy / st.cal_py
+            if r < -0.005 and r > -1 then
+                st.sens_y = st.sens_y * 0.8 + r * 0.2
+            end
+        end
+        st.cal_t = now
+        st.cal_px, st.cal_py, st.cal_dx, st.cal_dy = 0, 0, 0, 0
+        st.cal_dirty = false
+    end
+    local function glide(p, y)
+        local ap, ay = st.debt_p * SMOOTH, st.debt_y * SMOOTH
+        local target_p, target_y = bound(p + ap, -89, 89), y + ay
+        if turn_to(target_p, target_y) then
+            st.debt_p, st.debt_y = st.debt_p - ap, st.debt_y - ay
+            st.prev_p, st.prev_y = target_p, target_y
+            st.cal_dirty = true
+        else
+            st.prev_p, st.prev_y = p, y
+            st.debt_p, st.debt_y = 0, 0
+        end
+    end
+    function M.tick()
+        if not _G.FallenMenuReady or S.rcs_enabled ~= true or S.visible == true then
+            clear()
+            return
+        end
+        local now = now_ms()
+        local held = is_shooting()
+        if held then st.fire_end = now + AFTER_FIRE_MS end
+        sample_cursor()
+        local p, y = camera_angles()
+        if not p then clear() return end
+        if not st.prev_p then
+            st.prev_p, st.prev_y = p, y
+            st.ux, st.uy = 0, 0
+            st.shooting = held
+            return
+        end
+        if held and not st.shooting then
+            -- Start a new spray from the current camera; don't undo the user's
+            -- last deliberate rotation from before the mouse button press.
+            st.prev_p, st.prev_y = p, y
+            st.ux, st.uy = 0, 0
+            st.debt_p, st.debt_y = 0, 0
+        end
+        st.shooting = held
+        local dp, dy = p - st.prev_p, wrap(y - st.prev_y)
+        local owed = math.abs(st.debt_p) + math.abs(st.debt_y) > 0.01
+        if math.abs(dp) < 0.0001 and math.abs(dy) < 0.0001 then
+            if owed then glide(p, y) end
+            return -- keep collecting cursor pixels until camera advances
+        end
+        if now > st.fire_end then
+            if owed then
+                glide(p, y)
+            else
+                calibrate(now, dp, dy)
+                st.prev_p, st.prev_y = p, y
+            end
+            st.ux, st.uy = 0, 0
+            return
+        end
+        local recoil_p = dp - st.uy * st.sens_y
+        local recoil_y = dy - st.ux * st.sens_x
+        local manual_x = math.abs(st.ux) >= 2
+        local manual_y = math.abs(st.uy) >= 6
+        st.ux, st.uy = 0, 0
+        if math.abs(recoil_p) > MAX_DEG or math.abs(recoil_y) > MAX_DEG then
+            st.prev_p, st.prev_y = p, y
+            st.debt_p, st.debt_y = 0, 0
+            return
+        end
+        local strength = bound(tonumber(S.rcs_strength) or 100, 0, 100) / 100
+        local humanize = bound(tonumber(S.rcs_humanize) or 0, 0, 100) / 100
+        if humanize > 0 then
+            if now >= st.last_roll then
+                st.last_roll = now + 300 + math.random() * 400
+                st.human_roll = 0.03 + math.random() * 0.37
+            end
+            strength = strength * (1 - humanize * st.human_roll)
+        end
+        local fix_p, fix_y = 0, 0
+        if st.blind_y then
+            fix_p = dp > 0 and -dp * strength or 0
+        elseif not manual_y then
+            fix_p = -recoil_p * strength
+        end
+        if S.rcs_sideways == true and not st.blind_x and not manual_x then
+            fix_y = -recoil_y * strength
+        end
+        local owed_p = st.debt_p + fix_p
+        local owed_y = st.debt_y + fix_y
+        local ap, ay = owed_p * SMOOTH, owed_y * SMOOTH
+        if math.abs(ap) + math.abs(ay) < 0.002 then
+            st.debt_p, st.debt_y = owed_p, owed_y
+            st.prev_p, st.prev_y = p, y
+            return
+        end
+        local tp, ty = bound(p + ap, -89, 89), y + ay
+        if turn_to(tp, ty) then
+            st.debt_p, st.debt_y = owed_p - ap, owed_y - ay
+            -- Remember requested direction, not the potentially delayed read-back.
+            st.prev_p, st.prev_y = tp, ty
+            st.cal_dirty = true
+        else
+            st.prev_p, st.prev_y = p, y
+            st.debt_p, st.debt_y = 0, 0
+        end
+    end
+    return M
+end)()
+
 function FALLEN_CUSTOM_AIMBOT_TICK()
     -- This is OUR custom Aimbot runtime.
     -- Never enable or depend on cheat.aimbot here.
@@ -11314,13 +11384,15 @@ function FALLEN_CUSTOM_AIMBOT_TICK()
         end)
 
         if mat then
-            pcall(function()
+            local ok = pcall(function()
                 aim.set_camera_rotation(
                     mat
                 )
             end)
-
-            return
+            if ok then
+                FALLEN_RCS.aim_turn(mat)
+                return
+            end
         end
     end
 
@@ -11351,6 +11423,13 @@ hooks.on_render(function()
         -- Never spam the console from an aim render callback.
         fap_clear_lock()
     end
+end)
+
+-- RCS runs after the Aimbot camera callback so both use the same
+-- render-frame order. Generation guard retires old callbacks on reinject.
+hooks.on_render(function()
+    if _G.FALLEN_RCS_VERSION ~= FALLEN_RCS_VERSION then return end
+    pcall(FALLEN_RCS.tick)
 end)
 
 
