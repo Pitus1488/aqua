@@ -1,5 +1,5 @@
 -- FALLEN UI BASE SAFE MODE
--- v144: Recoil Control with Infernal-style mouse/camera separation.
+-- v145: Recoil UI controls and shared popup slider dragging fixed.
 -- Feature modules can be disabled later without deleting UI code.
 
 -- Loader/menu transition gate.
@@ -5200,8 +5200,17 @@ local function slider_row(mx, my, clicked, lmb, x, y, w, label, key, minv, maxv,
         clicked
         and not dropdown_modal
 
+    -- A popup's "clicked" is an edge event: it becomes false after
+    -- the first held frame. Keep a slider that was captured by that
+    -- first click active for the entire physical mouse hold.
+    -- Only an already-captured slider can use this continuation path;
+    -- it cannot activate another widget or start a drag behind a popup.
+    local continuing_drag =
+        A.active_slider == key
+        and key_down(VK_LBUTTON)
+
     lmb =
-        lmb
+        (lmb or continuing_drag)
         and not dropdown_modal
 
     local h = 41
@@ -6680,13 +6689,13 @@ function FALLEN_DRAW_FOV_SETTINGS_POPUP(
             MENU_RENDER_ALPHA = saved_alpha * fallen_nested_alpha(nested_glow)
             local can_edit = ui_clicked and nested_glow > 0.96
             slider_row(mx, my, can_edit,
-                lmb and can_edit,
+                lmb and nested_glow > 0.96,
                 row_x + 13, py + 76, row_w - 13,
                 "Strength", "aim_fov_glow_strength", 0, 100, "int")
             line(px + 12, py + 75 + nested_row,
                 px + pw - 12, py + 75 + nested_row, C.divider, 1)
             slider_row(mx, my, can_edit,
-                lmb and can_edit,
+                lmb and nested_glow > 0.96,
                 row_x + 13, py + 76 + nested_row, row_w - 13,
                 "Spread", "aim_fov_glow_spread", 1, 12, "int")
             MENU_RENDER_ALPHA = saved_alpha
@@ -6863,13 +6872,13 @@ function FALLEN_DRAW_SILENT_FOV_SETTINGS_POPUP(
             MENU_RENDER_ALPHA = saved_alpha * fallen_nested_alpha(nested_glow)
             local can_edit = ui_clicked and nested_glow > 0.96
             slider_row(mx, my, can_edit,
-                lmb and can_edit,
+                lmb and nested_glow > 0.96,
                 row_x + 13, py + 76, row_w - 13,
                 "Strength", "silent_fov_glow_strength", 0, 100, "int")
             line(px + 12, py + 75 + nested_row,
                 px + pw - 12, py + 75 + nested_row, C.divider, 1)
             slider_row(mx, my, can_edit,
-                lmb and can_edit,
+                lmb and nested_glow > 0.96,
                 row_x + 13, py + 76 + nested_row, row_w - 13,
                 "Spread", "silent_fov_glow_spread", 1, 12, "int")
             MENU_RENDER_ALPHA = saved_alpha
@@ -7817,7 +7826,7 @@ local function draw_aimbot_page(
             fov_swatch_x,
             fov_swatch_y,
             fov_swatch_s,
-            swatch_s
+            fov_swatch_s
         )
     then
         FALLEN_COLOR_INPUT_STOP(true)
@@ -7853,20 +7862,28 @@ local function draw_aimbot_page(
         numeric_stop(true)
     end
 
-    -- Recoil Control: same toggle/slider primitives as the rest of Fallen.
-    -- Independent of Aimbot and uses camera-only correction while firing.
+    -- Recoil Control is a separate right-column group. An Aimbot details
+    -- popup on the LEFT must not disable every control in this group.
+    -- FOV details/color-picker and true dropdown modals still block
+    -- right-column input, so clicks cannot leak through overlays.
+    local recoil_clicked =
+        clicked
+        and not A.fov_settings_open
+        and (A.fov_settings_anim or 0) <= 0.02
+        and not A.aim_bind_listening
+        and not FALLEN_ANY_DROPDOWN_MODAL_ACTIVE()
     section_title(rx, cy + 145, "Recoil Control")
     card(rx, cy + 170, right_w, 166, 11)
-    toggle_row(mx, my, base_clicked,
+    toggle_row(mx, my, recoil_clicked,
         rx, cy + 176, right_w, "Recoil Control", "rcs_enabled", false)
     line(rx + 12, cy + 216, rx + right_w - 12, cy + 216, C.divider, 1)
-    slider_row(mx, my, base_clicked, lmb,
+    slider_row(mx, my, recoil_clicked, lmb,
         rx, cy + 217, right_w, "Strength %", "rcs_strength", 0, 100, "int")
     line(rx + 12, cy + 257, rx + right_w - 12, cy + 257, C.divider, 1)
-    toggle_row(mx, my, base_clicked,
+    toggle_row(mx, my, recoil_clicked,
         rx, cy + 258, right_w, "Sideways Control", "rcs_sideways", false)
     line(rx + 12, cy + 298, rx + right_w - 12, cy + 298, C.divider, 1)
-    slider_row(mx, my, base_clicked, lmb,
+    slider_row(mx, my, recoil_clicked, lmb,
         rx, cy + 299, right_w, "Humanize %", "rcs_humanize", 0, 100, "int")
 
     draw_aim_settings_popup(
@@ -9162,12 +9179,12 @@ local function draw_world_settings_popup(
             MENU_RENDER_ALPHA = saved_popup_alpha * glow_alpha
             separator(glow_base_y - 1)
             slider_row(mx, my, glow_click,
-                lmb and glow_click,
+                lmb and nested_glow > 0.96,
                 row_x + 24, glow_base_y, row_w - 24,
                 "Glow Strength", "world_icon_glow_strength", 0, 100, "int")
             separator(glow_base_y + glow_row_h - 1)
             slider_row(mx, my, glow_click,
-                lmb and glow_click,
+                lmb and nested_glow > 0.96,
                 row_x + 24, glow_base_y + glow_row_h, row_w - 24,
                 "Glow Spread", "world_icon_glow_spread", 1, 20, "int")
         end
@@ -20093,12 +20110,12 @@ function FALLEN_DRAW_ARMOR_SETTINGS_POPUP(
         if nested_glow > 0.015 then
             MENU_RENDER_ALPHA = old_alpha * fallen_nested_alpha(nested_glow)
             local can_edit = ui_clicked and nested_glow > 0.96
-            slider_row(mx, my, can_edit, lmb and can_edit,
+            slider_row(mx, my, can_edit, lmb and nested_glow > 0.96,
                 row_x + 13, py + 76, row_w - 13,
                 "Strength", "armor_glow_strength", 0, 200, "int")
             line(px + 12, py + 75 + nested_row,
                 px + pw - 12, py + 75 + nested_row, C.divider, 1)
-            slider_row(mx, my, can_edit, lmb and can_edit,
+            slider_row(mx, my, can_edit, lmb and nested_glow > 0.96,
                 row_x + 13, py + 76 + nested_row, row_w - 13,
                 "Spread", "armor_glow_spread", 2, 35, "int")
             MENU_RENDER_ALPHA = old_alpha
@@ -25761,7 +25778,7 @@ function FALLEN_DRAW_MENU_SETTINGS(mx, my, clicked, lmb, anchor_x, anchor_y)
             MENU_RENDER_ALPHA = old_alpha * fallen_nested_alpha(nested_glow)
             local can_edit = row_clicked and nested_glow > 0.96
             line(px + 12, py + 121, px + pw - 12, py + 121, C.divider, 1)
-            slider_row(mx, my, can_edit, lmb and can_edit,
+            slider_row(mx, my, can_edit, lmb and nested_glow > 0.96,
                 row_x + 13, py + 122, row_w - 13,
                 "Strength", "menu_glow_strength", 0, 200, "int")
             MENU_RENDER_ALPHA = old_alpha
